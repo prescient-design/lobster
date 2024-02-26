@@ -2,4 +2,6 @@
 
 ## A language model library for rapid pre-training from scratch.
 
-![download (3)](https://github.com/prescient-design/lobster/assets/19844216/2c35f5ba-e269-466c-9c01-a4dcb8acf866)
+<p align="center">
+<img src="assets/lobster.jpeg" width=200px>
+</p>
