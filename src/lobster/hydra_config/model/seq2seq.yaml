@@ -1,0 +1,9 @@
+_target_: lobster.model.PrescientPT5
+
+lr: 1e-3
+model_name: ProstT5
+is_training: True
+is_encoder_decoder: True
+mask_percentage: 0.125
+ckpt_path: null
+num_warmup_steps: 10_000

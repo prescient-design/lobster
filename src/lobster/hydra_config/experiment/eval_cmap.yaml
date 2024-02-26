@@ -1,0 +1,35 @@
+# @package _global_
+
+defaults:
+  - override /model: cmap.yaml
+  - override /data: cmap.yaml
+
+paths:
+  root_dir: s3://prescient-data-dev/sandbox/jorent/plm-eval/cmap
+
+data:
+  batch_size: 1
+  num_workers: 1
+  lengths: [0.05, 0.05, .90]
+  root: "../data/"
+  seed: 0
+
+model:
+  checkpoint: null # to define
+  model_name: null
+  seed: 0
+
+trainer:
+  max_epochs: 100
+  accelerator: "gpu"
+
+callbacks:
+  early_stopping:
+    monitor: "val/loss"
+    patience: 15
+  model_checkpoint:
+    monitor: "val/loss"
+
+logger:
+  project: lobster-eval
+  entity: prescient-design

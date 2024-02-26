@@ -1,0 +1,10 @@
+_target_: lobster.model._cmap.ContactPredictionHead
+
+model_name: null
+checkpoint: null
+ckpt_path: null
+lr: 1e-3
+beta1: 0.9
+beta2: 0.98
+eps: 1e-12
+seed: 0

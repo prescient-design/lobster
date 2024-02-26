@@ -6,9 +6,9 @@ dynamic = ["version", "readme", "dependencies", "optional-dependencies"]
 requires-python = ">=3.10"
 
 [project.scripts]
-pplm_train = "prescient_plm.cmdline:train"
-pplm_embed = "prescient_plm.cmdline:embed"
-pplm_predict = "prescient_plm.cmdline:predict"
+lobster_train = "lobster.cmdline:train"
+lobster_embed = "lobster.cmdline:embed"
+lobster_predict = "lobster.cmdline:predict"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.in"]}
@@ -22,10 +22,10 @@ local = {file = ["requirements-local.in"]}
 where = ["src"]
 
 [tool.setuptools.package-data]
-prescient_plm = ["*.txt", "*.json", "*.yaml"]
-"prescient_plm.assets" = ["**/*.txt", "**/*.json", "**/*.yaml"]
-"prescient_plm.hydra_config" = [ "**/*.yaml"]
-"prescient_plm.affinity_experiments.config" = [ "**/*.yaml"]
+lobster = ["*.txt", "*.json", "*.yaml"]
+"lobster.assets" = ["**/*.txt", "**/*.json", "**/*.yaml"]
+"lobster.hydra_config" = [ "**/*.yaml"]
+"lobster.affinity_experiments.config" = [ "**/*.yaml"]
 
 
 [tool.mypy]

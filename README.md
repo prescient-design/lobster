@@ -26,7 +26,7 @@ pip install -e .
 ## Main models you should use
 ### Loading a pre-trained model
 ```python
-from prescient_plm.model import PrescientPMLM, PrescientPCLM
+from lobster.model import PrescientPMLM, PrescientPCLM
 masked_language_model = PrescientPMLM.load_from_checkpoint(<path to ckpt>)
 causal_language_model = PrescientPCLM.load_from_checkpoint(<path to ckpt>)
 ```
@@ -50,14 +50,14 @@ TODO: update
 ## Usage
 
 ### Embedding
-The entrypoint `pplm_embed` is the main driver for embedding sequences and accepts parameters using Hydra syntax. The available parameters for configuration can be found by running `pplm_embed --help` or by looking in the src/prescient_plm/hydra_config directory
+The entrypoint `lobster_embed` is the main driver for embedding sequences and accepts parameters using Hydra syntax. The available parameters for configuration can be found by running `lobster_embed --help` or by looking in the src/lobster/hydra_config directory
 
 To embed a fasta file of sequences using a pre-trained model on an interactive GPU node, cd into the root dir of this repo and do
 ```bash
-pplm_embed data.path_to_fasta="test_data/query.fasta" checkpoint="path_to_checkpoint.ckpt"
+lobster_embed data.path_to_fasta="test_data/query.fasta" checkpoint="path_to_checkpoint.ckpt"
 ```
 
-This will generate a dataframe of embeddings and also [log them to wandb](https://genentech.wandb.io/freyn6/pplm-embedding/runs/luv4ebtv?workspace=user-freyn6).
+This will generate a dataframe of embeddings and also [log them to wandb](https://genentech.wandb.io/freyn6/lobster-embedding/runs/luv4ebtv?workspace=user-freyn6).
 
 ### Likelihoods
 Likelihoods from an autoregressive `PrescientCLM` or pseudo-log likelihoods ("naturalness") from a `PrescientPMLM` can be computed for a list of `sequences` using
@@ -74,14 +74,14 @@ model.likelihood(sequences)
 see [this notebook](notebooks/01-lobster-fold.ipynb) for an example on using PPLMFold to predict structure from sequence.
 
 ### Structure-aware sequence embedding with 3D-PPLM
-see [this notebook](notebooks/02-3d-lobster.ipynb) for an example on using the [FoldseekTransform](src/prescient_plm/transforms/_foldseek_transforms.py) and 3D-PPLM to embed a monomer or complex.
+see [this notebook](notebooks/02-3d-lobster.ipynb) for an example on using the [FoldseekTransform](src/lobster/transforms/_foldseek_transforms.py) and 3D-PPLM to embed a monomer or complex.
 
 ## Training from scratch
-The entrypoint `pplm_train` is the main driver for training and accepts parameters using Hydra syntax. The available parameters for configuration can be found by running `pplm_train --help` or by looking in the src/prescient_plm/hydra_config directory
+The entrypoint `lobster_train` is the main driver for training and accepts parameters using Hydra syntax. The available parameters for configuration can be found by running `lobster_train --help` or by looking in the src/lobster/hydra_config directory
 
 To train an MLM on a fasta file of sequences on an interactive GPU node, cd into the root dir of this repo and do
 ```bash
-pplm_train data.path_to_fasta="test_data/query.fasta" logger=csv paths.root_dir="."
+lobster_train data.path_to_fasta="test_data/query.fasta" logger=csv paths.root_dir="."
 ```
 
 ## License

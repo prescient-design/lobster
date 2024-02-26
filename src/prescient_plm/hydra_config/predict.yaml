@@ -1,8 +1,0 @@
-defaults:
-  - _self_
-
-
-checkpoint: ???
-model_type: PrescientPMLM
-wandb_project: pplm-predict
-wandb_entity: prescient-design

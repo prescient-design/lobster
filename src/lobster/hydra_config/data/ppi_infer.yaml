@@ -1,0 +1,7 @@
+_target_: lobster.data._ppi_sequence_datamodule.PPISequenceDataModule
+
+collate_fn:
+  _target_: lobster.data._collate.ESMBatchConverterPPI
+  truncation_seq_length: 1024
+  contact_maps: False
+  tokenizer_dir: pmlm_tokenizer

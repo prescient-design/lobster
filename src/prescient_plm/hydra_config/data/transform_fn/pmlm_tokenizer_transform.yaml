@@ -1,8 +1,0 @@
-_target_: prescient_plm.tokenization.PmlmTokenizerTransform
-
-pretrained_model_name_or_path: null
-padding: "max_length"
-truncation: True
-max_length: ${model.max_length}
-tokenizer_dir: ${model.tokenizer_dir}
-mlm: True

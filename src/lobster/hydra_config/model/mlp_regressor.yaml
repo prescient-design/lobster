@@ -1,0 +1,9 @@
+_target_: lobster.model.RegressionHead
+
+model_name: null
+checkpoint: null
+ckpt_path: null
+model_type: PrescientPMLM
+input_dim: 256
+ffd_dim: 128
+lr: 4e-4

@@ -1,0 +1,7 @@
+defaults:
+  - base
+
+_target_: lobster.data.PDBDataModule
+
+root: ???
+lengths: [0.6,0.2,0.2]

@@ -1,0 +1,11 @@
+defaults:
+  - base
+
+_target_: lobster.data.FastaLightningDataModule
+
+path_to_fasta: ???
+batch_size: 64
+num_workers: 1
+max_length: ${model.max_length}
+tokenizer_dir: ${model.tokenizer_dir}
+mlm: True

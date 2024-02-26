@@ -1,0 +1,41 @@
+# @package _global_
+
+defaults:
+  - override /model: clm.yaml
+  - override /data/transform_fn: pmlm_tokenizer_transform.yaml
+
+paths:
+  root_dir: /results
+
+data:
+  path_to_fasta: [
+    '/mnt/lobster_workspace/uniref50.fasta',
+  ]
+  batch_size: 128
+  num_workers: 8
+  pin_memory: False
+  lengths: [0.9,0.05,0.05]
+  max_length: 512
+  tokenizer_dir: ${model.tokenizer_dir}
+  mlm: False
+
+  transform_fn:
+    tokenizer_dir: ${model.tokenizer_dir}
+    max_length: ${data.max_length}
+    mlm: False
+
+
+trainer:
+  max_steps: 1_000_000_000
+  # max_steps: 1_000
+  val_check_interval: 50
+  precision: 16
+  gradient_clip_val: 0.5
+
+model:
+  model_name: CLM_113M
+  tokenizer_dir: pmlm_tokenizer_32
+  max_length: ${data.max_length}
+  num_warmup_steps: 10_000
+  num_training_steps: ${trainer.max_steps}
+  lr: 4e-4

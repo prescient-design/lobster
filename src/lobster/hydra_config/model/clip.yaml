@@ -1,0 +1,4 @@
+_target_: lobster.model.MiniCLIP
+
+pretrained_model_name_or_path: esm2_t6_8M_UR50D
+lr: 1e-3

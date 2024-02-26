@@ -1,0 +1,7 @@
+_target_: lobster.tokenization.PT5TeacherForcingTransform
+
+pretrained_model_name_or_path: ${model.model_name}
+padding: "max_length"
+mask_percentage: ${model.mask_percentage}
+max_length: ${model.max_length}
+return_attention_mask: True
