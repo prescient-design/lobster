@@ -1,5 +1,4 @@
 import pytest
-
 from lobster.data import NegLogDataModule
 
 
