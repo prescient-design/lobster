@@ -1,0 +1,3 @@
+timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S.%f}
+root_dir: ???
+output_dir: ${paths.root_dir}/${paths.timestamp}

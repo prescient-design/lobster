@@ -1,0 +1,38 @@
+# @package _global_
+
+defaults:
+  - override /data: gb1.yaml
+  - override /model: mlp_regressor.yaml
+  - override /callbacks: default_eval.yaml
+
+model:
+  lr: 4e-5
+  # checkpoint: /data/bucket/freyn6/scratch/2023-09-04T11-19-02.709034/last.ckpt
+  input_dim: 768
+  ffd_dim: 256
+  max_length: 512 # Make sure longer for AAV where variation is in 561-588
+
+data:
+  batch_size: 128
+  split: sampled
+
+trainer:
+  max_epochs: 1000
+  log_every_n_steps: 1
+  val_check_interval: 0.05
+
+callbacks:
+  early_stopping:
+    monitor: val/spearman
+    patience: 100
+    mode: max
+  model_checkpoint:
+    monitor: val/spearman
+    mode: max
+
+
+paths:
+  root_dir: /data/bucket/freyn6/scratch/cram_eval
+  # root_dir: s3://prescient-data-dev/sandbox/jorent/plm-eval/crammed/
+
+run_test: true

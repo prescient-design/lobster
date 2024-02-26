@@ -1,0 +1,27 @@
+lightning
+torch
+torchmetrics
+biopython
+torchvision
+universal_pathlib
+pandas
+scipy
+pyarrow
+s3fs[boto3]
+biopandas
+wandb
+jupyter
+ipykernel
+hydra-core
+deepspeed
+torchdata
+datasets
+tokenizers
+transformers==4.30.2
+scikit-learn
+matplotlib
+seaborn
+python-dotenv
+torcheval
+fastparquet
+# yeji

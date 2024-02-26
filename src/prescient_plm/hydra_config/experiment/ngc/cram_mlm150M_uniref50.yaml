@@ -1,0 +1,47 @@
+# @package _global_
+
+defaults:
+  - override /model: mlm.yaml
+  - override /data/transform_fn: pmlm_tokenizer_transform.yaml
+
+paths:
+  root_dir: '/mnt/pplm_workspace/models/ismaia11'
+
+data:
+  path_to_fasta: [
+    '/mnt/pplm_workspace/uniref50.fasta'
+  ]
+  batch_size: 128
+  num_workers: 8
+  pin_memory: False
+  lengths: [0.9,0.05,0.05]
+  max_length: 512
+  mlm: True
+
+  transform_fn:
+    tokenizer_dir: ${model.tokenizer_dir}
+    max_length: ${data.max_length}
+    mlm: True
+
+trainer:
+  max_steps: 1_000_000
+  # max_epochs: 1
+  num_sanity_val_steps: 0
+  # val_check_interval: 0.25 # 4 times during training
+  val_check_interval: 100  # every n batches
+  precision: 16
+  gradient_clip_val: 0.5
+  # accumulate_grad_batches: 8
+  # max_time: "00:24:00:00"
+
+
+model:
+  model_name: MLM_cram_150M
+  tokenizer_dir: pmlm_tokenizer_32
+  num_training_steps: ${trainer.max_steps}
+  num_warmup_steps: 30_000
+  lr: 1e-3
+  mask_percentage: 0.25
+  beta1: 0.9
+  beta2: 0.98
+  eps: 1e-12

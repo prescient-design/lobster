@@ -1,0 +1,39 @@
+# @package _global_
+
+defaults:
+  - override /model: rlm.yaml
+
+paths:
+  root_dir: /data/bucket/prescient_plm/models-rlm
+
+data:
+  path_to_fasta: [
+  '/data/bucket/prescient_plm/datasets/tenx.fasta', 
+  '/data/bucket/prescient_plm/datasets/paired_oas.fasta',
+  '/data/bucket/prescient_plm/datasets/prescient_rounds.fasta',
+  '/data/bucket/prescient_plm/datasets/pred.fasta',
+  '/data/bucket/prescient_plm/datasets/unpaired_ngs.fasta',
+  '/data/bucket/prescient_plm/datasets/uniref100.fasta'
+  ]
+  batch_size: 6
+  num_workers: 8
+  pin_memory: False
+  is_relative_model: True
+  lengths: [0.7,0.2,0.1]
+  max_length: 512
+
+trainer:
+  max_steps: 100_000
+  val_check_interval: 0.001
+  precision: 16
+
+
+callbacks:
+  model_checkpoint:
+    save_top_k: 10
+  early_stopping:
+    patience: 10000000000000000
+model:
+  model_name: RLM_med
+  num_training_steps: ${trainer.max_steps}
+  lr: 1e-5

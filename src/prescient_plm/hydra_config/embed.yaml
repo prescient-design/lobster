@@ -1,0 +1,10 @@
+defaults:
+  - _self_
+  - data: fasta.yaml
+  - model: mlm.yaml
+  - experiment: null
+
+checkpoint: null # was mandatory before ???
+model_type: PrescientPMLM
+wandb_project: pplm-embedding
+wandb_entity: prescient-design

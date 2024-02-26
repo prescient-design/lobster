@@ -1,0 +1,33 @@
+# @package _global_
+
+defaults:
+  - override /model: ppi.yaml
+  - override /data: ppi.yaml
+
+paths:
+  root_dir: s3://prescient-data-dev/sandbox/jorent/prescient-plm/models/ppi/cram_uniref50
+
+trainer:
+  max_epochs: 100
+  accelerator: "gpu"
+
+model:
+  model_name: "MLM_cram_large"
+  checkpoint: "s3://prescient-pcluster-data/freyn6/scratch/2023-09-04T11-19-02.709034/last.ckpt"
+  seed: 0
+
+data:
+  seed: 0
+  collate_fn:
+    truncation_seq_length: 512
+
+callbacks:
+  early_stopping:
+    monitor: "val/loss"
+    patience: 15
+  model_checkpoint:
+    monitor: "val/loss"
+
+logger:
+  project: pplm-eval
+  entity: prescient-design

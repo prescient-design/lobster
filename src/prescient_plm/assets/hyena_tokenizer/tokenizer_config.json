@@ -1,0 +1,7 @@
+{
+    "clean_up_tokenization_spaces": true,
+    "do_lower_case": false,
+    "model_max_length": 1000002,
+    "tokenizer_class": "HyenaTokenizer",
+    "padding_side": "left"
+  }

@@ -1,0 +1,9 @@
+_target_: prescient_plm.model.PrescientPRLM
+
+model_name: RLM_small
+lr: 1e-3
+mask_percentage: 0.25
+ckpt_path: null
+num_warmup_steps: 10_000
+tokenizer_dir: pmlm_tokenizer
+max_length: 512

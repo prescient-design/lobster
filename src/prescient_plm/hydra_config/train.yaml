@@ -1,0 +1,14 @@
+defaults:
+  - _self_
+  - data: fasta.yaml
+  - model: mlm.yaml
+  - callbacks: default.yaml
+  - logger: wandb.yaml
+  - trainer: default.yaml
+  - setup: default.yaml
+  - paths: default.yaml
+  - plugins: null
+  - experiment: null
+
+dryrun: false
+run_test: null

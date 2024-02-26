@@ -1,0 +1,3 @@
+defaults:
+  - _self_
+  - transform_fn: pmlm_tokenizer_transform

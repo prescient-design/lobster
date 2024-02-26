@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - override /data: affinity.yaml
+  - override /model: mlp_regressor.yaml
+
+paths:
+  root_dir: s3://prescient-data-dev/sandbox/freyn6/prescient-plm/eval_models
+
+model:
+  checkpoint: ???
+
+trainer:
+  max_epochs: 100
+
+callbacks:
+  early_stopping:
+    monitor: "val/loss"
+    patience: 15
+  model_checkpoint:
+    monitor: "val/loss"
+
+logger:
+  project: pplm-eval
+  entity: prescient-design

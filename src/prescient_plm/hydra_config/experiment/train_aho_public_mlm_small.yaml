@@ -1,0 +1,29 @@
+# @package _global_
+
+defaults:
+  - override /model: mlm.yaml
+
+paths:
+  root_dir: s3://prescient-data-dev/sandbox/freyn6/prescient-plm/models
+
+data:
+  path_to_fasta: [
+  "/data/bucket/freyn6/data/paired_oas_aho.fasta",
+  "/data/bucket/freyn6/data/OASu85_rep_seq_aho.fasta",
+  # '/data/bucket/freyn6/data/tenx_aho.fasta'
+  ]
+  batch_size: 1024
+  num_workers: 0
+  pin_memory: False
+  lengths: [0.9,0.05,0.05]
+  max_length: 512
+
+trainer:
+  max_steps: 10_000_000
+  val_check_interval: 0.01
+  precision: 16
+
+model:
+  model_name: MLM_small
+  num_training_steps: ${trainer.max_steps}
+  lr: 1e-5

@@ -1,0 +1,34 @@
+# @package _global_
+hydra:
+    sweeper:
+        params:
+            data_folder: "/data/bucket/ismaia11/affinity/data/"
+            train_data: affinity_round_train_r10.csv
+            val_data: affinity_val_r10.csv
+            test_data: s3://prescient-data-dev/leaderboards/testsets/round_9/binders.parquet
+            checkpoints: '/data/bucket/ismaia11/affinity/checkpoints/'
+            results_dir: '/data/bucket/ismaia11/affinity/results/'
+            output_dir: '/data/bucket/ismaia11/affinity/output/rlm/'
+            pretrained_path: '/data/bucket/prescient_plm/models-rlm/2023-10-01T07-53-38.263758/best.pt'
+            load_pretrained: True
+            train: true
+            patience: 1000
+            epochs: 50
+            batch_size: 64
+            itr:  1
+            scale: false
+            task: classification
+            is_binary: true
+            use_multi_gpu: true
+            target_value: 'affinity_is_binder_pkd_4'
+            wd: 1.8137891736510614e-05
+            lr: 5.e-5
+            model: RLM_med
+            init_step: false
+            path_for_init: ""
+            vh_seq: 'fv_heavy_aho'
+            vl_seq: 'fv_light_aho'
+            target_seq: 'affinity_antigen'
+            ++wandb.name: 'RLM_ngs_roundOnly'
+            append: 'ngs_roundOnly'
+            ++wandb.project: 'r10'

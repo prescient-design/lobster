@@ -1,0 +1,4 @@
+bitsandbytes:
+  _target_: lightning.pytorch.plugins.BitsandbytesPrecisionPlugin
+  mode: nf4-dq
+  ignore_modules: ["lm_head"]

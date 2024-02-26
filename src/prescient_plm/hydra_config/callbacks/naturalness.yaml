@@ -1,0 +1,3 @@
+naturalness:
+  _target_: prescient_plm.callbacks.NaturalnessCallback
+  run_every_n_epochs: 1

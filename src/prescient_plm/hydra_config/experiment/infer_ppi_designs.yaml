@@ -1,0 +1,41 @@
+# @package _global_
+defaults:
+  - override /model: ppi.yaml
+  - override /data: ppi_infer.yaml
+
+trainer:
+  accelerator: "gpu"
+
+model:
+  _target_: prescient_plm.model._ppi_clf.PPIClassifier
+  checkpoint: null
+  ckpt_path: "s3://prescient-data-dev/sandbox/jorent/prescient-plm/models/ppi/baseline_cram_ppi/2023-11-02T16-53-52.116681/epoch=60-step=74115-val_loss=0.0000.ckpt"
+  ffd_dim: 768
+  max_length: 1026
+
+data:
+  _target_: prescient_plm.data._ppi_sequence_datamodule.PPISequenceDataModule
+  source: s3://prescient-data-dev/sandbox/freyn6/designs/twist-library/CLF_DCS_GMM_r11_all_scores_contacts_ag_seq.csv
+  batch_size: 64
+  num_workers: 1
+  collate_fn:
+    _target_: prescient_plm.data._collate.ESMBatchConverterPPI
+    truncation_seq_length: 1024
+    contact_maps: False
+    tokenizer_dir: pmlm_tokenizer
+
+logger:
+  project: pplm-ppi
+  entity: prescient-design
+  group: pmlm-ppi-baseline
+
+model_type: "PPIClassifier"
+
+pred_output: "ppi_designs_pred_neglog_esm35M.csv"
+
+
+
+# Checkpoints saved:
+# "ppi_neglog_ab_only = PPIClassifier.load_from_checkpoint("s3://prescient-data-dev/sandbox/jorent/prescient-plm/models/ppi/baseline_cram_ppi/2023-11-02T16-53-30.173482/epoch=9-step=11285-val_loss=0.0000.ckpt")
+# ppi_neglog_crammed_uniref = PPIClassifier.load_from_checkpoint("s3://prescient-data-dev/sandbox/jorent/prescient-plm/models/ppi/baseline_cram_ppi/2023-11-02T16-53-30.197348/epoch=63-step=77775-val_loss=0.0000.ckpt")
+# ppi_neglog_esm2_35M = PPIClassifier.load_from_checkpoint("s3://prescient-data-dev/sandbox/jorent/prescient-plm/models/ppi/baseline_cram_ppi/2023-11-02T16-53-52.116681/epoch=60-step=74115-val_loss=0.0000.ckpt")"

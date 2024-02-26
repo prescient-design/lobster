@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - override /model: clm.yaml
+
+data:
+  path_to_fasta: /scratch/site/u/freyn6/data/all_expressors/rounds_06072023.fasta
+
+model:
+  model_name: ProtGPT2

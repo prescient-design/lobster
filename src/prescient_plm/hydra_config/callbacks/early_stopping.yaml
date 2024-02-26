@@ -1,0 +1,6 @@
+early_stopping:
+  _target_: lightning.pytorch.callbacks.EarlyStopping
+  monitor: ???
+  min_delta: 0
+  patience: 5
+  mode: min

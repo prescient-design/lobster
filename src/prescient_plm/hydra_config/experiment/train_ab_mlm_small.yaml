@@ -1,0 +1,29 @@
+# @package _global_
+
+defaults:
+  - override /model: mlm.yaml
+
+paths:
+  root_dir: /data/bucket/freyn6/models/pmlm
+
+data:
+  path_to_fasta: [
+    '/data/bucket/freyn6/data/OASu85_rep_seq.fasta',
+    '/data/bucket/freyn6/data/paired_oas.fasta'
+  ]
+  batch_size: 256
+  num_workers: 8
+  pin_memory: False
+  lengths: [0.7,0.2,0.1]
+  max_length: 1024
+
+
+trainer:
+  max_steps: 10_000_000
+  val_check_interval: 0.00001
+  precision: 16
+
+model:
+  model_name: MLM_small
+  num_training_steps: ${trainer.max_steps}
+  lr: 1e-5

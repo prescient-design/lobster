@@ -1,0 +1,8 @@
+_target_: prescient_plm.data.ContactMapDataModule
+
+remove_nulls: False
+null_path: s3://prescient-data-dev/sandbox/jorent/data/atom3d_ppi_non_null_list.pkl # pre-saved non-null list
+collate_fn:
+  _target_: prescient_plm.data._collate.ESMBatchConverterPPI
+  contact_maps: True
+  truncation_seq_length: 512

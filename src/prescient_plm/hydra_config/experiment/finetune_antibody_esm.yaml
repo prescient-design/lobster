@@ -1,0 +1,28 @@
+# @package _global_
+
+defaults:
+  - override /model: mlm.yaml
+
+paths:
+  root_dir: s3://prescient-data-dev/sandbox/freyn6/prescient-plm/models
+
+data:
+  path_to_fasta: ["/scratch/site/u/freyn6/data/all_expressors/prescient_rounds.fasta",
+  "/scratch/site/u/freyn6/data/all_expressors/paired_oas.fasta",
+  "/scratch/site/u/freyn6/data/all_expressors/pred.fasta",
+  # "/scratch/site/u/freyn6/data/all_expressors/tenx.fasta",
+  # "/scratch/site/u/freyn6/data/all_expressors/unpaired_ngs.fasta",
+  # "/scratch/site/u/freyn6/data/oas/OASu85_rep_seq.fasta"
+  ]
+  model_name: esm2_t6_8M_UR50D
+  batch_size: 1024
+
+trainer:
+  max_steps: 100_000
+
+
+model:
+  model_name: esm2_t6_8M_UR50D
+  num_training_steps: ${trainer.max_steps}
+  lr: 1e-5
+  freeze: true
