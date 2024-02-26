@@ -2,7 +2,7 @@
 **L**anguage m**O**dels for **B**iological **S**equence **T**ransformation and **E**volutionary **R**epresentation
 
 ## A language model library for rapid pre-training from scratch.
-`lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](github.com/taylormjs), Aya Ismail, and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/contributors.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
+`lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](github.com/taylormjs), Aya Ismail, and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/CONTRIBUTORS.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
 
 This repository contains code and access to pre-trained language models for biological sequence data.
 
