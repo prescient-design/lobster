@@ -3,7 +3,7 @@ import tempfile
 from typing import Any
 
 import torch
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 
 from lobster.model import PrescientPLMFold
 

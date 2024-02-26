@@ -7,7 +7,7 @@ import torch
 import torch.utils.data
 from datasets import Dataset
 from lightning import LightningDataModule
-from prescient.datasets._atom3d_ppi_dataset import ATOM3DPPIDataset
+from yeji.datasets._atom3d_ppi_dataset import ATOM3DPPIDataset
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler, Subset
 from tqdm import tqdm

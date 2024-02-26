@@ -24,4 +24,4 @@ seaborn
 python-dotenv
 torcheval
 fastparquet
-# yeji
+# yeji  # TODO: update dependencies

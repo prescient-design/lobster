@@ -1,8 +1,8 @@
 from typing import TypeVar
 
 import pandas as pd
-from prescient.datasets import GREDAffinityDataset
-from prescient.transforms import AutoTokenizerTransform
+from yeji.datasets import GREDAffinityDataset
+from yeji.transforms import AutoTokenizerTransform
 from sklearn.preprocessing import OneHotEncoder
 from torch.utils.data import Dataset
 

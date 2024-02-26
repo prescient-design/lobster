@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Sequence, TypeVar, Union
 
 from pandas import DataFrame
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 from torch import Tensor
 from torch.utils.data import Dataset
 

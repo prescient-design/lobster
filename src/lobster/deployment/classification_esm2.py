@@ -5,7 +5,7 @@ from uuid import uuid4
 import pandas as pd
 from dagster import Config, get_dagster_logger
 from omegaconf import OmegaConf
-from prescient.io import load_omega_config
+from yeji.io import load_omega_config
 
 from lobster.affinity_experiments.main import main
 from lobster.deployment.utils import (

@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 from datasets import Dataset
 from lightning import LightningDataModule
-from prescient.datasets._neglog_dataset import NegLogDataset
+from yeji.datasets._neglog_dataset import NegLogDataset
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 

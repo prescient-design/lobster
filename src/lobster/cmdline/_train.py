@@ -5,7 +5,7 @@ import wandb
 import os
 from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, OmegaConf
-from prescient.transforms import Normalize
+from yeji.transforms import Normalize
 
 from lobster.cmdline._utils import instantiate_callbacks
 

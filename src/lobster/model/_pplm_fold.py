@@ -3,8 +3,8 @@ from typing import Callable, Optional, Union, Dict, Any
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-from prescient.constants import CDR_RANGES_AHO
-from prescient.transforms import AutoTokenizerTransform, Transform
+from yeji.constants import CDR_RANGES_AHO
+from yeji.transforms import AutoTokenizerTransform, Transform
 from transformers import AutoTokenizer, EsmForProteinFolding
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup

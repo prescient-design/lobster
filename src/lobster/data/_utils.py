@@ -3,7 +3,7 @@ import pickle
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from prescient.io import load_parquet_to_pandas
+from yeji.io import load_parquet_to_pandas
 
 from lobster.data import HEAVY_COLUMN, LIGHT_COLUMN
 

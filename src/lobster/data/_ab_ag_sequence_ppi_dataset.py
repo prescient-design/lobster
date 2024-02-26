@@ -2,7 +2,7 @@
 from typing import Callable, Optional, Union
 
 import pandas as pd
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 from torch.utils.data import Dataset
 
 SOURCE = "s3://prescient-data-dev/sandbox/freyn6/designs/twist-library/CLF_DCS_GMM_r11_all_scores_contacts_ag_seq.csv"

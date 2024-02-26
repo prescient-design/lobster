@@ -11,8 +11,8 @@ import numpy as np
 import subprocess
 from lightning import LightningDataModule
 
-from prescient.io._thread_safe_file import ThreadSafeFile
-from prescient.datasets import SizedSequenceDataset
+from yeji.io._thread_safe_file import ThreadSafeFile
+from yeji.datasets import SizedSequenceDataset
 from lobster.transforms import StructureFeaturizer
 
 

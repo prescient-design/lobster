@@ -1,4 +1,4 @@
-from prescient.io import download
+from yeji.io import download
 from upath import UPath
 from upath.implementations.cloud import S3Path
 

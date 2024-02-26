@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Tuple
 import Bio.PDB.Polypeptide as Poly
 import torch
 from pandas import DataFrame
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 
 from lobster.tokenization._pmlm_tokenizer import PmlmTokenizer
 

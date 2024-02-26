@@ -3,7 +3,7 @@ from os import PathLike
 from typing import Any, List, Optional, Union
 
 import torch
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 from transformers.tokenization_utils_base import BatchEncoding, PaddingStrategy, TruncationStrategy
 
 from ._hyena_tokenizer import HyenaTokenizer

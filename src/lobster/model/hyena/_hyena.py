@@ -3,7 +3,7 @@ from typing import Callable, Optional, Union
 
 import lightning.pytorch as pl
 import torch
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 
 # from transformers import LlamaConfig, LlamaForCausalLM, pipeline
 from transformers.optimization import get_linear_schedule_with_warmup

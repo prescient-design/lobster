@@ -4,7 +4,7 @@ from typing import Callable, Optional, TypeVar, Union
 
 import lightning.pytorch as pl
 import torch
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 from torch.nn import MSELoss
 from transformers import AutoTokenizer
 from transformers.optimization import get_linear_schedule_with_warmup

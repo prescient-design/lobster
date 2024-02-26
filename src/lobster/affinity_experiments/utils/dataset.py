@@ -4,13 +4,13 @@ from typing import TypeVar
 import numpy as np
 import pandas as pd
 import torch
-from prescient.transforms import AutoTokenizerTransform
+from yeji.transforms import AutoTokenizerTransform
 from sklearn.preprocessing import OneHotEncoder
 from torch.utils.data import Dataset
 
 from lobster.tokenization import PmlmTokenizerTransform
 
-# from prescient.datasets import AffinityDataset, GREDAffinityDataset
+# from yeji.datasets import AffinityDataset, GREDAffinityDataset
 T = TypeVar("T")
 
 

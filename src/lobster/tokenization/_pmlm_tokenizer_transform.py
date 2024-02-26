@@ -4,7 +4,7 @@ import re
 from os import PathLike
 from typing import Any, List, Optional, Union
 
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 from transformers import T5Tokenizer
 from transformers.tokenization_utils_base import BatchEncoding, PaddingStrategy, TruncationStrategy
 

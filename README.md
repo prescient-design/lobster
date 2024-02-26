@@ -2,13 +2,21 @@
 **L**anguage m**O**dels for **B**iological **S**equence **T**ransformation and **E**volutionary **R**epresentation
 
 ## A language model library for rapid pre-training from scratch.
-`lobster` is a language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](github.com/taylormjs), Aya Ismail, and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/contributors.md) across [Prescient Design](https://www.gene.com/scientists/our-scientists/prescient-design).
+`lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](github.com/taylormjs), Aya Ismail, and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/contributors.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
 
 This repository contains code and access to pre-trained language models for biological sequence data.
 
 <p align="center">
 <img src="assets/lobster.jpeg" width=200px>
 </p>
+
+## Notice: Alpha Release
+This is an alpha release. The API is subject to change and the documentation is incomplete.
+
+## Why you should use LOBSTER
+* LOBSTER is built for pre-training models quickly from scratch. It is "batteries included" This is most useful if you need to control the pre-training data mixture and embedding space, or want to experiment with novel pre-training objectives and fine-tuning strategies. 
+* LOBSTER is a living, open-source library that will be periodically updated with new pre-trained models from the [Frey Lab](https://github.com/ncfrey) at [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design). The Frey Lab works on real therapeutic molecule design problems and LOBSTER models and capabilities reflect the demands of real-world drug discovery campaigns.
+* LOBSTER is built on [yeji](https://github.com/0x00b1/yeji/tree/main), a standard library for biological research, and integrated with [cortex](https://github.com/prescient-design/cortex/tree/main), a modular framework for multitask modeling, guided generation, and multi-modal models.
 
 ## Citations
 If you use the code and/or models, please cite:

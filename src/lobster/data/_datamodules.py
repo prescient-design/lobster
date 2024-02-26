@@ -6,8 +6,8 @@ import pandas as pd
 import torch.utils.data
 from datasets import Dataset
 from lightning import LightningDataModule
-from prescient.datasets import FASTADataset, RelativeRepresentationDataset
-from prescient.transforms import Transform
+from yeji.datasets import FASTADataset, RelativeRepresentationDataset
+from yeji.transforms import Transform
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 

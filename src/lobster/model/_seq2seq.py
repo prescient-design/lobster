@@ -3,7 +3,7 @@ from typing import Callable, Union
 
 import lightning.pytorch as pl
 import torch
-from prescient.transforms import Transform
+from yeji.transforms import Transform
 from transformers import (
     AutoModelForSeq2SeqLM,
     T5Config,
