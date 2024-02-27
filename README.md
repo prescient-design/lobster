@@ -1,4 +1,4 @@
-# LOBSTER
+# LOBSTER 🦞
 **L**anguage m**O**dels for **B**iological **S**equence **T**ransformation and **E**volutionary **R**epresentation
 
 ## A language model library for rapid pre-training from scratch.
@@ -43,10 +43,9 @@ causal_language_model = PrescientPCLM.load_from_checkpoint(<path to ckpt>)
 TODO: update
 
 **Datasets**
-- all models are trained on heavy and light chains separately, no pairing
-- public antibodies: antiberty dataset (paired and unpaired OAS)
-- private antibodies: all tenx (paired) and bulk (unpaired) ngs data
-- aho: these models expect aho aligned inputs from anarci
+- all antibody models are trained on heavy and light chains separately, no pairing
+- antibodies: antiberty dataset (paired and unpaired OAS)
+- aho: these models expect aho aligned antibody inputs from anarci
 - uniref50: general protein universe
 - pdb complexes: pdb sequences with `.` tokens indicating complexes
 
@@ -92,22 +91,28 @@ To train an MLM on a fasta file of sequences on an interactive GPU node, cd into
 lobster_train data.path_to_fasta="test_data/query.fasta" logger=csv paths.root_dir="."
 ```
 
-## License
-Copyright © 2024 Genentech, Inc.
+## Contributing
+Contributions are welcome! We ask that all users and contributors remember that the LOBSTER team are all full-time drug hunters, and our open-source efforts are a labor of love because we care deeply about open science and scientific progress.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the “Software”), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
+### Install dev requirements and pre-commit hooks
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+```bash
+python -m pip install -r requirements-dev.in
+pre-commit install
+```
 
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+### Testing
+
+```bash
+python -m pytest -v --cov-report term-missing --cov=./lobster ./tests
+```
+
+### Build and browse docs locally
+
+```bash
+make -C docs html
+cd docs/build/html
+python -m http.server
+```
+
+Then open `http://localhost:8000` in your browser.

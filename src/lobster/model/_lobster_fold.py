@@ -1,17 +1,15 @@
-from typing import Callable, Optional, Union, Dict, Any
+from typing import Any, Callable, Dict, Optional, Union
 
 import lightning.pytorch as pl
 import torch
-import torch.nn.functional as F
-from yeji.constants import CDR_RANGES_AHO
-from yeji.transforms import AutoTokenizerTransform, Transform
 from transformers import AutoTokenizer, EsmForProteinFolding
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
+from yeji.transforms import AutoTokenizerTransform, Transform
 
 from ._lobster_fold_base import PPLMFoldBase
 from ._lobster_fold_configuration import PPLMFOLD_CONFIG_ARGS, PPLMFoldConfig
-from .openfold_utils import backbone_loss, atom14_to_atom37
+from .openfold_utils import atom14_to_atom37, backbone_loss
 
 
 class PrescientPLMFold(pl.LightningModule):
@@ -112,7 +110,7 @@ class PrescientPLMFold(pl.LightningModule):
         self.config = self.model.config
         # from .openfold_utils import make_default_alphafold_loss
         # self.loss_fn = make_default_alphafold_loss()
-        self.loss_fn = backbone_loss 
+        self.loss_fn = backbone_loss
         # if self._continue_training and self._continue_checkpoint is not None:
         #     torch.load(self._continue_checkpoint)
         self.save_hyperparameters(logger=False)
@@ -154,9 +152,9 @@ class PrescientPLMFold(pl.LightningModule):
         # TODO(amyxlu): potentially resolve position ID for multimers
         # i.e. if linkers are added, this should be translated to Huggingface API format
         structure = self.model(input_ids, attention_mask)
-        outputs['sm'] = structure
+        outputs["sm"] = structure
         outputs["final_atom_positions"] = atom14_to_atom37(
-            outputs["sm"]["positions"][-1], batch 
+            outputs["sm"]["positions"][-1], batch
         )
         outputs["final_atom_mask"] = batch["atom37_atom_exists"]
         outputs["final_affine_tensor"] = outputs["sm"]["frames"][-1]
@@ -168,12 +166,15 @@ class PrescientPLMFold(pl.LightningModule):
         return self.loss_fn(
             backbone_rigid_tensor=batch["backbone_rigid_tensor"],
             backbone_rigid_mask=batch["backbone_rigid_mask"],
-            traj=outputs['sm']["frames"],
+            traj=outputs["sm"]["frames"],
         )
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
         scheduler = get_linear_schedule_with_warmup(
             optimizer,

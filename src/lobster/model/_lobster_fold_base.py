@@ -1,5 +1,5 @@
 """Adapted from https://github.com/huggingface/transformers/tree/v4.23.1/src/transformers/models"""
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -7,7 +7,6 @@ from torch import nn
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.esm.modeling_esmfold import (
     EsmFoldingTrunk,
-    EsmForProteinFoldingOutput,
     EsmModel,
     OFProtein,
     atom14_to_atom37,
@@ -55,12 +54,17 @@ class PPLMFoldBasePreTrainedModel(PreTrainedModel):
                 k for k in self._keys_to_ignore_on_save if k not in del_keys_to_ignore
             ]
             self._keys_to_ignore_on_load_missing = [
-                k for k in self._keys_to_ignore_on_load_missing if k not in del_keys_to_ignore
+                k
+                for k in self._keys_to_ignore_on_load_missing
+                if k not in del_keys_to_ignore
             ]
 
 
 class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
-    _no_split_modules = ["EsmFoldStructureModule", "EsmFoldTriangularSelfAttentionBlock"]
+    _no_split_modules = [
+        "EsmFoldStructureModule",
+        "EsmFoldTriangularSelfAttentionBlock",
+    ]
 
     def __init__(self, config):
         super().__init__(config)
@@ -78,7 +82,9 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         self.esm_feats = self.config.hidden_size
         self.esm_attns = self.config.num_hidden_layers * self.config.num_attention_heads
         self.esm_layers = self.config.num_hidden_layers
-        self.register_buffer("af2_to_esm", self._af2_to_esm_from_vocab_list(config.vocab_list))
+        self.register_buffer(
+            "af2_to_esm", self._af2_to_esm_from_vocab_list(config.vocab_list)
+        )
         self.esm_s_combine = nn.Parameter(torch.zeros(self.esm_layers + 1))
 
         trunk_config = self.config.fold_config.trunk
@@ -113,10 +119,12 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         self.lddt_head = nn.Sequential(
             nn.LayerNorm(structure_module_config.sequence_dim),
             nn.Linear(
-                structure_module_config.sequence_dim, self.config.fold_config.lddt_head_hid_dim
+                structure_module_config.sequence_dim,
+                self.config.fold_config.lddt_head_hid_dim,
             ),
             nn.Linear(
-                self.config.fold_config.lddt_head_hid_dim, self.config.fold_config.lddt_head_hid_dim
+                self.config.fold_config.lddt_head_hid_dim,
+                self.config.fold_config.lddt_head_hid_dim,
             ),
             nn.Linear(self.config.fold_config.lddt_head_hid_dim, 37 * self.lddt_bins),
         )
@@ -254,9 +262,13 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
 
         ptm_logits = self.ptm_head(structure["s_z"])
         structure["ptm_logits"] = ptm_logits
-        structure["ptm"] = compute_tm(ptm_logits, max_bin=31, no_bins=self.distogram_bins)
+        structure["ptm"] = compute_tm(
+            ptm_logits, max_bin=31, no_bins=self.distogram_bins
+        )
         structure.update(
-            compute_predicted_aligned_error(ptm_logits, max_bin=31, no_bins=self.distogram_bins)
+            compute_predicted_aligned_error(
+                ptm_logits, max_bin=31, no_bins=self.distogram_bins
+            )
         )
         return structure
 
@@ -267,12 +279,16 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         aa = (aa + 1).masked_fill(mask != 1, 0)
         return self.af2_to_esm[aa]
 
-    def compute_language_model_representations(self, esmaa: torch.Tensor) -> torch.Tensor:
+    def compute_language_model_representations(
+        self, esmaa: torch.Tensor
+    ) -> torch.Tensor:
         device = next(self.parameters()).device
         B, L = esmaa.shape  # B = batch size, L = sequence length.
 
         if self.config.fold_config.bypass_lm:
-            esm_s = torch.zeros(B, L, self.esm_s_combine.size[0], -1, self.esm_feats, device=device)
+            esm_s = torch.zeros(
+                B, L, self.esm_s_combine.size[0], -1, self.esm_feats, device=device
+            )
             return esm_s
 
         bosi, eosi = self.esm_dict_cls_idx, self.esm_dict_eos_idx
@@ -285,9 +301,9 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         # _, esm_z, esm_s = self.esm(esmaa, return_pairs=self.config.fold_config.use_esm_attn_map)
         # Because we do not support use_esm_attn_map in the HF port as it is not used in any public models,
         # esm_z is always None
-        esm_hidden_states = self.esm(esmaa, attention_mask=esmaa != 1, output_hidden_states=True)[
-            "hidden_states"
-        ]
+        esm_hidden_states = self.esm(
+            esmaa, attention_mask=esmaa != 1, output_hidden_states=True
+        )["hidden_states"]
         esm_s = torch.stack(esm_hidden_states, dim=2)
 
         esm_s = esm_s[:, 1:-1]  # B, L, nLayers, C
@@ -309,7 +325,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         seqs: Union[str, List[str]],
         position_ids=None,
     ):
-        if type(seqs) is str:
+        if isinstance(seqs, str):
             lst = [seqs]
         else:
             lst = seqs
@@ -367,7 +383,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
 
     def infer_pdb(self, seqs, *args, **kwargs) -> str:
         """Returns the pdb (file) string from the model given an input sequence."""
-        assert type(seqs) is str
+        assert isinstance(seqs, str)
         output = self.infer(seqs, *args, **kwargs)
         return self.output_to_pdb(output)[0]
 
