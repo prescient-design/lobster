@@ -24,14 +24,5 @@ CLM_MODEL_NAMES = [
     "CLM_large",  # 176M
 ]
 
-RLM_MODEL_NAMES = [
-    "RLM_micro",  # 181K
-    "RLM_mini",  # 5M
-    "RLM_small",  # 70M
-    "RLM_med",  # 150M
-    "RLM_large",
-    "RLM_cram_med",
-    "RLM_cram_small",
-]
 HEAVY_COLUMN = "fv_heavy"
 LIGHT_COLUMN = "fv_light"

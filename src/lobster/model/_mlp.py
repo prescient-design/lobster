@@ -21,7 +21,7 @@ class RegressionHead(pl.LightningModule):
         ffd_dim: int = 64,
         model_name: Optional[str] = None,
         checkpoint: Optional[str] = None,
-        model_type: Literal["PrescientPMLM", "PrescientPRLM"] = "PrescientPMLM",
+        model_type: Literal["PrescientPMLM"] = "PrescientPMLM",
         pooling: str = "mean",
         lr: float = 1e-3,
         ckpt_path: str = None,

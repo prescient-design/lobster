@@ -7,7 +7,6 @@ from ._mlm_configuration import PMLM_CONFIG_ARGS, PMLMConfig
 from ._mlp import RegressionHead
 from ._ppi_clf import PPIClassifier
 from ._lobster_fold import PrescientPLMFold
-from ._rlm import RLM_CONFIG_ARGS, PrescientPRLM
 from ._seq2seq import PrescientPT5
 from .lm_base import LMBaseContactPredictionHead, LMBaseForMaskedLM
 

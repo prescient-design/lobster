@@ -17,7 +17,7 @@ class PPIClassifier(pl.LightningModule):
         ffd_dim: int = 256,
         model_name: Optional[str] = None,
         checkpoint: Optional[str] = None,  # TODO - name this encoder_checkpoint for clarity?
-        base_model_type: Literal["PrescientPMLM", "PrescientPRLM"] = "PrescientPMLM",
+        base_model_type: Literal["PrescientPMLM"] = "PrescientPMLM",
         lr: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.98,
@@ -54,18 +54,9 @@ class PPIClassifier(pl.LightningModule):
         #     if checkpoint is not None:
         #         base_model.load_from_checkpoint(checkpoint)
 
-        # elif model_name in RLM_MODEL_NAMES:
-        #     base_model = PrescientPRLM(model_name=model_name, **encoder_kwargs)
-        #     if checkpoint is not None:
-        #         base_model.model.load_state_dict(torch.load(checkpoint))
-
         # elif model_name in ESM_MODEL_NAMES:
         #     base_model = PrescientPMLM(model_name=model_name, **encoder_kwargs)
 
-        # else:
-        #     raise ValueError(
-        #         f"Model name: {model_name} is not supported, please choose from {PMLM_MODEL_NAMES + RLM_MODEL_NAMES + ESM_MODEL_NAMES}"
-        #     )
 
         base_model = None
         if model_name is not None:
@@ -129,15 +120,6 @@ class PPIClassifier(pl.LightningModule):
 
         if "MLM" in self.model_name:
             preds = self.base_model.model(input_ids=tokens_cat, output_hidden_states=True)
-
-        elif "RLM" in self.model_name:
-            preds = self.base_model.model.LMBase(
-                input_ids_a=tokens1,
-                input_ids_b=tokens2,
-                output_hidden_states=True,
-                attention_mask_a=attns_a,
-                attention_mask_b=attns_b,
-            )
 
         elif "esm2" in self.model_name:
             preds = self.base_model.model(tokens_cat, output_hidden_states=True)

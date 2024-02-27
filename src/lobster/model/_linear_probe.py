@@ -27,7 +27,7 @@ class LinearProbe(pl.LightningModule):
         num_labels: int = 1,
         model_name: Optional[str] = None,
         checkpoint: Optional[str] = None,
-        model_type: Literal["PrescientPMLM", "PrescientPRLM", "PrescientPCLM"] = "PrescientPMLM",
+        model_type: Literal["PrescientPMLM", "PrescientPCLM"] = "PrescientPMLM",
         max_length: int = 512,
         lr: float = 1e-3,
         reinit: bool = False,

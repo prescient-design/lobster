@@ -5,7 +5,6 @@ from ._constants import (  # nopycln: import
     HEAVY_COLUMN,
     LIGHT_COLUMN,
     PMLM_MODEL_NAMES,
-    RLM_MODEL_NAMES,
 )
 from ._dataframe_dataset_in_memory import DataFrameDatasetInMemory  # nopycln: import
 from ._datamodules import FastaLightningDataModule  # nopycln: import

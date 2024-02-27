@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from lobster.transforms import Atom3DPPIToSequenceAndContactMap, PairedSequenceToTokens
 
-from ._constants import CLM_MODEL_NAMES, ESM_MODEL_NAMES, RLM_MODEL_NAMES
+from ._constants import CLM_MODEL_NAMES, ESM_MODEL_NAMES
 from ._utils import load_pickle
 
 T = TypeVar("T")
@@ -195,9 +195,9 @@ class ContactMapDataModule(LightningDataModule):
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
         """NOTE - writing v0 assuming that a transform exists mapping Atom3D atoms_neighbrs --> seq1, seq2, interactions"""
-        if self._model_name not in ESM_MODEL_NAMES + CLM_MODEL_NAMES + RLM_MODEL_NAMES:
+        if self._model_name not in ESM_MODEL_NAMES + CLM_MODEL_NAMES:
             raise ValueError(
-                f"model_name not one of {ESM_MODEL_NAMES} or {CLM_MODEL_NAMES} OR {RLM_MODEL_NAMES}"
+                f"model_name not one of {ESM_MODEL_NAMES} or {CLM_MODEL_NAMES}"
             )
 
         random.seed(self._seed)

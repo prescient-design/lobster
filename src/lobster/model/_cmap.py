@@ -7,8 +7,8 @@ from torch import Tensor
 from torch.nn import BCELoss
 from torchmetrics import Precision, Recall
 
-from lobster.data import ESM_MODEL_NAMES, PMLM_MODEL_NAMES, RLM_MODEL_NAMES
-from lobster.model import LMBaseContactPredictionHead, PrescientPMLM, PrescientPRLM
+from lobster.data import ESM_MODEL_NAMES, PMLM_MODEL_NAMES
+from lobster.model import LMBaseContactPredictionHead, PrescientPMLM
 from lobster.model._esm import ESMBase
 
 
@@ -45,16 +45,12 @@ class ContactPredictionHead(pl.LightningModule):
             base_model = PrescientPMLM(model_name=model_name)
             base_model.load_from_checkpoint(checkpoint)
 
-        elif model_name in RLM_MODEL_NAMES:
-            base_model = PrescientPRLM(model_name=model_name)
-            base_model.model.load_state_dict(torch.load(checkpoint))
-
         elif model_name in ESM_MODEL_NAMES:
             base_model = ESMBase(model_name=model_name)
 
         else:
             raise ValueError(
-                f"Model name: {model_name} is not supported, please choose from {PMLM_MODEL_NAMES + RLM_MODEL_NAMES + ESM_MODEL_NAMES}"
+                f"Model name: {model_name} is not supported, please choose from {PMLM_MODEL_NAMES + ESM_MODEL_NAMES}"
             )
 
         self.model_name = model_name
@@ -203,18 +199,6 @@ class ContactPredictionHead(pl.LightningModule):
             attns = self.base_model.model(
                 **inpt, return_dict=True, output_attentions=True
             ).attentions
-
-        elif self.model_name in RLM_MODEL_NAMES:
-            # Model takes in two proteins, each with their own positional encoding
-            inpt = {
-                "input_ids_a": tokens1,
-                "input_ids_b": tokens2,
-                "attention_mask": None,  # attention_mask_all,
-            }
-
-            # The encoder of this model takes in both protein seqs, thus the attention output
-            # contains information from both sequences
-            attns = self.base_model.model.LMBase(**inpt, output_attentions=True).attentions
 
         if self.model_name in ESM_MODEL_NAMES:
             # output = self.base_model.model(tokens_cat, need_head_weights=True) # TODO - test this
