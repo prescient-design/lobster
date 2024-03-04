@@ -66,6 +66,9 @@ lobster_embed data.path_to_fasta="test_data/query.fasta" checkpoint="path_to_che
 
 This will generate a dataframe of embeddings and also [log them to wandb](https://genentech.wandb.io/freyn6/lobster-embedding/runs/luv4ebtv?workspace=user-freyn6).
 
+### Regression and classification
+For robust multitask modeling, we recommend using `lobster` with [cortex]((https://github.com/prescient-design/cortex/tree/main)). For simple baselines using `lobster` embeddings, use `lobster.model.LinearProbe`.
+
 ### Likelihoods
 Likelihoods from an autoregressive `PrescientCLM` or pseudo-log likelihoods ("naturalness") from a `PrescientPMLM` can be computed for a list of `sequences` using
 
