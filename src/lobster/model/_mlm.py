@@ -1,23 +1,22 @@
 import importlib.resources
-from typing import Callable, Iterable, Optional, Union
+from typing import Callable, Iterable, Literal, Optional, Union
 
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-import torch.nn.functional as F
-from yeji.constants import CDR_RANGES_AHO
-from yeji.transforms import AutoTokenizerTransform, Transform
+from beignet.transforms import Transform
 from transformers import AutoTokenizer, EsmForMaskedLM
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
+from lobster.transforms import AutoTokenizerTransform
 
 from ._mlm_configuration import PMLM_CONFIG_ARGS, PMLMConfig
 from .lm_base import LMBaseForMaskedLM
 
 
-class PrescientPMLM(pl.LightningModule):
+class LobsterPMLM(pl.LightningModule):
     def __init__(
         self,
         model_name: str = None,
@@ -30,12 +29,12 @@ class PrescientPMLM(pl.LightningModule):
         freeze: bool = False,
         mask_percentage: float = 0.15,
         initial_mask_percentage: Optional[float] = None,
-        aho_antibody: bool = False,
         transform_fn: Union[Callable, Transform, None] = None,
         config: Union[PretrainedConfig, None] = None,
         ckpt_path: str = None,
         tokenizer_dir: Optional[str] = "pmlm_tokenizer",
         max_length: int = 512,
+        position_embedding_type: Literal["rotary", "absolute"] = "rotary",
     ):
         """
         Prescient Protein Masked Language Model.
@@ -48,7 +47,6 @@ class PrescientPMLM(pl.LightningModule):
         mask_percentage: final masking rate
         initial_mask_percentage: initial masking rate, if not None, linear dynamic mask rate
             scheduler will be used. initial should be greater than final.
-        aho_antibody: if true, log per-region perplexity
         transform_fn: defines tokenizer transform
         config: huggingface config for instantiating a model if ``model_name`` is not specified
         tokenizer_dir: a tokenizer saved to src/lobster/assets
@@ -64,13 +62,13 @@ class PrescientPMLM(pl.LightningModule):
         self._freeze = freeze
         self._mask_percentage = mask_percentage
         self._initial_mask_percentage = initial_mask_percentage
-        self._aho_antibody = aho_antibody
         self._ckpt_path = ckpt_path
         self.model_name = model_name
         self._num_training_steps = num_training_steps
         self._num_warmup_steps = num_warmup_steps
         self._tokenizer_dir = tokenizer_dir
         self._max_length = max_length
+        self._position_embedding_type = position_embedding_type
 
         if model_name and "esm2" in model_name:
             self.tokenizer = AutoTokenizer.from_pretrained(
@@ -99,7 +97,7 @@ class PrescientPMLM(pl.LightningModule):
                 attention_probs_dropout_prob=0.0,
                 mask_token_id=self.tokenizer.mask_token_id,
                 pad_token_id=self.tokenizer.pad_token_id,
-                position_embedding_type="rotary",
+                position_embedding_type=self._position_embedding_type,
                 vocab_size=len(self.tokenizer.get_vocab()),
                 max_position_embeddings=self._max_length,
                 **config_args,
@@ -122,7 +120,9 @@ class PrescientPMLM(pl.LightningModule):
         self.log("train_loss", loss, sync_dist=True)
         self.log("train_perplexity", ppl, sync_dist=True)
         if any(logging_dicts):
-            logging_dicts = [{f"train/{k}_ppl": v for k, v in d.items()} for d in logging_dicts]
+            logging_dicts = [
+                {f"train/{k}_ppl": v for k, v in d.items()} for d in logging_dicts
+            ]
             for d in logging_dicts:
                 self.log_dict(d, sync_dist=True)
 
@@ -137,7 +137,9 @@ class PrescientPMLM(pl.LightningModule):
         self.log("val_loss", loss, sync_dist=True)
         self.log("val_perplexity", ppl, sync_dist=True)
         if any(logging_dicts):
-            logging_dicts = [{f"val/{k}_ppl": v for k, v in d.items()} for d in logging_dicts]
+            logging_dicts = [
+                {f"val/{k}_ppl": v for k, v in d.items()} for d in logging_dicts
+            ]
             for d in logging_dicts:
                 self.log_dict(d, sync_dist=True)
 
@@ -153,22 +155,14 @@ class PrescientPMLM(pl.LightningModule):
         ] = -100  # only calculate loss on masked tokens
 
         output = self.model(
-            input_ids=masked_toks, attention_mask=batch["attention_mask"].squeeze(1), labels=labels
+            input_ids=masked_toks,
+            attention_mask=batch["attention_mask"].squeeze(1),
+            labels=labels,
         )
         loss = output["loss"]
         # loss = F.cross_entropy(output["logits"].permute(0, 2, 1), toks)  # (B, V, L)
 
         logging_dicts = []
-        if self._aho_antibody:
-            cdr_ppl_dict = {
-                k: torch.exp(
-                    F.cross_entropy(
-                        output["logits"].permute(0, 2, 1)[:, :, v[0] : v[1]], toks[:, v[0] : v[1]]
-                    )
-                )
-                for (k, v) in CDR_RANGES_AHO.items()
-            }
-            logging_dicts.append(cdr_ppl_dict)
 
         del masked_toks, toks
 
@@ -176,7 +170,10 @@ class PrescientPMLM(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
@@ -193,8 +190,9 @@ class PrescientPMLM(pl.LightningModule):
         toks = toks.to(self.device)
         attention_mask = batch["attention_mask"].squeeze().to(self.device)
         with torch.inference_mode():
-            preds = self.model(input_ids=toks, attention_mask=attention_mask,
-                               output_hidden_states=True)
+            preds = self.model(
+                input_ids=toks, attention_mask=attention_mask, output_hidden_states=True
+            )
         hidden_states = preds["hidden_states"][-1]  # last layer hidden reps (B, L, H)
 
         # mean pool over AAs
@@ -224,7 +222,6 @@ class PrescientPMLM(pl.LightningModule):
         batch_size: int = 32,
         return_probs: bool = False,
     ) -> tuple[float, Optional[tuple[torch.Tensor, torch.Tensor]]]:
-
         N = len(sequence)
 
         # Tokenize full sequence
@@ -238,7 +235,8 @@ class PrescientPMLM(pl.LightningModule):
             for i in range(N)
         ]
         seqs_mask_encoded = torch.tensor(
-            [self.tokenizer.encode(masked_seq) for masked_seq in seqs_masked], device=self.device
+            [self.tokenizer.encode(masked_seq) for masked_seq in seqs_masked],
+            device=self.device,
         )
 
         with torch.inference_mode():
@@ -305,7 +303,8 @@ class PrescientPMLM(pl.LightningModule):
 
     def latent_embeddings_to_sequences(self, x: torch.Tensor) -> list[str]:
         """x: (B, L, H) size tensor of hidden states"""
-        logits = self.model.lm_head(x)
+        with torch.inference_mode():
+            logits = self.model.lm_head(x)
         tokens = [self.tokenizer.decode(logit.argmax(dim=-1)) for logit in logits]
         aa_toks = list("ARNDCEQGHILKMFPSTWYV")
         tokens = [t.replace(" ", "") for t in tokens]
@@ -314,7 +313,10 @@ class PrescientPMLM(pl.LightningModule):
 
     def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
         input_ids = torch.concat(
-            [toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)]
+            [
+                toks["input_ids"].to(self.device)
+                for toks in self._transform_fn(sequences)
+            ]
         )
         with torch.inference_mode():
             hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)[

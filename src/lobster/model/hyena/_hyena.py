@@ -3,7 +3,7 @@ from typing import Callable, Optional, Union
 
 import lightning.pytorch as pl
 import torch
-from yeji.transforms import Transform
+from beignet.transforms import Transform
 
 # from transformers import LlamaConfig, LlamaForCausalLM, pipeline
 from transformers.optimization import get_linear_schedule_with_warmup
@@ -15,7 +15,7 @@ from ._hyena_base import HyenaDNAForCausalLM
 from ._hyena_configuration import HYENA_CONFIG_ARGS, HyenaConfig
 
 
-class PrescientHyenaCLM(pl.LightningModule):
+class LobsterHyenaCLM(pl.LightningModule):
     def __init__(
         self,
         model_name: str = "hyena_mini",
@@ -95,7 +95,10 @@ class PrescientHyenaCLM(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
 
         scheduler = get_linear_schedule_with_warmup(
@@ -170,7 +173,10 @@ class PrescientHyenaCLM(pl.LightningModule):
 
     def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
         input_ids = torch.concat(
-            [toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)]
+            [
+                toks["input_ids"].to(self.device)
+                for toks in self._transform_fn(sequences)
+            ]
         )
         with torch.inference_mode():
             hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)[

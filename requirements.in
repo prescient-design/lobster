@@ -17,11 +17,14 @@ deepspeed
 torchdata
 datasets
 tokenizers
-transformers==4.30.2
+transformers
 scikit-learn
 matplotlib
 seaborn
 python-dotenv
 torcheval
 fastparquet
-# yeji  # TODO: update dependencies
+datasketch
+peft
+icecream
+beignet @ git+https://github.com/Genentech/beignet.git

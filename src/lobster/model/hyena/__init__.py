@@ -1,1 +1,1 @@
-from ._hyena import PrescientHyenaCLM
+from ._hyena import LobsterHyenaCLM

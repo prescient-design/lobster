@@ -1,0 +1,13 @@
+_target_: lobster.model.LobsterMLP
+
+model_name: null
+checkpoint: null
+ckpt_path: null
+num_labels: 1
+num_chains: 1
+model_type: LobsterPMLM
+pooler: mean
+ffd_dim: 64
+lr: 4e-5
+freeze_encoder: True
+linear_probe: False

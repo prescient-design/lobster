@@ -5,6 +5,6 @@ defaults:
   - experiment: null
 
 checkpoint: null # was mandatory before ???
-model_type: PrescientPMLM
+model_type: LobsterPMLM
 wandb_project: lobster-embedding
 wandb_entity: prescient-design

@@ -1,4 +1,4 @@
-_target_: lobster.model.hyena.PrescientHyenaCLM
+_target_: lobster.model.hyena.LobsterHyenaCLM
 
 lr: 6e-4
 model_name: hyena_mini

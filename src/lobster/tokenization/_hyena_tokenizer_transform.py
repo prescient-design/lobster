@@ -1,37 +1,25 @@
 import importlib.resources
+import json
 from os import PathLike
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
-from yeji.transforms import Transform
-from transformers.tokenization_utils_base import BatchEncoding, PaddingStrategy, TruncationStrategy
+from beignet.transforms import Transform
+from transformers.tokenization_utils_base import (
+    BatchEncoding,
+    PaddingStrategy,
+    TruncationStrategy,
+)
 
 from ._hyena_tokenizer import HyenaTokenizer
 
-# TODO: update with real tables
-DNA_CODON_DICT = {
-    "A": ["GCT", "GCC", "GCA", "GCG"],
-    "R": ["CGT", "CGC", "CGA", "CGG", "AGA", "AGG"],
-    "N": ["AAT", "AAC"],
-    "D": ["GAT", "GAC"],
-    "C": ["TGT", "TGC"],
-    "Q": ["CAA", "CAG"],
-    "E": ["GAA", "GAG"],
-    "G": ["GGT", "GGC", "GGA", "GGG"],
-    "H": ["CAT", "CAC"],
-    "I": ["ATT", "ATC", "ATA"],
-    "L": ["TTA", "TTG", "CTT", "CTC", "CTA", "CTG"],
-    "K": ["AAA", "AAG"],
-    "M": ["ATG"],
-    "F": ["TTT", "TTC"],
-    "P": ["CCT", "CCC", "CCA", "CCG"],
-    "S": ["TCT", "TCC", "TCA", "TCG", "AGT", "AGC"],
-    "T": ["ACT", "ACC", "ACA", "ACG"],
-    "W": ["TGG"],
-    "Y": ["TAT", "TAC"],
-    "V": ["GTT", "GTC", "GTA", "GTG"],
-    "STOP": ["TAA", "TAG", "TGA"],
-}
+filename = (
+    importlib.resources.files("lobster")
+    / "assets"
+    / "codon_tables"
+    / "codon_table.json"
+)
+DNA_CODON_DICT = json.load(open(filename, "r"))
 
 
 class HyenaTokenizerTransform(Transform):
@@ -120,11 +108,19 @@ class HyenaTokenizerTransform(Transform):
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
+    def _check_inputs(self, inputs: List[Any]) -> None:
+        pass
+
+    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+        return self.transform(input, parameters)
+
     def translate_aa_to_dna(self, aa_sequence: str) -> str:
         # TODO: update DNA frequencies
         dna_sequence = "".join(
             [
-                DNA_CODON_DICT[aa][torch.randint(0, len(DNA_CODON_DICT[aa]), (1,)).item()]
+                DNA_CODON_DICT[aa][
+                    torch.randint(0, len(DNA_CODON_DICT[aa]), (1,)).item()
+                ]
                 for aa in aa_sequence
             ]
         )

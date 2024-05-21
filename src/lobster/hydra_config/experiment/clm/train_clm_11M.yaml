@@ -6,15 +6,13 @@ defaults:
 
 paths:
   root_dir: /data/bucket/freyn6/models/pclm/debug
-  # root_dir: /scratch/site/u/freyn6/data
 
 data:
   path_to_fasta: [
     '/data/bucket/freyn6/data/OAS_uniref50_75.fasta',
     '/data/bucket/freyn6/data/pdb_complexes.fasta',
-    # "/scratch/site/u/freyn6/data/all_expressors/paired_oas.fasta"
   ]
-  batch_size: 128
+  batch_size: 256
   num_workers: 8
   pin_memory: False
   lengths: [0.9,0.05,0.05]
@@ -25,12 +23,11 @@ data:
   transform_fn:
     tokenizer_dir: ${model.tokenizer_dir}
     max_length: ${data.max_length}
-    mlm: False
+    mlm: ${data.mlm}
 
 
 trainer:
   max_steps: 1_000_000_000
-  # max_steps: 1_000
   val_check_interval: 50
   precision: 16
   gradient_clip_val: 0.5

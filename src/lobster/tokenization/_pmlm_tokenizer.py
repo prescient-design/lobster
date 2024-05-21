@@ -7,7 +7,7 @@ from typing import List, Optional, Union
 
 from datasets import load_dataset
 from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, trainers
-from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer, Trie
 from transformers.tokenization_utils_base import AddedToken
 from transformers.utils import logging
 
@@ -15,7 +15,9 @@ logger = logging.get_logger(__name__)
 
 VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
-VOCAB_PATH = importlib.resources.files("lobster") / "assets" / "pmlm_tokenizer" / "vocab.txt"
+VOCAB_PATH = (
+    importlib.resources.files("lobster") / "assets" / "pmlm_tokenizer" / "vocab.txt"
+)
 
 PRETRAINED_VOCAB_FILES_MAP = {
     "vocab_file": {
@@ -56,9 +58,10 @@ class PmlmTokenizer(PreTrainedTokenizer):
         eos_token="<eos>",
         **kwargs,
     ):
-        super().__init__(**kwargs)
         self.all_tokens = load_vocab_file(vocab_file)
         self._id_to_token = dict(enumerate(self.all_tokens))
+        super().__init__(**kwargs)
+
         self._token_to_id = {tok: ind for ind, tok in enumerate(self.all_tokens)}
         self.unk_token = unk_token
         self.cls_token = cls_token
@@ -100,7 +103,9 @@ class PmlmTokenizer(PreTrainedTokenizer):
             else:
                 return cls + token_ids_0 + sep
         elif self.eos_token_id is None:
-            raise ValueError("Cannot tokenize multiple sequences when EOS token is not set!")
+            raise ValueError(
+                "Cannot tokenize multiple sequences when EOS token is not set!"
+            )
         return (
             cls + token_ids_0 + sep + token_ids_1 + sep
         )  # Multiple inputs always have an EOS token
@@ -141,7 +146,8 @@ class PmlmTokenizer(PreTrainedTokenizer):
 
     def save_vocabulary(self, save_directory, filename_prefix):
         vocab_file = os.path.join(
-            save_directory, (filename_prefix + "-" if filename_prefix else "") + "vocab.txt"
+            save_directory,
+            (filename_prefix + "-" if filename_prefix else "") + "vocab.txt",
         )
         with open(vocab_file, "w") as f:
             f.write("\n".join(self.all_tokens))
@@ -152,9 +158,24 @@ class PmlmTokenizer(PreTrainedTokenizer):
         return self.get_vocab_size(with_added_tokens=False)
 
     def _add_tokens(
-        self, new_tokens: Union[List[str], List[AddedToken]], special_tokens: bool = False
+        self,
+        new_tokens: Union[List[str], List[AddedToken]],
+        special_tokens: bool = False,
     ) -> int:
         return super()._add_tokens(new_tokens, special_tokens=True)
+
+    def _create_trie(self, unique_no_split_tokens):
+        trie = Trie()
+        for token in unique_no_split_tokens:
+            if (
+                hasattr(self, "do_lower_case")
+                and self.do_lower_case
+                and token not in self.all_special_tokens
+            ):
+                trie.add(token.lower())
+            else:
+                trie.add(token)
+        self.tokens_trie = trie
 
 
 class TrainablePmlmTokenizer(PmlmTokenizer):
@@ -221,7 +242,6 @@ class TrainablePmlmTokenizer(PmlmTokenizer):
             return list(islice(f, num_lines))
 
     def fit(self, txt_file, num_lines=100):
-
         self._tokenizer.train_from_iterator(
             self._batch_txt_iterator(txt_file, num_lines),
             trainer=self._trainer,
@@ -455,16 +475,3 @@ class TrainablePmlmTokenizer(PmlmTokenizer):
 #         self, new_tokens: Union[List[str], List[AddedToken]], special_tokens: bool = False
 #     ) -> int:
 #         return super()._add_tokens(new_tokens, special_tokens=True)
-
-#     def _create_trie(self, unique_no_split_tokens):
-#         trie = Trie()
-#         for token in unique_no_split_tokens:
-#             if (
-#                 hasattr(self, "do_lower_case")
-#                 and self.do_lower_case
-#                 and token not in self.all_special_tokens
-#             ):
-#                 trie.add(token.lower())
-#             else:
-#                 trie.add(token)
-#         self.tokens_trie = trie

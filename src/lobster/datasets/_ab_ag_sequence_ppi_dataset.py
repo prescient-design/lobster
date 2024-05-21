@@ -2,7 +2,7 @@
 from typing import Callable, Optional, Union
 
 import pandas as pd
-from yeji.transforms import Transform
+from beignet.transforms import Transform
 from torch.utils.data import Dataset
 
 SOURCE = "s3://prescient-data-dev/sandbox/freyn6/designs/twist-library/CLF_DCS_GMM_r11_all_scores_contacts_ag_seq.csv"
@@ -19,7 +19,6 @@ class AbAgSequencePPIDataset(Dataset):
         sequence2_cols: tuple = ("antigen_sequence",),
         label_col: Optional[str] = None,
     ) -> None:
-
         # self._source = "s3://prescient-data-dev/sandbox/freyn6/designs/twist-library/CLF_DCS_GMM_r11_all_scores_contacts_ag_seq.csv"
         # self._root = Path(root)
         # self._name = "CLF_DCS_GMM_r11_all_scores_contacts_ag_seq"
@@ -49,7 +48,6 @@ class AbAgSequencePPIDataset(Dataset):
         if len(sequence2_cols) == 1:
             self._data["sequence_2"] = self._data[sequence2_cols[0]]
         elif len(sequence2_cols) == 2:
-
             self._data["sequence_2"] = (
                 self._data[sequence2_cols[0]] + "-" + self._data[sequence2_cols[1]]
             )

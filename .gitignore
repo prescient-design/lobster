@@ -3,6 +3,8 @@
 *.egg-info/
 *.py[cod]
 *.so
+*.parquet
+*.npy
 *~
 .cache
 .hypothesis

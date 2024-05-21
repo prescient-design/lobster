@@ -6,9 +6,13 @@ import pandas as pd
 import torch
 from datasets import Dataset
 from lightning import LightningDataModule
-from yeji.datasets._neglog_dataset import NegLogDataset
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
+
+from ._imports import _PRESCIENT_AVAILABLE
+
+if _PRESCIENT_AVAILABLE:
+    from prescient.datasets import NegLogDataset
 
 from lobster.data._collate import ESMBatchConverterPPI
 from lobster.transforms._atom3d_ppi_transforms import PairedSequenceToTokens
@@ -158,7 +162,6 @@ class NegLogDataModule(LightningDataModule):
         self._dataset = dataset
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
-
         random.seed(self._seed)
         torch.manual_seed(self._seed)
 

@@ -1,8 +1,7 @@
 import os
 
-from torch import Size
-
 from lobster.data import FastaLightningDataModule
+from torch import Size
 
 CUR_DIR = os.path.dirname(__file__)
 
@@ -29,7 +28,8 @@ class TestFastaLightningDatamodule:
 
         batch = next(iter(dm.train_dataloader()))
 
-        assert len(batch) == 3
+        assert len(batch) == 2
+        batch = batch[0]
         assert batch["input_ids"].shape == Size([4, 1, 512])
         assert batch["attention_mask"].shape == Size([4, 1, 512])
         assert batch["labels"].shape == Size([4, 1, 512])

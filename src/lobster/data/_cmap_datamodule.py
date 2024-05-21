@@ -7,7 +7,12 @@ import torch
 import torch.utils.data
 from datasets import Dataset
 from lightning import LightningDataModule
-from yeji.datasets._atom3d_ppi_dataset import ATOM3DPPIDataset
+
+from lobster.data import _PRESCIENT_AVAILABLE
+
+if _PRESCIENT_AVAILABLE:
+    from prescient.datasets._atom3d_ppi_dataset import ATOM3DPPIDataset
+
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler, Subset
 from tqdm import tqdm
@@ -40,7 +45,11 @@ class ContactMapDataModule(LightningDataModule):
         joint_transform_fn: Optional[
             Callable
         ] = None,  # Hydra note -- should be transforms._atom3d_ppi_transforms.Atom3DPPIToSequenceAndContactMap().transform
-        lengths: Optional[Sequence[float]] = (0.05, 0.05, 0.90),  # TODO - set to default None?
+        lengths: Optional[Sequence[float]] = (
+            0.05,
+            0.05,
+            0.90,
+        ),  # TODO - set to default None?
         generator: Optional[Generator] = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
@@ -210,7 +219,9 @@ class ContactMapDataModule(LightningDataModule):
         if self._lengths is None:
             self._train_length = 20
             self._val_length = 20
-            self._test_length = len(self._dataset) - self._train_length - self._val_length
+            self._test_length = (
+                len(self._dataset) - self._train_length - self._val_length
+            )
             self._lengths = (self._train_length, self._val_length, self._test_length)
 
             # Make sure batch size smaller than training, val set sizes

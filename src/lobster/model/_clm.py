@@ -3,7 +3,8 @@ from typing import Callable, Optional, Tuple, Union
 
 import lightning.pytorch as pl
 import torch
-from yeji.transforms import Transform
+from beignet.transforms import Transform
+from torch.nn import CrossEntropyLoss
 from transformers import LlamaConfig, LlamaForCausalLM, pipeline
 from transformers.optimization import get_linear_schedule_with_warmup
 
@@ -12,7 +13,7 @@ from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from ._clm_configuration import PCLM_CONFIG_ARGS
 
 
-class PrescientPCLM(pl.LightningModule):
+class LobsterPCLM(pl.LightningModule):
     def __init__(
         self,
         model_name: str = "CLM_mini",
@@ -109,7 +110,10 @@ class PrescientPCLM(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
 
         scheduler = get_linear_schedule_with_warmup(
@@ -155,7 +159,10 @@ class PrescientPCLM(pl.LightningModule):
         num_return_sequences: int = 1,
     ):
         generator = pipeline(
-            "text-generation", model=self.model, tokenizer=self.tokenizer, device_map="auto"
+            "text-generation",
+            model=self.model,
+            tokenizer=self.tokenizer,
+            device_map="auto",
         )
         outseqs = generator(
             seed_seq,
@@ -172,8 +179,39 @@ class PrescientPCLM(pl.LightningModule):
 
         return outseqs
 
-    def likelihood(self, sequences: list[str]) -> torch.Tensor:
-        raise NotImplementedError
+    def sequences_to_log_likelihoods(self, sequences: list[str]) -> torch.Tensor:
+        outputs = [self.get_nll_and_logits(s) for s in sequences]
+        nlls = torch.stack([o[0] for o in outputs])
+        return -nlls
+
+    def batch_to_log_likelihoods(self, batch) -> torch.Tensor:
+        """
+        Adapted from https://github.com/huggingface/transformers/blob/v4.35.0/src/transformers/models/gpt2/modeling_gpt2.py#L1043
+        tok_seqs shape: (B, L) of tokenized sequences
+        """
+        tok_seqs = batch["input_ids"].squeeze(1).to(self.device)
+        BZ, _ = tok_seqs.shape
+        with torch.no_grad():
+            outputs = self.model(input_ids=tok_seqs, labels=tok_seqs)
+            shift_logits = outputs.logits[..., :-1, :].contiguous()
+            shift_labels = tok_seqs[..., 1:].contiguous()
+            loss_fct = CrossEntropyLoss(reduction="none")
+            loss = loss_fct(
+                shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1)
+            )
+
+            loss_per_tok = loss.view(BZ, -1)
+
+            # Compute loss over non-padding tokens but includes CLS and EOS
+            mask = shift_labels != self.tokenizer.pad_token_id
+
+        return (
+            -1
+            * torch.where(mask, loss_per_tok, torch.zeros_like(loss_per_tok)).sum(
+                axis=1
+            )
+            / mask.sum(axis=1)
+        )
 
     def get_nll_and_logits(self, sequence: str) -> Tuple[torch.Tensor, torch.Tensor]:
         input_ids = torch.tensor(
@@ -187,7 +225,10 @@ class PrescientPCLM(pl.LightningModule):
 
     def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
         input_ids = torch.concat(
-            [toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)]
+            [
+                toks["input_ids"].to(self.device)
+                for toks in self._transform_fn(sequences)
+            ]
         )
         with torch.inference_mode():
             hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)[

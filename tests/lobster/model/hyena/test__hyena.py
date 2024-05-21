@@ -1,12 +1,10 @@
-
+from lobster.model.hyena import LobsterHyenaCLM
 from torch import Size, Tensor
 
-from lobster.model.hyena import PrescientHyenaCLM
 
-
-class TestPrescientHyenaCLM:
+class TestLobsterHyenaCLM:
     def test_sequences_to_latents(self):
-        model = PrescientHyenaCLM(model_name="hyena_mini")
+        model = LobsterHyenaCLM(model_name="hyena_mini")
 
         inputs = ["ACDAC"]
         outputs = model.sequences_to_latents(inputs)

@@ -1,7 +1,7 @@
 import subprocess
 
 
-class TestPplmCmdline:
+class TestLobsterCmdline:
     def test_train(self):
         output = subprocess.check_output("lobster_train -h", shell=True)
 

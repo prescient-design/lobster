@@ -1,5 +1,4 @@
 import torch
-
 from lobster.data import FarthestFirstTraversal
 
 
@@ -14,7 +13,7 @@ class TestFarthestFirstTraversal:
         fft = FarthestFirstTraversal(num_samples, k, random_seed, p_norm)
         centroids = fft.tensor_fft(input_vectors)
 
-        assert centroids.shape[0] == num_samples
+        assert centroids.shape[0] == 2
 
         sequences = ["ALA", "GLYCU", "ARGPHE", "HIPRO", "LEUTRP"]
 

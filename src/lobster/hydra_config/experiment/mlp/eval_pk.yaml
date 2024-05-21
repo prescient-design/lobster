@@ -1,0 +1,39 @@
+# @package _global_
+
+defaults:
+  - override /data: cyno_pk.yaml
+  - override /model: mlp.yaml
+  - override /callbacks: default_eval.yaml
+
+model:
+  lr: 1e-3
+  checkpoint: /data/bucket/freyn6/scratch/2024-03-12T19-36-43.947965/last.ckpt
+  ffd_dim: 512
+  max_length: 512
+  num_labels: 2
+  num_chains: 2
+  freeze_encoder: True
+  linear_probe: True
+
+data:
+  batch_size: 16
+  download: True
+  root: /data/bucket/freyn6/scratch
+
+trainer:
+  max_epochs: 1000
+  log_every_n_steps: 1
+  val_check_interval: 0.05
+
+callbacks:
+  early_stopping:
+    monitor: val/loss
+    patience: 10000
+    mode: min
+  model_checkpoint:
+    monitor: val/loss
+    mode: min
+
+
+paths:
+  root_dir: /data/bucket/freyn6/scratch

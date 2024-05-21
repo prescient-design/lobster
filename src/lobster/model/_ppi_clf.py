@@ -16,8 +16,10 @@ class PPIClassifier(pl.LightningModule):
         self,
         ffd_dim: int = 256,
         model_name: Optional[str] = None,
-        checkpoint: Optional[str] = None,  # TODO - name this encoder_checkpoint for clarity?
-        base_model_type: Literal["PrescientPMLM"] = "PrescientPMLM",
+        checkpoint: Optional[
+            str
+        ] = None,  # TODO - name this encoder_checkpoint for clarity?
+        base_model_type: Literal["LobsterPMLM"] = "LobsterPMLM",
         lr: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.98,
@@ -50,13 +52,12 @@ class PPIClassifier(pl.LightningModule):
         torch.manual_seed(self._seed)
 
         # if model_name in PMLM_MODEL_NAMES:
-        #     base_model = PrescientPMLM(model_name=model_name, **encoder_kwargs)
+        #     base_model = LobsterPMLM(model_name=model_name, **encoder_kwargs)
         #     if checkpoint is not None:
         #         base_model.load_from_checkpoint(checkpoint)
 
         # elif model_name in ESM_MODEL_NAMES:
-        #     base_model = PrescientPMLM(model_name=model_name, **encoder_kwargs)
-
+        #     base_model = LobsterPMLM(model_name=model_name, **encoder_kwargs)
 
         base_model = None
         if model_name is not None:
@@ -119,13 +120,17 @@ class PPIClassifier(pl.LightningModule):
         tokens_cat = torch.cat([tokens1, tokens2], dim=1)
 
         if "MLM" in self.model_name:
-            preds = self.base_model.model(input_ids=tokens_cat, output_hidden_states=True)
+            preds = self.base_model.model(
+                input_ids=tokens_cat, output_hidden_states=True
+            )
 
         elif "esm2" in self.model_name:
             preds = self.base_model.model(tokens_cat, output_hidden_states=True)
 
         # Take mean embedding of last two layers, ignore padding
-        divisor = attns_a.sum(axis=-1).unsqueeze(-1) + attns_b.sum(axis=-1).unsqueeze(-1)
+        divisor = attns_a.sum(axis=-1).unsqueeze(-1) + attns_b.sum(axis=-1).unsqueeze(
+            -1
+        )
 
         hidden_states_p = preds["hidden_states"][-2].sum(axis=1) / divisor
         hidden_states_u = preds["hidden_states"][-1].sum(axis=1) / divisor
@@ -179,7 +184,10 @@ class PPIClassifier(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
+            self.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
         # scheduler = StepLR(optimizer, step_size=1, gamma=0.9)
         # return [optimizer], [scheduler]

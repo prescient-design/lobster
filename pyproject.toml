@@ -1,7 +1,7 @@
 [project]
-name = "lobster"
-description = "Language mOdels for Biological Sequence Transformation and Evolutionary Representation."
-authors = [{name = "Nathan Frey", email = "frey.nathan.nf1@gene.com"}]
+name = "lbster"
+description = "Language models for Biological Sequence Transformation and Evolutionary Representation."
+authors = [{name = "Nathan C. Frey", email = "frey.nathan.nf1@gene.com"}]
 dynamic = ["version", "readme", "dependencies", "optional-dependencies"]
 requires-python = ">=3.10"
 
@@ -17,6 +17,7 @@ readme = {file = "README.md"}
 [tool.setuptools.dynamic.optional-dependencies]
 dev = {file = ["requirements-dev.in"]}
 local = {file = ["requirements-local.in"]}
+prescient = {file = ["requirements-prescient.in"]}
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -25,7 +26,6 @@ where = ["src"]
 lobster = ["*.txt", "*.json", "*.yaml"]
 "lobster.assets" = ["**/*.txt", "**/*.json", "**/*.yaml"]
 "lobster.hydra_config" = [ "**/*.yaml"]
-"lobster.affinity_experiments.config" = [ "**/*.yaml"]
 
 
 [tool.mypy]
@@ -54,10 +54,13 @@ module = [
     "tqdm.*",
     "transformers.*",
     "rdkit.*",
-    "yeji.*",
+    "prescient.*",
     "smart_open.*",
     "anarci.*",
     "pymol.*",
+    "yeji.*",
+    "prescient.*",
+    "prescient_plm.*",
 ]
 
 [tool.ruff]

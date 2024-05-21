@@ -5,13 +5,13 @@ PCLM_CONFIG_ARGS = {
         "intermediate_size": 64,
         "hidden_size": 32,
     },
-    "CLM_11M": {  # 10.6M
-        "num_hidden_layers": 6,
-        "num_attention_heads": 12,
-        "intermediate_size": 1024,
-        "hidden_size": 384,
+    "CLM_bottleneck": {  # 2.4M
+        "num_hidden_layers": 24,
+        "num_attention_heads": 8,
+        "intermediate_size": 2048,
+        "hidden_size": 16,
     },
-    "CLM_cram_11M": {  # 10.6M
+    "CLM_11M": {  # 10.6M
         "num_hidden_layers": 6,
         "num_attention_heads": 12,
         "intermediate_size": 1024,
@@ -23,17 +23,11 @@ PCLM_CONFIG_ARGS = {
         "intermediate_size": 2048,
         "hidden_size": 384,
     },
-    "CLM_cram_67M": {  # 67.9M
+    "CLM_68M": {  # 67.9M
         "num_hidden_layers": 12,
         "num_attention_heads": 12,
         "intermediate_size": 2048,
         "hidden_size": 648,
-    },
-    "CLM_bottleneck": {  # 2.4M
-        "num_hidden_layers": 24,
-        "num_attention_heads": 8,
-        "intermediate_size": 2048,
-        "hidden_size": 16,
     },
     "CLM_85M": {  # 85M
         "num_hidden_layers": 12,
@@ -46,5 +40,11 @@ PCLM_CONFIG_ARGS = {
         "num_attention_heads": 12,
         "intermediate_size": 2048,
         "hidden_size": 768,
+    },
+    "CLM_150M": {  # 150.6M
+        "num_hidden_layers": 20,
+        "num_attention_heads": 12,
+        "intermediate_size": 2048,
+        "hidden_size": 816,
     },
 }

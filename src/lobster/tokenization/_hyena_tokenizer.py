@@ -4,7 +4,7 @@ import importlib.resources
 import os
 from typing import List, Optional, Union
 
-from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer, Trie
 from transformers.tokenization_utils_base import AddedToken
 from transformers.utils import logging
 
@@ -12,7 +12,9 @@ logger = logging.get_logger(__name__)
 
 VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
-VOCAB_PATH = importlib.resources.files("lobster") / "assets" / "hyena_tokenizer" / "vocab.txt"
+VOCAB_PATH = (
+    importlib.resources.files("lobster") / "assets" / "hyena_tokenizer" / "vocab.txt"
+)
 
 
 def load_vocab_file(vocab_file):
@@ -43,10 +45,9 @@ class HyenaTokenizer(PreTrainedTokenizer):
     ):
         self._characters = ("A", "C", "G", "T", "U", "N")
         self._model_max_length = model_max_length
-
-        super().__init__(**kwargs)
         self.all_tokens = load_vocab_file(vocab_file)
         self._id_to_token = dict(enumerate(self.all_tokens))
+        super().__init__(**kwargs)
 
         self._token_to_id = {tok: ind for ind, tok in enumerate(self.all_tokens)}
         self.unk_token = unk_token
@@ -67,6 +68,19 @@ class HyenaTokenizer(PreTrainedTokenizer):
 
     def convert_tokens_to_string(self, tokens):
         return "".join(tokens)
+
+    def _create_trie(self, unique_no_split_tokens):
+        trie = Trie()
+        for token in unique_no_split_tokens:
+            if (
+                hasattr(self, "do_lower_case")
+                and self.do_lower_case
+                and token not in self.all_special_tokens
+            ):
+                trie.add(token.lower())
+            else:
+                trie.add(token)
+        self.tokens_trie = trie
 
     # def _tokenize(self, text, **kwargs):
     #     return text.split()
@@ -115,7 +129,8 @@ class HyenaTokenizer(PreTrainedTokenizer):
 
     def save_vocabulary(self, save_directory, filename_prefix):
         vocab_file = os.path.join(
-            save_directory, (filename_prefix + "-" if filename_prefix else "") + "vocab.txt"
+            save_directory,
+            (filename_prefix + "-" if filename_prefix else "") + "vocab.txt",
         )
         with open(vocab_file, "w") as f:
             f.write("\n".join(self.all_tokens))
@@ -126,6 +141,8 @@ class HyenaTokenizer(PreTrainedTokenizer):
         return self.get_vocab_size(with_added_tokens=False)
 
     def _add_tokens(
-        self, new_tokens: Union[List[str], List[AddedToken]], special_tokens: bool = False
+        self,
+        new_tokens: Union[List[str], List[AddedToken]],
+        special_tokens: bool = False,
     ) -> int:
         return super()._add_tokens(new_tokens, special_tokens=True)

@@ -1,0 +1,8 @@
+_target_: lobster.model.GeminiModel
+
+lr: 1e-3
+model_name: esm2_t6_8M_UR50D
+checkpoint: null
+ckpt_path: null
+freeze_encoder: True
+max_length: 512

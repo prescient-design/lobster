@@ -6,8 +6,8 @@ from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
-from lobster.data._ab_ag_sequence_ppi_dataset import AbAgSequencePPIDataset
 from lobster.data._collate import ESMBatchConverterPPI
+from lobster.datasets._ab_ag_sequence_ppi_dataset import AbAgSequencePPIDataset
 from lobster.transforms._atom3d_ppi_transforms import PairedSequenceToTokens
 
 T = TypeVar("T")
@@ -44,7 +44,6 @@ class PPISequenceDataModule(LightningDataModule):
         sequence2_cols: tuple = ("antigen_sequence",),
         label_col: Optional[str] = None,
     ) -> None:
-
         super().__init__()
 
         if generator is None:

@@ -1,7 +1,15 @@
-from ._clm import PrescientPCLM
-from ._mlm import PrescientPMLM
+from ._clm import LobsterPCLM
+from ._mlm import LobsterPMLM
+from ._pooler import LMAttentionPool1D, LMClsPooler, LMMeanPooler, LMWeightedMeanPooler
 
 model_typer = {
-    "PrescientPMLM": PrescientPMLM,
-    "PrescientPCLM": PrescientPCLM,
+    "LobsterPMLM": LobsterPMLM,
+    "LobsterPCLM": LobsterPCLM,
+}
+
+POOLERS = {
+    "mean": LMMeanPooler,
+    "attn": LMAttentionPool1D,
+    "cls": LMClsPooler,
+    "weighted_mean": LMWeightedMeanPooler,
 }

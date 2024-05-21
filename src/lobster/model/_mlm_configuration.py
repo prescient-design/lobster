@@ -1,35 +1,13 @@
 from transformers.configuration_utils import PretrainedConfig
 
 PMLM_CONFIG_ARGS = {
-    "MLM_small": {
+    "MLM_mini": {
         "num_hidden_layers": 3,
         "num_attention_heads": 6,
         "intermediate_size": 64,
         "hidden_size": 72,
     },
-    "MLM_med": {
-        "num_hidden_layers": 4,
-        "num_attention_heads": 8,
-        "intermediate_size": 64,
-        "hidden_size": 72,
-    },
-    "MLM_large": {
-        "num_hidden_layers": 8,
-        "num_attention_heads": 12,
-        "intermediate_size": 64,
-        "hidden_size": 72,
-    },
-    "MLM_cram": {  # 731K
-        "num_hidden_layers": 8,
-        "num_attention_heads": 12,
-        "intermediate_size": 64,
-        "hidden_size": 120,
-        "query_bias": False,
-        "key_bias": False,
-        "value_bias": False,
-        "intermediate_bias": False,
-    },
-    "MLM_cram_med": {  # 11M
+    "MLM_11M": {  # 11M
         "num_hidden_layers": 8,
         "num_attention_heads": 12,
         "intermediate_size": 1024,
@@ -39,7 +17,17 @@ PMLM_CONFIG_ARGS = {
         "value_bias": False,
         "intermediate_bias": False,
     },
-    "MLM_cram_large": {  # 67M
+    "MLM_24M": {  # 23.8M
+        "num_hidden_layers": 10,
+        "num_attention_heads": 12,
+        "intermediate_size": 2048,
+        "hidden_size": 408,
+        "query_bias": False,
+        "key_bias": False,
+        "value_bias": False,
+        "intermediate_bias": False,
+    },
+    "MLM_68M": {  # 67M
         "num_hidden_layers": 12,
         "num_attention_heads": 12,
         "intermediate_size": 2048,
@@ -49,11 +37,31 @@ PMLM_CONFIG_ARGS = {
         "value_bias": False,
         "intermediate_bias": False,
     },
-    "MLM_cram_150M": {
-        "num_hidden_layers": 28,
+    "MLM_83M": {  # 82.9M
+        "num_hidden_layers": 14,
         "num_attention_heads": 12,
         "intermediate_size": 2048,
-        "hidden_size": 744,
+        "hidden_size": 792,
+        "query_bias": False,
+        "key_bias": False,
+        "value_bias": False,
+        "intermediate_bias": False,
+    },
+    "MLM_113M": {  # 113.8M
+        "num_hidden_layers": 20,
+        "num_attention_heads": 12,
+        "intermediate_size": 2048,
+        "hidden_size": 780,
+        "query_bias": False,
+        "key_bias": False,
+        "value_bias": False,
+        "intermediate_bias": False,
+    },
+    "MLM_150M": {  # 149 M
+        "num_hidden_layers": 27,
+        "num_attention_heads": 12,
+        "intermediate_size": 2048,
+        "hidden_size": 768,
         "query_bias": False,
         "key_bias": False,
         "value_bias": False,
@@ -144,7 +152,7 @@ class PMLMConfig(PretrainedConfig):
         key_bias=True,
         value_bias=True,
         intermediate_bias=True,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
 

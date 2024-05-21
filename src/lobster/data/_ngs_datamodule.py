@@ -2,24 +2,24 @@ import importlib
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
-import pandas as pd
 import torch.utils.data
-from datasets import Dataset
+from beignet.transforms import Transform
 from lightning import LightningDataModule
-from yeji.datasets import FASTADataset, RelativeRepresentationDataset
-from yeji.transforms import Transform
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
+from lobster.data import _PRESCIENT_AVAILABLE
 from lobster.tokenization import PmlmTokenizerTransform
+
+if _PRESCIENT_AVAILABLE:
+    from prescient.datasets import GREDBulkNGSDataset
 
 T = TypeVar("T")
 
 
-class FastaLightningDataModule(LightningDataModule):
+class GREDBulkNGSLightningDataModule(LightningDataModule):
     def __init__(
         self,
-        path_to_fasta: Union[str, list[str]],
         root: Union[str, Path] = None,
         *,
         cache_sequence_indicies: bool = True,
@@ -42,10 +42,6 @@ class FastaLightningDataModule(LightningDataModule):
         mlm: bool = True,
     ) -> None:
         """
-        :param path_to_fasta: path to fasta file
-
-        :param model_name: name of esm model
-
         :param root: Root directory where the dataset subdirectory exists or,
             if :attr:`download` is ``True``, the directory where the dataset
             subdirectory will be created and the dataset downloaded.
@@ -114,10 +110,6 @@ class FastaLightningDataModule(LightningDataModule):
         if generator is None:
             generator = Generator().manual_seed(seed)
 
-        if isinstance(path_to_fasta, str):
-            path_to_fasta = [path_to_fasta]
-        self._path_to_fasta = path_to_fasta
-
         self._root = root
         self._cache_sequence_indicies = cache_sequence_indicies
         self._download = download
@@ -139,66 +131,32 @@ class FastaLightningDataModule(LightningDataModule):
 
         path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
         self._transform_fn = transform_fn or PmlmTokenizerTransform(
-            path, padding="max_length", truncation=True, max_length=self._max_length, mlm=self._mlm
+            path,
+            padding="max_length",
+            truncation=True,
+            max_length=self._max_length,
+            mlm=self._mlm,
         )
-        # self._transform_fn = AutoTokenizerTransform(
-        #                 "facebook/esm2_t6_8M_UR50D",
-        #                 padding="max_length",
-        #                 truncation=True,
-        #                 max_length=self._max_length,
-        #                 )
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
         super().__init__()
 
         if stage == "fit":
-            if any(["train" in self._path_to_fasta]):  # pre computed splits
-                self._train_dataset = torch.utils.data.ConcatDataset(
-                    [
-                        FASTADataset(root=p, transform_fn=self._transform_fn)
-                        for p in self._path_to_fasta
-                        if "train" in p
-                    ]
-                )
-                self._val_dataset = torch.utils.data.ConcatDataset(
-                    [
-                        FASTADataset(root=p, transform_fn=self._transform_fn)
-                        for p in self._path_to_fasta
-                        if "val" in p
-                    ]
-                )
-                self._test_dataset = torch.utils.data.ConcatDataset(
-                    [
-                        FASTADataset(root=p, transform_fn=self._transform_fn)
-                        for p in self._path_to_fasta
-                        if "test" in p
-                    ]
-                )
-            else:  # iid split
-                datasets = [
-                    FASTADataset(root=p, transform_fn=self._transform_fn)
-                    for p in self._path_to_fasta
-                ]
-                dataset = torch.utils.data.ConcatDataset(datasets)
-                if self._is_relative_model:
-                    dataset = RelativeRepresentationDataset(dataset)
+            dataset = GREDBulkNGSDataset(
+                root=self._root,
+                download=self._download,
+                transform_fn=self._transform_fn,
+            )
 
-                (
-                    self._train_dataset,
-                    self._val_dataset,
-                    self._test_dataset,
-                ) = torch.utils.data.random_split(
-                    dataset,
-                    lengths=self._lengths,
-                    generator=self._generator,
-                )
-
-        if stage == "predict":
-            datasets = [
-                FASTADataset(root=p, transform_fn=self._transform_fn) for p in self._path_to_fasta
-            ]
-            dataset = torch.utils.data.ConcatDataset(datasets)
-            self._predict_dataset = dataset
+            (
+                self._train_dataset,
+                self._val_dataset,
+                self._test_dataset,
+            ) = torch.utils.data.random_split(
+                dataset,
+                lengths=self._lengths,
+                generator=self._generator,
+            )
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -232,23 +190,3 @@ class FastaLightningDataModule(LightningDataModule):
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
         )
-
-    def predict_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self._predict_dataset,
-            batch_size=self._batch_size,
-            shuffle=False,
-            sampler=self._sampler,
-            num_workers=self._num_workers,
-            collate_fn=self._collate_fn,
-            pin_memory=self._pin_memory,
-        )
-
-    def _clm_data_wrangle(self, dataset) -> Dataset:
-        seqs_for_dl = []
-        for pair in dataset:
-            seqs_for_dl.append(tuple(pair))
-        seq_dict = dict(seqs_for_dl)
-        seq_dict_df = pd.DataFrame(seq_dict.items(), columns=["input_ids", "Labels"])
-        seq_dict_df = Dataset.from_pandas(seq_dict_df)
-        return seq_dict_df

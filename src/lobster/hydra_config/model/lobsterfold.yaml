@@ -1,4 +1,4 @@
-_target_: lobster.model.PrescientPLMFold
+_target_: lobster.model.LobsterPLMFold
 
 lr: 1e-3
 model_name: esmfold_v1

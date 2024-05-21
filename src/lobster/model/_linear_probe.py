@@ -17,25 +17,43 @@ from torchmetrics import (
     SpearmanCorrCoef,
 )
 
-from ._mlm import PrescientPMLM
 from ._utils import model_typer
 
 
-class LinearProbe(pl.LightningModule):
+class LobsterLinearProbe(pl.LightningModule):
     def __init__(
         self,
         num_labels: int = 1,
+        num_chains: int = 1,
         model_name: Optional[str] = None,
         checkpoint: Optional[str] = None,
-        model_type: Literal["PrescientPMLM", "PrescientPCLM"] = "PrescientPMLM",
+        model_type: Literal["LobsterPMLM", "LobsterPCLM"] = "LobsterPMLM",
         max_length: int = 512,
         lr: float = 1e-3,
         reinit: bool = False,
         metric_average: str = "weighted",
     ):
+        """
+        Linear probe.
+        Please make sure max_length is long enough to capture the sequence variation in your dataset!
+        E.g. if all variation happens in ixs 561-588 (FLIP AAV), max_length should be at least 588 unless
+        the dataset or a transform already truncates sequences to 512. (see AAV dataset)
+
+        Parameters
+        ----------
+        num_labels: regression (1), binary classification (2), or multi class (2+)
+        num_chains: number of chains in input data, used to adjust MLP size
+        model_name: load a specific pre-trained model, e.g. 'esm2_t6_8M_UR50D'
+        checkpoint: path to load a pretrained Lobster model
+        model_type: pre-trained model class
+        pooling: how embeddings are pooled; currently only supports 'mean'
+        reinit: use random embeddings rather than pre-trained for benchmarking
+
+        """
         super().__init__()
         model_cls = model_typer[model_type]
         self._num_labels = num_labels
+        self._num_chains = num_chains
         self._max_length = max_length
         self._model_name = model_name
         self._lr = lr
@@ -72,8 +90,10 @@ class LinearProbe(pl.LightningModule):
 
         hidden_size = self.model.config.hidden_size
         self._hidden_size = hidden_size
+
         # Initialize a linear layer for probing
-        self.probe = nn.Linear(hidden_size, num_labels)
+        output_dim = self._num_labels if self._num_labels > 2 else 1
+        self.probe = nn.Linear(int(self._num_chains * hidden_size), output_dim)
 
         # metrics
         if self._num_labels == 1:
@@ -125,6 +145,15 @@ class LinearProbe(pl.LightningModule):
                 task=task, num_classes=self._num_labels, average=self._metric_average
             )
 
+        self.loss = None
+        match self._num_labels:
+            case 1:
+                self.loss = nn.MSELoss()
+            case 2:
+                self.loss = nn.BCEWithLogitsLoss()  # expects logits
+            case _:
+                self.loss = nn.CrossEntropyLoss()
+
         self.save_hyperparameters(logger=False)
 
     def forward(self, hidden_state):
@@ -137,7 +166,11 @@ class LinearProbe(pl.LightningModule):
             r2score = self.train_r2score(preds, targets)
             mae = self.train_mae(preds, targets)
             spearman = self.train_spearman(preds, targets)
-            loss_dict = {"train/r2score": r2score, "train/mae": mae, "train/spearman": spearman}
+            loss_dict = {
+                "train/r2score": r2score,
+                "train/mae": mae,
+                "train/spearman": spearman,
+            }
             self.log_dict(loss_dict)
         elif self._num_labels > 1:
             average_precision = self.train_average_precision(preds, targets)
@@ -162,7 +195,11 @@ class LinearProbe(pl.LightningModule):
             r2score = self.val_r2score(preds, targets)
             mae = self.val_mae(preds, targets)
             spearman = self.val_spearman(preds, targets)
-            loss_dict = {"val/r2score": r2score, "val/mae": mae, "val/spearman": spearman}
+            loss_dict = {
+                "val/r2score": r2score,
+                "val/mae": mae,
+                "val/spearman": spearman,
+            }
             self.log_dict(loss_dict)
         elif self._num_labels > 1:
             average_precision = self.val_average_precision(preds, targets)
@@ -193,7 +230,7 @@ class LinearProbe(pl.LightningModule):
         all_hiddens.append(hidden_states)
         all_hiddens = torch.concat(all_hiddens, dim=1).to(self.device).float()
 
-        y_hat = self(all_hiddens).flatten()  # forward through MLP
+        y_hat = self(all_hiddens).flatten()
         y_hat = y_hat.float()
 
         # fix missing vals

@@ -1,0 +1,47 @@
+# @package _global_
+
+defaults:
+  - override /model: clm.yaml
+  - override /data/transform_fn: pmlm_tokenizer_transform.yaml
+  - override /data: calm.yaml
+
+paths:
+  root_dir: /data/bucket/freyn6/models/pclm_cdna
+
+data:
+  root: /data/bucket/freyn6/data/
+  batch_size: 8
+  num_workers: 8
+  pin_memory: False
+  lengths: [0.9,0.05,0.05]
+  max_length: ${model.max_length}
+  mlm: False
+
+  transform_fn:
+    tokenizer_dir: ${model.tokenizer_dir}
+    max_length: ${model.max_length}
+    mlm: ${data.mlm}
+
+trainer:
+  max_steps: 1_000_000  # 1 step / 2.2 s -> ~40k steps / day
+  num_sanity_val_steps: 0
+  val_check_interval: 1000  # every n batches
+  precision: 16
+  gradient_clip_val: 0.5
+  accumulate_grad_batches: 8
+
+
+model:
+  model_name: CLM_85M
+  tokenizer_dir: cdna_tokenizer
+  num_training_steps: ${trainer.max_steps}
+  num_warmup_steps: 30_000
+  lr: 1e-3
+  mask_percentage: 0.25
+  beta1: 0.9
+  beta2: 0.98
+  eps: 1e-12
+  max_length: 2048  # also sets max position embeddings
+
+logger:
+  name: ${model.model_name}_calm_${now:%Y-%m-%d_%H-%M-%S}

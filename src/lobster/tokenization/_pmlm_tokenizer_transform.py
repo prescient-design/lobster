@@ -2,11 +2,15 @@ import importlib.resources
 import random
 import re
 from os import PathLike
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
-from yeji.transforms import Transform
+from beignet.transforms import Transform
 from transformers import T5Tokenizer
-from transformers.tokenization_utils_base import BatchEncoding, PaddingStrategy, TruncationStrategy
+from transformers.tokenization_utils_base import (
+    BatchEncoding,
+    PaddingStrategy,
+    TruncationStrategy,
+)
 
 from lobster.tokenization import PmlmTokenizer
 
@@ -27,6 +31,7 @@ class PmlmTokenizerTransform(Transform):
         verbose: bool = True,
         tokenizer_dir: Optional[str] = "pmlm_tokenizer",
         mlm: bool = True,
+        reversal_augmentation: bool = False,
     ):
         super().__init__()
 
@@ -85,12 +90,26 @@ class PmlmTokenizerTransform(Transform):
         else:
             labels = tokenized["input_ids"].clone()
             if self._auto_tokenizer.pad_token_id is not None:
-                labels[labels == self._auto_tokenizer.pad_token_id] = -100  # ignore in loss
+                labels[
+                    labels == self._auto_tokenizer.pad_token_id
+                ] = -100  # ignore in loss
             tokenized["labels"] = labels
 
         return tokenized
 
+    def _reverse_text(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
+        if isinstance(text, str):
+            return text[::-1]
+        elif isinstance(text, list):
+            return [t[::-1] for t in text]
+
+    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+        return self.transform(input, parameters)
+
     def validate(self, flat_inputs: list[Any]) -> None:
+        pass
+
+    def _check_inputs(self, inputs: List[Any]) -> None:
         pass
 
 
@@ -137,7 +156,9 @@ class PT5TokenizerTransform(Transform):
         # upper case AAs or lower case 3Di
         if self._pretrained_model_name_or_path == "ProstT5":
             sequence = (
-                "<AA2fold>" + " " + sequence if sequence.isupper() else "<fold2AA>" + " " + sequence
+                "<AA2fold>" + " " + sequence
+                if sequence.isupper()
+                else "<fold2AA>" + " " + sequence
             )
 
         tokenized = self._auto_tokenizer(
@@ -218,7 +239,9 @@ class PT5TeacherForcingTransform(Transform):
                 input_sequence.append(char)
                 if len(label_sequence) == 0:
                     label_sequence.append("<extra_id_0>")
-                if len(label_sequence) > 0 and not label_sequence[-1].startswith("<extra_id_"):
+                if len(label_sequence) > 0 and not label_sequence[-1].startswith(
+                    "<extra_id_"
+                ):
                     label_sequence.append(f"<extra_id_{mask_idx}>")
 
         input_sequence = " ".join(input_sequence)

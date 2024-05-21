@@ -1,11 +1,8 @@
 import hydra
 import lightning.pytorch as pl
-import torch
 import wandb
-import os
 from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, OmegaConf
-from yeji.transforms import Normalize
 
 from lobster.cmdline._utils import instantiate_callbacks
 
@@ -21,13 +18,14 @@ def train(cfg: DictConfig) -> bool:
     hydra.utils.instantiate(cfg.setup)
 
     datamodule = hydra.utils.instantiate(cfg.data)
+    datamodule.prepare_data()
     datamodule.setup(stage="fit")
     model = hydra.utils.instantiate(cfg.model, _recursive_=False)
 
     # wandb_api_key = os.getenv("WANDB_API_KEY")
     # if wandb_api_key is not None:
     wandb.login(host="https://genentech.wandb.io/")
-            # key=wandb_api_key)
+    # key=wandb_api_key)
     wandb.init(
         config=log_cfg,  # type: ignore[arg-type]
         project=cfg.logger.project,

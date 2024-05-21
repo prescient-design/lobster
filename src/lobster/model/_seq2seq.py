@@ -3,7 +3,7 @@ from typing import Callable, Union
 
 import lightning.pytorch as pl
 import torch
-from yeji.transforms import Transform
+from beignet.transforms import Transform
 from transformers import (
     AutoModelForSeq2SeqLM,
     T5Config,
@@ -62,10 +62,14 @@ class PrescientPT5(pl.LightningModule):
         self.model_name = model_name
         self._num_training_steps = num_training_steps
         self._num_warmup_steps = num_warmup_steps
-        self.tokenizer = T5Tokenizer.from_pretrained(f"Rostlab/{model_name}", do_lower_case=False)
+        self.tokenizer = T5Tokenizer.from_pretrained(
+            f"Rostlab/{model_name}", do_lower_case=False
+        )
 
         if is_training:
-            self.model = T5ForConditionalGeneration.from_pretrained(f"Rostlab/{model_name}")
+            self.model = T5ForConditionalGeneration.from_pretrained(
+                f"Rostlab/{model_name}"
+            )
         elif is_encoder_decoder:
             self.model = AutoModelForSeq2SeqLM.from_pretrained(f"Rostlab/{model_name}")
         else:
@@ -104,7 +108,10 @@ class PrescientPT5(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
@@ -124,7 +131,9 @@ class PrescientPT5(pl.LightningModule):
         sequences = [
             "<AA2fold>" + " " + s
             if s.isupper()
-            else "<fold2AA>" + " " + s  # upper case AAs or lower case 3Di, add whitespace
+            else "<fold2AA>"
+            + " "
+            + s  # upper case AAs or lower case 3Di, add whitespace
             for s in sequences
         ]
         ids = self.tokenizer.batch_encode_plus(
@@ -134,10 +143,10 @@ class PrescientPT5(pl.LightningModule):
         # hidden states start with <AA2fold> or <fold2AA> special tok and end with padding toks
         with torch.inference_mode():
             hidden_states = self.model(
-                ids.input_ids, attention_mask=ids.attention_mask, output_hidden_states=True
-            )[
-                "hidden_states"
-            ]  # 25 layers, (B, L, D)
+                ids.input_ids,
+                attention_mask=ids.attention_mask,
+                output_hidden_states=True,
+            )["hidden_states"]  # 25 layers, (B, L, D)
 
         return hidden_states
 

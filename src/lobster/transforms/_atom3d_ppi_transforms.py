@@ -3,8 +3,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import Bio.PDB.Polypeptide as Poly
 import torch
+from beignet.transforms import Transform
 from pandas import DataFrame
-from yeji.transforms import Transform
 
 from lobster.tokenization._pmlm_tokenizer import PmlmTokenizer
 
@@ -64,7 +64,9 @@ class Atom3DPPIToSequenceAndContactMap(Transform):
         feat["resname"] = feat["resname"].apply(_protein_letters_3to1_wrapper)
         chain_sequences = []
         chain_residue_ixs = []
-        for _, chain in feat.groupby(["ensemble", "subunit", "structure", "model", "chain"]):
+        for _, chain in feat.groupby(
+            ["ensemble", "subunit", "structure", "model", "chain"]
+        ):
             # Get sequence and chain info
             seq = "".join(chain["resname"])
             chain_sequences.append(seq)
@@ -76,7 +78,9 @@ class Atom3DPPIToSequenceAndContactMap(Transform):
         if not len(chain_sequences) == 2:
             return (None, None), None  # If not a protein-protein complex
         a_ixs, b_ixs = tuple(chain_residue_ixs)
-        is_residue_mask = target["residue0"].isin(a_ixs) & target["residue1"].isin(b_ixs)
+        is_residue_mask = target["residue0"].isin(a_ixs) & target["residue1"].isin(
+            b_ixs
+        )
         target = target[is_residue_mask]
         ixs = list(zip(target["residue0"], target["residue1"]))
         contact_map = _get_contact_map(*chain_sequences, ixs)
@@ -131,8 +135,9 @@ class PairedSequenceToTokens(Transform):
             tokens1 = tokens1["input_ids"]
             tokens2 = tokens2["input_ids"]
 
-        tokens1, tokens2 = torch.tensor(tokens1, dtype=torch.int), torch.tensor(
-            tokens2, dtype=torch.int
+        tokens1, tokens2 = (
+            torch.tensor(tokens1, dtype=torch.int),
+            torch.tensor(tokens2, dtype=torch.int),
         )
 
         return tokens1, tokens2
@@ -164,8 +169,13 @@ class Atom3DPPIToSequence(Transform):
         feat = feat[feat["resname"].apply(lambda x: Poly.is_aa(x, standard=True))]
         feat["resname"] = feat["resname"].apply(_protein_letters_3to1_wrapper)
         chain_sequences = []
-        for _, chain in feat.groupby(["ensemble", "subunit", "structure", "model", "chain"]):
+        for _, chain in feat.groupby(
+            ["ensemble", "subunit", "structure", "model", "chain"]
+        ):
             seq = "".join(chain["resname"])
             chain_sequences.append(seq)
 
-        return {"sequences": chain_sequences, "features": feat}  # needed for contact map transform
+        return {
+            "sequences": chain_sequences,
+            "features": feat,
+        }  # needed for contact map transform

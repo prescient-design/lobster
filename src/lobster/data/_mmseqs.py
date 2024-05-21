@@ -9,9 +9,7 @@ from Bio import SeqIO
 
 class MMSeqsRunner:
     def __init__(self) -> None:
-        """Includes code adapted from
-        https://code.roche.com/prescient-design/manifold-sampler-pytorch/-/blob/master/expresso/expresso/libs/mmseqs.py?ref_type=heads
-        """
+        """Includes code adapted from Ed Wagstaff"""
         assert self._check_tool_installed()  # check for mmseqs
         self.mmseqs_cmd = "mmseqs"
 
@@ -63,7 +61,9 @@ class MMSeqsRunner:
         )
 
         # Extract the representatives from the clusters
-        subprocess.run(["mmseqs", "result2repseq", "combined_db", "clusters", "cluster_seq"])
+        subprocess.run(
+            ["mmseqs", "result2repseq", "combined_db", "clusters", "cluster_seq"]
+        )
 
         # # Extract sequences of the representatives
         # subprocess.run(["mmseqs", "convert2fasta", "combined_db", "cluster_representatives.tsv", output_fasta_file])
@@ -90,7 +90,10 @@ class MMSeqsRunner:
         print(f"Clustering completed. Results saved to {output_fasta_file}")
 
     def run_linclust(
-        self, input_fasta_file: str, file_prefix: str = "linclust_", sequence_identity: float = 0.85
+        self,
+        input_fasta_file: str,
+        file_prefix: str = "linclust_",
+        sequence_identity: float = 0.85,
     ):
         """FILE_PREFIX=tenx_linclust_seqid70c80
         mmseqs easy-linclust tenx.fasta $FILE_PREFIX /tmp/ --min-seq-id 0.70 -c 0.8 --cov-mode 1
@@ -130,8 +133,14 @@ class MMSeqsRunner:
         lengths: train/val/test splits
         """
 
-        clusters_df = pd.read_csv(cluster_csv, sep="\t", header=None, names=["Cluster", "Sequence"])
-        sequences = [record for record in SeqIO.parse(input_fasta, "fasta") if len(record.seq) > 0]
+        clusters_df = pd.read_csv(
+            cluster_csv, sep="\t", header=None, names=["Cluster", "Sequence"]
+        )
+        sequences = [
+            record
+            for record in SeqIO.parse(input_fasta, "fasta")
+            if len(record.seq) > 0
+        ]
 
         num_train, num_val, num_test = [ll * len(clusters_df) for ll in lengths]
         print(num_train, num_val, num_test)
@@ -146,18 +155,29 @@ class MMSeqsRunner:
             num_samples = len(group_df)
             if num_assigned < round(num_train):
                 train_data = pd.concat([train_data, group_df])
-            elif round(num_train + num_val) < num_assigned < round(num_train + num_val + num_test):
+            elif (
+                round(num_train + num_val)
+                < num_assigned
+                < round(num_train + num_val + num_test)
+            ):
                 val_data = pd.concat([val_data, group_df])
             else:
                 test_data = pd.concat([test_data, group_df])
             num_assigned += num_samples
 
-        training_sequences = [seq for seq in sequences if int(seq.id) in train_data["Sequence"]]
-        validation_sequences = [seq for seq in sequences if int(seq.id) in val_data["Sequence"]]
-        test_sequences = [seq for seq in sequences if int(seq.id) in test_data["Sequence"]]
+        training_sequences = [
+            seq for seq in sequences if int(seq.id) in train_data["Sequence"]
+        ]
+        validation_sequences = [
+            seq for seq in sequences if int(seq.id) in val_data["Sequence"]
+        ]
+        test_sequences = [
+            seq for seq in sequences if int(seq.id) in test_data["Sequence"]
+        ]
 
         for split, seqs in zip(
-            ["train", "val", "test"], [training_sequences, validation_sequences, test_sequences]
+            ["train", "val", "test"],
+            [training_sequences, validation_sequences, test_sequences],
         ):
             prefix = input_fasta.split(".")[0]  # remove .fasta suffix
             SeqIO.write(seqs, f"{prefix}_{split}.fasta", "fasta")

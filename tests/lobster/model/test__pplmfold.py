@@ -2,12 +2,11 @@ import os
 
 import pytest
 import torch
-from torch import Size, Tensor
-
 from lobster.data import PDBDataModule
-from lobster.model import PrescientPLMFold
+from lobster.model import LobsterPLMFold
 from lobster.model.openfold_utils import backbone_loss
 from lobster.transforms import StructureFeaturizer
+from torch import Size, Tensor
 
 torch.backends.cuda.matmul.allow_tf32 = True
 
@@ -29,21 +28,24 @@ def structure_featurizer(scope="session"):
 
 @pytest.fixture
 def model(max_length, scope="session"):
-    return PrescientPLMFold(model_name="PPLM", max_length=max_length)
+    return LobsterPLMFold(model_name="Lobster", max_length=max_length)
 
 
 def _get_batch(example_pdb_dir, max_length):
     dm = PDBDataModule(
-        root=example_pdb_dir, batch_size=2, lengths=(0.0, 0.0, 1.0), max_length=max_length
+        root=example_pdb_dir,
+        batch_size=2,
+        lengths=(0.0, 0.0, 1.0),
+        max_length=max_length,
     )
     dm.setup("predict")
     dataloader = dm.predict_dataloader()
     return next(iter(dataloader))
 
 
-class TestPrescientPLMFold:
+class TestLobsterPLMFold:
     def test_dataloader_tokenizer(self, model):
-        model = PrescientPLMFold(model_name="PPLM")
+        model = LobsterPLMFold(model_name="Lobster")
         inputs = ["ACDAC", "DEAPLND"]
         max_length = max([len(x) for x in inputs])
         tokenized_input = model.tokenizer.batch_encode_plus(

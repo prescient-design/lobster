@@ -1,20 +1,18 @@
+import os
+import random
+import subprocess
+from pathlib import Path
+from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
+
+import numpy as np
 import torch
+from beignet.datasets import SizedSequenceDataset
+from beignet.io._thread_safe_file import ThreadSafeFile
+from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
-import random
-import os
-from typing import Union, TypeVar, Dict, Any, Callable, Optional, Sequence, Iterable
-import threading
-from operator import methodcaller
-from pathlib import Path
-import numpy as np
-import subprocess
-from lightning import LightningDataModule
 
-from yeji.io._thread_safe_file import ThreadSafeFile
-from yeji.datasets import SizedSequenceDataset
 from lobster.transforms import StructureFeaturizer
-
 
 PathLike = Union[Path, str]
 T = TypeVar("T")
@@ -30,7 +28,9 @@ class FastaStructureDataset(SizedSequenceDataset):
     and prescient.datasets._fasta_dataset
     """
 
-    def __init__(self, fasta_file: PathLike, cache_indices: bool = False, *args, **kwargs):
+    def __init__(
+        self, fasta_file: PathLike, cache_indices: bool = False, *args, **kwargs
+    ):
         self.data_file = Path(fasta_file)
         if not self.data_file.exists():
             raise FileNotFoundError
@@ -85,7 +85,8 @@ class FastaStructureDataset(SizedSequenceDataset):
 
 
 class CATHFastaPDBDataset(FastaStructureDataset):
-    """ Implements structural feature loading for the CATH dataset. """
+    """Implements structural feature loading for the CATH dataset."""
+
     def __init__(
         self,
         fasta_file: PathLike,
@@ -114,7 +115,7 @@ class CATHFastaPDBDataset(FastaStructureDataset):
 
 
 class PDBDataset(torch.utils.data.Dataset):
-    """ Parses structure PDB files into features expected to calculate frame aligned point error (FAPE) calculation."""
+    """Parses structure PDB files into features expected to calculate frame aligned point error (FAPE) calculation."""
 
     def __init__(
         self,
@@ -136,7 +137,7 @@ class PDBDataset(torch.utils.data.Dataset):
         with open(structure_fpath, "r") as f:
             pdb_str = f.read()
         return self.structure_featurizer(pdb_str, self._max_length, pdb_id)
-    
+
     def __len__(self):
         return len(self.all_ids)
 
@@ -170,7 +171,7 @@ class PDBDataModule(LightningDataModule):
 
         if generator is None:
             generator = Generator().manual_seed(seed)
-        
+
         self._dataset = PDBDataset(root, max_length, pdb_id_to_filename_fn)
 
         self._root = root
@@ -187,7 +188,7 @@ class PDBDataModule(LightningDataModule):
         self._pin_memory = pin_memory
         self._drop_last = drop_last
         self._pdb_id_to_filename_fn = pdb_id_to_filename_fn
-    
+
     def setup(self, stage: str = "fit") -> None:
         if stage == "fit":
             (
@@ -198,13 +199,12 @@ class PDBDataModule(LightningDataModule):
                 self._dataset,
                 lengths=self._lengths,
                 generator=self._generator,
-                )
+            )
         elif stage == "predict":
             self._predict_dataset = self._dataset
         else:
             raise ValueError(f"Invalid value for stage {stage}.")
 
-     
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             self._train_dataset,

@@ -8,7 +8,7 @@ from torch.nn import BCELoss
 from torchmetrics import Precision, Recall
 
 from lobster.data import ESM_MODEL_NAMES, PMLM_MODEL_NAMES
-from lobster.model import LMBaseContactPredictionHead, PrescientPMLM
+from lobster.model import LMBaseContactPredictionHead, LobsterPMLM
 from lobster.model._esm import ESMBase
 
 
@@ -42,7 +42,7 @@ class ContactPredictionHead(pl.LightningModule):
         print(f"------ Loading checkpoint: {checkpoint}")
 
         if model_name in PMLM_MODEL_NAMES:
-            base_model = PrescientPMLM(model_name=model_name)
+            base_model = LobsterPMLM(model_name=model_name)
             base_model.load_from_checkpoint(checkpoint)
 
         elif model_name in ESM_MODEL_NAMES:
@@ -56,13 +56,17 @@ class ContactPredictionHead(pl.LightningModule):
         self.model_name = model_name
         self.checkpoint = checkpoint
         self.base_model = base_model
-        for _name, param in self.base_model.named_parameters():  # freeze pre-trained encoder
+        for (
+            _name,
+            param,
+        ) in self.base_model.named_parameters():  # freeze pre-trained encoder
             param.requires_grad = False
 
         if model_name in ESM_MODEL_NAMES:
             hidden_size = self.base_model.model.embed_dim
             self.contact_head = LMBaseContactPredictionHead(
-                in_features=self.base_model.model.num_layers * self.base_model.model.attention_heads
+                in_features=self.base_model.model.num_layers
+                * self.base_model.model.attention_heads
             )
         else:
             hidden_size = self.base_model.model.config.hidden_size
@@ -86,9 +90,7 @@ class ContactPredictionHead(pl.LightningModule):
         self.val_recall = Recall(task="binary")
         self.test_recall = Recall(task="binary")
 
-        self.loss = (
-            BCELoss()
-        )  # output of predict_contacts is after sigmoid, so using BCELoss instead of BCEWithLogitsLoss
+        self.loss = BCELoss()  # output of predict_contacts is after sigmoid, so using BCELoss instead of BCEWithLogitsLoss
 
         self.save_hyperparameters(logger=False)
 
@@ -122,7 +124,11 @@ class ContactPredictionHead(pl.LightningModule):
             print(f"IndexError in training_step {batch_idx}, setting precision to 0.0")
             precision = torch.tensor(0.0)
             recall = torch.tensor(0.0)
-        loss_dict = {"train/precision": precision, "train/recall": recall, "train/bce": loss}
+        loss_dict = {
+            "train/precision": precision,
+            "train/recall": recall,
+            "train/bce": loss,
+        }
 
         self.log("train/loss", loss, prog_bar=True, on_step=True)
         self.log_dict(loss_dict)
@@ -136,10 +142,16 @@ class ContactPredictionHead(pl.LightningModule):
                 precision = self.val_precision(preds, targets)
                 recall = self.val_recall(preds, targets)
             except IndexError:
-                print(f"IndexError in validation_step {batch_idx}, setting precision to 0.0")
+                print(
+                    f"IndexError in validation_step {batch_idx}, setting precision to 0.0"
+                )
                 precision = torch.tensor(0.0)
                 recall = torch.tensor(0.0)
-            loss_dict = {"val/precision": precision, "val/recall": recall, "val/bce": loss}
+            loss_dict = {
+                "val/precision": precision,
+                "val/recall": recall,
+                "val/bce": loss,
+            }
 
             self.log("val/loss", loss, prog_bar=True, on_step=False, on_epoch=True)
             self.log_dict(loss_dict)
@@ -158,7 +170,11 @@ class ContactPredictionHead(pl.LightningModule):
                 precision = torch.tensor(0.0)
                 recall = torch.tensor(0.0)
 
-            loss_dict = {"test/precision": precision, "test/recall": recall, "test/bce": loss}
+            loss_dict = {
+                "test/precision": precision,
+                "test/recall": recall,
+                "test/bce": loss,
+            }
 
             self.log("test/loss", loss, prog_bar=True, on_step=False, on_epoch=True)
             self.log_dict(loss_dict)
@@ -166,7 +182,10 @@ class ContactPredictionHead(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
+            self.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
         # scheduler = StepLR(optimizer, step_size=1, gamma=0.9)
         # return [optimizer], [scheduler]
@@ -184,7 +203,10 @@ class ContactPredictionHead(pl.LightningModule):
         }
         """
         tokens1, tokens2 = batch["tokens1"], batch["tokens2"]
-        attention_mask1, attention_mask2 = batch["attention_mask1"], batch["attention_mask2"]
+        attention_mask1, attention_mask2 = (
+            batch["attention_mask1"],
+            batch["attention_mask2"],
+        )
         contact_map = batch["contact_map"]
 
         # Concat sequences if traditional model, have two inputs if relative rep

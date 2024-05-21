@@ -7,20 +7,24 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import EsmForMaskedLM
 
-from lobster.model._mlm import PrescientPMLM
+from lobster.model._mlm import LobsterPMLM
 
 
 class MiniCLIP(pl.LightningModule):
-    def __init__(self, pretrained_model_name_or_path: Union[str, PathLike], lr: float = 1e-3):
+    def __init__(
+        self, pretrained_model_name_or_path: Union[str, PathLike], lr: float = 1e-3
+    ):
         super().__init__()
         self._lr = lr
 
         # pre-trained encoder
         if "esm2" in pretrained_model_name_or_path:
-            self.model = EsmForMaskedLM.from_pretrained(f"facebook/{pretrained_model_name_or_path}")
+            self.model = EsmForMaskedLM.from_pretrained(
+                f"facebook/{pretrained_model_name_or_path}"
+            )
             input_dim = self.model.config.hidden_size
         else:
-            self.model = PrescientPMLM.load_from_checkpoint(pretrained_model_name_or_path)
+            self.model = LobsterPMLM.load_from_checkpoint(pretrained_model_name_or_path)
             input_dim = self.model.model.config.hidden_size
         self._input_dim = input_dim
 
@@ -80,11 +84,15 @@ class MiniCLIP(pl.LightningModule):
 
         k = int(logits.shape[0] / 10)
         binder_topk_accuracy = (
-            torch.any((logits.topk(k, dim=0).indices - labels.reshape(1, -1)) == 0, dim=0).sum()
+            torch.any(
+                (logits.topk(k, dim=0).indices - labels.reshape(1, -1)) == 0, dim=0
+            ).sum()
             / logits.shape[0]
         )
         partner_topk_accuracy = (
-            torch.any((logits.topk(k, dim=1).indices - labels.reshape(-1, 1)) == 0, dim=1).sum()
+            torch.any(
+                (logits.topk(k, dim=1).indices - labels.reshape(-1, 1)) == 0, dim=1
+            ).sum()
             / logits.shape[0]
         )
 
@@ -122,13 +130,17 @@ class MiniCLIP(pl.LightningModule):
             binder_esm_embedding = self.model(
                 input_ids=binder.squeeze(), output_hidden_states=True
             )["hidden_states"][-1]
-            binder_embedding = F.normalize(self.binder_embedder(binder_esm_embedding.mean(dim=1)))
+            binder_embedding = F.normalize(
+                self.binder_embedder(binder_esm_embedding.mean(dim=1))
+            )
 
         # get binder and protein embeddings, dot together
-        antigen_esm_embedding = self.model(input_ids=antigen.squeeze(), output_hidden_states=True)[
-            "hidden_states"
-        ][-1]
-        prot_embedding = F.normalize(self.prot_embedder(antigen_esm_embedding.mean(dim=1)))
+        antigen_esm_embedding = self.model(
+            input_ids=antigen.squeeze(), output_hidden_states=True
+        )["hidden_states"][-1]
+        prot_embedding = F.normalize(
+            self.prot_embedder(antigen_esm_embedding.mean(dim=1))
+        )
 
         # embeddings = (B, Clip Embedding Dim)
         logits = torch.matmul(binder_embedding, prot_embedding.T)

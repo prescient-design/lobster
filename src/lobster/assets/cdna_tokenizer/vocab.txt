@@ -1,0 +1,15 @@
+<cls>
+<sep>
+<bos>
+<mask>
+<pad>
+<reserved>
+<unk>
+<eos>
+A
+C
+G
+T
+N
+U
+.
