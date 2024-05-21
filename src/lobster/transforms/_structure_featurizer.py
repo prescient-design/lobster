@@ -1,6 +1,6 @@
 import typing as T
-from pathlib import Path
 import warnings
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -9,10 +9,10 @@ from lobster.model.openfold_utils import (
     OFProtein,
     atom37_to_frames,
     get_backbone_frames,
+    make_atom14_masks,
+    make_atom14_positions,
     make_pdb_features,
     protein_from_pdb_string,
-    make_atom14_masks,
-    make_atom14_positions
 )
 from lobster.transforms import trim_or_pad
 
@@ -47,7 +47,9 @@ class StructureFeaturizer:
 
         return protein_features
 
-    def _process_structure_features(self, features: T.Dict[str, np.ndarray], seq_len: T.Optional[int] = None):
+    def _process_structure_features(
+        self, features: T.Dict[str, np.ndarray], seq_len: T.Optional[int] = None
+    ):
         """Process feature dtypes and pad to max length for a single sequence."""
         features_requiring_padding = [
             "aatype",
@@ -69,7 +71,7 @@ class StructureFeaturizer:
                 features[k] = torch.from_numpy(v)
 
             # Trim or pad to a fixed length for all per-specific features
-            if (k in features_requiring_padding) and (not seq_len is None):
+            if (k in features_requiring_padding) and (seq_len is not None):
                 features[k] = trim_or_pad(features[k], seq_len)
 
             # 'seq_length' is a tensor with shape equal to the aatype array length,
@@ -83,8 +85,8 @@ class StructureFeaturizer:
         features["mask"] = mask.long()
 
         # Make sure input sequence string is also trimmed
-        if not seq_len is None:
-            features['sequence'] = features['sequence'][:seq_len]
+        if seq_len is not None:
+            features["sequence"] = features["sequence"][:seq_len]
 
         features["aatype"] = features["aatype"].argmax(dim=-1)
         return features
@@ -93,7 +95,7 @@ class StructureFeaturizer:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             features = self._openfold_features_from_pdb(pdb_str, pdb_id)
-        
+
         features = self._process_structure_features(features, seq_len)
         features = atom37_to_frames(features)
         features = get_backbone_frames(features)

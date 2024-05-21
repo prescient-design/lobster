@@ -1,8 +1,8 @@
 import torch
 
+
 def trim_or_pad(tensor: torch.Tensor, pad_to: int, pad_idx: int = 0):
-    """Trim or pad a tensor with shape (L, ...) to a given length.
-    """
+    """Trim or pad a tensor with shape (L, ...) to a given length."""
     L = tensor.shape[0]
     if L >= pad_to:
         # trim, assuming first dimension is the dim to trim
@@ -16,4 +16,3 @@ def trim_or_pad(tensor: torch.Tensor, pad_to: int, pad_idx: int = 0):
         )
         tensor = torch.concat((tensor, padding), dim=0)
     return tensor
-
