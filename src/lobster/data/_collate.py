@@ -99,7 +99,9 @@ class ESMBatchConverterPPI(EsmBatchConverter):
         if self._contact_maps:
             # Flatten the output of Atom3D transforms
             flattened_batch = [
-                (a, b, c) for ((a, b), c) in raw_batch if (a is not None) and (b is not None)
+                (a, b, c)
+                for ((a, b), c) in raw_batch
+                if (a is not None) and (b is not None)
             ]
             batch_size = len(flattened_batch)
             if batch_size == 0:
@@ -114,8 +116,12 @@ class ESMBatchConverterPPI(EsmBatchConverter):
 
         if self.truncation_seq_length:
             # NOTE - This removes eos token for long sequences. Should we re-add eos or keep as is?
-            seq1_tokenized = [seq[: self.truncation_seq_length] for seq in seq1_tokenized]
-            seq2_tokenized = [seq[: self.truncation_seq_length] for seq in seq2_tokenized]
+            seq1_tokenized = [
+                seq[: self.truncation_seq_length] for seq in seq1_tokenized
+            ]
+            seq2_tokenized = [
+                seq[: self.truncation_seq_length] for seq in seq2_tokenized
+            ]
 
         tokens1 = pad_sequence(
             seq1_tokenized, batch_first=True, padding_value=self.tokenizer.pad_token_id

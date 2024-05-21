@@ -3,7 +3,11 @@ import torch
 
 class FarthestFirstTraversal:
     def __init__(
-        self, num_samples: int, k: int = 10, random_seed: int = 0xDEADBEEF, p_norm: int = 2
+        self,
+        num_samples: int,
+        k: int = 10,
+        random_seed: int = 0xDEADBEEF,
+        p_norm: int = 2,
     ):
         """
         Parameters
@@ -45,7 +49,10 @@ class FarthestFirstTraversal:
         inputs = [inputs[i] for i in perm]
         centroids = [inputs[i] for i in range(self._k)]
         while len(centroids) < self._num_samples:
-            dist = [min(self._levenshtein(str1, str2) for str2 in centroids) for str1 in inputs]
+            dist = [
+                min(self._levenshtein(str1, str2) for str2 in centroids)
+                for str1 in inputs
+            ]
             farthest = dist.index(max(dist))
             if inputs[farthest] in centroids:
                 break

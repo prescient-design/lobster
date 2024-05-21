@@ -139,10 +139,14 @@ class HyenaFilter(nn.Module):
             act,
         )
         for _i in range(config.num_inner_mlps):
-            self.implicit_filter.append(nn.Linear(config.filter_order, config.filter_order))
+            self.implicit_filter.append(
+                nn.Linear(config.filter_order, config.filter_order)
+            )
             self.implicit_filter.append(act)
 
-        self.implicit_filter.append(nn.Linear(config.filter_order, config.d_model, bias=False))
+        self.implicit_filter.append(
+            nn.Linear(config.filter_order, config.d_model, bias=False)
+        )
 
         self.modulation = HyenaExponentialModulation(config.d_model)
 
@@ -191,7 +195,11 @@ class HyenaOperator(nn.Module):
         self.out_proj = nn.Linear(self.d_model, self.d_model)
 
         self.short_filter = nn.Conv1d(
-            inner_width, inner_width, config.short_filter_order, padding=2, groups=inner_width
+            inner_width,
+            inner_width,
+            config.short_filter_order,
+            padding=2,
+            groups=inner_width,
         )
         self.filter_fn = HyenaFilter(config)
 
@@ -297,7 +305,9 @@ class HyenaEmbeddings(nn.Module):
             vocab_size += config.pad_vocab_size_multiple - (
                 vocab_size % config.pad_vocab_size_multiple
             )
-        self.word_embeddings = nn.Embedding(vocab_size, config.d_model, padding_idx=padding_idx)
+        self.word_embeddings = nn.Embedding(
+            vocab_size, config.d_model, padding_idx=padding_idx
+        )
 
     def forward(self, input_ids):
         """
@@ -330,7 +340,9 @@ class HyenaLMBackbone(nn.Module):
 
         for layer in self.layers:
             if self.gradient_checkpointing and self.training:
-                hidden_states = self._gradient_checkpointing_func(layer.__call__, hidden_states)
+                hidden_states = self._gradient_checkpointing_func(
+                    layer.__call__, hidden_states
+                )
             else:
                 hidden_states = layer(hidden_states)
             if output_hidden_states:
@@ -349,7 +361,9 @@ class HyenaDNAPreTrainedModel(PreTrainedModel):
     supports_gradient_checkpointing = True
     _no_split_modules = ["HyenaBlock"]
     _skip_keys_device_placement = "past_key_values"
-    _keys_to_ignore_on_load_missing = [r"freq"]  # Shared tensors that safetensors merges
+    _keys_to_ignore_on_load_missing = [
+        r"freq"
+    ]  # Shared tensors that safetensors merges
 
     def _init_weights(self, module, initializer_range=0.02):
         if isinstance(module, nn.Linear):
@@ -368,13 +382,17 @@ class HyenaDNAPreTrainedModel(PreTrainedModel):
             if name in ["out_proj.weight", "fc2.weight"]:
                 # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
                 nn.init.normal_(
-                    p, mean=0.0, std=initializer_range / math.sqrt(2 * self.config.num_layers)
+                    p,
+                    mean=0.0,
+                    std=initializer_range / math.sqrt(2 * self.config.num_layers),
                 )
             # If using GLU activation for now, we scale the std by 2
             elif name in ["output_linear.0.weight"]:
                 # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
                 nn.init.normal_(
-                    p, mean=0.0, std=initializer_range / math.sqrt(2 * self.config.num_layers)
+                    p,
+                    mean=0.0,
+                    std=initializer_range / math.sqrt(2 * self.config.num_layers),
                 )
 
 
@@ -388,16 +406,22 @@ class HyenaDNAModel(HyenaDNAPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def forward(self, input_ids, inputs_embeds=None, output_hidden_states=None, return_dict=None):
+    def forward(
+        self, input_ids, inputs_embeds=None, output_hidden_states=None, return_dict=None
+    ):
         output_hidden_states = (
             output_hidden_states
             if output_hidden_states is not None
             else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         hidden_states, all_hidden_states = self.backbone(
-            input_ids, inputs_embeds=inputs_embeds, output_hidden_states=output_hidden_states
+            input_ids,
+            inputs_embeds=inputs_embeds,
+            output_hidden_states=output_hidden_states,
         )
         if return_dict:
             return BaseModelOutputWithNoAttention(
@@ -451,13 +475,14 @@ class HyenaDNAForCausalLM(HyenaDNAPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutput]:
-
         output_hidden_states = (
             output_hidden_states
             if output_hidden_states is not None
             else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.hyena(
@@ -525,7 +550,9 @@ class HyenaDNAForSequenceClassification(HyenaDNAPreTrainedModel):
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         transformer_outputs = self.hyena(
             input_ids,
@@ -542,7 +569,9 @@ class HyenaDNAForSequenceClassification(HyenaDNAPreTrainedModel):
             batch_size = inputs_embeds.shape[0]
 
         if self.config.pad_token_id is None and batch_size != 1:
-            raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
+            raise ValueError(
+                "Cannot handle batch sizes > 1 if no padding token is defined."
+            )
         if self.config.pad_token_id is None:
             sequence_lengths = -1
         else:
@@ -553,7 +582,9 @@ class HyenaDNAForSequenceClassification(HyenaDNAPreTrainedModel):
             else:
                 sequence_lengths = -1
 
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+        pooled_logits = logits[
+            torch.arange(batch_size, device=logits.device), sequence_lengths
+        ]
 
         loss = None
         if labels is not None:
@@ -576,7 +607,9 @@ class HyenaDNAForSequenceClassification(HyenaDNAPreTrainedModel):
                     loss = loss_fct(pooled_logits, labels)
             elif self.config.problem_type == "single_label_classification":
                 loss_fct = nn.CrossEntropyLoss()
-                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
+                loss = loss_fct(
+                    pooled_logits.view(-1, self.num_labels), labels.view(-1)
+                )
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = nn.BCEWithLogitsLoss()
                 loss = loss_fct(pooled_logits, labels)
