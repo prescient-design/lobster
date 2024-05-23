@@ -2,7 +2,4 @@ mypy
 pytest
 pytest-cov
 pre-commit
-sphinx
-sphinx-rtd-theme
-sphinx-autoapi
 icecream
