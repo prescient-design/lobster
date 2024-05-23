@@ -13,11 +13,15 @@ def instantiate_callbacks(callbacks_cfg: DictConfig) -> list[Callback]:
         return callbacks
 
     if not isinstance(callbacks_cfg, DictConfig):
-        raise TypeError("[instantiate_callbacks] Callbacks config must be a DictConfig!")
+        raise TypeError(
+            "[instantiate_callbacks] Callbacks config must be a DictConfig!"
+        )
 
     for _, cb_conf in callbacks_cfg.items():
         if isinstance(cb_conf, DictConfig) and "_target_" in cb_conf:
-            print(f"[instantiate_callbacks] Instantiating callback <{cb_conf._target_}>")
+            print(
+                f"[instantiate_callbacks] Instantiating callback <{cb_conf._target_}>"
+            )
             callbacks.append(hydra.utils.instantiate(cb_conf))
 
     return callbacks

@@ -22,7 +22,9 @@ def summarize_binary_classification_metrics(preds, labels):
     """
     # Initialize metric objects
     accuracy = Accuracy(task="binary")
-    precision = Precision(task="binary", num_classes=2, average="micro")  # binary classification
+    precision = Precision(
+        task="binary", num_classes=2, average="micro"
+    )  # binary classification
     recall = Recall(task="binary", num_classes=2, average="micro")
     f1_score = F1Score(task="binary", num_classes=2, average="micro")
     auroc = AUROC(task="binary", num_classes=1)  # binary classification

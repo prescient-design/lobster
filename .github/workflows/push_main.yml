@@ -30,7 +30,7 @@ jobs:
       - uses: "actions/setup-python@v5"
         with:
           python-version: ${{ matrix.python }}
-      - run: "python -m pip install --editable '.[test]'"
+      - run: "python -m pip install --editable ."
       - run: "python -m pytest"
       - env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

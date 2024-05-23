@@ -22,7 +22,7 @@ class CachedBertTokenizerFast(BertTokenizerFast):
         pad_token: str = "[PAD]",
         cls_token: str = "[CLS]",
         mask_token: str = "[MASK]",
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             vocab_file=vocab_file,
@@ -33,7 +33,7 @@ class CachedBertTokenizerFast(BertTokenizerFast):
             pad_token=pad_token,
             cls_token=cls_token,
             mask_token=mask_token,
-            **kwargs
+            **kwargs,
         )
         self.padding_idx = self.vocab[pad_token]
         self.masking_idx = self.vocab[mask_token]

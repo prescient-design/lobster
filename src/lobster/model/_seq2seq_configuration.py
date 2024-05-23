@@ -134,7 +134,7 @@ class PMLMConfig(PretrainedConfig):
         key_bias=True,
         value_bias=True,
         intermediate_bias=True,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
 

@@ -40,7 +40,8 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        python -m pip install -r requirements.txt
+        python -m pip install -r requirements.in
+        python -m pip install -r requirements-dev.in
         python -m pip install .
         python -m pip list
 
