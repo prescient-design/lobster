@@ -1,0 +1,9 @@
+model_checkpoint:
+  _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  dirpath: null
+  filename: null
+  monitor: null
+  save_top_k: 3
+  mode: min
+  verbose: true
+  save_last: true

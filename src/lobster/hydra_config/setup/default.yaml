@@ -1,0 +1,3 @@
+defaults:
+  - torch: default
+  - seed: default

@@ -1,0 +1,16 @@
+defaults:
+  - model_checkpoint.yaml
+  # - early_stopping.yaml  # not needed
+  - lr_monitor.yaml
+  - progress_bar.yaml
+  # - naturalness.yaml  # TODO: too slow
+  - _self_
+
+
+model_checkpoint:
+  dirpath: ${paths.output_dir}
+  filename: "{epoch}-{step}-{val_loss:.4f}"
+  monitor: val_loss
+
+early_stopping:
+  monitor: val_loss

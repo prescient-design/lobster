@@ -1,0 +1,13 @@
+_target_: lobster.data.NegLogDataModule
+
+root: null
+batch_size: 64
+num_workers: 1
+lengths: [0.7,0.2,0.1]
+seed: 0
+
+collate_fn:
+  _target_: lobster.data._collate.ESMBatchConverterPPI
+  truncation_seq_length: 1024
+  contact_maps: False
+  tokenizer_dir: pmlm_tokenizer

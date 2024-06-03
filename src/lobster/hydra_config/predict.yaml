@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+
+
+checkpoint: ???
+model_type: LobsterPMLM
+wandb_project: lobster-predict
+wandb_entity: prescient-design

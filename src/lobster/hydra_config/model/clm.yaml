@@ -1,0 +1,11 @@
+_target_: lobster.model.LobsterPCLM
+
+lr: 1e-3
+model_name: CLM_mini
+ckpt_path: null
+num_warmup_steps: 100
+tokenizer_dir: pmlm_tokenizer_32
+max_length: 512
+num_training_steps: ${trainer.max_steps}
+num_key_value_heads: null
+attention_bias: false

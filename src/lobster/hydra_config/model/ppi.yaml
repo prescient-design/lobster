@@ -1,0 +1,10 @@
+_target_: lobster.model._ppi_clf.PPIClassifier
+
+model_name: null
+checkpoint: null
+ffd_dim: 768
+lr: 1e-3
+beta1: 0.9
+beta2: 0.98
+eps: 1e-12
+seed: 0

@@ -1,0 +1,3 @@
+progress_bar:
+  _target_: lightning.pytorch.callbacks.TQDMProgressBar
+  refresh_rate: 100  # in num of batches

@@ -1,0 +1,9 @@
+defaults:
+  - _self_
+
+_target_: prescient.lightning.data_modules.MeltomeLightningDataModule
+
+root: "."
+batch_size: 32
+num_workers: 1
+split: sampled

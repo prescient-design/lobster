@@ -1,0 +1,10 @@
+defaults:
+  - _self_
+  - data: fasta.yaml
+  - model: mlm.yaml
+  - experiment: null
+
+checkpoint: null # was mandatory before ???
+model_type: LobsterPMLM
+wandb_project: lobster-embedding
+wandb_entity: prescient-design

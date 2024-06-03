@@ -1,0 +1,14 @@
+_target_: lightning.pytorch.Trainer
+accelerator: gpu
+devices: 1
+num_nodes: 1
+accumulate_grad_batches: 1
+gradient_clip_val: 0.0
+gradient_clip_algorithm: norm
+precision: 32
+max_steps: 100_000_000
+# check_val_every_n_epoch: 1
+val_check_interval: 0.25
+limit_val_batches: 10
+num_sanity_val_steps: 2
+max_time: null

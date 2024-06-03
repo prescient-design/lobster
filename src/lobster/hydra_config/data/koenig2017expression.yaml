@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+
+_target_: prescient.lightning.data_modules.Koenig2017ExpressionLightningDataModule
+
+root: "."
+batch_size: 32
+num_workers: 1

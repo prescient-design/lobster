@@ -1,0 +1,12 @@
+defaults:
+  - _self_
+
+_target_: lobster.data.CynoPKClearanceLightningDataModule
+
+root: "."
+batch_size: 32
+num_workers: 1
+target_transform_fn:
+  _target_: lobster.transforms.BinarizeTransform
+  threshold: 5.0
+  

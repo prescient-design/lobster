@@ -1,0 +1,10 @@
+_target_: lobster.model.LobsterPMLM
+
+lr: 1e-3
+model_name: esm2_t6_8M_UR50D
+mask_percentage: 0.25
+ckpt_path: null
+num_warmup_steps: 10_000
+tokenizer_dir: pmlm_tokenizer
+max_length: 512
+num_training_steps: ${trainer.max_steps}

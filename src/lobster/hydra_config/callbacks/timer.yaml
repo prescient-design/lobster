@@ -1,0 +1,3 @@
+timer:
+  _target_: lightning.pytorch.callbacks.Timer
+  duration: "00:24:00:00"  # stop training after 24 hours

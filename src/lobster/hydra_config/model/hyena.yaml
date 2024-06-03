@@ -1,0 +1,9 @@
+_target_: lobster.model.hyena.LobsterHyenaCLM
+
+lr: 6e-4
+model_name: hyena_mini
+ckpt_path: null
+num_warmup_steps: 1_000
+tokenizer_dir: hyena_tokenizer
+max_length: 1024
+num_training_steps: ${trainer.max_steps}

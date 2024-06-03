@@ -1,0 +1,11 @@
+defaults:
+  - base
+  - early_stopping.yaml
+  - _self_
+
+early_stopping:
+  monitor: val/loss
+  patience: 10
+
+model_checkpoint:
+  monitor: val/loss
