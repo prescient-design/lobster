@@ -12,6 +12,7 @@
 .tox
 .vs
 .vscode
+.DS_Store
 /dist
 __pycache__
 _skbuild
