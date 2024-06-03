@@ -119,13 +119,3 @@ pre-commit install
 ```bash
 python -m pytest -v --cov-report term-missing --cov=./lobster ./tests
 ```
-
-### Build and browse docs locally
-
-```bash
-make -C docs html
-cd docs/build/html
-python -m http.server
-```
-
-Then open `http://localhost:8000` in your browser.
