@@ -66,7 +66,7 @@ causal_language_model = LobsterPCLM.load_from_checkpoint(<path to ckpt>)
 ```
 3D, cDNA, and dynamic models use the same classes.
 
-NOTE: Pre-trained model checkpoints will be included in future releases!
+NOTE: Pre-trained model checkpoints *may* be included in future releases!
 
 **Models**
 * LobsterPMLM: masked language model (BERT-style encoder-only architecture)
