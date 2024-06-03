@@ -1,7 +1,7 @@
 _target_: lobster.data.ContactMapDataModule
 
 remove_nulls: False
-null_path: s3://prescient-data-dev/sandbox/jorent/data/atom3d_ppi_non_null_list.pkl # pre-saved non-null list
+null_path: null
 collate_fn:
   _target_: lobster.data._collate.ESMBatchConverterPPI
   contact_maps: True

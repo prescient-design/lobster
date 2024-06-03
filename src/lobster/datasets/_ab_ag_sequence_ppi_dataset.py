@@ -5,7 +5,7 @@ import pandas as pd
 from beignet.transforms import Transform
 from torch.utils.data import Dataset
 
-SOURCE = "s3://prescient-data-dev/sandbox/freyn6/designs/twist-library/CLF_DCS_GMM_r11_all_scores_contacts_ag_seq.csv"
+SOURCE = ""
 
 
 class AbAgSequencePPIDataset(Dataset):
@@ -19,15 +19,6 @@ class AbAgSequencePPIDataset(Dataset):
         sequence2_cols: tuple = ("antigen_sequence",),
         label_col: Optional[str] = None,
     ) -> None:
-        # self._source = "s3://prescient-data-dev/sandbox/freyn6/designs/twist-library/CLF_DCS_GMM_r11_all_scores_contacts_ag_seq.csv"
-        # self._root = Path(root)
-        # self._name = "CLF_DCS_GMM_r11_all_scores_contacts_ag_seq"
-        # if download:
-        #     io.download(
-        #         source=self._source,
-        #         destination=self._root / self._name,
-        #         filename=f"{self._name}.csv",
-        #     )
         if data is not None:
             self._data = data
         elif source is not None:

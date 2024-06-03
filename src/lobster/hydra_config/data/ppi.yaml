@@ -1,6 +1,6 @@
 _target_: lobster.data.NegLogDataModule
 
-root: s3://prescient-pcluster-data/lobster/datasets/
+root: null
 batch_size: 64
 num_workers: 1
 lengths: [0.7,0.2,0.1]

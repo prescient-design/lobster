@@ -13,10 +13,7 @@ if _PRESCIENT_AVAILABLE:
     import prescient.metrics.functional as pmf
     import prescient.transforms.functional as ptf
 
-S3_PATH_TO_GERMLINES = (
-    "s3://prescient-data-dev/sandbox/wanga84/preferred_absolve_germlines_aho.csv"
-)
-S3_PATH_TO_PKL_DF = "s3://prescient-data-dev/sandbox/wanga84/humanization/preferred_absolve_germlines_aho_tokenized.pkl"
+S3_PATH_TO_GERMLINES = ""
 
 
 def substitute_chars(str1, str2, mask):

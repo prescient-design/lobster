@@ -7,7 +7,7 @@ from lobster.model import GeminiModel
 class TestGemini:
     def test_forward(self):
         df = pd.read_csv(
-            "s3://prescient-data-dev/sandbox/liny82/C1/262_cosmo_clean.csv"
+            ""
         )
         dm = GeminiDataFrameLightningDataModule(data=df, batch_size=4)
         dm.setup()

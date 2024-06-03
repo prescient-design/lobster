@@ -47,7 +47,7 @@ class TestLobsterPMLM:
             from prescient_plm.model import PrescientPMLM
 
             model = PrescientPMLM.load_from_checkpoint(
-                "s3://prescient-pcluster-data/freyn6/models/pmlm/prod/2023-10-30T15-23-25.795635/last.ckpt"
+                ""
             )
 
             assert model.config.hidden_size == 384

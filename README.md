@@ -96,15 +96,6 @@ model.naturalness(sequences)
 model.likelihood(sequences)
 ```
 
-## Example Jupyter notebooks
-
-### Protein structure prediction
-
-see [this notebook](notebooks/01-lobster-fold.ipynb) for an example on using LobsterFold to predict structure from sequence.
-
-### Structure-aware sequence embedding with 3D-PPLM
-see [this notebook](notebooks/02-3d-lobster.ipynb) for an example on using the [FoldseekTransform](src/lobster/transforms/_foldseek_transforms.py) and 3D-PPLM to embed a monomer or complex.
-
 ## Training from scratch
 The entrypoint `lobster_train` is the main driver for training and accepts parameters using Hydra syntax. The available parameters for configuration can be found by running `lobster_train --help` or by looking in the src/lobster/hydra_config directory
 
