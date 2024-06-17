@@ -8,7 +8,7 @@ from ._dataframe_dataset_in_memory import (  # nopycln: import
     DataFrameDatasetInMemory,
     DataFrameLightningDataModule,
 )
-from ._farthest_first_traversal import FarthestFirstTraversal
+from ._farthest_first_traversal import FarthestFirstTraversal, ranked_fft
 from ._fasta_datamodule import FastaLightningDataModule  # nopycln: import
 from ._gemini_data import (  # nopycln: import
     GeminiDataFrameDatasetInMemory,
