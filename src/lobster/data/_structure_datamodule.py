@@ -25,7 +25,6 @@ class FastaStructureDataset(SizedSequenceDataset):
     Must implement how the structure features are to be loaded.
 
     Modified from github.com/facebookresearch/fairseq/blob/main/fairseq/data/fasta_dataset.py
-    and prescient.datasets._fasta_dataset
     """
 
     def __init__(

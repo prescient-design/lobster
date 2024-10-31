@@ -1,6 +1,6 @@
 from typing import List
 
-from beignet.transforms import Lambda
+from ._lambda import Lambda
 
 
 class BinarizeTransform(Lambda):
@@ -10,6 +10,7 @@ class BinarizeTransform(Lambda):
         ----------
         threshold : float
             The threshold value for binarization.
+
         """
         super().__init__(lambda x: 1 if x > threshold else 0, float)
 

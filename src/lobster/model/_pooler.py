@@ -28,9 +28,7 @@ class LMMeanPooler(nn.Module):
         # self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         # self.activation = nn.Tanh()
 
-    def forward(
-        self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None) -> torch.Tensor:
         if input_mask is not None:
             input_mask = input_mask.unsqueeze(-1)
             out = (hidden_states * input_mask).sum(dim=1)
@@ -46,22 +44,23 @@ class LMMeanPooler(nn.Module):
 
 class LMWeightedMeanPooler(nn.Module):
     def __init__(self, config):
-        """Weighted mean pooling.
+        """
+        Weighted mean pooling.
 
         Mostly for autoregressive, decoder-only models; token embeddings are weighted
         by their position in the sequence so that later tokens have higher weights.
 
         Args:
+        ----
             config (Config): Configuration object.
+
         """
         super().__init__()
 
         # self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         # self.activation = nn.Tanh()
 
-    def forward(
-        self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None) -> torch.Tensor:
         B, L, H = hidden_states.shape
 
         weights = torch.tensor([i / L for i in range(1, L + 1)]).view(1, L, 1)
@@ -92,9 +91,7 @@ class LMAttentionPool1D(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.ReLU()
 
-    def forward(
-        self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None) -> torch.Tensor:
         if input_mask is not None:
             input_mask = input_mask.unsqueeze(-1)
         attention_weighted_mean = self.attention1d(hidden_states, input_mask=input_mask)
@@ -116,7 +113,5 @@ class CrossAttentionPooler(nn.Module):
     def __init__(self, config):
         super().__init__()
 
-    def forward(
-        self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None) -> torch.Tensor:
         pass

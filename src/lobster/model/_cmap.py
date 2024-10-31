@@ -27,7 +27,6 @@ class ContactPredictionHead(pl.LightningModule):
         """
         Contact Prediction Head, following the same format as ESM2
         """
-
         super().__init__()
         self._beta1 = beta1
         self._beta2 = beta2
@@ -56,23 +55,18 @@ class ContactPredictionHead(pl.LightningModule):
         self.model_name = model_name
         self.checkpoint = checkpoint
         self.base_model = base_model
-        for (
-            _name,
-            param,
-        ) in self.base_model.named_parameters():  # freeze pre-trained encoder
+        for _name, param in self.base_model.named_parameters():  # freeze pre-trained encoder
             param.requires_grad = False
 
         if model_name in ESM_MODEL_NAMES:
             hidden_size = self.base_model.model.embed_dim
             self.contact_head = LMBaseContactPredictionHead(
-                in_features=self.base_model.model.num_layers
-                * self.base_model.model.attention_heads
+                in_features=self.base_model.model.num_layers * self.base_model.model.attention_heads
             )
         else:
             hidden_size = self.base_model.model.config.hidden_size
             self.contact_head = LMBaseContactPredictionHead(
-                in_features=self.base_model.config.num_hidden_layers
-                * self.base_model.config.num_attention_heads
+                in_features=self.base_model.config.num_hidden_layers * self.base_model.config.num_attention_heads
             )
 
         self.hidden_size = hidden_size
@@ -90,7 +84,9 @@ class ContactPredictionHead(pl.LightningModule):
         self.val_recall = Recall(task="binary")
         self.test_recall = Recall(task="binary")
 
-        self.loss = BCELoss()  # output of predict_contacts is after sigmoid, so using BCELoss instead of BCEWithLogitsLoss
+        self.loss = (
+            BCELoss()
+        )  # output of predict_contacts is after sigmoid, so using BCELoss instead of BCEWithLogitsLoss
 
         self.save_hyperparameters(logger=False)
 
@@ -124,11 +120,7 @@ class ContactPredictionHead(pl.LightningModule):
             print(f"IndexError in training_step {batch_idx}, setting precision to 0.0")
             precision = torch.tensor(0.0)
             recall = torch.tensor(0.0)
-        loss_dict = {
-            "train/precision": precision,
-            "train/recall": recall,
-            "train/bce": loss,
-        }
+        loss_dict = {"train/precision": precision, "train/recall": recall, "train/bce": loss}
 
         self.log("train/loss", loss, prog_bar=True, on_step=True)
         self.log_dict(loss_dict)
@@ -142,16 +134,10 @@ class ContactPredictionHead(pl.LightningModule):
                 precision = self.val_precision(preds, targets)
                 recall = self.val_recall(preds, targets)
             except IndexError:
-                print(
-                    f"IndexError in validation_step {batch_idx}, setting precision to 0.0"
-                )
+                print(f"IndexError in validation_step {batch_idx}, setting precision to 0.0")
                 precision = torch.tensor(0.0)
                 recall = torch.tensor(0.0)
-            loss_dict = {
-                "val/precision": precision,
-                "val/recall": recall,
-                "val/bce": loss,
-            }
+            loss_dict = {"val/precision": precision, "val/recall": recall, "val/bce": loss}
 
             self.log("val/loss", loss, prog_bar=True, on_step=False, on_epoch=True)
             self.log_dict(loss_dict)
@@ -170,23 +156,14 @@ class ContactPredictionHead(pl.LightningModule):
                 precision = torch.tensor(0.0)
                 recall = torch.tensor(0.0)
 
-            loss_dict = {
-                "test/precision": precision,
-                "test/recall": recall,
-                "test/bce": loss,
-            }
+            loss_dict = {"test/precision": precision, "test/recall": recall, "test/bce": loss}
 
             self.log("test/loss", loss, prog_bar=True, on_step=False, on_epoch=True)
             self.log_dict(loss_dict)
             return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.parameters(),
-            lr=self._lr,
-            betas=(self._beta1, self._beta2),
-            eps=self._eps,
-        )
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps)
         # scheduler = StepLR(optimizer, step_size=1, gamma=0.9)
         # return [optimizer], [scheduler]
         return optimizer
@@ -203,10 +180,7 @@ class ContactPredictionHead(pl.LightningModule):
         }
         """
         tokens1, tokens2 = batch["tokens1"], batch["tokens2"]
-        attention_mask1, attention_mask2 = (
-            batch["attention_mask1"],
-            batch["attention_mask2"],
-        )
+        attention_mask1, attention_mask2 = batch["attention_mask1"], batch["attention_mask2"]
         contact_map = batch["contact_map"]
 
         # Concat sequences if traditional model, have two inputs if relative rep
@@ -218,9 +192,7 @@ class ContactPredictionHead(pl.LightningModule):
         if self.model_name in PMLM_MODEL_NAMES:
             # Assume one set of positional encodings for the concatenated token
             inpt = {"input_ids": tokens_cat, "attention_mask": attention_mask_all}
-            attns = self.base_model.model(
-                **inpt, return_dict=True, output_attentions=True
-            ).attentions
+            attns = self.base_model.model(**inpt, return_dict=True, output_attentions=True).attentions
 
         if self.model_name in ESM_MODEL_NAMES:
             # output = self.base_model.model(tokens_cat, need_head_weights=True) # TODO - test this
@@ -230,14 +202,10 @@ class ContactPredictionHead(pl.LightningModule):
             # )
             # return pred_map, 'pred map'
             # Alternatively could do
-            pred_map = self.base_model.model(
-                tokens_cat, need_head_weights=True, return_contacts=True
-            )["contacts"]
+            pred_map = self.base_model.model(tokens_cat, need_head_weights=True, return_contacts=True)["contacts"]
 
         else:
-            pred_map = self.predict_contacts(
-                tokens=tokens_cat, attentions=attns, attention_mask=attention_mask_all
-            )
+            pred_map = self.predict_contacts(tokens=tokens_cat, attentions=attns, attention_mask=attention_mask_all)
 
         # TODO - handle different batch sizes
         # Note the next part is designed for batch_size = 1

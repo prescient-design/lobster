@@ -2,7 +2,7 @@
 from typing import Callable, Optional, Union
 
 import pandas as pd
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from torch.utils.data import Dataset
 
 SOURCE = ""

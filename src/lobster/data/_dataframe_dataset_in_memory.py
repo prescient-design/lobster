@@ -2,7 +2,7 @@ import random
 from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from lightning import LightningDataModule
 from pandas import DataFrame
 from torch import Generator, Tensor

@@ -61,6 +61,7 @@ class PMLMConfig(PretrainedConfig):
 
 
     Args:
+    ----
         vocab_size (`int`, *optional*):
             Vocabulary size of the model. Defines the number of different tokens that can be represented by the
             `inputs_ids`.
@@ -106,6 +107,7 @@ class PMLMConfig(PretrainedConfig):
             Whether to apply layer normalization after embeddings but before the main stem of the network.
         token_dropout (`bool`, defaults to `False`):
             When this is enabled, masked tokens are treated as if they had been dropped out by input dropout.
+
     """
 
     model_type = "pmlm"

@@ -1,6 +1,7 @@
 """Adapted from https://github.com/huggingface/transformers/tree/v4.23.1/src/transformers/models"""
+
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
@@ -13,9 +14,6 @@ from transformers.file_utils import (
     add_start_docstrings_to_model_forward,
 )
 from transformers.modeling_outputs import (
-    BaseModelOutputWithPastAndCrossAttentions,
-    BaseModelOutputWithPoolingAndCrossAttentions,
-    MaskedLMOutput,
     SequenceClassifierOutput,
     TokenClassifierOutput,
 )
@@ -29,6 +27,11 @@ from transformers.utils import logging
 
 from .._mlm_configuration import PMLMConfig
 from ._lm_base_heads import LMBaseContactPredictionHead
+from ._utils import (
+    BaseModelOutputWithPastAndCrossAttentions,
+    BaseModelOutputWithPoolingAndCrossAttentions,
+    MaskedLMOutput,
+)
 
 logger = logging.get_logger(__name__)
 
@@ -46,7 +49,13 @@ def apply_rotary_pos_emb(x, cos, sin):
     cos = cos[:, :, : x.shape[-2], :]
     sin = sin[:, :, : x.shape[-2], :]
 
-    return (x * cos) + (rotate_half(x) * sin)
+    cos_with_grad = cos.clone().requires_grad_(True)
+    sin_with_grad = sin.clone().requires_grad_(True)
+    x_with_grad = x.clone().requires_grad_(True)
+
+    pos_emb = (x_with_grad * cos_with_grad) + (rotate_half(x_with_grad) * sin_with_grad)
+
+    return pos_emb
 
 
 def gelu(x):
@@ -79,9 +88,7 @@ class RotaryEmbedding(torch.nn.Module):
         # or if we're on a new device (possibly due to tracing for instance)
         if seq_len != self._seq_len_cached or self._cos_cached.device != x.device:
             self._seq_len_cached = seq_len
-            t = torch.arange(x.shape[seq_dimension], device=x.device).type_as(
-                self.inv_freq
-            )
+            t = torch.arange(x.shape[seq_dimension], device=x.device).type_as(self.inv_freq)
             freqs = torch.outer(t, self.inv_freq)
             emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
 
@@ -90,12 +97,8 @@ class RotaryEmbedding(torch.nn.Module):
 
         return self._cos_cached, self._sin_cached
 
-    def forward(
-        self, q: torch.Tensor, k: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        self._cos_cached, self._sin_cached = self._update_cos_sin_tables(
-            k, seq_dimension=-2
-        )
+    def forward(self, q: torch.Tensor, k: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        self._cos_cached, self._sin_cached = self._update_cos_sin_tables(k, seq_dimension=-2)
 
         return (
             apply_rotary_pos_emb(q, self._cos_cached, self._sin_cached),
@@ -110,25 +113,17 @@ class LMBaseEmbeddings(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.word_embeddings = nn.Embedding(
-            config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id
-        )
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
 
         if config.emb_layer_norm_before:
-            self.layer_norm = nn.LayerNorm(
-                config.hidden_size, eps=config.layer_norm_eps
-            )
+            self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         else:
             self.layer_norm = None
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
-        self.position_embedding_type = getattr(
-            config, "position_embedding_type", "absolute"
-        )
+        self.position_embedding_type = getattr(config, "position_embedding_type", "absolute")
 
-        self.register_buffer(
-            "position_ids", torch.arange(config.max_position_embeddings).expand((1, -1))
-        )
+        self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
 
         self.padding_idx = config.pad_token_id
         self.position_embeddings = nn.Embedding(
@@ -150,13 +145,9 @@ class LMBaseEmbeddings(nn.Module):
         if position_ids is None:
             if input_ids is not None:
                 # Create the position ids from the input token ids. Any padded tokens remain padded.
-                position_ids = create_position_ids_from_input_ids(
-                    input_ids, self.padding_idx, past_key_values_length
-                )
+                position_ids = create_position_ids_from_input_ids(input_ids, self.padding_idx, past_key_values_length)
             else:
-                position_ids = self.create_position_ids_from_inputs_embeds(
-                    inputs_embeds
-                )
+                position_ids = self.create_position_ids_from_inputs_embeds(inputs_embeds)
 
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
@@ -166,21 +157,11 @@ class LMBaseEmbeddings(nn.Module):
         embeddings = inputs_embeds
 
         if self.token_dropout:
-            embeddings.masked_fill_(
-                (input_ids == self.mask_token_id).unsqueeze(-1), 0.0
-            )
-            mask_ratio_train = (
-                0.15 * 0.8
-            )  # Hardcoded as the ratio used in all LMBase model training runs
+            embeddings.masked_fill_((input_ids == self.mask_token_id).unsqueeze(-1), 0.0)
+            mask_ratio_train = 0.15 * 0.8  # Hardcoded as the ratio used in all LMBase model training runs
             src_lengths = attention_mask.sum(-1)
-            mask_ratio_observed = (input_ids == self.mask_token_id).sum(
-                -1
-            ).float() / src_lengths
-            embeddings = (
-                embeddings
-                * (1 - mask_ratio_train)
-                / (1 - mask_ratio_observed)[:, None, None]
-            )
+            mask_ratio_observed = (input_ids == self.mask_token_id).sum(-1).float() / src_lengths
+            embeddings = embeddings * (1 - mask_ratio_train) / (1 - mask_ratio_observed)[:, None, None]
 
         if self.position_embedding_type == "absolute":
             position_embeddings = self.position_embeddings(position_ids)
@@ -198,9 +179,11 @@ class LMBaseEmbeddings(nn.Module):
         We are provided embeddings directly. We cannot infer which are padded so just generate sequential position ids.
 
         Args:
+        ----
             inputs_embeds: torch.Tensor
 
         Returns: torch.Tensor
+
         """
         input_shape = inputs_embeds.size()[:-1]
         sequence_length = input_shape[1]
@@ -217,43 +200,26 @@ class LMBaseEmbeddings(nn.Module):
 class LMBaseSelfAttention(nn.Module):
     def __init__(self, config, position_embedding_type=None):
         super().__init__()
-        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(
-            config, "embedding_size"
-        ):
+        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
                 f"heads ({config.num_attention_heads})"
             )
 
         self.num_attention_heads = config.num_attention_heads
-        self.attention_head_size = int(
-            config.hidden_size / config.num_attention_heads
-        )  # must be divisible
+        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)  # must be divisible
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = nn.Linear(
-            config.hidden_size, self.all_head_size, bias=config.query_bias
-        )
-        self.key = nn.Linear(
-            config.hidden_size, self.all_head_size, bias=config.key_bias
-        )
-        self.value = nn.Linear(
-            config.hidden_size, self.all_head_size, bias=config.value_bias
-        )
+        self.query = nn.Linear(config.hidden_size, self.all_head_size, bias=config.query_bias)
+        self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.key_bias)
+        self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.value_bias)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
-        self.position_embedding_type = position_embedding_type or getattr(
-            config, "position_embedding_type", "absolute"
-        )
+        self.position_embedding_type = position_embedding_type or getattr(config, "position_embedding_type", "absolute")
         self.rotary_embeddings = None
-        if (
-            self.position_embedding_type == "relative_key"
-            or self.position_embedding_type == "relative_key_query"
-        ):
+        if self.position_embedding_type == "relative_key" or self.position_embedding_type == "relative_key_query":
             self.max_position_embeddings = config.max_position_embeddings
-            self.distance_embedding = nn.Embedding(
-                2 * config.max_position_embeddings - 1, self.attention_head_size
-            )
+            self.distance_embedding = nn.Embedding(2 * config.max_position_embeddings - 1, self.attention_head_size)
         elif self.position_embedding_type == "rotary":
             self.rotary_embeddings = RotaryEmbedding(dim=self.attention_head_size)
 
@@ -322,42 +288,21 @@ class LMBaseSelfAttention(nn.Module):
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
 
-        if (
-            self.position_embedding_type == "relative_key"
-            or self.position_embedding_type == "relative_key_query"
-        ):
+        if self.position_embedding_type == "relative_key" or self.position_embedding_type == "relative_key_query":
             seq_length = hidden_states.size()[1]
-            position_ids_l = torch.arange(
-                seq_length, dtype=torch.long, device=hidden_states.device
-            ).view(-1, 1)
-            position_ids_r = torch.arange(
-                seq_length, dtype=torch.long, device=hidden_states.device
-            ).view(1, -1)
+            position_ids_l = torch.arange(seq_length, dtype=torch.long, device=hidden_states.device).view(-1, 1)
+            position_ids_r = torch.arange(seq_length, dtype=torch.long, device=hidden_states.device).view(1, -1)
             distance = position_ids_l - position_ids_r
-            positional_embedding = self.distance_embedding(
-                distance + self.max_position_embeddings - 1
-            )
-            positional_embedding = positional_embedding.to(
-                dtype=query_layer.dtype
-            )  # fp16 compatibility
+            positional_embedding = self.distance_embedding(distance + self.max_position_embeddings - 1)
+            positional_embedding = positional_embedding.to(dtype=query_layer.dtype)  # fp16 compatibility
 
             if self.position_embedding_type == "relative_key":
-                relative_position_scores = torch.einsum(
-                    "bhld,lrd->bhlr", query_layer, positional_embedding
-                )
+                relative_position_scores = torch.einsum("bhld,lrd->bhlr", query_layer, positional_embedding)
                 attention_scores = attention_scores + relative_position_scores
             elif self.position_embedding_type == "relative_key_query":
-                relative_position_scores_query = torch.einsum(
-                    "bhld,lrd->bhlr", query_layer, positional_embedding
-                )
-                relative_position_scores_key = torch.einsum(
-                    "bhrd,lrd->bhlr", key_layer, positional_embedding
-                )
-                attention_scores = (
-                    attention_scores
-                    + relative_position_scores_query
-                    + relative_position_scores_key
-                )
+                relative_position_scores_query = torch.einsum("bhld,lrd->bhlr", query_layer, positional_embedding)
+                relative_position_scores_key = torch.einsum("bhrd,lrd->bhlr", key_layer, positional_embedding)
+                attention_scores = attention_scores + relative_position_scores_query + relative_position_scores_key
 
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in LMBaseModel forward() function)
@@ -380,9 +325,7 @@ class LMBaseSelfAttention(nn.Module):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(new_context_layer_shape)
 
-        outputs = (
-            (context_layer, attention_probs) if output_attentions else (context_layer,)
-        )
+        outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
 
         if self.is_decoder:
             outputs = outputs + (past_key_value,)
@@ -428,9 +371,7 @@ class LMBaseAttention(nn.Module):
 
         # Update hyper params and store pruned heads
         self.self.num_attention_heads = self.self.num_attention_heads - len(heads)
-        self.self.all_head_size = (
-            self.self.attention_head_size * self.self.num_attention_heads
-        )
+        self.self.all_head_size = self.self.attention_head_size * self.self.num_attention_heads
         self.pruned_heads = self.pruned_heads.union(heads)
 
     def forward(
@@ -454,9 +395,7 @@ class LMBaseAttention(nn.Module):
             output_attentions,
         )
         attention_output = self.output(self_outputs[0], hidden_states)
-        outputs = (attention_output,) + self_outputs[
-            1:
-        ]  # add attentions if we output them
+        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
 
 
@@ -464,9 +403,7 @@ class LMBaseAttention(nn.Module):
 class LMBaseIntermediate(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.dense = nn.Linear(
-            config.hidden_size, config.intermediate_size, bias=config.intermediate_bias
-        )
+        self.dense = nn.Linear(config.hidden_size, config.intermediate_size, bias=config.intermediate_bias)
         if isinstance(config.hidden_act, str):
             self.intermediate_act_fn = ACT2FN[config.hidden_act]
         else:
@@ -501,9 +438,7 @@ class LMBaseLayer(nn.Module):
         self.add_cross_attention = config.add_cross_attention
         if self.add_cross_attention:
             if not self.is_decoder:
-                raise RuntimeError(
-                    f"{self} should be used as a decoder model if cross attention is added"
-                )
+                raise RuntimeError(f"{self} should be used as a decoder model if cross attention is added")
             self.crossattention = LMBaseAttention(config)
         self.intermediate = LMBaseIntermediate(config)
         self.output = LMBaseOutput(config)
@@ -520,9 +455,7 @@ class LMBaseLayer(nn.Module):
         output_attentions=False,
     ):
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
-        self_attn_past_key_value = (
-            past_key_value[:2] if past_key_value is not None else None
-        )
+        self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
         self_attention_outputs = self.attention(
             hidden_states,
             attention_mask,
@@ -537,9 +470,7 @@ class LMBaseLayer(nn.Module):
             outputs = self_attention_outputs[1:-1]
             present_key_value = self_attention_outputs[-1]
         else:
-            outputs = self_attention_outputs[
-                1:
-            ]  # add self attentions if we output attention weights
+            outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
 
         cross_attn_present_key_value = None
         if self.is_decoder and encoder_hidden_states is not None:
@@ -550,9 +481,7 @@ class LMBaseLayer(nn.Module):
                 )
 
             # cross_attn cached key/values tuple is at positions 3,4 of past_key_value tuple
-            cross_attn_past_key_value = (
-                past_key_value[-2:] if past_key_value is not None else None
-            )
+            cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
             cross_attention_outputs = self.crossattention(
                 attention_output,
                 attention_mask,
@@ -563,9 +492,7 @@ class LMBaseLayer(nn.Module):
                 output_attentions,
             )
             attention_output = cross_attention_outputs[0]
-            outputs = (
-                outputs + cross_attention_outputs[1:-1]
-            )  # add cross attentions if we output attention weights
+            outputs = outputs + cross_attention_outputs[1:-1]  # add cross attentions if we output attention weights
 
             # add cross-attn cache to positions 3,4 of present_key_value tuple
             cross_attn_present_key_value = cross_attention_outputs[-1]
@@ -596,12 +523,8 @@ class LMBaseEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.layer = nn.ModuleList(
-            [LMBaseLayer(config) for _ in range(config.num_hidden_layers)]
-        )
-        self.emb_layer_norm_after = nn.LayerNorm(
-            config.hidden_size, eps=config.layer_norm_eps
-        )
+        self.layer = nn.ModuleList([LMBaseLayer(config) for _ in range(config.num_hidden_layers)])
+        self.emb_layer_norm_after = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.gradient_checkpointing = False
 
     def _create_custom_forward(self, past_key_value, output_attentions):
@@ -629,9 +552,7 @@ class LMBaseEncoder(nn.Module):
     ):
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
-        all_cross_attentions = (
-            () if output_attentions and self.config.add_cross_attention else None
-        )
+        all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
 
         next_decoder_cache = () if use_cache else None
         for i, layer_module in enumerate(self.layer):
@@ -650,9 +571,7 @@ class LMBaseEncoder(nn.Module):
                     use_cache = False
 
                 layer_outputs = torch.utils.checkpoint.checkpoint(
-                    self._create_custom_forward(
-                        layer_module, past_key_value, output_attentions
-                    ),
+                    self._create_custom_forward(layer_module, past_key_value, output_attentions),
                     hidden_states,
                     attention_mask,
                     layer_head_mask,
@@ -705,6 +624,161 @@ class LMBaseEncoder(nn.Module):
         )
 
 
+class LMBaseEncoderWithConcepts(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.layer = nn.ModuleList([LMBaseLayer(config) for _ in range(config.num_hidden_layers)])
+        self.emb_layer_norm_after = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.gradient_checkpointing = False
+
+    def _create_custom_forward(self, past_key_value, output_attentions):
+        def custom_forward(*inputs, past_key_value, output_attentions):
+            return self(
+                *inputs,
+                past_key_value,
+                output_attentions,
+            )
+
+        return custom_forward
+
+    def forward(
+        self,
+        hidden_states,
+        concepts=None,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        past_key_values=None,
+        use_cache=None,
+        output_attentions=False,
+        output_hidden_states=False,
+        return_dict=True,
+        classifier=None,
+        cbm=None,
+        inference=False,
+        intervene=None,
+    ):
+        cbm_emd = None
+        unk_emd = None
+        tok_concepts = None
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attentions = () if output_attentions else None
+        all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
+
+        if self.config.has_conditioning and (
+            self.config.conditioning_type == "pre_encoder"
+            or self.config.conditioning_type == "pre_encoder_with_classifier"
+        ):
+            hidden_states[:, :, -self.config.n_concepts_size :] = concepts
+        next_decoder_cache = () if use_cache else None
+        for i, layer_module in enumerate(self.layer):
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            layer_head_mask = head_mask[i] if head_mask is not None else None
+            past_key_value = past_key_values[i] if past_key_values is not None else None
+
+            if self.gradient_checkpointing and self.training:
+                if use_cache:
+                    logger.warning(
+                        "`use_cache=True` is incompatible with `config.gradient_checkpointing=True`. Setting "
+                        "`use_cache=False`..."
+                    )
+                    use_cache = False
+
+                layer_outputs = torch.utils.checkpoint.checkpoint(
+                    self._create_custom_forward(layer_module, past_key_value, output_attentions),
+                    hidden_states,
+                    attention_mask,
+                    layer_head_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                )
+            else:
+                layer_outputs = layer_module(
+                    hidden_states,
+                    attention_mask,
+                    layer_head_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                    past_key_value,
+                    output_attentions,
+                )
+
+            hidden_states = layer_outputs[0]
+
+            if use_cache:
+                next_decoder_cache += (layer_outputs[-1],)
+            if output_attentions:
+                all_self_attentions = all_self_attentions + (layer_outputs[1],)
+                if self.config.add_cross_attention:
+                    all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
+
+        if self.emb_layer_norm_after:
+            hidden_states = self.emb_layer_norm_after(hidden_states)
+
+        if self.config.has_conditioning and (
+            self.config.conditioning_type == "pre_encoder_with_classifier" or self.config.conditioning_type == "cbm"
+        ):
+            pred_concepts = classifier(hidden_states)
+        else:
+            pred_concepts = None
+
+        if self.config.has_conditioning and self.config.conditioning_type == "cbm":
+            if not inference:
+                concepts = concepts
+
+            else:
+                concepts = pred_concepts.unsqueeze(1)
+                concepts = concepts.repeat(1, hidden_states.shape[1], 1)
+
+                if intervene is not None:
+                    mask, intervene_concepts = intervene
+                    intervene_concepts = intervene_concepts.unsqueeze(1)
+                    intervene_concepts = intervene_concepts.repeat(1, hidden_states.shape[1], 1)
+
+                    mask = mask.unsqueeze(1)
+                    mask = mask.repeat(1, hidden_states.shape[1], 1)
+
+                    concepts = (concepts * (1 - mask)) + (intervene_concepts * mask)
+
+            if self.config.conditioning_type == "cbm":
+                cbm_out, x_unk_tok, x_cbm = cbm(hidden_states, concepts)
+                hidden_states = cbm_out
+                cbm_emd = x_cbm
+                unk_emd = x_unk_tok
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if not return_dict:
+            return tuple(
+                v
+                for v in [
+                    hidden_states,
+                    next_decoder_cache,
+                    all_hidden_states,
+                    all_self_attentions,
+                    all_cross_attentions,
+                ]
+                if v is not None
+            )
+
+        return BaseModelOutputWithPastAndCrossAttentions(
+            last_hidden_state=hidden_states,
+            past_key_values=next_decoder_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attentions,
+            cross_attentions=all_cross_attentions,
+            concepts=pred_concepts,
+            tok_concepts=tok_concepts,
+            cbm_emd=cbm_emd,
+            unk_emd=unk_emd,
+        )
+
+
 # Copied from transformers.models.LMBase.modeling_LMBase.LMBasePooler
 class LMBasePooler(nn.Module):
     def __init__(self, config):
@@ -749,13 +823,9 @@ class LMBasePreTrainedModel(PreTrainedModel):
         """Remove some keys from ignore list"""
         if not config.tie_word_embeddings:
             # must make a new list, or the class variable gets modified!
-            self._keys_to_ignore_on_save = [
-                k for k in self._keys_to_ignore_on_save if k not in del_keys_to_ignore
-            ]
+            self._keys_to_ignore_on_save = [k for k in self._keys_to_ignore_on_save if k not in del_keys_to_ignore]
             self._keys_to_ignore_on_load_missing = [
-                k
-                for k in self._keys_to_ignore_on_load_missing
-                if k not in del_keys_to_ignore
+                k for k in self._keys_to_ignore_on_load_missing if k not in del_keys_to_ignore
             ]
 
 
@@ -868,9 +938,7 @@ class LMBaseModel(LMBasePreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
-    @add_start_docstrings_to_model_forward(
-        LMBase_INPUTS_DOCSTRING.format("(batch_size, sequence_length)")
-    )
+    @add_start_docstrings_to_model_forward(LMBase_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -912,19 +980,11 @@ class LMBaseModel(LMBasePreTrainedModel):
             If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
             `past_key_values`).
         """
-        output_attentions = (
-            output_attentions
-            if output_attentions is not None
-            else self.config.output_attentions
-        )
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if self.config.is_decoder:
             use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -932,9 +992,7 @@ class LMBaseModel(LMBasePreTrainedModel):
             use_cache = False
 
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time"
-            )
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             input_shape = input_ids.size()
         elif inputs_embeds is not None:
@@ -946,20 +1004,14 @@ class LMBaseModel(LMBasePreTrainedModel):
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
         # past_key_values_length
-        past_key_values_length = (
-            past_key_values[0][0].shape[2] if past_key_values is not None else 0
-        )
+        past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
         if attention_mask is None:
-            attention_mask = torch.ones(
-                ((batch_size, seq_length + past_key_values_length)), device=device
-            )
+            attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
-            attention_mask, input_shape
-        )
+        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -972,9 +1024,7 @@ class LMBaseModel(LMBasePreTrainedModel):
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
             if encoder_attention_mask is None:
                 encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-            encoder_extended_attention_mask = self.invert_attention_mask(
-                encoder_attention_mask
-            )
+            encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
         else:
             encoder_extended_attention_mask = None
 
@@ -1005,9 +1055,7 @@ class LMBaseModel(LMBasePreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
-        pooled_output = (
-            self.pooler(sequence_output) if self.pooler is not None else None
-        )
+        pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 
         if not return_dict:
             return (sequence_output, pooled_output) + encoder_outputs[1:]
@@ -1023,8 +1071,259 @@ class LMBaseModel(LMBasePreTrainedModel):
 
 
 @add_start_docstrings(
-    """LMBase Model with a `language modeling` head on top.""", LMBase_START_DOCSTRING
+    "The bare LMBase Model with Concepts transformer outputting raw hidden-states without any specific head on top.",
+    LMBase_START_DOCSTRING,
 )
+class LMBaseModelWithConcepts(LMBasePreTrainedModel):
+    """
+
+    The model can behave as an encoder (with only self-attention) as well as a decoder, in which case a layer of
+    cross-attention is added between the self-attention layers, following the architecture described in [Attention is
+    all you need](https://arxiv.org/abs/1706.03762) by Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit,
+    Llion Jones, Aidan N. Gomez, Lukasz Kaiser and Illia Polosukhin.
+
+    To behave as an decoder the model needs to be initialized with the `is_decoder` argument of the configuration set
+    to `True`. To be used in a Seq2Seq model, the model needs to initialized with both `is_decoder` argument and
+    `add_cross_attention` set to `True`; an `encoder_hidden_states` is then expected as an input to the forward pass.
+    """
+
+    _keys_to_ignore_on_load_missing = [r"position_ids"]
+    supports_gradient_checkpointing = False
+
+    # Copied from transformers.models.LMBase.modeling_LMBase.LMBaseModel.__init__ with LMBase->LMBase
+    def __init__(self, config, add_pooling_layer=True):
+        super().__init__(config)
+        self.config = config
+
+        self.embeddings = LMBaseEmbeddings(config)
+
+        if (
+            config.conditioning_type == "pre_encoder" or config.conditioning_type == "pre_encoder_with_classifier"
+        ) and config.embed_concepts:
+            self.concepts_embeddings = nn.ModuleList()
+            for i in range(len(config.concept_emb_size)):
+                self.concepts_embeddings.append(nn.Linear(config.concept_input_size[i], config.concept_emb_size[i]))
+        self.encoder = LMBaseEncoderWithConcepts(config)
+        self.pooler = LMBasePooler(config) if add_pooling_layer else None
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, LMBaseEncoder):
+            module.gradient_checkpointing = value
+
+    def get_input_embeddings(self):
+        return self.embeddings.word_embeddings
+
+    def set_input_embeddings(self, value):
+        self.embeddings.word_embeddings = value
+
+    def _prune_heads(self, heads_to_prune):
+        """
+        Prunes heads of the model. heads_to_prune: dict of {layer_num: list of heads to prune in this layer} See base
+        class PreTrainedModel
+        """
+        for layer, heads in heads_to_prune.items():
+            self.encoder.layer[layer].attention.prune_heads(heads)
+
+    @add_start_docstrings_to_model_forward(LMBase_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_code_sample_docstrings(
+        processor_class=_TOKENIZER_FOR_DOC,
+        checkpoint=_CHECKPOINT_FOR_DOC,
+        output_type=BaseModelOutputWithPoolingAndCrossAttentions,
+        config_class=_CONFIG_FOR_DOC,
+    )
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        concepts: Optional[torch.Tensor] = None,
+        concepts_to_emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        classifier: Optional[Callable] = None,
+        cbm: Optional[Callable] = None,
+        inference: Optional[bool] = False,
+        intervene: List[torch.FloatTensor] = None,
+        requires_grad: Optional[bool] = False,
+    ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
+        r"""
+        encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
+            Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
+            the model is configured as a decoder.
+        encoder_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
+            the cross-attention if the model is configured as a decoder. Mask values selected in `[0, 1]`:
+
+            - 1 for tokens that are **not masked**,
+            - 0 for tokens that are **masked**.
+        past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
+            Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
+
+            If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
+            don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
+            `decoder_input_ids` of shape `(batch_size, sequence_length)`.
+        use_cache (`bool`, *optional*):
+            If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
+            `past_key_values`).
+        """
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if self.config.is_decoder:
+            use_cache = use_cache if use_cache is not None else self.config.use_cache
+        else:
+            use_cache = False
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        elif input_ids is not None:
+            input_shape = input_ids.size()
+        elif inputs_embeds is not None:
+            input_shape = inputs_embeds.size()[:-1]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        batch_size, seq_length = input_shape
+        device = input_ids.device if input_ids is not None else inputs_embeds.device
+
+        # past_key_values_length
+        past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+
+        if attention_mask is None:
+            attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
+
+        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
+        # ourselves in which case we just need to make it broadcastable to all heads.
+        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+
+        # If a 2D or 3D attention mask is provided for the cross-attention
+        # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
+        if self.config.is_decoder and encoder_hidden_states is not None:
+            (
+                encoder_batch_size,
+                encoder_sequence_length,
+                _,
+            ) = encoder_hidden_states.size()
+            encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
+            if encoder_attention_mask is None:
+                encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
+            encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+        else:
+            encoder_extended_attention_mask = None
+
+        # Prepare head mask if needed
+        # 1.0 in head_mask indicate we keep the head
+        # attention_probs has shape bsz x n_heads x N x N
+        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
+        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
+        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
+
+        embedding_output = self.embeddings(
+            input_ids=input_ids,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            past_key_values_length=past_key_values_length,
+        )
+
+        if not inference:
+            if self.config.add_embedding_noise:
+                std_dev = torch.distributions.Uniform(self.config.noise_std_min, self.config.noise_std_max).sample()
+                noise = torch.normal(
+                    self.config.noise_mean, std_dev, size=embedding_output.size(), device=embedding_output.device
+                )
+                embedding_output = embedding_output + noise
+
+        # if requires_grad:
+        #     embedding_output= torch.tensor(embedding_output, requires_grad=True)
+        if concepts is not None:
+            concepts = concepts.unsqueeze(1)
+            concepts = concepts.repeat(1, seq_length, 1)
+
+        if concepts_to_emb is not None:
+            all_concepts_emb = None
+            for c in range(len(concepts_to_emb)):
+                concepts_emb = self.concepts_embeddings[c](concepts_to_emb[c])
+                if c == 0:
+                    all_concepts_emb = concepts_emb
+                else:
+                    all_concepts_emb = torch.cat((all_concepts_emb, concepts_emb), dim=2)
+            all_concepts_emb = all_concepts_emb.unsqueeze(1).repeat(1, seq_length, 1)
+            concepts = torch.cat((concepts, all_concepts_emb), dim=2)
+
+        else:
+            if (
+                self.config.conditioning_type == "pre_encoder"
+                or self.config.conditioning_type == "pre_encoder_with_classifier"
+            ):
+                # Here the orignal data had concepts we dont have during test time
+                all_concepts_emb = None
+                for c in range(len(self.concepts_embeddings)):
+                    concepts_to_emb = torch.zeros_like(concepts).resize_(
+                        concepts.shape[0], self.config.concept_input_size[c]
+                    )
+                    concepts_emb = self.concepts_embeddings[c](concepts_to_emb)
+                    if c == 0:
+                        all_concepts_emb = concepts_emb
+                    else:
+                        all_concepts_emb = torch.cat((all_concepts_emb, concepts_emb), dim=2)
+
+                all_concepts_emb = all_concepts_emb.unsqueeze(1).repeat(1, seq_length, 1)
+                concepts = torch.cat((concepts, all_concepts_emb), dim=2)
+
+        encoder_outputs = self.encoder(
+            embedding_output,
+            concepts=concepts,
+            attention_mask=extended_attention_mask,
+            head_mask=head_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_extended_attention_mask,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            classifier=classifier,
+            cbm=cbm,
+            inference=inference,
+            intervene=intervene,
+        )
+
+        sequence_output = encoder_outputs[0]
+        pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
+
+        if not return_dict:
+            return (sequence_output, pooled_output) + encoder_outputs[1:]
+
+        return BaseModelOutputWithPoolingAndCrossAttentions(
+            last_hidden_state=sequence_output,
+            pooler_output=pooled_output,
+            past_key_values=encoder_outputs.past_key_values,
+            hidden_states=encoder_outputs.hidden_states,
+            attentions=encoder_outputs.attentions,
+            cross_attentions=encoder_outputs.cross_attentions,
+            concepts=encoder_outputs.concepts,
+            tok_concepts=encoder_outputs.tok_concepts,
+            cbm_emd=encoder_outputs.cbm_emd,
+            unk_emd=encoder_outputs.unk_emd,
+            input_emb=embedding_output,
+        )
+
+
+@add_start_docstrings("""LMBase Model with a `language modeling` head on top.""", LMBase_START_DOCSTRING)
 class LMBaseForMaskedLM(LMBasePreTrainedModel):
     _keys_to_ignore_on_save = [r"lm_head.decoder.weight", r"lm_head.decoder.bias"]
     _keys_to_ignore_on_load_missing = [
@@ -1057,9 +1356,7 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.lm_head.decoder = new_embeddings
 
-    @add_start_docstrings_to_model_forward(
-        LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length")
-    )
+    @add_start_docstrings_to_model_forward(LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1089,9 +1386,7 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
         kwargs (`Dict[str, any]`, optional, defaults to *{}*):
             Used to hide legacy arguments that have been deprecated.
         """
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.LMBase(
             input_ids,
@@ -1111,15 +1406,11 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
         masked_lm_loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()
-            masked_lm_loss = loss_fct(
-                prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
-            )
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
-            return (
-                ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
-            )
+            return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
 
         return MaskedLMOutput(
             loss=masked_lm_loss,
@@ -1127,6 +1418,207 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+
+@add_start_docstrings(
+    """LMBase Model with Conditional generatation`language modeling` head on top.""", LMBase_START_DOCSTRING
+)
+class LMBaseForConditionalMaskedLM(LMBasePreTrainedModel):
+    _keys_to_ignore_on_load_missing = [
+        r"position_ids"
+    ]
+    _keys_to_ignore_on_load_unexpected = [r"pooler"]
+
+    def __init__(self, config):
+        super().__init__(config)
+
+        if config.is_decoder:
+            logger.warning(
+                "If you want to use `LMBaseForMaskedLM` make sure `config.is_decoder=False` for "
+                "bi-directional self-attention."
+            )
+
+        if config.conditioning_type == "pre_encoder_with_classifier" or config.conditioning_type == "cbm":
+            self.concept_classifier = LMBaseClassificationHead(config)
+        else:
+            self.concept_classifier = None
+
+        if config.conditioning_type == "cbm":
+            config.dec_hidden_size = config.hidden_size
+            self.cbm = CBM(config)
+
+        else:
+            self.cbm = None
+
+        self.LMBase = LMBaseModelWithConcepts(config, add_pooling_layer=False)
+        if config.conditioning_type == "cbm":
+            self.lm_head = LMBaseLinearLMHead(config)
+        else:
+            self.lm_head = LMBaseLMHead(config)
+        self.config = config
+        # The LM head weights require special treatment only when they are tied with the word embeddings
+        # self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
+
+        self.init_weights()
+
+    def get_output_embeddings(self):
+        return self.lm_head.decoder
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head.decoder = new_embeddings
+
+    @add_start_docstrings_to_model_forward(LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_code_sample_docstrings(
+        processor_class=_TOKENIZER_FOR_DOC,
+        checkpoint=_CHECKPOINT_FOR_DOC,
+        output_type=MaskedLMOutput,
+        config_class=_CONFIG_FOR_DOC,
+        mask="<mask>",
+    )
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        concepts: Optional[torch.LongTensor] = None,
+        concepts_to_emb: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        inference: Optional[bool] = False,
+        intervene: List[torch.FloatTensor] = None,
+        requires_grad: Optional[bool] = False,
+    ) -> Union[Tuple, MaskedLMOutput]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
+            config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
+            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
+        kwargs (`Dict[str, any]`, optional, defaults to *{}*):
+            Used to hide legacy arguments that have been deprecated.
+        """
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.LMBase(
+            input_ids,
+            concepts=concepts,
+            concepts_to_emb=concepts_to_emb,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            classifier=self.concept_classifier,
+            cbm=self.cbm,
+            inference=inference,
+            intervene=intervene,
+            requires_grad=requires_grad,
+        )
+        sequence_output = outputs[0]
+        prediction_scores = self.lm_head(sequence_output)
+
+        masked_lm_loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        if not return_dict:
+            output = (prediction_scores,) + outputs[2:]
+            return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+
+        output = MaskedLMOutput(
+            loss=masked_lm_loss,
+            logits=prediction_scores,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            concepts=outputs.concepts,
+            tok_concepts=outputs.tok_concepts,
+            cbm_emd=outputs.cbm_emd,
+            unk_emd=outputs.unk_emd,
+            input_emb=outputs.input_emb,
+        )
+
+        return output
+
+
+class CBM(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+
+        self.config = config
+
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.token_unk = LMBaseMLP(config, config.hidden_size, config.concept_emb * config.n_concepts)
+
+        self.concepts = nn.Parameter(torch.zeros(1, config.max_num_concepts, config.concept_emb), requires_grad=True)
+        nn.init.trunc_normal_(self.concepts, std=1.0 / math.sqrt(config.concept_emb))
+        self.n_concepts = config.n_concepts
+
+    def forward(self, features, concept_value, **kwargs):
+        bs, seq_len, dim = features.shape
+
+        concept_value = concept_value[:, 0, :]
+        concept_value = concept_value.unsqueeze(-1)
+
+        concepts = self.concepts[:, : self.n_concepts, :].repeat(bs, 1, 1)
+
+        x_unk = self.token_unk(features)
+
+        x_cbm = (concept_value * concepts).reshape(bs, -1)
+        x_cbm = x_cbm.unsqueeze(1).repeat(1, seq_len, 1)
+
+        cbm_out = torch.cat((x_cbm, x_unk), dim=2)
+
+        return cbm_out, x_unk, x_cbm
+
+
+class LMBaseLinearLMHead(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.decoder = nn.Linear((config.n_concepts * config.concept_emb) * 2, config.vocab_size, bias=False)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+
+        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+        self.decoder.bias = self.bias
+
+    def forward(self, features, **kwargs):
+        x = self.decoder(features)
+
+        return x
+
+
+class LMBaseMLP(nn.Module):
+    """LMBase MLP."""
+
+    def __init__(self, config, input_dim, out_dim):
+        super().__init__()
+        self.dense = nn.Linear(input_dim, input_dim)
+        self.layer_norm = nn.LayerNorm(input_dim, eps=config.layer_norm_eps)
+
+        self.decoder = nn.Linear(input_dim, out_dim, bias=False)
+
+        self.bias = nn.Parameter(torch.zeros(out_dim))
+
+        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+        self.decoder.bias = self.bias
+
+    def forward(self, features, **kwargs):
+        x = self.dense(features)
+        x = gelu(x)
+        x = self.layer_norm(x)
+        # project back to size of vocabulary with bias
+        x = self.decoder(x)
+
+        return x
 
 
 class LMBaseLMHead(nn.Module):
@@ -1174,9 +1666,7 @@ class LMBaseForSequenceClassification(LMBasePreTrainedModel):
 
         self.init_weights()
 
-    @add_start_docstrings_to_model_forward(
-        LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length")
-    )
+    @add_start_docstrings_to_model_forward(LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1201,9 +1691,7 @@ class LMBaseForSequenceClassification(LMBasePreTrainedModel):
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.LMBase(
             input_ids,
@@ -1223,9 +1711,7 @@ class LMBaseForSequenceClassification(LMBasePreTrainedModel):
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (
-                    labels.dtype == torch.long or labels.dtype == torch.int
-                ):
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -1276,9 +1762,7 @@ class LMBaseForTokenClassification(LMBasePreTrainedModel):
 
         self.init_weights()
 
-    @add_start_docstrings_to_model_forward(
-        LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length")
-    )
+    @add_start_docstrings_to_model_forward(LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1301,9 +1785,7 @@ class LMBaseForTokenClassification(LMBasePreTrainedModel):
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
         """
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.LMBase(
             input_ids,
@@ -1352,14 +1834,19 @@ class LMBaseForTokenClassification(LMBasePreTrainedModel):
 class LMBaseClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
 
-    def __init__(self, config):
+    def __init__(self, config, num_labels=None):
         super().__init__()
+
+        self.all_feature_classifier = False
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.out_proj = nn.Linear(config.hidden_size, config.num_labels)
 
     def forward(self, features, **kwargs):
-        x = features[:, 0, :]  # take <s> token (equiv. to [CLS])
+        if self.all_feature_classifier:
+            x = features
+        else:
+            x = features[:, 0, :]  # take <s> token (equiv. to [CLS])
         x = self.dropout(x)
         x = self.dense(x)
         x = torch.tanh(x)
@@ -1392,7 +1879,6 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
         self.config = config
 
         self.embeddings = LMBaseEmbeddings(config)
-        # self.embeddings_b = LMBaseEmbeddings(config)
 
         self.encoder = LMBaseEncoder(config)
 
@@ -1423,9 +1909,7 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
-    @add_start_docstrings_to_model_forward(
-        LMBase_START_DOCSTRING.format("(batch_size, sequence_length)")
-    )
+    @add_start_docstrings_to_model_forward(LMBase_START_DOCSTRING.format("(batch_size, sequence_length)"))
     @add_code_sample_docstrings(
         checkpoint=_CHECKPOINT_FOR_DOC,
         output_type=BaseModelOutputWithPoolingAndCrossAttentions,
@@ -1468,19 +1952,11 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
             If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
             `past_key_values`).
         """
-        output_attentions = (
-            output_attentions
-            if output_attentions is not None
-            else self.config.output_attentions
-        )
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if self.config.is_decoder:
             use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -1488,9 +1964,7 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
             use_cache = False
 
         if input_ids_a is not None and inputs_embeds is not None:
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time"
-            )
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids_a is not None:
             input_shape = input_ids_a.size()
         elif inputs_embeds is not None:
@@ -1503,36 +1977,22 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
         device = input_ids_a.device if input_ids_a is not None else inputs_embeds.device
 
         # past_key_values_length
-        past_key_values_length = (
-            past_key_values[0][0].shape[2] if past_key_values is not None else 0
-        )
+        past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
         if attention_mask_a is None:
-            attention_mask_a = torch.ones(
-                ((batch_size, seq_length + past_key_values_length)), device=device
-            )
+            attention_mask_a = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
 
-            attention_mask_a = attention_mask_a * (
-                input_ids_a != self.config.pad_token_id
-            )
+            attention_mask_a = attention_mask_a * (input_ids_a != self.config.pad_token_id)
 
         if attention_mask_b is None:
-            attention_mask_b = torch.ones(
-                ((batch_size, seq_length + past_key_values_length)), device=device
-            )
-            attention_mask_b = attention_mask_b * (
-                input_ids_b != self.config.pad_token_id
-            )
+            attention_mask_b = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
+            attention_mask_b = attention_mask_b * (input_ids_b != self.config.pad_token_id)
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask_a: torch.Tensor = self.get_extended_attention_mask(
-            attention_mask_a, input_shape
-        )
+        extended_attention_mask_a: torch.Tensor = self.get_extended_attention_mask(attention_mask_a, input_shape)
 
-        extended_attention_mask_b: torch.Tensor = self.get_extended_attention_mask(
-            attention_mask_b, input_shape
-        )
+        extended_attention_mask_b: torch.Tensor = self.get_extended_attention_mask(attention_mask_b, input_shape)
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -1545,9 +2005,7 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
             if encoder_attention_mask is None:
                 encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-            encoder_extended_attention_mask = self.invert_attention_mask(
-                encoder_attention_mask
-            )
+            encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
         else:
             encoder_extended_attention_mask = None
 
@@ -1566,9 +2024,7 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
             past_key_values_length=past_key_values_length,
         )
 
-        extended_attention_mask = torch.cat(
-            (extended_attention_mask_a, extended_attention_mask_b), 3
-        )
+        extended_attention_mask = torch.cat((extended_attention_mask_a, extended_attention_mask_b), 3)
         encoder_outputs = self.encoder(
             # embedding_output.to(torch.float16),
             embedding_output.to(torch.float16),
@@ -1583,9 +2039,7 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
-        pooled_output = (
-            self.pooler(sequence_output) if self.pooler is not None else None
-        )
+        pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 
         if not return_dict:
             return (sequence_output, pooled_output) + encoder_outputs[1:]
@@ -1616,9 +2070,7 @@ class LMBaseModelRelative(LMBasePreTrainedModel):
         return self.contact_head(tokens, attns)
 
 
-@add_start_docstrings(
-    """LMBase Model with a `language modeling` head on top.""", LMBase_START_DOCSTRING
-)
+@add_start_docstrings("""LMBase Model with a `language modeling` head on top.""", LMBase_START_DOCSTRING)
 class LMBaseForMaskedLMRelative(LMBasePreTrainedModel):
     _keys_to_ignore_on_save = [r"lm_head.decoder.weight", r"lm_head.decoder.bias"]
     _keys_to_ignore_on_load_missing = [
@@ -1651,9 +2103,7 @@ class LMBaseForMaskedLMRelative(LMBasePreTrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.lm_head.decoder = new_embeddings
 
-    @add_start_docstrings_to_model_forward(
-        LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length")
-    )
+    @add_start_docstrings_to_model_forward(LMBase_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1687,9 +2137,7 @@ class LMBaseForMaskedLMRelative(LMBasePreTrainedModel):
         kwargs (`Dict[str, any]`, optional, defaults to *{}*):
             Used to hide legacy arguments that have been deprecated.
         """
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.LMBase(
             input_ids_a,
@@ -1712,22 +2160,14 @@ class LMBaseForMaskedLMRelative(LMBasePreTrainedModel):
             masked_lm_loss = None
             if labels is not None:
                 if null_input is not None:
-                    prediction_scores = prediction_scores[
-                        :, input_ids_a.shape[1] :, :
-                    ].contiguous()
+                    prediction_scores = prediction_scores[:, input_ids_a.shape[1] :, :].contiguous()
 
                 loss_fct = CrossEntropyLoss()
-                masked_lm_loss = loss_fct(
-                    prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
-                )
+                masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 
             if not return_dict:
                 output = (prediction_scores,) + outputs[2:]
-                return (
-                    ((masked_lm_loss,) + output)
-                    if masked_lm_loss is not None
-                    else output
-                )
+                return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
 
             return MaskedLMOutput(
                 loss=masked_lm_loss,
@@ -1739,21 +2179,19 @@ class LMBaseForMaskedLMRelative(LMBasePreTrainedModel):
             return mean_embedding
 
 
-def create_position_ids_from_input_ids(
-    input_ids, padding_idx, past_key_values_length=0
-):
+def create_position_ids_from_input_ids(input_ids, padding_idx, past_key_values_length=0):
     """
     Replace non-padding symbols with their position numbers. Position numbers begin at padding_idx+1. Padding symbols
     are ignored. This is modified from fairseq's `utils.make_positions`.
 
     Args:
+    ----
         x: torch.Tensor x:
 
     Returns: torch.Tensor
+
     """
     # The series of casts and type-conversions here are carefully balanced to both work with ONNX export and XLA.
     mask = input_ids.ne(padding_idx).int()
-    incremental_indices = (
-        torch.cumsum(mask, dim=1).type_as(mask) + past_key_values_length
-    ) * mask
+    incremental_indices = (torch.cumsum(mask, dim=1).type_as(mask) + past_key_values_length) * mask
     return incremental_indices.long() + padding_idx

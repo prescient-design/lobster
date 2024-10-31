@@ -4,16 +4,16 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import lightning.pytorch as pl
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from transformers import AutoTokenizer, EsmForProteinFolding
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
 
+from lobster.extern.openfold_utils import atom14_to_atom37, backbone_loss
 from lobster.transforms import AutoTokenizerTransform
 
 from ._lobster_fold_base import PPLMFoldBase
 from ._lobster_fold_configuration import PPLMFOLD_CONFIG_ARGS, PPLMFoldConfig
-from .openfold_utils import atom14_to_atom37, backbone_loss
 
 
 class LobsterPLMFold(pl.LightningModule):
@@ -50,7 +50,6 @@ class LobsterPLMFold(pl.LightningModule):
         max_length: max sequence length the model will see
 
         """
-
         super().__init__()
         self._lr = lr
         self._beta1 = beta1
@@ -157,9 +156,7 @@ class LobsterPLMFold(pl.LightningModule):
         # i.e. if linkers are added, this should be translated to Huggingface API format
         structure = self.model(input_ids, attention_mask)
         outputs["sm"] = structure
-        outputs["final_atom_positions"] = atom14_to_atom37(
-            outputs["sm"]["positions"][-1], batch
-        )
+        outputs["final_atom_positions"] = atom14_to_atom37(outputs["sm"]["positions"][-1], batch)
         outputs["final_atom_mask"] = batch["atom37_atom_exists"]
         outputs["final_affine_tensor"] = outputs["sm"]["frames"][-1]
         return outputs
@@ -195,7 +192,8 @@ class FoldseekTransform(Transform):
     """
     Transforms a structure (PDB) into a discretized 3Di sequence.
 
-    Returns:
+    Returns
+    -------
         seq_dict: A dict of structural seqs. The keys are chain IDs. The values are tuples of
         (AA_seq, 3Di_struc_seq, combined_seq).
 
@@ -218,11 +216,10 @@ class FoldseekTransform(Transform):
 
     def transform(self, sequences: list[str], chains: list = None) -> dict:
         pdb_file = self._lobster_fold_transform(sequences)
-        with tempfile.NamedTemporaryFile(
-            delete=True, suffix=".pdb"
-        ) as pdb_temp_file, tempfile.NamedTemporaryFile(
-            delete=True, suffix=".tsv"
-        ) as tsv_temp_file:
+        with (
+            tempfile.NamedTemporaryFile(delete=True, suffix=".pdb") as pdb_temp_file,
+            tempfile.NamedTemporaryFile(delete=True, suffix=".tsv") as tsv_temp_file,
+        ):
             with open(pdb_temp_file.name, "w") as f:
                 f.write(pdb_file)
 
@@ -243,9 +240,7 @@ class FoldseekTransform(Transform):
 
                     if chains is None or chain in chains:
                         if chain not in seq_dict:
-                            combined_seq = "".join(
-                                [a + b.lower() for a, b in zip(seq, struc_seq)]
-                            )
+                            combined_seq = "".join([a + b.lower() for a, b in zip(seq, struc_seq)])
                             seq_dict[chain] = (seq, struc_seq, combined_seq)
 
         return seq_dict
@@ -258,9 +253,7 @@ class FoldseekTransform(Transform):
             print(sequence)
         else:  # monomer
             sequence = sequences[0]
-        tokenized_input = self._model.tokenizer(
-            [sequence], return_tensors="pt", add_special_tokens=False
-        )["input_ids"]
+        tokenized_input = self._model.tokenizer([sequence], return_tensors="pt", add_special_tokens=False)["input_ids"]
 
         # add a large offset to the position IDs of the second chain
         if len(sequences) > 1:
@@ -271,13 +264,9 @@ class FoldseekTransform(Transform):
                 output = self._model.model(**tokenized_input)
 
                 # remove the poly-G linker from the output, so we can display the structure as fully independent chains
-                linker_mask = torch.tensor(
-                    [1] * len(sequence) + [0] * len(linker) + [1] * len(sequence)
-                )[None, :, None]
+                linker_mask = torch.tensor([1] * len(sequence) + [0] * len(linker) + [1] * len(sequence))[None, :, None]
                 # output['atom37_atom_exists'] = output['atom37_atom_exists'] * linker_mask.to(output['atom37_atom_exists'].device)
-                output["atom37_atom_exists"] = (
-                    output["atom37_atom_exists"] * linker_mask
-                )
+                output["atom37_atom_exists"] = output["atom37_atom_exists"] * linker_mask
         else:
             with torch.no_grad():
                 output = self._model.model(tokenized_input)

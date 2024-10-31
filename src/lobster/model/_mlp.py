@@ -1,11 +1,12 @@
 import random
-from typing import Literal, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 import lightning.pytorch as pl
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+from sklearn.decomposition import PCA
 from torchmetrics import (
     AUROC,
     Accuracy,
@@ -30,8 +31,14 @@ class LobsterMLP(pl.LightningModule):
         num_chains: int = 1,
         model_name: Optional[str] = None,
         checkpoint: Optional[str] = None,
-        ckpt_path: Optional[str] = None,
-        model_type: Literal["LobsterPMLM", "LobsterPCLM"] = "LobsterPMLM",
+        model_type: Literal[
+            "LobsterPMLM",
+            "LobsterPCLM",
+            "LobsterConditionalPMLM",
+            "LobsterConditionalClassifierPMLM",
+            "LobsterCBMPMLM",
+            "LobsterLateConditionalClassifierPMLM",
+        ] = "LobsterPMLM",
         ffd_dim: int = 64,
         pooler: Optional[Literal["mean", "attn", "cls"]] = "mean",
         lr: float = 1e-3,
@@ -42,6 +49,8 @@ class LobsterMLP(pl.LightningModule):
         output_hidden: bool = False,
         freeze_encoder: bool = True,
         linear_probe: bool = False,
+        emb_type: Literal["latent_mean", "latent_cls", "concept", "concept_embed"] = "latent_cls",
+        pca_components: Optional[int] = None,
     ):
         """
         MLP head.
@@ -55,15 +64,14 @@ class LobsterMLP(pl.LightningModule):
         num_chains: number of chains in input data, used to adjust MLP size
         model_name: load a specific pre-trained model, e.g. 'esm2_t6_8M_UR50D'
         checkpoint: path to load a pretrained Lobster model
-        ckpt_path: continue training LobsterMLP from this checkpoint
         model_type: pre-trained model class
         pooler: how embeddings are pooled (mean, attn, cls) [default: mean]
         reinit: use random embeddings rather than pre-trained for benchmarking
         freeze_encoder: freeze the base encoder weights
         linear_probe: use only a linear layer for probing
+        pca_components: number of PCA components to reduce embeddings to [default: None]
 
         """
-
         super().__init__()
 
         self._seed = seed
@@ -83,24 +91,26 @@ class LobsterMLP(pl.LightningModule):
         self._checkpoint = checkpoint
         self._freeze_encoder = freeze_encoder
         self._linear_probe = linear_probe
+        self._emb_type = emb_type
+        self._pca_components = pca_components
 
-        model = None
-        if model_name is not None:
-            model = model_cls(
-                model_name=model_name, max_length=max_length
-            )  # load a specific model, e.g. ESM2-8M
+        print(f"Loading model {model_cls}")
+
         if checkpoint is not None:
-            if checkpoint.endswith(".pt"):
-                assert (
-                    model is not None
-                ), "If checkpoint ends in .pt, please also specify model_name"
+            if checkpoint.endswith(".ckpt"):
+                print(f"Loading model from checkpoint: {checkpoint}")
+                model = model_cls.load_from_checkpoint(self._checkpoint)
+
+            elif checkpoint.endswith(".pt"):
+                print(f"Checkpoint ending in .pt provided. Loading state dict in {checkpoint}")
+                model = model_cls(model_name=model_name, max_length=max_length)
                 model.model.load_state_dict(torch.load(checkpoint))
             else:
-                model = model_cls.load_from_checkpoint(
-                    checkpoint,
-                    model_name=model_name,
-                    max_length=max_length,
-                )  # load specific pre-trained chkpt
+                raise ValueError(f"{checkpoint=} has unrecognized extension, expected .ckpt or .pt")
+            print(f"Checkpoint {checkpoint} loaded...")
+        else:
+            print(f"Checkpoint not provided, loading model with random weights {model_cls=} {model_name=}")
+            model = model_cls(model_name=model_name, max_length=max_length)
 
         self.model_name = model_name
         self.model_type = model_type
@@ -109,7 +119,6 @@ class LobsterMLP(pl.LightningModule):
         self.pooler_name = pooler
         self.max_input_length = max_length
         self.output_hidden = output_hidden
-
         if self._freeze_encoder:
             for (
                 _name,
@@ -122,8 +131,23 @@ class LobsterMLP(pl.LightningModule):
             print("Re-initializing base encoder weights")
             self.model.model.init_weights()
 
-        hidden_size = self.model.config.hidden_size
+        if (
+            hasattr(self.model.config, "has_conditioning")
+            and self.model.config.has_conditioning
+            and self.model.config.conditioning_type == "cbm"
+        ):
+            hidden_size = self.model.config.n_concepts * self.model.config.concept_emb
+
+        else:
+            hidden_size = self.model.config.hidden_size
+
+        if pca_components is not None:
+            hidden_size = pca_components
+
         self._hidden_size = hidden_size
+
+        # To reduce dimensionality of embds for comparison across embedding sizes
+        self.pca = PCA(n_components=self._pca_components) if self._pca_components else None
 
         # metrics
         if self._num_labels == 1:
@@ -144,32 +168,16 @@ class LobsterMLP(pl.LightningModule):
             self.val_average_precision = AveragePrecision(
                 task=task, num_classes=self._num_labels, average=self._metric_average
             )
-            self.train_auroc = AUROC(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_auroc = AUROC(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.train_accuracy = Accuracy(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_accuracy = Accuracy(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
+            self.train_auroc = AUROC(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_auroc = AUROC(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.train_accuracy = Accuracy(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_accuracy = Accuracy(task=task, num_classes=self._num_labels, average=self._metric_average)
             self.train_mcc = MatthewsCorrCoef(task=task, num_classes=self._num_labels)
             self.val_mcc = MatthewsCorrCoef(task=task, num_classes=self._num_labels)
-            self.train_precision = Precision(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_precision = Precision(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.train_recall = Recall(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_recall = Recall(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
+            self.train_precision = Precision(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_precision = Precision(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.train_recall = Recall(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_recall = Recall(task=task, num_classes=self._num_labels, average=self._metric_average)
 
         self.loss = None
         match self._num_labels:
@@ -182,7 +190,7 @@ class LobsterMLP(pl.LightningModule):
 
         output_dim = self._num_labels if self._num_labels > 2 else 1
         if self._linear_probe:
-            self.probe = nn.Linear(int(self._num_chains * hidden_size), output_dim)
+            self.probe = nn.Linear(int(self._num_chains * self._hidden_size), output_dim)
         else:
             self.mlp = nn.Sequential(
                 nn.Linear(int(self._num_chains * hidden_size), ffd_dim),
@@ -195,7 +203,7 @@ class LobsterMLP(pl.LightningModule):
             )
 
         # Cache for base encoder embeddings
-        self.embedding_cache = {}
+        self.embedding_cache: Dict[str, torch.Tensor] = {}
 
         self.save_hyperparameters(logger=False)
 
@@ -207,6 +215,7 @@ class LobsterMLP(pl.LightningModule):
         return output
 
     def training_step(self, batch, batch_idx):
+        # print(self.probe)
         loss, preds, targets = self._compute_loss(batch)
         if self._num_labels == 1:
             r2score = self.train_r2score(preds, targets)
@@ -266,6 +275,35 @@ class LobsterMLP(pl.LightningModule):
 
         return loss
 
+    def test_step(self, batch, batch_idx, dataloader_idx=0):
+        loss, preds, targets = self._compute_loss(batch)
+        r2score = self.test_r2score(preds, targets)
+        mae = self.test_mae(preds, targets)
+        spearman = self.test_spearman(preds, targets)
+
+        loss_dict = {"test/r2score": r2score, "test/mae": mae, "test/spearman": spearman, "test/loss_": loss}
+        self.log("test/loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log_dict(loss_dict)
+        return loss_dict
+
+    def test_epoch_end(self, outputs):  # was on_test_epoch_end, but can't have any arguments
+        avg_r2score = torch.stack([x["test/r2score"] for x in outputs]).mean()
+        self.log("avgtest/r2score", avg_r2score)
+
+        avg_mae = torch.stack([x["test/mae"] for x in outputs]).mean()
+        self.log("avgtest/mae", avg_mae)
+
+        avg_spearman = torch.stack([x["test/spearman"] for x in outputs]).mean()
+        self.log("avgtest/spearman", avg_spearman)
+
+        avg_loss = torch.stack([x["test/loss_"] for x in outputs]).mean()
+        self.log("avgtest/loss", avg_loss)
+
+        for param in self.probe.parameters():
+            print(param.data)
+
+        # return preds, targets  # , loss_dict
+
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         if self.output_hidden:
             _loss, preds, targets, hidden_states = self._compute_loss(batch)
@@ -291,27 +329,21 @@ class LobsterMLP(pl.LightningModule):
         sequences, ys = batch
         if self._num_labels < 3:  # regression or binary
             ys = ys[0].float()
-            ys = torch.nan_to_num(
-                ys, nan=0.0, posinf=0.0, neginf=0.0
-            )  # fix missing vals
+            ys = torch.nan_to_num(ys, nan=0.0, posinf=0.0, neginf=0.0)  # fix missing vals
         else:
             ys = ys[0].long()
+
         all_hiddens = []
-        input_mask = None  # Could optionally have input batch here
 
         for chains in sequences:  # could be heavy, light, single chain, etc.
-            with torch.inference_mode():
-                hidden_states = self.model.sequences_to_latents(chains)[-2].to(
-                    ys
-                )  # TODO - make desired layer an input
+            hidden_states = self._get_hidden_states(chains, ys)
+            all_hiddens.append(hidden_states)
+        all_hiddens = torch.concat(all_hiddens, dim=0).to(self.device).float()
 
-                if self.pooler is not None:
-                    hidden_states = self.pooler(
-                        hidden_states, input_mask=input_mask
-                    )  # TODO -  add warning --> specify mask if seq length > self.max_input_length
-
-                all_hiddens.append(hidden_states)
-        all_hiddens = torch.concat(all_hiddens, dim=1).to(self.device).float()
+        # Apply PCA if specified
+        if self.pca:
+            all_hiddens = self.pca.transform(all_hiddens.cpu().numpy())
+            all_hiddens = torch.tensor(all_hiddens).to(self.device).float()
 
         y_hat = self(all_hiddens).flatten()  # forward through MLP
         loss = self.loss(y_hat, ys)
@@ -321,49 +353,52 @@ class LobsterMLP(pl.LightningModule):
 
         return loss, y_hat, ys
 
-    def _compute_loss_cached(self, batch):
+    def _get_hidden_states(self, chains: List[str], ys: torch.Tensor) -> torch.Tensor:
         """
-        Differs from method _compute_loss in two main ways: 1) Embeddings are cached for quicker embedding
-        after epoch 0 and 2) assumes batch inputs are single chains
-        TODO - we may want to combine this and compute_loss_cached with a flag for caching and a flag for single/multi-chain
+        Get hidden states for a given sequence, using the cache if available.
         """
-        sequences, ys = batch
-        ys = ys[0].float()
+        cache_key = tuple(chains)  # Use the sequence as the cache key
+        if cache_key in self.embedding_cache:
+            hidden_states = self.embedding_cache[cache_key].to(self.device)
+        else:
+            with torch.inference_mode():
+                if (
+                    hasattr(self.model.config, "has_conditioning")
+                    and self.model.config.has_conditioning
+                    and self.model.config.conditioning_type == "cbm"
+                ):
+                    hidden_states = self.model.sequences_to_concepts_emb(chains)
+                else:
+                    hidden_states = self.model.sequences_to_latents(chains)[-1].to(ys)
+                    if self.pooler is not None:
+                        hidden_states = self.pooler(hidden_states)
+            hidden_states = self._latent_transform(hidden_states)
+            self.embedding_cache[cache_key] = hidden_states.cpu()
+        return hidden_states
+
+    def _latent_transform(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.pooler is None and (self._emb_type == "concept_embed" or self._emb_type == "latent_cls"):
+            hidden_states = hidden_states[:, 0, :]  # take first token
+        elif self._emb_type == "latent_mean":
+            hidden_states = hidden_states.mean(dim=1)
+        return hidden_states
+
+    def fit_pca(self, dataloader):
+        """
+        Fit PCA on the entire (training) dataset.
+        """
         all_hiddens = []
-        # Squeeze unnecessary dim in list
-        if isinstance(sequences[0], tuple) or isinstance(sequences[0], list):
-            sequences = sequences[0]
+        for batch in dataloader:
+            sequences, _ = batch
+            for chains in sequences:
+                hidden_states = self._get_hidden_states(chains, torch.tensor([]))
+                all_hiddens.append(hidden_states.cpu().numpy())
 
-        for seq in sequences:
-            # Check if embeddings are cached
-            if seq in self.embedding_cache:
-                hidden_states = self.embedding_cache[seq]
-            else:
-                with torch.inference_mode():
-                    # Cast to list if single seq
-                    if isinstance(seq, str):
-                        seq = [seq]
-                    if self.pooling == "mean":
-                        # mean residue representation, 2nd to last layer features
-                        hidden_states = (
-                            self.model.sequences_to_latents(seq)[-2].mean(dim=1).to(ys)
-                        )
-                    elif self.pooling == "mean_nonzero":
-                        hidden_states, attn_mask = self.model.sequences_to_latents(seq)
-                        divisor = attn_mask.sum(axis=-1).unsqueeze(-1)
-                        hidden_states = (hidden_states[-2].sum(axis=1) / divisor).to(ys)
+        all_hiddens = np.concatenate(all_hiddens, axis=0)
 
-                    self.embedding_cache[seq[0]] = hidden_states  # unpack seq from list
-            all_hiddens.append(hidden_states)
+        if all_hiddens.ndim > 2:
+            print(f"Squeezing hidden states of shape {all_hiddens.shape} to 2D")
+            all_hiddens = all_hiddens.reshape(all_hiddens.shape[0], -1)
 
-        all_hiddens = torch.concat(all_hiddens, dim=0).to(self.device).float()
-
-        y_hat = self(all_hiddens).flatten()  # forward through MLP
-        y_hat = y_hat.float()
-
-        # fix missing vals
-        ys = torch.nan_to_num(ys, nan=0.0, posinf=0.0, neginf=0.0)
-
-        loss = F.mse_loss(y_hat, ys)
-
-        return loss, y_hat, ys
+        self.pca.fit(all_hiddens)
+        print(f"PCA fit with {self.pca.n_components} components")

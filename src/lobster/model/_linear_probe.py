@@ -62,14 +62,10 @@ class LobsterLinearProbe(pl.LightningModule):
 
         model = None
         if model_name is not None:
-            model = model_cls(
-                model_name=model_name, max_length=max_length
-            )  # load a specific model, e.g. ESM2-8M
+            model = model_cls(model_name=model_name, max_length=max_length)  # load a specific model, e.g. ESM2-8M
         if checkpoint is not None:
             if checkpoint.endswith(".pt"):
-                assert (
-                    model is not None
-                ), "If checkpoint ends in .pt, please also specify model_name"
+                assert model is not None, "If checkpoint ends in .pt, please also specify model_name"
                 model.model.load_state_dict(torch.load(checkpoint))
             else:
                 model = model_cls.load_from_checkpoint(
@@ -114,36 +110,16 @@ class LobsterLinearProbe(pl.LightningModule):
             self.val_average_precision = AveragePrecision(
                 task=task, num_classes=self._num_labels, average=self._metric_average
             )
-            self.train_auroc = AUROC(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_auroc = AUROC(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.train_accuracy = Accuracy(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_accuracy = Accuracy(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.train_mcc = MatthewsCorrCoef(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_mcc = MatthewsCorrCoef(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.train_precision = Precision(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_precision = Precision(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.train_recall = Recall(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
-            self.val_recall = Recall(
-                task=task, num_classes=self._num_labels, average=self._metric_average
-            )
+            self.train_auroc = AUROC(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_auroc = AUROC(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.train_accuracy = Accuracy(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_accuracy = Accuracy(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.train_mcc = MatthewsCorrCoef(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_mcc = MatthewsCorrCoef(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.train_precision = Precision(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_precision = Precision(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.train_recall = Recall(task=task, num_classes=self._num_labels, average=self._metric_average)
+            self.val_recall = Recall(task=task, num_classes=self._num_labels, average=self._metric_average)
 
         self.loss = None
         match self._num_labels:

@@ -3,7 +3,7 @@ from typing import Callable, Optional, Tuple, Union
 
 import lightning.pytorch as pl
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from torch.nn import CrossEntropyLoss
 from transformers import LlamaConfig, LlamaForCausalLM, pipeline
 from transformers.optimization import get_linear_schedule_with_warmup
@@ -42,7 +42,6 @@ class LobsterPCLM(pl.LightningModule):
             Multi Query Attention (MQA) otherwise GQA is used.
 
         """
-
         super().__init__()
         self._lr = lr
         self._beta1 = beta1
@@ -138,6 +137,7 @@ class LobsterPCLM(pl.LightningModule):
 
         PmlmTokenizerTransform prepares the labels, loss computation happens in model.forward()
         """
+        batch, _targets = batch  # targets are FASTA headers and are not used
         output = self.model(
             input_ids=batch["input_ids"].squeeze(),
             labels=batch["labels"].squeeze(),
@@ -147,6 +147,30 @@ class LobsterPCLM(pl.LightningModule):
         logits = output["logits"]
 
         return loss, logits
+
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the model for ONNX compiling.
+
+        Parameters
+        ----------
+        input_ids: torch.Tensor
+            The input tensor.
+        attention_mask: torch.Tensor
+            The attention mask tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            The output tensor.
+
+        """
+        preds = self.model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
+        hidden_states = preds["hidden_states"]  # hidden reps (B, L, H)
+
+        hidden_states = torch.stack(hidden_states, dim=1)  # (B, num layers, L, H)
+
+        return hidden_states
 
     def sample(
         self,
@@ -196,27 +220,17 @@ class LobsterPCLM(pl.LightningModule):
             shift_logits = outputs.logits[..., :-1, :].contiguous()
             shift_labels = tok_seqs[..., 1:].contiguous()
             loss_fct = CrossEntropyLoss(reduction="none")
-            loss = loss_fct(
-                shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1)
-            )
+            loss = loss_fct(shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1))
 
             loss_per_tok = loss.view(BZ, -1)
 
             # Compute loss over non-padding tokens but includes CLS and EOS
             mask = shift_labels != self.tokenizer.pad_token_id
 
-        return (
-            -1
-            * torch.where(mask, loss_per_tok, torch.zeros_like(loss_per_tok)).sum(
-                axis=1
-            )
-            / mask.sum(axis=1)
-        )
+        return -1 * torch.where(mask, loss_per_tok, torch.zeros_like(loss_per_tok)).sum(axis=1) / mask.sum(axis=1)
 
     def get_nll_and_logits(self, sequence: str) -> Tuple[torch.Tensor, torch.Tensor]:
-        input_ids = torch.tensor(
-            self.tokenizer(sequence)["input_ids"], device=self.device
-        ).unsqueeze(0)
+        input_ids = torch.tensor(self.tokenizer(sequence)["input_ids"], device=self.device).unsqueeze(0)
         with torch.inference_mode():
             outputs = self.model(input_ids, labels=input_ids)
         nll, logits = outputs.loss, outputs.logits  # (B, L, V), includes CLS and EOS
@@ -224,16 +238,9 @@ class LobsterPCLM(pl.LightningModule):
         return nll, logits
 
     def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
-        input_ids = torch.concat(
-            [
-                toks["input_ids"].to(self.device)
-                for toks in self._transform_fn(sequences)
-            ]
-        )
+        input_ids = torch.concat([toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)])
         with torch.inference_mode():
-            hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)[
-                "hidden_states"
-            ]  # [-1]
+            hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)["hidden_states"]  # [-1]
 
         return hidden_states
 

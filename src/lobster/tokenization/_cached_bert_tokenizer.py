@@ -65,14 +65,16 @@ class CachedBertTokenizerFast(BertTokenizerFast):
     def get_corruptible_mask(self, token_batch: LongTensor) -> Tensor:
         """
         Args:
+        ----
             token_batch: a batch of token ids (LongTensor).
+
         Returns:
+        -------
             a boolean mask tensor of corruptible tokens (corrupt if True).
+
         """
         excluded_idxs = (
-            torch.tensor([self.vocab[tok] for tok in self.corruption_vocab_excluded])
-            .view(-1, 1, 1)
-            .to(token_batch)
+            torch.tensor([self.vocab[tok] for tok in self.corruption_vocab_excluded]).view(-1, 1, 1).to(token_batch)
         )
         is_corruptible = token_batch.ne(excluded_idxs).prod(dim=0).bool()
         return is_corruptible

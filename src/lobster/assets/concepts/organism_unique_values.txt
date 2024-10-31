@@ -1,0 +1,36 @@
+Salmonella typhimurium (strain LT2 / SGSC1412 / ATCC 700720)
+Haemophilus influenzae (strain ATCC 51907 / DSM 11121 / KW20 / Rd)
+Rattus norvegicus (Rat)
+Archaeoglobus fulgidus (strain ATCC 49558 / DSM 4304 / JCM 9628 / NBRC 100126 / VC-16)
+Gallus gallus (Chicken)
+Pongo abelii (Sumatran orangutan) (Pongo pygmaeus abelii)
+Xenopus tropicalis (Western clawed frog) (Silurana tropicalis)
+Salmonella typhi
+Saccharomyces cerevisiae (strain ATCC 204508 / S288c) (Baker's yeast)
+Schizosaccharomyces pombe (strain 972 / ATCC 24843) (Fission yeast)
+Danio rerio (Zebrafish) (Brachydanio rerio)
+Caenorhabditis elegans
+Shigella flexneri
+Drosophila melanogaster (Fruit fly)
+Bacillus subtilis (strain 168)
+Synechocystis sp. (strain PCC 6803 / Kazusa)
+Yersinia pestis
+Escherichia coli O6:H1 (strain CFT073 / ATCC 700928 / UPEC)
+Xenopus laevis (African clawed frog)
+Oryza sativa subsp. japonica (Rice)
+Macaca fascicularis (Crab-eating macaque) (Cynomolgus monkey)
+Mycobacterium tuberculosis (strain CDC 1551 / Oshkosh)
+Escherichia coli O157:H7
+Bos taurus (Bovine)
+Sus scrofa (Pig)
+Methanocaldococcus jannaschii (strain ATCC 43067 / DSM 2661 / JAL-1 / JCM 10045 / NBRC 100440) (Methanococcus jannaschii)
+Arabidopsis thaliana (Mouse-ear cress)
+Pseudomonas aeruginosa (strain ATCC 15692 / DSM 22644 / CIP 104116 / JCM 14847 / LMG 12228 / 1C / PRS 101 / PAO1)
+Dictyostelium discoideum (Slime mold)
+Mycobacterium bovis (strain ATCC BAA-935 / AF2122/97)
+Homo sapiens (Human)
+Mus musculus (Mouse)
+Candida albicans (strain SC5314 / ATCC MYA-2876) (Yeast)
+Mycobacterium tuberculosis (strain ATCC 25618 / H37Rv)
+Escherichia coli (strain K12)
+UNKNOWN

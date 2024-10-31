@@ -15,9 +15,7 @@ logger = logging.get_logger(__name__)
 
 VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
-VOCAB_PATH = (
-    importlib.resources.files("lobster") / "assets" / "pmlm_tokenizer" / "vocab.txt"
-)
+VOCAB_PATH = importlib.resources.files("lobster") / "assets" / "pmlm_tokenizer" / "vocab.txt"
 
 PRETRAINED_VOCAB_FILES_MAP = {
     "vocab_file": {
@@ -103,12 +101,8 @@ class PmlmTokenizer(PreTrainedTokenizer):
             else:
                 return cls + token_ids_0 + sep
         elif self.eos_token_id is None:
-            raise ValueError(
-                "Cannot tokenize multiple sequences when EOS token is not set!"
-            )
-        return (
-            cls + token_ids_0 + sep + token_ids_1 + sep
-        )  # Multiple inputs always have an EOS token
+            raise ValueError("Cannot tokenize multiple sequences when EOS token is not set!")
+        return cls + token_ids_0 + sep + token_ids_1 + sep  # Multiple inputs always have an EOS token
 
     def get_special_tokens_mask(
         self,
@@ -121,6 +115,7 @@ class PmlmTokenizer(PreTrainedTokenizer):
         special tokens using the tokenizer `prepare_for_model` or `encode_plus` methods.
 
         Args:
+        ----
             token_ids_0 (`List[int]`):
                 List of ids of the first sequence.
             token_ids_1 (`List[int]`, *optional*):
@@ -129,7 +124,9 @@ class PmlmTokenizer(PreTrainedTokenizer):
                 Whether or not the token list is already formatted with special tokens for the model.
 
         Returns:
+        -------
             A list of integers in the range [0, 1]: 1 for a special token, 0 for a sequence token.
+
         """
         if already_has_special_tokens:
             if token_ids_1 is not None:
@@ -167,11 +164,7 @@ class PmlmTokenizer(PreTrainedTokenizer):
     def _create_trie(self, unique_no_split_tokens):
         trie = Trie()
         for token in unique_no_split_tokens:
-            if (
-                hasattr(self, "do_lower_case")
-                and self.do_lower_case
-                and token not in self.all_special_tokens
-            ):
+            if hasattr(self, "do_lower_case") and self.do_lower_case and token not in self.all_special_tokens:
                 trie.add(token.lower())
             else:
                 trie.add(token)

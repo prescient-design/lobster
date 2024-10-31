@@ -8,11 +8,6 @@ import torch.utils.data
 from datasets import Dataset
 from lightning import LightningDataModule
 
-from lobster.data import _PRESCIENT_AVAILABLE
-
-if _PRESCIENT_AVAILABLE:
-    from prescient.datasets._atom3d_ppi_dataset import ATOM3DPPIDataset
-
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler, Subset
 from tqdm import tqdm

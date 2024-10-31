@@ -17,6 +17,7 @@ class PPLMFoldConfig(PretrainedConfig):
 
 
     Args:
+    ----
         vocab_size (`int`, *optional*):
             Vocabulary size of the model. Defines the number of different tokens that can be represented by the
             `inputs_ids`.
@@ -62,6 +63,7 @@ class PPLMFoldConfig(PretrainedConfig):
             Whether to apply layer normalization after embeddings but before the main stem of the network.
         token_dropout (`bool`, defaults to `False`):
             When this is enabled, masked tokens are treated as if they had been dropped out by input dropout.
+
     """
 
     model_type = "lobster_fold"
@@ -91,9 +93,7 @@ class PPLMFoldConfig(PretrainedConfig):
         vocab_list=None,
         **kwargs,
     ):
-        super().__init__(
-            pad_token_id=pad_token_id, mask_token_id=mask_token_id, **kwargs
-        )
+        super().__init__(pad_token_id=pad_token_id, mask_token_id=mask_token_id, **kwargs)
 
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
@@ -127,8 +127,10 @@ class PPLMFoldConfig(PretrainedConfig):
         """
         Serializes this instance to a Python dictionary. Override the default [`~PretrainedConfig.to_dict`].
 
-        Returns:
+        Returns
+        -------
             `Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+
         """
         output = super().to_dict()
         if isinstance(self.fold_config, FoldConfig):
@@ -161,8 +163,10 @@ class FoldConfig:
         """
         Serializes this instance to a Python dictionary. Override the default [`~PretrainedConfig.to_dict`].
 
-        Returns:
+        Returns
+        -------
             `Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+
         """
         output = asdict(self)
         output["trunk"] = self.trunk.to_dict()
@@ -191,9 +195,7 @@ class TrunkConfig:
             self.structure_module = StructureModuleConfig(**self.structure_module)
 
         if self.max_recycles <= 0:
-            raise ValueError(
-                f"`max_recycles` should be positive, got {self.max_recycles}."
-            )
+            raise ValueError(f"`max_recycles` should be positive, got {self.max_recycles}.")
         if self.sequence_state_dim % self.sequence_state_dim != 0:
             raise ValueError(
                 "`sequence_state_dim` should be a round multiple of `sequence_state_dim`, got"
@@ -219,21 +221,19 @@ class TrunkConfig:
                 f" {self.pairwise_state_dim} != {pairwise_num_heads} * {self.pairwise_head_width}."
             )
         if self.pairwise_state_dim % 2 != 0:
-            raise ValueError(
-                f"`pairwise_state_dim` should be even, got {self.pairwise_state_dim}."
-            )
+            raise ValueError(f"`pairwise_state_dim` should be even, got {self.pairwise_state_dim}.")
 
         if self.dropout >= 0.4:
-            raise ValueError(
-                f"`dropout` should not be greater than 0.4, got {self.dropout}."
-            )
+            raise ValueError(f"`dropout` should not be greater than 0.4, got {self.dropout}.")
 
     def to_dict(self):
         """
         Serializes this instance to a Python dictionary. Override the default [`~PretrainedConfig.to_dict`].
 
-        Returns:
+        Returns
+        -------
             `Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+
         """
         output = asdict(self)
         output["structure_module"] = self.structure_module.to_dict()
@@ -244,6 +244,7 @@ class TrunkConfig:
 class StructureModuleConfig:
     """
     Args:
+    ----
         sequence_dim:
             Single representation channel dimension
         pairwise_dim:
@@ -274,6 +275,7 @@ class StructureModuleConfig:
             Small number used in angle resnet normalization
         inf:
             Large number used for attention masking
+
     """
 
     sequence_dim: int = 384

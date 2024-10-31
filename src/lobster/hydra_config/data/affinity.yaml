@@ -1,6 +1,0 @@
-_target_: prescient.lightning.data_modules.AffinityLightningDataModule
-
-root: ???
-download: True
-lengths: [0.8, 0.2]
-batch_size: 16

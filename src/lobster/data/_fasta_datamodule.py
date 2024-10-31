@@ -5,7 +5,7 @@ from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 import pandas as pd
 import torch.utils.data
 from beignet.datasets import FASTADataset
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from datasets import Dataset
 from lightning import LightningDataModule
 from torch import Generator

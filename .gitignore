@@ -25,3 +25,4 @@ docs/_build
 scripts/*.fasta
 scripts/fastas/*.fasta
 scripts/combined_db*
+*_play.py

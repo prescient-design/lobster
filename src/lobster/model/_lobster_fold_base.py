@@ -1,4 +1,5 @@
 """Adapted from https://github.com/huggingface/transformers/tree/v4.23.1/src/transformers/models"""
+
 from typing import Any, Dict, List, Optional, Union
 
 import torch
@@ -50,13 +51,9 @@ class PPLMFoldBasePreTrainedModel(PreTrainedModel):
         """Remove some keys from ignore list"""
         if not config.tie_word_embeddings:
             # must make a new list, or the class variable gets modified!
-            self._keys_to_ignore_on_save = [
-                k for k in self._keys_to_ignore_on_save if k not in del_keys_to_ignore
-            ]
+            self._keys_to_ignore_on_save = [k for k in self._keys_to_ignore_on_save if k not in del_keys_to_ignore]
             self._keys_to_ignore_on_load_missing = [
-                k
-                for k in self._keys_to_ignore_on_load_missing
-                if k not in del_keys_to_ignore
+                k for k in self._keys_to_ignore_on_load_missing if k not in del_keys_to_ignore
             ]
 
 
@@ -82,9 +79,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         self.esm_feats = self.config.hidden_size
         self.esm_attns = self.config.num_hidden_layers * self.config.num_attention_heads
         self.esm_layers = self.config.num_hidden_layers
-        self.register_buffer(
-            "af2_to_esm", self._af2_to_esm_from_vocab_list(config.vocab_list)
-        )
+        self.register_buffer("af2_to_esm", self._af2_to_esm_from_vocab_list(config.vocab_list))
         self.esm_s_combine = nn.Parameter(torch.zeros(self.esm_layers + 1))
 
         trunk_config = self.config.fold_config.trunk
@@ -132,9 +127,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
     @staticmethod
     def _af2_to_esm_from_vocab_list(vocab_list: List[str]) -> torch.Tensor:
         # Remember that t is shifted from residue_constants by 1 (0 is padding).
-        esm_reorder = [vocab_list.index("<pad>")] + [
-            vocab_list.index(v) for v in residue_constants.restypes_with_x
-        ]
+        esm_reorder = [vocab_list.index("<pad>")] + [vocab_list.index(v) for v in residue_constants.restypes_with_x]
         return torch.tensor(esm_reorder)
 
     def forward(
@@ -147,9 +140,10 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
     ) -> Dict[str, Any]:
         r"""
         Returns:
+        -------
 
         Example:
-
+        -------
         ```python
         >>> from transformers import AutoTokenizer, EsmForProteinFolding
 
@@ -176,9 +170,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         esmaa = self.af2_idx_to_esm_idx(aa, attention_mask)
 
         if masking_pattern is not None:
-            masked_aa, esmaa, mlm_targets = self.bert_mask(
-                aa, esmaa, attention_mask, masking_pattern
-            )
+            masked_aa, esmaa, mlm_targets = self.bert_mask(aa, esmaa, attention_mask, masking_pattern)
         else:
             masked_aa = aa
             mlm_targets = None
@@ -209,9 +201,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         if self.config.fold_config.embed_aa:
             s_s_0 += self.embedding(masked_aa)
 
-        structure: dict = self.trunk(
-            s_s_0, s_z_0, aa, position_ids, attention_mask, no_recycles=num_recycles
-        )
+        structure: dict = self.trunk(s_s_0, s_z_0, aa, position_ids, attention_mask, no_recycles=num_recycles)
         # Documenting what we expect:
         structure = {
             k: v
@@ -253,23 +243,15 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
             structure[k] *= attention_mask.unsqueeze(-1)
         structure["residue_index"] = position_ids
 
-        lddt_head = self.lddt_head(structure["states"]).reshape(
-            structure["states"].shape[0], B, L, -1, self.lddt_bins
-        )
+        lddt_head = self.lddt_head(structure["states"]).reshape(structure["states"].shape[0], B, L, -1, self.lddt_bins)
         structure["lddt_head"] = lddt_head
         plddt = categorical_lddt(lddt_head[-1], bins=self.lddt_bins)
         structure["plddt"] = plddt
 
         ptm_logits = self.ptm_head(structure["s_z"])
         structure["ptm_logits"] = ptm_logits
-        structure["ptm"] = compute_tm(
-            ptm_logits, max_bin=31, no_bins=self.distogram_bins
-        )
-        structure.update(
-            compute_predicted_aligned_error(
-                ptm_logits, max_bin=31, no_bins=self.distogram_bins
-            )
-        )
+        structure["ptm"] = compute_tm(ptm_logits, max_bin=31, no_bins=self.distogram_bins)
+        structure.update(compute_predicted_aligned_error(ptm_logits, max_bin=31, no_bins=self.distogram_bins))
         return structure
 
     def af2_idx_to_esm_idx(self, aa, mask):
@@ -279,16 +261,12 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         aa = (aa + 1).masked_fill(mask != 1, 0)
         return self.af2_to_esm[aa]
 
-    def compute_language_model_representations(
-        self, esmaa: torch.Tensor
-    ) -> torch.Tensor:
+    def compute_language_model_representations(self, esmaa: torch.Tensor) -> torch.Tensor:
         device = next(self.parameters()).device
         B, L = esmaa.shape  # B = batch size, L = sequence length.
 
         if self.config.fold_config.bypass_lm:
-            esm_s = torch.zeros(
-                B, L, self.esm_s_combine.size[0], -1, self.esm_feats, device=device
-            )
+            esm_s = torch.zeros(B, L, self.esm_s_combine.size[0], -1, self.esm_feats, device=device)
             return esm_s
 
         bosi, eosi = self.esm_dict_cls_idx, self.esm_dict_eos_idx
@@ -301,9 +279,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         # _, esm_z, esm_s = self.esm(esmaa, return_pairs=self.config.fold_config.use_esm_attn_map)
         # Because we do not support use_esm_attn_map in the HF port as it is not used in any public models,
         # esm_z is always None
-        esm_hidden_states = self.esm(
-            esmaa, attention_mask=esmaa != 1, output_hidden_states=True
-        )["hidden_states"]
+        esm_hidden_states = self.esm(esmaa, attention_mask=esmaa != 1, output_hidden_states=True)["hidden_states"]
         esm_s = torch.stack(esm_hidden_states, dim=2)
 
         esm_s = esm_s[:, 1:-1]  # B, L, nLayers, C

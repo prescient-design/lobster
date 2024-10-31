@@ -1,8 +1,8 @@
 # LBSTER 🦞
 **L**anguage models for **B**iological **S**equence **T**ransformation and **E**volutionary **R**epresentation
 
-## A language model library for rapid pre-training from scratch.
-`lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](https://github.com/taylormjs), [Aya Ismail](https://github.com/ayaabdelsalam91), and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/CONTRIBUTORS.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
+
+`lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](https://github.com/taylormjs), [Aya Abdlesalam Ismail](https://github.com/ayaabdelsalam91), and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/CONTRIBUTORS.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
 
 This repository contains code and access to pre-trained language models for biological sequence data.
 
@@ -13,9 +13,6 @@ image credit: Amy Wang
 <img src="assets/lobster.png" width=200px>
 </p>
 
-## Notice: Alpha Release
-This is an alpha release. The API is subject to change and the documentation is incomplete.
-*LBSTER is a work-in-progress. Contributions and feedback are encouraged!*
 
 <details open><summary><b>Table of contents</b></summary>
 
@@ -23,6 +20,7 @@ This is an alpha release. The API is subject to change and the documentation is 
 - [Citations](#citations)
 - [Install instructions](#install)
 - [Models](#main-models)
+- [Notebooks](#notebooks)
 - [Usage](#usage)
 </details>
 
@@ -30,10 +28,10 @@ This is an alpha release. The API is subject to change and the documentation is 
 * LBSTER is built for pre-training models quickly from scratch. It is "batteries included." This is most useful if you need to control the pre-training data mixture and embedding space, or want to experiment with novel pre-training objectives and fine-tuning strategies.
 * LBSTER is a living, open-source library that will be periodically updated with new code and pre-trained models from the [Frey Lab](https://ncfrey.github.io/) at [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design). The Frey Lab works on real therapeutic molecule design problems and LBSTER models and capabilities reflect the demands of real-world drug discovery campaigns.
 * LBSTER is built with [beignet](https://github.com/Genentech/beignet/tree/main), a standard library for biological research, and integrated with [cortex](https://github.com/prescient-design/cortex/tree/main), a modular framework for multitask modeling, guided generation, and multi-modal models.
-
+* LBSTER supports concepts; we have a concept-bottleneck protein language model we refer to as CB-LBSTER, which supports 718 concepts.
 ## Citations <a name="citations"></a>
 If you use the code and/or models, please cite the relevant papers.
-For the `lbster` code base:
+For the `lbster` code base cite: [Cramming Protein Language Model Training in 24 GPU Hours](https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108})
 ```bibtex
 @article{Frey2024.05.14.594108,
 	author = {Frey, Nathan C. and Joren, Taylor and Ismail, Aya Abdelsalam and Goodman, Allen and Bonneau, Richard and Cho, Kyunghyun and Gligorijevi{\'c}, Vladimir},
@@ -50,6 +48,22 @@ For the `lbster` code base:
 ```
 
 
+<!-- For the `cb-lbster` code base cite: [Concept bottleneck Protien Language](https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108})
+```bibtex
+@article{Frey2024.05.14.594108,
+	author = {Frey, Nathan C. and Joren, Taylor and Ismail, Aya Abdelsalam and Goodman, Allen and Bonneau, Richard and Cho, Kyunghyun and Gligorijevi{\'c}, Vladimir},
+	title = {Cramming Protein Language Model Training in 24 GPU Hours},
+	elocation-id = {2024.05.14.594108},
+	year = {2024},
+	doi = {10.1101/2024.05.14.594108},
+	publisher = {Cold Spring Harbor Laboratory},
+	URL = {https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108},
+	eprint = {https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108.full.pdf},
+	journal = {bioRxiv}
+}
+
+``` -->
+
 ## Install <a name="install"></a>
 clone the repo, cd into it and do `mamba env create -f env.yml`
 then from the root of the repo, do
@@ -58,20 +72,51 @@ pip install -e .
 ```
 
 ## Main models you should use <a name="main-models"></a>
+
+### Pretrained Models
+
+#### Masked LMs
+| Shorthand | #params | Dataset |  Description  | Model checkpoint |
+|---------|------------|---------|------------------------------------------------------------|-------------|
+Lobster_24M | 24 M | uniref50 | 24M parameter protein Masked LLM trained on uniref50| [lobster_24M](https://huggingface.co/asalam91/lobster_24M)
+Lobster_150M | 150 M | uniref50 | 24M parameter protein Masked LLM trained on uniref50|[lobster_150M](https://huggingface.co/asalam91/lobster_150M)
+
+
+#### CB LMs
+| Shorthand | #params | Dataset |  Description  | Model checkpoint |
+|---------|------------|---------|------------------------------------------------------------|-------------|
+cb_Lobster_24M | 24 M | uniref50+SwissProt | 24M parameter a protein concept bottleneck model for protiens with 718 concepts | [cb_lobster_24M](https://huggingface.co/asalam91/cb_lobster_24M)
+cb_Lobster_150M | 150 M | uniref50+SwissProt |150M parameter a protein  concept bottleneck model for protiens with 718 concepts|[cb_lobster_150M](https://huggingface.co/asalam91/cb_lobster_150M)
+cb_Lobster_650M | 650 M | uniref50+SwissProt |650M parameter  a protein concept bottleneck model for protiens with 718 concepts|[cb_lobster_650M](https://huggingface.co/asalam91/cb_lobster_650M)
+cb_Lobster_3B | 3 B | uniref50+SwissProt |3B parameter  a protein concept bottleneck model for protiens with 718 concepts|[cb_lobster_3B](https://huggingface.co/asalam91/cb_lobster_3B)
+
 ### Loading a pre-trained model
 ```python
-from lobster.model import LobsterPMLM, LobsterPCLM
-masked_language_model = LobsterPMLM.load_from_checkpoint(<path to ckpt>)
+from lobster.model import LobsterPMLM, LobsterPCLM, LobsterCBMPMLM
+masked_language_model = LobsterPMLM("asalam91/lobster_mlm_24M")
+concept_bottleneck_masked_language_model = LobsterCBMPMLM("asalam91/cb_lobster_24M")
 causal_language_model = LobsterPCLM.load_from_checkpoint(<path to ckpt>)
 ```
 3D, cDNA, and dynamic models use the same classes.
 
-NOTE: Pre-trained model checkpoints *may* be included in future releases!
-
 **Models**
 * LobsterPMLM: masked language model (BERT-style encoder-only architecture)
+* LobsterCBMPMLM: concept bottleneck masked language model (BERT-style encoder-only architecture with a concept bottleneck and a linear decoder)
 * LobsterPCLM: causal language model (Llama-style decoder-only architecture)
 * LobsterPLMFold: structure prediction language models (pre-trained encoder + structure head)
+
+
+## Notebooks <a name="notebooks"></a>
+
+### Representation learning
+
+Check out [jupyter notebook tutorial](notebooks/01-inference.ipynb) for example on how extract embedding reprsentations from different models.
+
+
+### Concept Interventions
+
+Check out [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for example on to intervene on different concepts for our concept-bottleneck models class.
+
 
 ## Usage <a name="usage"></a>
 

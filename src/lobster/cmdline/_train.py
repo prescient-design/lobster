@@ -8,7 +8,7 @@ from lobster.cmdline._utils import instantiate_callbacks
 
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="train")
-def train(cfg: DictConfig) -> bool:
+def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, list[pl.Callback]]:
     log_cfg = OmegaConf.to_container(cfg, throw_on_missing=True, resolve=True)
 
     wandb.require("service")
@@ -22,10 +22,8 @@ def train(cfg: DictConfig) -> bool:
     datamodule.setup(stage="fit")
     model = hydra.utils.instantiate(cfg.model, _recursive_=False)
 
-    # wandb_api_key = os.getenv("WANDB_API_KEY")
-    # if wandb_api_key is not None:
     wandb.login(host="https://genentech.wandb.io/")
-    # key=wandb_api_key)
+
     wandb.init(
         config=log_cfg,  # type: ignore[arg-type]
         project=cfg.logger.project,
@@ -57,4 +55,5 @@ def train(cfg: DictConfig) -> bool:
             trainer.test(model, datamodule=datamodule, ckpt_path="best")
 
     wandb.finish()
-    return True
+
+    return model, datamodule, callbacks

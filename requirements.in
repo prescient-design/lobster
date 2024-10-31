@@ -10,14 +10,11 @@ pyarrow
 s3fs[boto3]
 biopandas
 wandb
-jupyter
-ipykernel
 hydra-core
-deepspeed
 torchdata
 datasets
 tokenizers
-transformers
+transformers>=4.24.0
 scikit-learn
 matplotlib
 seaborn
@@ -27,4 +24,5 @@ fastparquet
 datasketch
 peft
 icecream
-beignet @ git+https://github.com/Genentech/beignet.git
+selfies
+rdkit

@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import Bio.PDB.Polypeptide as Poly
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from pandas import DataFrame
 
 from lobster.tokenization._pmlm_tokenizer import PmlmTokenizer
@@ -26,9 +26,7 @@ def _get_contact_map(seqA: str, seqB: str, ixs: list) -> torch.Tensor:
     matrix = torch.zeros((num_rows, num_cols))  # Initialize matrix with zeros
 
     for r, c in ixs:
-        if (
-            0 <= r < num_rows and 0 <= c < num_cols
-        ):  # NOTE - There are Atom3D indices out-of-bounds, unclear why
+        if 0 <= r < num_rows and 0 <= c < num_cols:  # NOTE - There are Atom3D indices out-of-bounds, unclear why
             matrix[r - 1, c - 1] = 1  # Set the corresponding element to 1
 
     return matrix
@@ -64,9 +62,7 @@ class Atom3DPPIToSequenceAndContactMap(Transform):
         feat["resname"] = feat["resname"].apply(_protein_letters_3to1_wrapper)
         chain_sequences = []
         chain_residue_ixs = []
-        for _, chain in feat.groupby(
-            ["ensemble", "subunit", "structure", "model", "chain"]
-        ):
+        for _, chain in feat.groupby(["ensemble", "subunit", "structure", "model", "chain"]):
             # Get sequence and chain info
             seq = "".join(chain["resname"])
             chain_sequences.append(seq)
@@ -78,9 +74,7 @@ class Atom3DPPIToSequenceAndContactMap(Transform):
         if not len(chain_sequences) == 2:
             return (None, None), None  # If not a protein-protein complex
         a_ixs, b_ixs = tuple(chain_residue_ixs)
-        is_residue_mask = target["residue0"].isin(a_ixs) & target["residue1"].isin(
-            b_ixs
-        )
+        is_residue_mask = target["residue0"].isin(a_ixs) & target["residue1"].isin(b_ixs)
         target = target[is_residue_mask]
         ixs = list(zip(target["residue0"], target["residue1"]))
         contact_map = _get_contact_map(*chain_sequences, ixs)
@@ -101,9 +95,7 @@ class PairedSequenceToTokens(Transform):
 
         # TODO - make this a hydra param to allow different vocab files?
         if vocab_file is None:
-            vocab_file = (
-                importlib.resources.files("lobster") / "assets" / "pmlm_vocab.txt"
-            ).as_posix()
+            vocab_file = (importlib.resources.files("lobster") / "assets" / "pmlm_vocab.txt").as_posix()
 
         self._tokenizer_dir = tokenizer_dir
         path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
@@ -135,10 +127,7 @@ class PairedSequenceToTokens(Transform):
             tokens1 = tokens1["input_ids"]
             tokens2 = tokens2["input_ids"]
 
-        tokens1, tokens2 = (
-            torch.tensor(tokens1, dtype=torch.int),
-            torch.tensor(tokens2, dtype=torch.int),
-        )
+        tokens1, tokens2 = torch.tensor(tokens1, dtype=torch.int), torch.tensor(tokens2, dtype=torch.int)
 
         return tokens1, tokens2
 
@@ -169,13 +158,8 @@ class Atom3DPPIToSequence(Transform):
         feat = feat[feat["resname"].apply(lambda x: Poly.is_aa(x, standard=True))]
         feat["resname"] = feat["resname"].apply(_protein_letters_3to1_wrapper)
         chain_sequences = []
-        for _, chain in feat.groupby(
-            ["ensemble", "subunit", "structure", "model", "chain"]
-        ):
+        for _, chain in feat.groupby(["ensemble", "subunit", "structure", "model", "chain"]):
             seq = "".join(chain["resname"])
             chain_sequences.append(seq)
 
-        return {
-            "sequences": chain_sequences,
-            "features": feat,
-        }  # needed for contact map transform
+        return {"sequences": chain_sequences, "features": feat}  # needed for contact map transform

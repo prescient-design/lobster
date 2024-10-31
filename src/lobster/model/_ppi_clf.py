@@ -16,9 +16,7 @@ class PPIClassifier(pl.LightningModule):
         self,
         ffd_dim: int = 256,
         model_name: Optional[str] = None,
-        checkpoint: Optional[
-            str
-        ] = None,  # TODO - name this encoder_checkpoint for clarity?
+        checkpoint: Optional[str] = None,  # TODO - name this encoder_checkpoint for clarity?
         base_model_type: Literal["LobsterPMLM"] = "LobsterPMLM",
         lr: float = 1e-3,
         beta1: float = 0.9,
@@ -28,14 +26,11 @@ class PPIClassifier(pl.LightningModule):
         freeze_encoder: bool = True,
         max_length: int = 512,
         # encoder_kwargs: Optional[dict] = {},
-        ckpt_path: Optional[
-            str
-        ] = None,  # dummy kwarg for compatibility with hydra (TODO - handle elsewhere?)
+        ckpt_path: Optional[str] = None,  # dummy kwarg for compatibility with hydra (TODO - handle elsewhere?)
     ):
         """
         Classifier tasks for two-protein inputs (e.g. PPI).
         """
-
         super().__init__()
         self._beta1 = beta1
         self._beta2 = beta2
@@ -67,9 +62,7 @@ class PPIClassifier(pl.LightningModule):
             )  # load a specific model, e.g. ESM2-8M
         if (checkpoint is not None) and ("esm2" in model_name):
             if checkpoint.endswith(".pt"):
-                assert (
-                    base_model is not None
-                ), "If checkpoint ends in .pt, please also specify model_name"
+                assert base_model is not None, "If checkpoint ends in .pt, please also specify model_name"
                 base_model.model.load_state_dict(torch.load(checkpoint))
             else:
                 base_model = self._model_cls.load_from_checkpoint(
@@ -120,17 +113,13 @@ class PPIClassifier(pl.LightningModule):
         tokens_cat = torch.cat([tokens1, tokens2], dim=1)
 
         if "MLM" in self.model_name:
-            preds = self.base_model.model(
-                input_ids=tokens_cat, output_hidden_states=True
-            )
+            preds = self.base_model.model(input_ids=tokens_cat, output_hidden_states=True)
 
         elif "esm2" in self.model_name:
             preds = self.base_model.model(tokens_cat, output_hidden_states=True)
 
         # Take mean embedding of last two layers, ignore padding
-        divisor = attns_a.sum(axis=-1).unsqueeze(-1) + attns_b.sum(axis=-1).unsqueeze(
-            -1
-        )
+        divisor = attns_a.sum(axis=-1).unsqueeze(-1) + attns_b.sum(axis=-1).unsqueeze(-1)
 
         hidden_states_p = preds["hidden_states"][-2].sum(axis=1) / divisor
         hidden_states_u = preds["hidden_states"][-1].sum(axis=1) / divisor
@@ -183,12 +172,7 @@ class PPIClassifier(pl.LightningModule):
         return preds
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.parameters(),
-            lr=self._lr,
-            betas=(self._beta1, self._beta2),
-            eps=self._eps,
-        )
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps)
         # scheduler = StepLR(optimizer, step_size=1, gamma=0.9)
         # return [optimizer], [scheduler]
         return optimizer

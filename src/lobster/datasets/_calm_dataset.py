@@ -4,7 +4,7 @@ from typing import Callable, Optional, Sequence, Union
 
 import pooch
 from beignet.datasets import FASTADataset
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from pooch import Decompress
 
 

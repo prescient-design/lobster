@@ -57,7 +57,6 @@ class GeminiModel(pl.LightningModule):
             of the image to feed to the resnet.
 
         """
-
         super().__init__()
 
         self._seed = seed
@@ -80,16 +79,15 @@ class GeminiModel(pl.LightningModule):
         self._diff_channel_1 = diff_channel_1
         self._diff_channel_2 = diff_channel_2
 
+        if model_name is None and checkpoint is None:
+            model_name = "esm2_t6_8M_UR50D"
+
         model = None
         if model_name is not None:
-            model = model_cls(
-                model_name=model_name, max_length=max_length
-            )  # load a specific model, e.g. ESM2-8M
+            model = model_cls(model_name=model_name, max_length=max_length)  # load a specific model, e.g. ESM2-8M
         if checkpoint is not None:
             if checkpoint.endswith(".pt"):
-                assert (
-                    model is not None
-                ), "If checkpoint ends in .pt, please also specify model_name"
+                assert model is not None, "If checkpoint ends in .pt, please also specify model_name"
                 model.model.load_state_dict(torch.load(checkpoint))
             else:
                 model = model_cls.load_from_checkpoint(
@@ -169,12 +167,28 @@ class GeminiModel(pl.LightningModule):
 
         return loss
 
+    def test_step(self, batch, batch_idx):
+        loss, preds, targets = self._compute_loss(batch)
+        r2score = self.test_r2score(preds, targets)
+        mae = self.test_mae(preds, targets)
+        spearman = self.test_spearman(preds, targets)
+        loss_dict = {
+            "test/r2score": r2score,
+            "test/mae": mae,
+            "test/spearman": spearman,
+        }
+        self.log_dict(loss_dict)
+
+        self.log("test/loss", loss, prog_bar=True, on_step=True)
+
+        return loss
+
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         if self.output_hidden:
-            _loss, preds, targets, hidden_states = self._compute_loss(batch)
+            _, preds, targets, hidden_states = self._compute_loss(batch)
             return preds, targets, hidden_states
 
-        _loss, preds, targets = self._compute_loss(batch)
+        _, preds, targets = self._compute_loss(batch)
         return preds, targets  # , loss_dict
 
     def configure_optimizers(self):
@@ -195,27 +209,15 @@ class GeminiModel(pl.LightningModule):
         for seq1, seq2 in zip(sequences1, sequences2):
             if seq1 not in self.embedding_cache:
                 with torch.inference_mode():
-                    hidden_states = (
-                        self.model.sequences_to_latents([seq1])[layer]
-                        .to(self.device)
-                        .float()
-                    )
+                    hidden_states = self.model.sequences_to_latents([seq1])[layer].to(self.device).float()
                 self.embedding_cache[seq1] = hidden_states
             if seq2 not in self.embedding_cache:
                 with torch.inference_mode():
-                    hidden_states = (
-                        self.model.sequences_to_latents([seq2])[layer]
-                        .to(self.device)
-                        .float()
-                    )
+                    hidden_states = self.model.sequences_to_latents([seq2])[layer].to(self.device).float()
                 self.embedding_cache[seq2] = hidden_states
 
-        embeddings1 = torch.concat(
-            [self.embedding_cache[seq] for seq in sequences1], dim=0
-        )
-        embeddings2 = torch.concat(
-            [self.embedding_cache[seq] for seq in sequences2], dim=0
-        )
+        embeddings1 = torch.concat([self.embedding_cache[seq] for seq in sequences1], dim=0)
+        embeddings2 = torch.concat([self.embedding_cache[seq] for seq in sequences2], dim=0)
         ys = y1 - y2  # subtract labels
         ys = ys.float()
 
@@ -224,23 +226,25 @@ class GeminiModel(pl.LightningModule):
 
         loss = self.loss(preds, ys)
 
-        return loss, preds, ys
+        return loss, preds, ys  # embeddings1, embeddings2, embedding_image
 
     def _resize_embeddings(self, embeddings1, embeddings2):
         """
         Resize embeddings for Resnet.
 
-        Arguments
+        Arguments:
         ---------
         embeddings1: torch.Tensor  [B, L, H]
             Embeddings to resize
         embeddings2: torch.Tensor  [B, L, H]
             Embeddings to resize
+
         """
-        # ic(embeddings.shape)
-        for channel, op in enumerate(
-            [self._diff_channel_0, self._diff_channel_1, self._diff_channel_2]
-        ):
+        img_dim = int(self._embedding_img_size)
+        B = embeddings1.shape[0]
+        input_image = torch.zeros((B, 3, img_dim, img_dim), device=self.device)
+
+        for channel, op in enumerate([self._diff_channel_0, self._diff_channel_1, self._diff_channel_2]):
             if op is not None:
                 if op == "diff":
                     embeddings = embeddings1 - embeddings2
@@ -254,14 +258,17 @@ class GeminiModel(pl.LightningModule):
                     raise ValueError(f"Invalid operation {op}")
             else:
                 embeddings = torch.zeros(embeddings1.shape)
-            embeddings = self._resize(embeddings)
-            img_dim = int(self._embedding_img_size)
-            B = embeddings.shape[0]
-            embeddings -= torch.amin(embeddings)
-            embeddings /= torch.amax(embeddings)
-            embedding_img = embeddings
 
-            input_image = torch.zeros((B, 3, img_dim, img_dim))
-            input_image[:, channel, :, :] += embedding_img
+            embeddings = self._resize(embeddings)
+
+            embeddings -= torch.amin(embeddings)
+
+            # check that embeddings are not all zeros
+            if torch.amax(embeddings) > 0:
+                embeddings /= torch.amax(embeddings)
+
+            embeddings = self._resize(embeddings)
+
+            input_image[:, channel, :, :] += embeddings
 
         return input_image

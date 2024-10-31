@@ -1,0 +1,101 @@
+UNKNOWN
+Tanacetum cinerariifolium
+Dehalococcoidia bacterium
+Bacteroidota
+Vitis vinifera
+Portunus trituberculatus
+Dreissena polymorpha
+Betaproteobacteria
+Chloroflexota bacterium
+Pseudomonadota bacterium
+bioreactor metagenome
+Rhodobacterales
+marine metagenome
+Verrucomicrobiota bacterium
+Deltaproteobacteria bacterium
+Alphaproteobacteria bacterium
+Bacillota bacterium
+Hyphomicrobiales
+Planctomycetota
+Rhizophora mucronata
+Chitinophagaceae bacterium
+Bacillaceae
+Burkholderiaceae
+Lachnospiraceae bacterium
+Candidatus Woesearchaeota archaeon
+Eumeta variegata
+Planctomycetaceae bacterium
+Ensete ventricosum
+Bacillota
+Bacteroidales
+Polarella glacialis
+Gemmatimonadota bacterium
+cellular organisms
+marine sediment metagenome
+Amniota
+Flavobacteriales bacterium
+Candidatus Marinimicrobia bacterium
+Eubacteriales
+Enterobacterales
+Brassica cretica
+Archaea
+bacterium
+Candidatus Bathyarchaeota archaeon
+Euryarchaeota archaeon
+Bacteroidales bacterium
+Actinomycetes
+Candidatus Omnitrophica bacterium
+Pseudomonas
+Actinomycetota
+Planctomycetales bacterium
+archaeon
+Actinomycetota bacterium
+Paenibacillus
+Anguilla anguilla
+Bilateria
+Anaerolineae bacterium
+Arundo donax
+Betaproteobacteria bacterium
+Gammaproteobacteria bacterium
+Pentapetalae
+Chloroflexota
+Myxococcales bacterium
+Human immunodeficiency virus 1
+Pseudomonadota
+Terrabacteria group
+Acidobacteriota bacterium
+Flavobacteriaceae
+leotiomyceta
+Streptomyces
+Klebsiella pneumoniae
+Phycisphaerales bacterium
+Actinomycetia bacterium
+Enterobacteriaceae
+Eukaryota
+Mesangiospermae
+Armatimonadota bacterium
+Alphaproteobacteria
+Bacteroidota bacterium
+Anaerolineales bacterium
+viral metagenome
+Euteleostomi
+Bdellovibrionales bacterium
+Trifolium medium
+Rhodospirillaceae bacterium
+Burkholderiales
+Saprospiraceae bacterium
+Cyanophyceae
+Phycisphaerae bacterium
+Eutreptiella gymnastica
+Clostridiaceae bacterium
+Clostridiales bacterium
+Planctomycetota bacterium
+uncultured bacterium
+Bacteria
+Oscillospiraceae bacterium
+Araneus ventricosus
+Bacillales
+Nymphaea colorata
+Escherichia coli
+Gammaproteobacteria
+Acidobacteriota

@@ -4,7 +4,7 @@ from os import PathLike
 from typing import Any, Dict, List, Optional, Union
 
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from transformers.tokenization_utils_base import (
     BatchEncoding,
     PaddingStrategy,
@@ -13,12 +13,7 @@ from transformers.tokenization_utils_base import (
 
 from ._hyena_tokenizer import HyenaTokenizer
 
-filename = (
-    importlib.resources.files("lobster")
-    / "assets"
-    / "codon_tables"
-    / "codon_table.json"
-)
+filename = importlib.resources.files("lobster") / "assets" / "codon_tables" / "codon_table.json"
 DNA_CODON_DICT = json.load(open(filename, "r"))
 
 
@@ -61,7 +56,7 @@ class HyenaTokenizerTransform(Transform):
             self._auto_tokenizer = HyenaTokenizer.from_pretrained(
                 self._pretrained_model_name_or_path,
                 do_lower_case=False,
-                add_special_tokens=True,
+                # add_special_tokens=True,
                 padding_side="left",  # since HyenaDNA is causal, we pad on the left
                 use_fast=True,
             )
@@ -70,7 +65,7 @@ class HyenaTokenizerTransform(Transform):
             self._auto_tokenizer = HyenaTokenizer.from_pretrained(
                 path,
                 do_lower_case=False,
-                add_special_tokens=True,
+                # add_special_tokens=True,
                 padding_side="left",  # since HyenaDNA is causal, we pad on the left
                 use_fast=True,
             )
@@ -117,11 +112,6 @@ class HyenaTokenizerTransform(Transform):
     def translate_aa_to_dna(self, aa_sequence: str) -> str:
         # TODO: update DNA frequencies
         dna_sequence = "".join(
-            [
-                DNA_CODON_DICT[aa][
-                    torch.randint(0, len(DNA_CODON_DICT[aa]), (1,)).item()
-                ]
-                for aa in aa_sequence
-            ]
+            [DNA_CODON_DICT[aa][torch.randint(0, len(DNA_CODON_DICT[aa]), (1,)).item()] for aa in aa_sequence]
         )
         return dna_sequence

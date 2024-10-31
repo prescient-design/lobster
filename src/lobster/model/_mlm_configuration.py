@@ -67,6 +67,26 @@ PMLM_CONFIG_ARGS = {
         "value_bias": False,
         "intermediate_bias": False,
     },
+    "MLM_650M": {  # 650 M
+        "num_hidden_layers": 33,
+        "num_attention_heads": 20,
+        "intermediate_size": 5120,
+        "hidden_size": 1280,
+        "query_bias": False,
+        "key_bias": False,
+        "value_bias": False,
+        "intermediate_bias": False,
+    },
+    "MLM_3B": {  # 3B
+        "num_hidden_layers": 36,
+        "num_attention_heads": 40,
+        "intermediate_size": 12288,
+        "hidden_size": 2560,
+        "query_bias": False,
+        "key_bias": False,
+        "value_bias": False,
+        "intermediate_bias": False,
+    },
 }
 
 
@@ -79,6 +99,7 @@ class PMLMConfig(PretrainedConfig):
 
 
     Args:
+    ----
         vocab_size (`int`, *optional*):
             Vocabulary size of the model. Defines the number of different tokens that can be represented by the
             `inputs_ids`.
@@ -124,6 +145,7 @@ class PMLMConfig(PretrainedConfig):
             Whether to apply layer normalization after embeddings but before the main stem of the network.
         token_dropout (`bool`, defaults to `False`):
             When this is enabled, masked tokens are treated as if they had been dropped out by input dropout.
+
     """
 
     model_type = "pmlm"
@@ -152,6 +174,13 @@ class PMLMConfig(PretrainedConfig):
         key_bias=True,
         value_bias=True,
         intermediate_bias=True,
+        n_concepts=0,
+        has_conditioning=False,
+        conditioning_type=None,
+        add_embedding_noise: bool = False,
+        noise_mean: float = 0.0,
+        noise_std_min: float = 0.1,
+        noise_std_max: float = 0.25,
         **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
@@ -178,3 +207,11 @@ class PMLMConfig(PretrainedConfig):
         self.query_bias = query_bias
         self.value_bias = value_bias
         self.intermediate_bias = intermediate_bias
+        self.n_concepts = n_concepts
+        self.has_conditioning = has_conditioning
+        self.conditioning_type = conditioning_type
+
+        self.add_embedding_noise = add_embedding_noise
+        self.noise_mean = noise_mean
+        self.noise_std_min = noise_std_min
+        self.noise_std_max = noise_std_max

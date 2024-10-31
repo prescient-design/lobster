@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
 import torch.utils.data
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler

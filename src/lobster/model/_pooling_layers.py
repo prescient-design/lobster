@@ -6,7 +6,8 @@ from torch import nn
 
 
 class MaskedConv1d(nn.Conv1d):
-    """A masked 1-dimensional convolution layer.
+    """
+    A masked 1-dimensional convolution layer.
     # Taken from MSR: https://github.com/microsoft/protein-sequence-models/blob/0eecb6e22dd20229e5fe718878c9aab379fbb795/sequence_models/structure.py#L53
 
     Takes the same arguments as torch.nn.Conv1D, except that the padding is set automatically.
@@ -65,9 +66,7 @@ class Attention1d(nn.Module):
         attn = self.layer(x)  # [batch x sequence x 1] --> 1D conv squashes hidden dim
         attn = attn.view(n, -1)
         if input_mask is not None:
-            attn = attn.masked_fill_(
-                ~input_mask.view(n, -1).bool(), float("-inf")
-            )  # fill masked w/ -infs
+            attn = attn.masked_fill_(~input_mask.view(n, -1).bool(), float("-inf"))  # fill masked w/ -infs
         attn = F.softmax(attn, dim=-1).view(n, -1, 1)  # take softmax across seq len dim
         out = (attn * x).sum(dim=1)
         return out
@@ -77,7 +76,5 @@ class CrossAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
 
-    def forward(
-        self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, input_mask: torch.Tensor = None) -> torch.Tensor:
         pass

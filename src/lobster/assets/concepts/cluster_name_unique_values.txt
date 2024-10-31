@@ -1,0 +1,159 @@
+Helix-turn-helix transcriptional regulator
+Fibronectin type-III domain-containing protein
+Predicted protein
+Lipocalin-like domain-containing protein
+HTH araC/xylS-type domain-containing protein
+SDR family NAD(P)-dependent oxidoreductase
+histidine kinase
+4Fe-4S ferredoxin-type domain-containing protein
+PDZ domain-containing protein
+Metallo-beta-lactamase domain-containing protein
+hypothetical protein
+RING-type domain-containing protein
+Nudix hydrolase domain-containing protein
+Reverse transcriptase domain-containing protein
+Carboxypeptidase regulatory-like domain-containing protein
+Glycosyltransferase
+Tetratricopeptide repeat protein
+HAD family hydrolase
+Endonuclease/exonuclease/phosphatase domain-containing protein
+HNH nuclease domain-containing protein
+J domain-containing protein
+SGNH hydrolase-type esterase domain-containing protein
+Cytochrome c domain-containing protein
+PAS domain S-box protein
+histidine kinase (Fragment)
+Integral membrane protein
+T9SS type A sorting domain-containing protein
+Transposase
+ATP-grasp domain-containing protein
+PilZ domain-containing protein
+RHS repeat-associated core domain-containing protein
+Class I SAM-dependent methyltransferase
+Glycosyltransferase family 2 protein
+Ig-like domain-containing protein
+PEP-CTERM sorting domain-containing protein
+Protein kinase domain-containing protein
+ABC transporter ATP-binding protein
+Glycosyl transferase family 1 domain-containing protein
+AraC family transcriptional regulator
+GntR family transcriptional regulator
+PEP-CTERM protein-sorting domain-containing protein
+EAL domain-containing protein
+DNA-binding protein
+SnoaL-like domain-containing protein
+LysR family transcriptional regulator
+Retrotransposon gag domain-containing protein
+Carrier domain-containing protein
+BZIP domain-containing protein
+F-box domain-containing protein
+Reverse transcriptase domain-containing protein (Fragment)
+VWFA domain-containing protein
+Response regulator
+Zinc ribbon domain-containing protein
+Tetratricopeptide repeat protein (Fragment)
+RNA polymerase sigma factor
+Right handed beta helix domain-containing protein
+transposase
+Transmembrane protein
+Glycosyltransferase family 4 protein
+O-antigen ligase family protein
+ABC transporter substrate-binding protein
+HTH luxR-type domain-containing protein
+Cytochrome c oxidase subunit 1 (Fragment)
+GNAT family N-acetyltransferase
+HNH endonuclease
+glycosyltransferase
+CHAT domain-containing protein
+HTH cro/C1-type domain-containing protein
+non-specific serine/threonine protein kinase
+AB hydrolase-1 domain-containing protein
+ABC transporter permease
+helix-turn-helix transcriptional regulator
+TonB-dependent receptor
+TetR family transcriptional regulator
+Unannotated protein
+VCBS repeat-containing protein
+C2H2-type domain-containing protein
+ABC transmembrane type-1 domain-containing protein
+ATP-binding protein
+HTH tetR-type domain-containing protein
+Calcineurin-like phosphoesterase domain-containing protein
+ABC transporter domain-containing protein
+ABC transporter permease (Fragment)
+Major facilitator superfamily (MFS) profile domain-containing protein
+Thioredoxin domain-containing protein
+Glycosyltransferase RgtA/B/C/D-like domain-containing protein
+XRE family transcriptional regulator
+CBS domain-containing protein
+Phage protein
+G-protein coupled receptors family 1 profile domain-containing protein
+EF-hand domain-containing protein
+FAD-dependent oxidoreductase
+MarR family transcriptional regulator
+EamA domain-containing protein
+Transporter
+PKD domain-containing protein
+CCHC-type domain-containing protein
+PAS domain-containing protein
+STAS domain-containing protein
+GAF domain-containing protein
+ATP-binding cassette domain-containing protein
+Outer membrane protein beta-barrel domain-containing protein
+Sigma-70 family RNA polymerase sigma factor
+AAA family ATPase
+Glycosyltransferase 2-like domain-containing protein
+SDR family oxidoreductase
+HEAT repeat domain-containing protein
+VWA domain-containing protein
+helix-turn-helix domain-containing protein
+Ovule protein
+Protein kinase domain-containing protein (Fragment)
+Tyr recombinase domain-containing protein
+Secretion system C-terminal sorting domain-containing protein
+UNKNOWN
+PH domain-containing protein
+FHA domain-containing protein
+Peptidase S1 domain-containing protein
+CPBP family intramembrane metalloprotease
+N-acetyltransferase domain-containing protein
+Cytochrome P450
+RRM domain-containing protein
+AAA+ ATPase domain-containing protein
+Diguanylate cyclase
+Methyltransferase type 11 domain-containing protein
+Prepilin-type N-terminal cleavage/methylation domain-containing protein
+Integrase
+Lipoprotein
+Heterokaryon incompatibility domain-containing protein
+C-type lectin domain-containing protein
+Response regulatory domain-containing protein
+Zn(2)-C6 fungal-type domain-containing protein
+MBL fold metallo-hydrolase
+BTB domain-containing protein
+MFS transporter
+Integrase catalytic domain-containing protein
+Methyltransferase domain-containing protein
+GGDEF domain-containing protein
+Phage tail protein
+SH3 domain-containing protein
+PIN domain-containing protein
+Secreted protein
+SPOR domain-containing protein
+Methyl-accepting chemotaxis protein
+HD domain-containing protein
+Cyclic nucleotide-binding domain-containing protein
+tetratricopeptide repeat protein
+TolC family protein
+Helix-turn-helix domain-containing protein
+Alpha/beta hydrolase
+Aminoglycoside phosphotransferase domain-containing protein
+MFS transporter (Fragment)
+Histidine kinase
+LysM domain-containing protein
+Pol protein (Fragment)
+EGF-like domain-containing protein
+RNase H type-1 domain-containing protein
+Transcriptional regulator
+NACHT domain-containing protein
+TetR/AcrR family transcriptional regulator

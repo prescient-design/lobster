@@ -12,7 +12,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="embed")
 def predict(cfg: DictConfig) -> bool:
     log_cfg = OmegaConf.to_container(cfg, throw_on_missing=True, resolve=True)
-
     if rank_zero_only.rank == 0:
         print(OmegaConf.to_yaml(log_cfg))
 

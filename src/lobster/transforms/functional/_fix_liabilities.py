@@ -1,24 +1,22 @@
-from typing import Tuple, Union
+from typing import Literal, Tuple, Union
 
 import pandas as pd
 import torch
 
-from lobster.data import _PRESCIENT_AVAILABLE
-from lobster.model import LobsterPMLM
 
-if _PRESCIENT_AVAILABLE:
-    import prescient.metrics.functional as pmf
-    import prescient.transforms.functional as ptf
+from lobster.model import LobsterPMLM
 
 
 def fix_liabilities(
     fv_heavy: str,
     fv_light: str,
+    model: Literal["LobsterPMLM", "LobsterPCLM"] = None,
     model_name: str = None,
     ckpt_path: str = None,
     return_sequences=True,
 ) -> Union[Tuple[str, str], pd.DataFrame]:
-    """Fix liabilities of a sequence.
+    """
+    Fix liabilities of a sequence.
 
     Parameters
     ----------
@@ -26,6 +24,8 @@ def fix_liabilities(
         Heavy chain sequence.
     fv_light: str
         Light chain sequence.
+    model: Literal["LobsterPMLM", "LobsterPCLM"]
+        an already instantiated model to avoid loading the model multiple times.
     model_name: str
         Lobster model name to use. If None, the default is esm2_t6_8M_UR50D
     ckpt_path: str
@@ -46,9 +46,12 @@ def fix_liabilities(
             - top1: The top 1 mutation.
             - top2: The top 2 mutation.
             - top3: The top 3 mutation.
+
     """
     # Load the model
-    if model_name:
+    if model:
+        model = model
+    elif model_name:
         model = LobsterPMLM(model_name=model_name)
     elif ckpt_path:
         model = LobsterPMLM.load_from_checkpoint(ckpt_path, strict=False)
@@ -77,13 +80,11 @@ def fix_liabilities(
             idx_mask = masked_sequence.index("<mask>")  # no AHo
             with torch.inference_mode():
                 masked_encoded = torch.tensor([model.tokenizer.encode(masked_sequence)])
-                h = model.model(input_ids=masked_encoded, output_hidden_states=True)[
-                    "hidden_states"
-                ][-1]
+                h = model.model(input_ids=masked_encoded, output_hidden_states=True)["hidden_states"][-1]
                 logits = model.model.lm_head(h)
-                mutation_list = model.tokenizer.decode(
-                    torch.topk(logits, 20, dim=-1).indices[0][idx_mask + 1]
-                ).split(" ")  # +1 for <cls> token
+                mutation_list = model.tokenizer.decode(torch.topk(logits, 20, dim=-1).indices[0][idx_mask + 1]).split(
+                    " "
+                )  # +1 for <cls> token
             data = {"liability": lbool[0], "chain": chain, "aho_idx": idx} | {
                 f"top{k}": v for k, v in enumerate(mutation_list, 1)
             }
@@ -91,24 +92,18 @@ def fix_liabilities(
                 if chain == "heavy":
                     for m in mutation_list:
                         if m != fv_heavy_aho[idx]:
-                            fv_heavy_aho_fixed[
-                                idx
-                            ] = m  # replace with novel top1 mutation
+                            fv_heavy_aho_fixed[idx] = m  # replace with novel top1 mutation
                             break
                 else:
                     for m in mutation_list:
                         if m != fv_light_aho[idx]:
-                            fv_light_aho_fixed[
-                                idx
-                            ] = m  # replace with novel top1 mutation
+                            fv_light_aho_fixed[idx] = m  # replace with novel top1 mutation
                             break
             liability_list.append(data)
 
     liability_fix_df = pd.DataFrame(liability_list)
 
     if return_sequences:
-        return "".join(fv_heavy_aho_fixed).replace("-", ""), "".join(
-            fv_light_aho_fixed
-        ).replace("-", "")
+        return "".join(fv_heavy_aho_fixed).replace("-", ""), "".join(fv_light_aho_fixed).replace("-", "")
     else:
         return liability_fix_df

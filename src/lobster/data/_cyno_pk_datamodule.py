@@ -4,13 +4,7 @@ from typing import Any, Callable, Iterable, Sequence, TypeVar, Union
 import torch.utils.data
 from lightning import LightningDataModule
 
-from ._imports import _PRESCIENT_AVAILABLE
-
-if _PRESCIENT_AVAILABLE:
-    from prescient.datasets import CynoPKClearanceDataset
-
-
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 

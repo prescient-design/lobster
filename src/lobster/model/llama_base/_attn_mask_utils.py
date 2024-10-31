@@ -12,9 +12,7 @@ def _prepare_4d_attention_mask_for_sdpa(
     past_key_values_length: int,
     sliding_window: Optional[int] = None,
 ):
-    attn_mask_converter = AttentionMaskConverter(
-        is_causal=False, sliding_window=sliding_window
-    )
+    attn_mask_converter = AttentionMaskConverter(is_causal=False, sliding_window=sliding_window)
 
     key_value_length = input_shape[-1] + past_key_values_length
     batch_size, query_length = input_shape
@@ -82,9 +80,7 @@ def _prepare_4d_attention_mask(
     past_key_values_length: int,
     sliding_window: Optional[int] = None,
 ):
-    attn_mask_converter = AttentionMaskConverter(
-        is_causal=False, sliding_window=sliding_window
-    )
+    attn_mask_converter = AttentionMaskConverter(is_causal=False, sliding_window=sliding_window)
 
     key_value_length = input_shape[-1] + past_key_values_length
 
@@ -115,9 +111,7 @@ def _prepare_4d_causal_attention_mask(
     past_key_values_length: int,
     sliding_window: Optional[int] = None,
 ):
-    attn_mask_converter = AttentionMaskConverter(
-        is_causal=False, sliding_window=sliding_window
-    )
+    attn_mask_converter = AttentionMaskConverter(is_causal=False, sliding_window=sliding_window)
 
     key_value_length = input_shape[-1] + past_key_values_length
 
@@ -154,9 +148,7 @@ def _prepare_4d_causal_attention_mask_for_sdpa(
     `key_value_length == query_length`, and rely instead on SDPA `is_causal` argument to use causal/non-causal masks,
     allowing to dispatch to the flash attention kernel (that can otherwise not be used if a custom `attn_mask` is passed).
     """
-    attn_mask_converter = AttentionMaskConverter(
-        is_causal=False, sliding_window=sliding_window
-    )
+    attn_mask_converter = AttentionMaskConverter(is_causal=False, sliding_window=sliding_window)
 
     key_value_length = input_shape[-1] + past_key_values_length
     batch_size, query_length = input_shape

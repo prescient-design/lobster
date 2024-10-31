@@ -14,11 +14,9 @@ from ._gemini_data import (  # nopycln: import
     GeminiDataFrameDatasetInMemory,
     GeminiDataFrameLightningDataModule,
 )
-from ._imports import _PRESCIENT_AVAILABLE, _PRESCIENT_PLM_AVAILABLE
 from ._minhasher import LobsterMinHasher
 from ._mmseqs import MMSeqsRunner
 from ._neglog_datamodule import NegLogDataModule
-from ._ngs_datamodule import GREDBulkNGSLightningDataModule
 from ._structure_datamodule import PDBDataModule
 from ._utils import (  # nopycln: import
     load_pickle,
