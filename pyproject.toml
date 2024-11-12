@@ -24,6 +24,7 @@ readme = {file = "README.md"}
 
 [tool.setuptools.dynamic.optional-dependencies]
 dev = {file = ["requirements-dev.in"]}
+mgm = {file = ["requirements-mgm.in"]}
 
 [tool.setuptools.packages.find]
 where = ["src"]
