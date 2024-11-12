@@ -1,16 +1,16 @@
 import importlib.resources
-import os
-from typing import Callable, Iterable, Literal, Optional, Union
-from pathlib import Path
 import json
+import os
+from pathlib import Path
+from typing import Callable, Iterable, Literal, Optional, Union
 
 import lightning.pytorch as pl
 import pandas as pd
 import torch
 import torch.nn.functional as F
+from huggingface_hub import hf_hub_download
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
-from huggingface_hub import hf_hub_download
 
 from lobster.tokenization import CUSTOM_TOKENIZER, PmlmConceptTokenizerTransform, PmlmTokenizer
 
@@ -458,7 +458,7 @@ class LobsterCBMPMLM(pl.LightningModule):
             dim=1,
         ).to(self.device)
         mask = self._create_intervene_mask(attribution, num_features, edits, intervention_type)
-        
+
         masked_toks = self._mask_inputs(input_ids, mask_arr=mask)
 
         concept_mask = torch.zeros(input_ids.shape[0], self._n_concepts).to(self.device)
@@ -488,7 +488,7 @@ class LobsterCBMPMLM(pl.LightningModule):
             pred_masked_token = pred_masked_token.replace(" ", "")
             pred_masked_token = "".join([t for t in pred_masked_token if t in aa_toks])
             pred_masked_tokens.append(pred_masked_token)
-        return pred_masked_tokens 
+        return pred_masked_tokens
 
     def list_supported_concept(self):
         return self.transform_fn_inf.concepts_name

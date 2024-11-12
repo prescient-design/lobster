@@ -2,8 +2,9 @@
 from typing import Callable, Optional, Union
 
 import pandas as pd
-from lobster.transforms import Transform
 from torch.utils.data import Dataset
+
+from lobster.transforms import Transform
 
 SOURCE = ""
 
@@ -32,23 +33,17 @@ class AbAgSequencePPIDataset(Dataset):
         if len(sequence1_cols) == 1:
             self._data["sequence_1"] = self._data[sequence1_cols[0]]
         elif len(sequence1_cols) == 2:
-            self._data["sequence_1"] = (
-                self._data[sequence1_cols[0]] + "-" + self._data[sequence1_cols[1]]
-            )
+            self._data["sequence_1"] = self._data[sequence1_cols[0]] + "-" + self._data[sequence1_cols[1]]
 
         if len(sequence2_cols) == 1:
             self._data["sequence_2"] = self._data[sequence2_cols[0]]
         elif len(sequence2_cols) == 2:
-            self._data["sequence_2"] = (
-                self._data[sequence2_cols[0]] + "-" + self._data[sequence2_cols[1]]
-            )
+            self._data["sequence_2"] = self._data[sequence2_cols[0]] + "-" + self._data[sequence2_cols[1]]
 
         if label_col is not None:
             self._data["label"] = self._data[label_col]
         else:
-            self._data["label"] = self._data[
-                "is_binder_pred"
-            ]  # Nots used in eval, just a dummy label
+            self._data["label"] = self._data["is_binder_pred"]  # Nots used in eval, just a dummy label
         self._data = self._data[["sequence_1", "sequence_2", "label"]]
 
         self._transform_fn = transform_fn

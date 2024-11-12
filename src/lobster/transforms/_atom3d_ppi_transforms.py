@@ -3,10 +3,10 @@ from typing import Any, Dict, Optional, Tuple
 
 import Bio.PDB.Polypeptide as Poly
 import torch
-from lobster.transforms import Transform
 from pandas import DataFrame
 
 from lobster.tokenization._pmlm_tokenizer import PmlmTokenizer
+from lobster.transforms import Transform
 
 
 def _protein_letters_3to1_wrapper(three_letter: str) -> str:

@@ -5,7 +5,6 @@
 #     Atom3DPPIToSequenceAndContactMap,
 #     PairedSequenceToTokens,
 # )
-from ._transform import Transform
 from ._auto_tokenizer_transform import AutoTokenizerTransform
 from ._binarize import BinarizeTransform
 from ._convert_seqs import (
