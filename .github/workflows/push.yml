@@ -14,29 +14,36 @@ jobs:
         with:
           name: "python-package-distributions"
           path: "dist/"
-  # pytest:
-  #   strategy:
-  #     matrix:
-  #       platform:
-  #         - "macos-latest"
-  #         - "ubuntu-latest"
-  #         # - "windows-latest"
-  #       python:
-  #         - "3.10"
-  #         - "3.11"
-  #   runs-on: ${{ matrix.platform }}
-  #   steps:
-  #     - uses: "actions/checkout@v4"
-  #     - uses: "actions/setup-python@v5"
-  #       with:
-  #         python-version: ${{ matrix.python }}
-  #     - run: "python -m pip install -r requirements.in"
-  #     - run: "python -m pip install -r requirements-dev.in"
-  #     - run: "python -m pip install --editable ."
-  #     - run: "python -m pytest"
-  #     - env:
-  #         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  #       uses: "codecov/codecov-action@v3"
+  pytest:
+    strategy:
+      matrix:
+        platform:
+          - "macos-latest"
+          - "ubuntu-latest"
+          # - "windows-latest"
+        python:
+          - "3.10"
+          - "3.11"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: "actions/checkout@v4"
+      - uses: "actions/setup-python@v5"
+        with:
+          python-version: ${{ matrix.python }}
+      - run: "python -m pip install -r requirements.in"
+      - run: "python -m pip install -r requirements-dev.in"
+      - run: "python -m pip install --editable ."
+      - run: "python -m pytest"
+      - env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        uses: "codecov/codecov-action@v3"
+  ruff:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+      - uses: "chartboost/ruff-action@v1"
+        with:
+          args: "format --check"
   # pypi:
   #   environment:
   #     name: "pypi.org"
@@ -74,13 +81,6 @@ jobs:
   #     - env:
   #         GITHUB_TOKEN: "${{ github.token }}"
   #       run: "gh release upload '${{ github.ref_name }}' dist/** --repo '${{ github.repository }}'"
-  # ruff:
-  #   runs-on: "ubuntu-latest"
-  #   steps:
-  #     - uses: "actions/checkout@v4"
-  #     - uses: "chartboost/ruff-action@v1"
-  #       with:
-  #         args: "format --check"
 #   testpypi:
 #     environment:
 #       name: "test.pypi.org"
