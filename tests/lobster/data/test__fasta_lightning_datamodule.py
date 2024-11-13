@@ -9,7 +9,6 @@ CUR_DIR = os.path.dirname(__file__)
 class TestFastaLightningDatamodule:
     def test_setup(self):
         path_to_test_data = os.path.join(os.path.dirname(__file__), "../../../test_data/query.fasta")
-        # path_to_test_data = "../../../test_data/query.fasta"
 
         dm = FastaLightningDataModule(
             path_to_fasta=[path_to_test_data],
@@ -26,8 +25,7 @@ class TestFastaLightningDatamodule:
 
         batch = next(iter(dm.train_dataloader()))
 
-        assert len(batch) == 3
-        # batch = batch[0]
+        assert batch.keys() == {"input_ids", "attention_mask", "labels"}
         assert batch["input_ids"].shape == Size([4, 1, 512])
         assert batch["attention_mask"].shape == Size([4, 1, 512])
         assert batch["labels"].shape == Size([4, 1, 512])
