@@ -372,7 +372,7 @@ class Rotation:
             The indexed rotation
 
         """
-        if type(index) != tuple:
+        if not isinstance(index, tuple):
             index = (index,)
 
         if self._rot_mats is not None:
@@ -947,7 +947,7 @@ class Rigid:
             The indexed tensor
 
         """
-        if type(index) != tuple:
+        if not isinstance(index, tuple):
             index = (index,)
 
         return Rigid(
