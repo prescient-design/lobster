@@ -1,0 +1,30 @@
+
+defaults:
+  - _self_
+  - data: fasta.yaml
+  - model: mlm.yaml
+  - callbacks: default.yaml
+  - logger: wandb.yaml
+  - trainer: default.yaml
+  - setup: default.yaml
+  - plugins: null
+  - experiment: null
+
+# model:
+#   checkpoint: null
+#   model_type: null
+#   conditional_model: false
+
+checkpoint: null # was mandatory before ???
+model_type: null
+dryrun: false
+conditional_model: false
+per_concept_file: false
+batch_size: 32
+run_test: null
+seed: 0xDEADBEEF
+dataset_name: null
+pred_output: null
+plot_dir: null
+plot_title: null
+model_name: null

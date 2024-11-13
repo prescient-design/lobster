@@ -1,0 +1,42 @@
+
+defaults:
+  - _self_
+  - data: fasta.yaml
+  - model: mlm.yaml
+  - callbacks: default.yaml
+  - logger: wandb.yaml
+  - trainer: default.yaml
+  - setup: default.yaml
+  - paths: default.yaml
+  - plugins: null
+  - experiment: null
+
+concepts:
+    concept_name: all
+
+intervention:
+    mask_percentage: 0
+    intervene: false
+    intervention_type: positive
+    intervention_percentage: 0.25
+    use_feature_att: False
+    iteration: 1
+
+# model:
+#   checkpoint: null
+#   model_type: null
+#   conditional_model: false
+
+checkpoint: null # was mandatory before ???
+model_type: null
+dryrun: false
+conditional_model: false
+per_concept_file: false
+batch_size: 32
+run_test: null
+seed: 0xDEADBEEF
+dataset_name: null
+pred_output: null
+plot_dir: null
+plot_title: null
+model_name: null
