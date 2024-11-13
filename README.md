@@ -13,7 +13,7 @@ This repository contains training code and access to pre-trained language models
 image credit: Amy Wang
 -->
 <p align="center">
-<img src="assets/lobster.png" width=200px>
+<img src="https://raw.githubusercontent.com/prescient-design/lobster/refs/heads/main/assets/lobster.png" width=200px>
 </p>
 
 
