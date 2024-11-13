@@ -8,7 +8,7 @@ from transformers.tokenization_utils_base import (
     TruncationStrategy,
 )
 
-from lobster.transforms import Transform
+from ._transform import Transform
 
 
 class AutoTokenizerTransform(Transform):

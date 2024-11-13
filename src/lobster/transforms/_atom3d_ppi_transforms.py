@@ -6,7 +6,8 @@ import torch
 from pandas import DataFrame
 
 from lobster.tokenization._pmlm_tokenizer import PmlmTokenizer
-from lobster.transforms import Transform
+
+from ._transform import Transform
 
 
 def _protein_letters_3to1_wrapper(three_letter: str) -> str:
