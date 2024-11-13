@@ -82,22 +82,22 @@ jobs:
   #     - env:
   #         GITHUB_TOKEN: "${{ github.token }}"
   #       run: "gh release upload '${{ github.ref_name }}' dist/** --repo '${{ github.repository }}'"
-#   testpypi:
-#     environment:
-#       name: "test.pypi.org"
-#       url: "https://test.pypi.org/project/lbster"
-#     needs:
-#       - "build"
-#     permissions:
-#       id-token: "write"
-#     runs-on: "ubuntu-latest"
-#     steps:
-#       - uses: "actions/download-artifact@v3"
-#         with:
-#           name: "python-package-distributions"
-#           path: "dist/"
-#       - uses: "pypa/gh-action-pypi-publish@release/v1"
-#         with:
-#           repository-url: "https://test.pypi.org/legacy/"
-#           skip-existing: true
+  testpypi:
+    environment:
+      name: "test.pypi.org"
+      url: "https://test.pypi.org/project/lbster"
+    needs:
+      - "build"
+    permissions:
+      id-token: "write"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/download-artifact@v4"
+        with:
+          name: "python-package-distributions"
+          path: "dist/"
+      - uses: "pypa/gh-action-pypi-publish@release/v1"
+        with:
+          repository-url: "https://test.pypi.org/legacy/"
+          skip-existing: true
 on: "push"
