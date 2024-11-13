@@ -4,13 +4,12 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import lightning.pytorch as pl
 import torch
-from lobster.transforms import Transform
 from transformers import AutoTokenizer, EsmForProteinFolding
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.extern.openfold_utils import atom14_to_atom37, backbone_loss
-from lobster.transforms import AutoTokenizerTransform
+from lobster.transforms import AutoTokenizerTransform, Transform
 
 from ._lobster_fold_base import PPLMFoldBase
 from ._lobster_fold_configuration import PPLMFOLD_CONFIG_ARGS, PPLMFoldConfig

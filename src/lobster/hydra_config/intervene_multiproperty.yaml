@@ -1,0 +1,41 @@
+
+defaults:
+  - _self_
+  - model: mlm.yaml
+  - callbacks: default.yaml
+  - logger: wandb.yaml
+  - trainer: default.yaml
+  - setup: default.yaml
+  - paths: default.yaml
+  - plugins: null
+  - experiment: null
+
+concepts:
+    concepts_list: null
+
+intervention:
+    mask_percentage: 0
+    intervene: false
+    intervention_type: positive
+    intervention_percentage: 0.25
+    use_feature_att: False
+    iteration: 1
+data:
+    path: null
+    key: Seq
+    batch_size: 16
+
+# model:
+#   checkpoint: null
+#   model_type: null
+#   conditional_model: false
+
+checkpoint: null # was mandatory before ???
+model_type: null
+dryrun: false
+conditional_model: false
+batch_size: 32
+run_test: null
+seed: 0xDEADBEEF
+model_name: null
+dataset_name: unk

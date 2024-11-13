@@ -1,13 +1,13 @@
 # Lobster Model Inference
 
 import torch
-from lobster.model import LobsterPMLM, LobsterCBMPMLM
+from lobster.model import LobsterCBMPMLM, LobsterPMLM
 
 # Define the test protein sequence
 test_protein = "MGAGASAEEKHSRELEKKLKEDAEKDARTVKLLLLGAGESGKSTIVKQMKIIHQDGYSLEECLEFIAIIYGNTLQSILAIVRAMTTLNIQYGDSARQDDARKLMHMADTIEEGTMPKEMSDIIQRLWKDSGIQACFERASEYQLNDSAGYYLSDLERLVTPGYVPTEQDVLRSRVKTTGIIETQFSFKDLNFRMFDVGGQRSERKKWIHCFEGVTCIIFIAALSAYDMVLVEDDEVNRMHESLHLFNSICNHRYFATTSIVLFLNKKDVFFEKIKKAHLSICFPDYDGPNTYEDAGNYIKVQFLELNMRRDVKEIYSHMTCATDTQNVKFVFDAVTDIIIKENLKDCGLF"
 
 # Determine the device
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load the LobsterPMLM model
 lobster = LobsterPMLM("asalam91/lobster_24M").to(device)
@@ -29,7 +29,9 @@ pooled_cb_mlm_representation = torch.mean(cb_mlm_representation, dim=1)
 
 # Get protein concepts
 test_protein_concepts = cb_lobster.sequences_to_concepts([test_protein])[-1]
-test_protein_concepts_emb = cb_lobster.sequences_to_concepts_emb([test_protein])[-1][0]  # All of the known concepts are the same for all tokens...
+test_protein_concepts_emb = cb_lobster.sequences_to_concepts_emb([test_protein])[-1][
+    0
+]  # All of the known concepts are the same for all tokens...
 test_protein_concepts_unknown_emb = cb_lobster.sequences_to_concepts_emb([test_protein])[-1]
 
 # Print results

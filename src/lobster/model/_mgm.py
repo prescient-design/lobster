@@ -4,13 +4,12 @@ from typing import Callable, Iterable, Literal, Optional, Union
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-from lobster.transforms import Transform
 from transformers import AutoTokenizer, EsmForMaskedLM
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import MgmTokenizer, MgmTokenizerTransform, PmlmTokenizer, PmlmTokenizerTransform
-from lobster.transforms import AutoTokenizerTransform
+from lobster.transforms import AutoTokenizerTransform, Transform
 
 from ._mlm_configuration import PMLM_CONFIG_ARGS, PMLMConfig
 from .lm_base import LMBaseForMaskedLM

@@ -3,12 +3,12 @@ from typing import Callable, Optional, Tuple, Union
 
 import lightning.pytorch as pl
 import torch
-from lobster.transforms import Transform
 from torch.nn import CrossEntropyLoss
 from transformers import LlamaConfig, LlamaForCausalLM, pipeline
 from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
+from lobster.transforms import Transform
 
 from ._clm_configuration import PCLM_CONFIG_ARGS
 

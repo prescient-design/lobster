@@ -1,1 +1,9 @@
 *.ckpt filter=lfs diff=lfs merge=lfs -text
+
+# Set default behavior to automatically normalize line endings.
+* text=auto
+
+# Explicitly declare text files you want to always be normalized and converted
+# to native line endings on checkout.
+*.py text eol=lf
+*.toml text

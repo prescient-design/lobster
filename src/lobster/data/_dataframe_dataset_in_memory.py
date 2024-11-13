@@ -2,11 +2,12 @@ import random
 from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
 import torch
-from lobster.transforms import Transform
 from lightning import LightningDataModule
 from pandas import DataFrame
 from torch import Generator, Tensor
 from torch.utils.data import DataLoader, Dataset, Sampler
+
+from lobster.transforms import Transform
 
 T = TypeVar("T")
 
@@ -247,9 +248,7 @@ class DataFrameDatasetInMemory(Dataset):
         if self._target_transform_fn is not None:
             y = self._target_transform_fn(y)
 
-        if len(self._target_columns) > 1 and not all(
-            isinstance(y_val, Tensor) for y_val in y
-        ):
+        if len(self._target_columns) > 1 and not all(isinstance(y_val, Tensor) for y_val in y):
             y = tuple(Tensor(y_val) for y_val in y)
 
         elif not isinstance(y, Tensor):

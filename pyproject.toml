@@ -1,8 +1,9 @@
 [project]
 name = "lbster"
+readme = "README.md"
 description = "Language models for Biological Sequence Transformation and Evolutionary Representation."
 authors = [{name = "Nathan C. Frey", email = "frey.nathan.nf1@gene.com"}]
-dynamic = ["version", "readme", "dependencies", "optional-dependencies"]
+dynamic = ["version", "dependencies", "optional-dependencies"]
 requires-python = ">=3.10"
 
 [build-system]
@@ -20,10 +21,10 @@ lobster_eval = "lobster.cmdline:eval_embed"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.in"]}
-readme = {file = "README.md"}
 
 [tool.setuptools.dynamic.optional-dependencies]
 dev = {file = ["requirements-dev.in"]}
+mgm = {file = ["requirements-mgm.in"]}
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -36,8 +37,8 @@ lobster = ["*.txt", "*.json", "*.yaml"]
 [tool.setuptools_scm]
 search_parent_directories = true
 version_scheme = "no-guess-dev"
-local_scheme = "node-and-date"
 fallback_version = "0.0.0"
+local_scheme = "no-local-version" # see https://github.com/pypa/setuptools-scm/issues/455
 
 [tool.ruff]
 line-length = 120

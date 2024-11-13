@@ -35,13 +35,9 @@ class EsmBatchConverter(object):
         batch_size = len(raw_batch)
         batch_labels, seq_str_list = zip(*raw_batch)
 
-        seq_encoded_list = [
-            self.tokenizer.encode(seq_str) for seq_str in seq_str_list
-        ]  # adds cls and eos
+        seq_encoded_list = [self.tokenizer.encode(seq_str) for seq_str in seq_str_list]  # adds cls and eos
         if self.truncation_seq_length:
-            seq_encoded_list = [
-                seq_str[: self.truncation_seq_length] for seq_str in seq_encoded_list
-            ]
+            seq_encoded_list = [seq_str[: self.truncation_seq_length] for seq_str in seq_encoded_list]
         max_len = max(len(seq_encoded) for seq_encoded in seq_encoded_list)
         tokens = torch.empty(
             (batch_size, max_len),  # + int(self.prepend_bos) + int(self.append_eos),
@@ -51,9 +47,7 @@ class EsmBatchConverter(object):
         labels = []
         strs = []
 
-        for i, (label, seq_str, seq_encoded) in enumerate(
-            zip(batch_labels, seq_str_list, seq_encoded_list)
-        ):
+        for i, (label, seq_str, seq_encoded) in enumerate(zip(batch_labels, seq_str_list, seq_encoded_list)):
             labels.append(label)
             strs.append(seq_str)
             # if self.prepend_bos:  # already added in tokenization
@@ -98,11 +92,7 @@ class ESMBatchConverterPPI(EsmBatchConverter):
         # NOTE - Removed nulls that came from transforms, might need to write custom dataloader sampler if batch sizes too small
         if self._contact_maps:
             # Flatten the output of Atom3D transforms
-            flattened_batch = [
-                (a, b, c)
-                for ((a, b), c) in raw_batch
-                if (a is not None) and (b is not None)
-            ]
+            flattened_batch = [(a, b, c) for ((a, b), c) in raw_batch if (a is not None) and (b is not None)]
             batch_size = len(flattened_batch)
             if batch_size == 0:
                 return None
@@ -116,19 +106,11 @@ class ESMBatchConverterPPI(EsmBatchConverter):
 
         if self.truncation_seq_length:
             # NOTE - This removes eos token for long sequences. Should we re-add eos or keep as is?
-            seq1_tokenized = [
-                seq[: self.truncation_seq_length] for seq in seq1_tokenized
-            ]
-            seq2_tokenized = [
-                seq[: self.truncation_seq_length] for seq in seq2_tokenized
-            ]
+            seq1_tokenized = [seq[: self.truncation_seq_length] for seq in seq1_tokenized]
+            seq2_tokenized = [seq[: self.truncation_seq_length] for seq in seq2_tokenized]
 
-        tokens1 = pad_sequence(
-            seq1_tokenized, batch_first=True, padding_value=self.tokenizer.pad_token_id
-        )
-        tokens2 = pad_sequence(
-            seq2_tokenized, batch_first=True, padding_value=self.tokenizer.pad_token_id
-        )
+        tokens1 = pad_sequence(seq1_tokenized, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        tokens2 = pad_sequence(seq2_tokenized, batch_first=True, padding_value=self.tokenizer.pad_token_id)
 
         #  Get attention masks
         attention_mask_1 = (tokens1 != self.tokenizer.pad_token_id).to(torch.int)

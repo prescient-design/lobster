@@ -1,13 +1,14 @@
 from os import PathLike
 from typing import Any, Dict, List, Optional, Union
 
-from lobster.transforms import Transform
 from transformers import AutoTokenizer
 from transformers.tokenization_utils_base import (
     BatchEncoding,
     PaddingStrategy,
     TruncationStrategy,
 )
+
+from ._transform import Transform
 
 
 class AutoTokenizerTransform(Transform):

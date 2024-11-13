@@ -4,8 +4,9 @@ from typing import Callable, Optional, Sequence, Union
 
 import pooch
 from beignet.datasets import FASTADataset
-from lobster.transforms import Transform
 from pooch import Decompress
+
+from lobster.transforms import Transform
 
 
 class CalmDataset(FASTADataset):
@@ -24,9 +25,7 @@ class CalmDataset(FASTADataset):
         known_hash: str | None = None,
         *,
         index: bool = True,
-        test_url: Union[
-            str, Path
-        ] = "http://opig.stats.ox.ac.uk/data/downloads/heldout.tar.gz",
+        test_url: Union[str, Path] = "http://opig.stats.ox.ac.uk/data/downloads/heldout.tar.gz",
         columns: Optional[Sequence[str]] = None,
         target_columns: Optional[Sequence[str]] = None,
         train: bool = True,

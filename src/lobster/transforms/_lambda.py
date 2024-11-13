@@ -1,6 +1,6 @@
 from typing import Any, Callable, Dict, Type
 
-from lobster.transforms import Transform
+from ._transform import Transform
 
 
 class Lambda(Transform):

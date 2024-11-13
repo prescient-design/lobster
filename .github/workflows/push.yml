@@ -10,33 +10,41 @@ jobs:
           python-version: "3.x"
       - run: "python -m pip install --upgrade build"
       - run: "python -m build ."
-      - uses: "actions/upload-artifact@v3"
+      - uses: "actions/upload-artifact@v4"
         with:
           name: "python-package-distributions"
           path: "dist/"
-  # pytest:
-  #   strategy:
-  #     matrix:
-  #       platform:
-  #         - "macos-latest"
-  #         - "ubuntu-latest"
-  #         # - "windows-latest"
-  #       python:
-  #         - "3.10"
-  #         - "3.11"
-  #   runs-on: ${{ matrix.platform }}
-  #   steps:
-  #     - uses: "actions/checkout@v4"
-  #     - uses: "actions/setup-python@v5"
-  #       with:
-  #         python-version: ${{ matrix.python }}
-  #     - run: "python -m pip install -r requirements.in"
-  #     - run: "python -m pip install -r requirements-dev.in"
-  #     - run: "python -m pip install --editable ."
-  #     - run: "python -m pytest"
-  #     - env:
-  #         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  #       uses: "codecov/codecov-action@v3"
+  pytest:
+    strategy:
+      matrix:
+        platform:
+          - "macos-latest"
+          - "ubuntu-latest"
+          # - "windows-latest"
+        python:
+          - "3.10"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: "actions/checkout@v4"
+      - uses: "actions/setup-python@v5"
+        with:
+          python-version: ${{ matrix.python }}
+      - run: "python -m pip install -r requirements.in"
+      - run: "python -m pip install -r requirements-dev.in"
+      - run: "python -m pip install -r requirements-mgm.in"
+      - run: "python -m pip install --editable ."
+      - run: "python -m pytest"
+      - env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        uses: "codecov/codecov-action@v3"
+  ruff:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+      - uses: "astral-sh/ruff-action@v1"
+        with:
+          args: "format --check"
+          version: 0.7.3
   # pypi:
   #   environment:
   #     name: "pypi.org"
@@ -74,29 +82,25 @@ jobs:
   #     - env:
   #         GITHUB_TOKEN: "${{ github.token }}"
   #       run: "gh release upload '${{ github.ref_name }}' dist/** --repo '${{ github.repository }}'"
-  # ruff:
-  #   runs-on: "ubuntu-latest"
-  #   steps:
-  #     - uses: "actions/checkout@v4"
-  #     - uses: "chartboost/ruff-action@v1"
-  #       with:
-  #         args: "format --check"
-#   testpypi:
-#     environment:
-#       name: "test.pypi.org"
-#       url: "https://test.pypi.org/project/lbster"
-#     needs:
-#       - "build"
-#     permissions:
-#       id-token: "write"
-#     runs-on: "ubuntu-latest"
-#     steps:
-#       - uses: "actions/download-artifact@v3"
-#         with:
-#           name: "python-package-distributions"
-#           path: "dist/"
-#       - uses: "pypa/gh-action-pypi-publish@release/v1"
-#         with:
-#           repository-url: "https://test.pypi.org/legacy/"
-#           skip-existing: true
+  testpypi:
+    environment:
+      name: "test.pypi.org"
+      url: "https://test.pypi.org/project/lbster"
+    needs:
+      - "build"
+    permissions:
+      id-token: "write"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/download-artifact@v4"
+        with:
+          name: "python-package-distributions"
+          path: "dist/"
+      - uses: "pypa/gh-action-pypi-publish@release/v1"
+        with:
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository-url: "https://test.pypi.org/legacy/"
+          skip-existing: true
+          verbose: true
 on: "push"

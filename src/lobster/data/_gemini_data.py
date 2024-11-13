@@ -234,9 +234,7 @@ class GeminiDataFrameDatasetInMemory(DataFrameDatasetInMemory):
             y1 = self._target_transform_fn(y1)
             y2 = self._target_transform_fn(y2)
 
-        if len(self._target_columns) > 1 and not all(
-            isinstance(y_val, Tensor) for y_val in y1
-        ):
+        if len(self._target_columns) > 1 and not all(isinstance(y_val, Tensor) for y_val in y1):
             y1 = tuple(Tensor(y_val) for y_val in y1)
             y2 = tuple(Tensor(y_val) for y_val in y2)
 

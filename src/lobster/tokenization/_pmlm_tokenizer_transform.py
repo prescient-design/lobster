@@ -33,7 +33,6 @@ class PmlmTokenizerTransform(Transform):
         verbose: bool = True,
         tokenizer_dir: Optional[str] = "pmlm_tokenizer",
         mlm: bool = True,
-        reversal_augmentation: bool = False,
     ):
         super().__init__()
 

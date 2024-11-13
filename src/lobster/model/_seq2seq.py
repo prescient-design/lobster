@@ -3,7 +3,6 @@ from typing import Callable, Union
 
 import lightning.pytorch as pl
 import torch
-from lobster.transforms import Transform
 from transformers import (
     AutoModelForSeq2SeqLM,
     T5Config,
@@ -13,6 +12,8 @@ from transformers import (
 )
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
+
+from lobster.transforms import Transform
 
 
 class PrescientPT5(pl.LightningModule):

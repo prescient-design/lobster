@@ -3,13 +3,13 @@ from typing import Callable, Optional, Union
 
 import lightning.pytorch as pl
 import torch
-from lobster.transforms import Transform
 
 # from transformers import LlamaConfig, LlamaForCausalLM, pipeline
 from transformers.optimization import get_linear_schedule_with_warmup
 
 # from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.tokenization import HyenaTokenizer, HyenaTokenizerTransform
+from lobster.transforms import Transform
 
 from ._hyena_base import HyenaDNAForCausalLM
 from ._hyena_configuration import HYENA_CONFIG_ARGS, HyenaConfig
@@ -172,16 +172,9 @@ class LobsterHyenaCLM(pl.LightningModule):
     #     return nll, logits
 
     def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
-        input_ids = torch.concat(
-            [
-                toks["input_ids"].to(self.device)
-                for toks in self._transform_fn(sequences)
-            ]
-        )
+        input_ids = torch.concat([toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)])
         with torch.inference_mode():
-            hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)[
-                "hidden_states"
-            ]  # [-1]
+            hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)["hidden_states"]  # [-1]
 
         return hidden_states
 

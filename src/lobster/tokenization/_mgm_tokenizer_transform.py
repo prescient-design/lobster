@@ -4,7 +4,6 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 import selfies as sf
 import torch
-from lobster.transforms import Transform
 from transformers.tokenization_utils_base import (
     BatchEncoding,
     PaddingStrategy,
@@ -14,6 +13,7 @@ from transformers.utils import logging
 
 from lobster.tokenization import MgmTokenizer
 from lobster.transforms import (
+    Transform,
     convert_aa_to_nt,
     convert_aa_to_selfies,
     convert_nt_to_aa,

@@ -4,12 +4,13 @@ from os import PathLike
 from typing import Any, Dict, List, Optional, Union
 
 import torch
-from lobster.transforms import Transform
 from transformers.tokenization_utils_base import (
     BatchEncoding,
     PaddingStrategy,
     TruncationStrategy,
 )
+
+from lobster.transforms import Transform
 
 from ._hyena_tokenizer import HyenaTokenizer
 

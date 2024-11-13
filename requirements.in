@@ -24,5 +24,10 @@ fastparquet
 datasketch
 peft
 icecream
-selfies
-rdkit
+captum
+pooch
+edlib
+onnx
+onnxscript
+beignet[all]
+fair-esm

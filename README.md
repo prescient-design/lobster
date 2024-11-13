@@ -2,15 +2,18 @@
 **L**anguage models for **B**iological **S**equence **T**ransformation and **E**volutionary **R**epresentation
 
 
-`lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](https://github.com/taylormjs), [Aya Abdlesalam Ismail](https://github.com/ayaabdelsalam91), and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/CONTRIBUTORS.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
+`lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Taylor Joren](https://github.com/taylormjs), [Aya Abdlesalam Ismail](https://github.com/ayaabdelsalam91), [Joseph Kleinhenz](https://github.com/kleinhenz) and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/CONTRIBUTORS.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
 
-This repository contains code and access to pre-trained language models for biological sequence data.
+This repository contains training code and access to pre-trained language models for biological sequence data.
+
+## Usage
+
 
 <!---
 image credit: Amy Wang
 -->
 <p align="center">
-<img src="assets/lobster.png" width=200px>
+<img src="https://raw.githubusercontent.com/prescient-design/lobster/refs/heads/main/assets/lobster.png" width=200px>
 </p>
 
 
@@ -21,7 +24,8 @@ image credit: Amy Wang
 - [Install instructions](#install)
 - [Models](#main-models)
 - [Notebooks](#notebooks)
-- [Usage](#usage)
+- [Training and inference](#training)
+- [Contributing](#contributing)
 </details>
 
 ## Why you should use LBSTER <a name="why-use"></a>
@@ -29,9 +33,10 @@ image credit: Amy Wang
 * LBSTER is a living, open-source library that will be periodically updated with new code and pre-trained models from the [Frey Lab](https://ncfrey.github.io/) at [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design). The Frey Lab works on real therapeutic molecule design problems and LBSTER models and capabilities reflect the demands of real-world drug discovery campaigns.
 * LBSTER is built with [beignet](https://github.com/Genentech/beignet/tree/main), a standard library for biological research, and integrated with [cortex](https://github.com/prescient-design/cortex/tree/main), a modular framework for multitask modeling, guided generation, and multi-modal models.
 * LBSTER supports concepts; we have a concept-bottleneck protein language model we refer to as CB-LBSTER, which supports 718 concepts.
+
 ## Citations <a name="citations"></a>
 If you use the code and/or models, please cite the relevant papers.
-For the `lbster` code base cite: [Cramming Protein Language Model Training in 24 GPU Hours](https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108})
+For the `lbster` code base cite: [Cramming Protein Language Model Training in 24 GPU Hours](https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108)
 ```bibtex
 @article{Frey2024.05.14.594108,
 	author = {Frey, Nathan C. and Joren, Taylor and Ismail, Aya Abdelsalam and Goodman, Allen and Bonneau, Richard and Cho, Kyunghyun and Gligorijevi{\'c}, Vladimir},
@@ -48,21 +53,19 @@ For the `lbster` code base cite: [Cramming Protein Language Model Training in 24
 ```
 
 
-<!-- For the `cb-lbster` code base cite: [Concept bottleneck Protien Language](https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108})
+For the `cb-lbster` code base cite: [Concept Bottleneck Language Models for Protein Design](https://arxiv.org/abs/2411.06090)
 ```bibtex
-@article{Frey2024.05.14.594108,
-	author = {Frey, Nathan C. and Joren, Taylor and Ismail, Aya Abdelsalam and Goodman, Allen and Bonneau, Richard and Cho, Kyunghyun and Gligorijevi{\'c}, Vladimir},
-	title = {Cramming Protein Language Model Training in 24 GPU Hours},
-	elocation-id = {2024.05.14.594108},
-	year = {2024},
-	doi = {10.1101/2024.05.14.594108},
-	publisher = {Cold Spring Harbor Laboratory},
-	URL = {https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108},
-	eprint = {https://www.biorxiv.org/content/early/2024/05/15/2024.05.14.594108.full.pdf},
-	journal = {bioRxiv}
+@article{ismail2024conceptbottlenecklanguagemodels,
+      title={Concept Bottleneck Language Models For protein design}, 
+      author={Aya Abdelsalam Ismail and Tuomas Oikarinen and Amy Wang and Julius Adebayo and Samuel Stanton and Taylor Joren and Joseph Kleinhenz and Allen Goodman and Héctor Corrada Bravo and Kyunghyun Cho and Nathan C. Frey},
+      year={2024},
+      eprint={2411.06090},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2411.06090}, 
 }
 
-``` -->
+```
 
 ## Install <a name="install"></a>
 clone the repo, cd into it and do `mamba env create -f env.yml`
@@ -118,7 +121,7 @@ Check out [jupyter notebook tutorial](notebooks/01-inference.ipynb) for example 
 Check out [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for example on to intervene on different concepts for our concept-bottleneck models class.
 
 
-## Usage <a name="usage"></a>
+## Training and inference <a name="training"></a>
 
 ### Embedding
 The entrypoint `lobster_embed` is the main driver for embedding sequences and accepts parameters using Hydra syntax. The available parameters for configuration can be found by running `lobster_embed --help` or by looking in the src/lobster/hydra_config directory
@@ -141,7 +144,7 @@ model.naturalness(sequences)
 model.likelihood(sequences)
 ```
 
-## Training from scratch
+### Training from scratch
 The entrypoint `lobster_train` is the main driver for training and accepts parameters using Hydra syntax. The available parameters for configuration can be found by running `lobster_train --help` or by looking in the src/lobster/hydra_config directory
 
 To train an MLM on a fasta file of sequences on an interactive GPU node, cd into the root dir of this repo and do
@@ -149,7 +152,7 @@ To train an MLM on a fasta file of sequences on an interactive GPU node, cd into
 lobster_train data.path_to_fasta="test_data/query.fasta" logger=csv paths.root_dir="."
 ```
 
-## Contributing
+## Contributing <a name="contributing"></a>
 Contributions are welcome! We ask that all users and contributors remember that the LBSTER team are all full-time drug hunters, and our open-source efforts are a labor of love because we care deeply about open science and scientific progress.
 
 ### Install dev requirements and pre-commit hooks

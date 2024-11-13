@@ -1,8 +1,9 @@
-import torch
-import edlib
 import heapq
-import numpy as np
 from typing import Optional
+
+import edlib
+import numpy as np
+import torch
 
 
 class FarthestFirstTraversal:
@@ -53,10 +54,7 @@ class FarthestFirstTraversal:
         inputs = [inputs[i] for i in perm]
         centroids = [inputs[i] for i in range(self._k)]
         while len(centroids) < self._num_samples:
-            dist = [
-                min(self._levenshtein(str1, str2) for str2 in centroids)
-                for str1 in inputs
-            ]
+            dist = [min(self._levenshtein(str1, str2) for str2 in centroids) for str1 in inputs]
             farthest = dist.index(max(dist))
             if inputs[farthest] in centroids:
                 break
@@ -82,11 +80,13 @@ class FarthestFirstTraversal:
 
         return previous_row[-1]
 
+
 def edit_dist(x: str, y: str):
     """
     Computes the edit distance between two strings.
     """
     return edlib.align(x, y)["editDistance"]
+
 
 def ranked_fft(
     library: np.ndarray,
@@ -138,10 +138,7 @@ def ranked_fft(
             neg_dist, score, idx, num_checked = heapq.heappop(pq)
             # Check if the top of the heap has been checked against all currently selected sequences
             if num_checked < len(selected):
-                min_dist = min(
-                    edit_dist(library[idx], library[selected[i]])
-                    for i in range(num_checked, len(selected))
-                )
+                min_dist = min(edit_dist(library[idx], library[selected[i]]) for i in range(num_checked, len(selected)))
                 min_dist = min(min_dist, -neg_dist)
                 heapq.heappush(pq, (-min_dist, score, idx, len(selected)))
             else:

@@ -3,7 +3,6 @@ from ._collate import EsmBatchConverter, ESMBatchConverterPPI  # nopycln: import
 from ._constants import (  # nopycln: import
     ESM_MODEL_NAMES,
 )
-from ._cyno_pk_datamodule import CynoPKClearanceLightningDataModule
 from ._dataframe_dataset_in_memory import (  # nopycln: import
     DataFrameDatasetInMemory,
     DataFrameLightningDataModule,
@@ -16,15 +15,12 @@ from ._gemini_data import (  # nopycln: import
 )
 from ._minhasher import LobsterMinHasher
 from ._mmseqs import MMSeqsRunner
-from ._neglog_datamodule import NegLogDataModule
 from ._structure_datamodule import PDBDataModule
 from ._utils import (  # nopycln: import
     load_pickle,
 )
 
 __all__ = [
-    "ContactMapDataModule",
-    "NegLogDataModule",
     "PDBDataModule",
     "DataFrameDatasetInMemory",
 ]
