@@ -37,8 +37,8 @@ lobster = ["*.txt", "*.json", "*.yaml"]
 [tool.setuptools_scm]
 search_parent_directories = true
 version_scheme = "no-guess-dev"
-local_scheme = "node-and-date"
 fallback_version = "0.0.0"
+local_scheme = "no-local-version" # see https://github.com/pypa/setuptools-scm/issues/455
 
 [tool.ruff]
 line-length = 120
@@ -72,6 +72,3 @@ ignore = [
 "tests/**/*.py" = [
   "D"
 ]
-
-[tool.setuptools_scm]
-local_scheme = "no-local-version" # see https://github.com/pypa/setuptools-scm/issues/455
