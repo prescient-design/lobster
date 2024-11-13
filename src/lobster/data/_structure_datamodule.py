@@ -27,9 +27,7 @@ class FastaStructureDataset(SizedSequenceDataset):
     Modified from github.com/facebookresearch/fairseq/blob/main/fairseq/data/fasta_dataset.py
     """
 
-    def __init__(
-        self, fasta_file: PathLike, cache_indices: bool = False, *args, **kwargs
-    ):
+    def __init__(self, fasta_file: PathLike, cache_indices: bool = False, *args, **kwargs):
         self.data_file = Path(fasta_file)
         if not self.data_file.exists():
             raise FileNotFoundError

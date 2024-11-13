@@ -1424,9 +1424,7 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
     """LMBase Model with Conditional generatation`language modeling` head on top.""", LMBase_START_DOCSTRING
 )
 class LMBaseForConditionalMaskedLM(LMBasePreTrainedModel):
-    _keys_to_ignore_on_load_missing = [
-        r"position_ids"
-    ]
+    _keys_to_ignore_on_load_missing = [r"position_ids"]
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):

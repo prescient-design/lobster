@@ -51,9 +51,7 @@ class LobsterMinHasher:
         # self._kmer_to_int = defaultdict(lambda: len(self._kmer_to_int))
         self._kmer_to_int = defaultdict(int)
 
-    def deduplicate_sequences(
-        self, fasta_file: str, output_fasta_file: str, n: int = None
-    ):
+    def deduplicate_sequences(self, fasta_file: str, output_fasta_file: str, n: int = None):
         """Deduplicate sequences in a FASTA file using MinHash.
 
         Parameters
@@ -91,10 +89,7 @@ class LobsterMinHasher:
         minhashes = {
             record_id: minhash
             for record_id, minhash in results
-            if not any(
-                stored_minhash.jaccard(minhash) > self._threshold
-                for stored_minhash in minhashes.values()
-            )
+            if not any(stored_minhash.jaccard(minhash) > self._threshold for stored_minhash in minhashes.values())
         }
 
         unique_seq_records = [record for record in sequences if record.id in minhashes]
@@ -102,18 +97,12 @@ class LobsterMinHasher:
         SeqIO.write(unique_seq_records, output_fasta_file, "fasta")
 
     @staticmethod
-    def _process_sequence(
-        k: int, counter: int, dim: int, kmer_to_int, wmh_gen, record: SeqIO.SeqRecord
-    ):
+    def _process_sequence(k: int, counter: int, dim: int, kmer_to_int, wmh_gen, record: SeqIO.SeqRecord):
         # Create k-mers of the protein sequence and map them to unique integers
         kmers = [str(record.seq[i : i + k]) for i in range(len(record.seq) - k + 1)]
         # weights = np.bincount([kmer_to_int[kmer] for kmer in kmers])
         weights = np.bincount(
-            [
-                kmer_to_int.setdefault(kmer, counter + 1)
-                for kmer in kmers
-                if not kmer_to_int.get(kmer, counter)
-            ],
+            [kmer_to_int.setdefault(kmer, counter + 1) for kmer in kmers if not kmer_to_int.get(kmer, counter)],
             minlength=dim,
         )
         minhash = wmh_gen.minhash(weights)

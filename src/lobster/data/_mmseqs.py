@@ -1,4 +1,5 @@
 """Code for MMseqs2. Install directions in README."""
+
 import shutil
 import subprocess
 from typing import Optional, Sequence, Union
@@ -61,9 +62,7 @@ class MMSeqsRunner:
         )
 
         # Extract the representatives from the clusters
-        subprocess.run(
-            ["mmseqs", "result2repseq", "combined_db", "clusters", "cluster_seq"]
-        )
+        subprocess.run(["mmseqs", "result2repseq", "combined_db", "clusters", "cluster_seq"])
 
         # # Extract sequences of the representatives
         # subprocess.run(["mmseqs", "convert2fasta", "combined_db", "cluster_representatives.tsv", output_fasta_file])
@@ -133,14 +132,8 @@ class MMSeqsRunner:
         lengths: train/val/test splits
         """
 
-        clusters_df = pd.read_csv(
-            cluster_csv, sep="\t", header=None, names=["Cluster", "Sequence"]
-        )
-        sequences = [
-            record
-            for record in SeqIO.parse(input_fasta, "fasta")
-            if len(record.seq) > 0
-        ]
+        clusters_df = pd.read_csv(cluster_csv, sep="\t", header=None, names=["Cluster", "Sequence"])
+        sequences = [record for record in SeqIO.parse(input_fasta, "fasta") if len(record.seq) > 0]
 
         num_train, num_val, num_test = [ll * len(clusters_df) for ll in lengths]
         print(num_train, num_val, num_test)
@@ -155,25 +148,15 @@ class MMSeqsRunner:
             num_samples = len(group_df)
             if num_assigned < round(num_train):
                 train_data = pd.concat([train_data, group_df])
-            elif (
-                round(num_train + num_val)
-                < num_assigned
-                < round(num_train + num_val + num_test)
-            ):
+            elif round(num_train + num_val) < num_assigned < round(num_train + num_val + num_test):
                 val_data = pd.concat([val_data, group_df])
             else:
                 test_data = pd.concat([test_data, group_df])
             num_assigned += num_samples
 
-        training_sequences = [
-            seq for seq in sequences if int(seq.id) in train_data["Sequence"]
-        ]
-        validation_sequences = [
-            seq for seq in sequences if int(seq.id) in val_data["Sequence"]
-        ]
-        test_sequences = [
-            seq for seq in sequences if int(seq.id) in test_data["Sequence"]
-        ]
+        training_sequences = [seq for seq in sequences if int(seq.id) in train_data["Sequence"]]
+        validation_sequences = [seq for seq in sequences if int(seq.id) in val_data["Sequence"]]
+        test_sequences = [seq for seq in sequences if int(seq.id) in test_data["Sequence"]]
 
         for split, seqs in zip(
             ["train", "val", "test"],
