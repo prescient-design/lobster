@@ -1,3 +1,5 @@
+on: "push"
+
 jobs:
   build:
     runs-on: "ubuntu-latest"
@@ -103,4 +105,3 @@ jobs:
           repository-url: "https://test.pypi.org/legacy/"
           skip-existing: true
           verbose: true
-on: "push"
