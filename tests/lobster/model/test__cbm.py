@@ -34,6 +34,7 @@ class TestLobsterCBMPMLM:
 
         assert outputs[0].device == model.device
 
+    @pytest.mark.skip("Requires s3 access")
     def test_load_from_s3(self):
         model = LobsterCBMPMLM.load_from_checkpoint(
             "s3://prescient-pcluster-data/prescient_plm/models_to_test_4/CBM_24.ckpt"

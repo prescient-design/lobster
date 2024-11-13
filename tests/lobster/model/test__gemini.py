@@ -1,10 +1,12 @@
 import pandas as pd
+import pytest
 import torch
 from lobster.data import GeminiDataFrameLightningDataModule
 from lobster.model import GeminiModel
 
 
 class TestGemini:
+    @pytest.mark.skip("Requires s3 access")
     def test_forward(self):
         df = pd.read_csv("s3://prescient-data-dev/sandbox/liny82/C1/262_cosmo_clean.csv")
         dm = GeminiDataFrameLightningDataModule(data=df, batch_size=4)

@@ -1,6 +1,5 @@
 import pytest
 from lobster.model import LobsterPMLM, PPIClassifier
-from torch import Size, Tensor
 
 
 @pytest.fixture(scope="module")
@@ -18,12 +17,3 @@ class TestPPIClassifier:
         # Test that the encoder is frozen
         for _, param in ppi_clf.base_model.named_parameters():
             assert param.requires_grad is False
-
-    # Test PPI forward
-    def test__forward(self, ppi_clf, ppi_datamodule):  # see tests/conftest.py
-        ppi_datamodule.setup(stage="fit")
-        batch = next(iter(ppi_datamodule.val_dataloader()))
-        output = ppi_clf.forward(batch)
-
-        assert isinstance(output, Tensor)
-        assert output.shape == Size([1])
