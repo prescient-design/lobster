@@ -29,5 +29,5 @@ pooch
 edlib
 onnx
 onnxscript
-beignet
+beignet[all]
 fair-esm
