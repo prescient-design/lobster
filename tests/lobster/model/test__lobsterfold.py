@@ -28,6 +28,8 @@ def structure_featurizer(scope="session"):
 
 @pytest.fixture
 def model(max_length, scope="session"):
+    if os.getenv("CI"):
+        pytest.skip("large download")
     return LobsterPLMFold(model_name="esmfold_v1", max_length=max_length)
 
 
