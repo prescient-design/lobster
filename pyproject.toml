@@ -72,3 +72,6 @@ ignore = [
 "tests/**/*.py" = [
   "D"
 ]
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version" # see https://github.com/pypa/setuptools-scm/issues/455
