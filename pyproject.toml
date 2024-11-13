@@ -1,8 +1,9 @@
 [project]
 name = "lbster"
+readme = "README.md"
 description = "Language models for Biological Sequence Transformation and Evolutionary Representation."
 authors = [{name = "Nathan C. Frey", email = "frey.nathan.nf1@gene.com"}]
-dynamic = ["version", "readme", "dependencies", "optional-dependencies"]
+dynamic = ["version", "dependencies", "optional-dependencies"]
 requires-python = ">=3.10"
 
 [build-system]
@@ -20,7 +21,6 @@ lobster_eval = "lobster.cmdline:eval_embed"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.in"]}
-readme = {file = "README.md"}
 
 [tool.setuptools.dynamic.optional-dependencies]
 dev = {file = ["requirements-dev.in"]}
