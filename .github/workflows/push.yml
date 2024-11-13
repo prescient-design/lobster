@@ -10,7 +10,7 @@ jobs:
           python-version: "3.x"
       - run: "python -m pip install --upgrade build"
       - run: "python -m build ."
-      - uses: "actions/upload-artifact@v3"
+      - uses: "actions/upload-artifact@v4"
         with:
           name: "python-package-distributions"
           path: "dist/"
