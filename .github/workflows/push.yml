@@ -23,7 +23,6 @@ jobs:
           # - "windows-latest"
         python:
           - "3.10"
-          - "3.11"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: "actions/checkout@v4"
@@ -45,6 +44,7 @@ jobs:
       - uses: "astral-sh/ruff-action@v1"
         with:
           args: "format --check"
+          version: 0.7.3
   # pypi:
   #   environment:
   #     name: "pypi.org"
