@@ -82,16 +82,16 @@ pip install -e .
 | Shorthand | #params | Dataset |  Description  | Model checkpoint |
 |---------|------------|---------|------------------------------------------------------------|-------------|
 Lobster_24M | 24 M | uniref50 | 24M parameter protein Masked LLM trained on uniref50| [lobster_24M](https://huggingface.co/asalam91/lobster_24M)
-Lobster_150M | 150 M | uniref50 | 24M parameter protein Masked LLM trained on uniref50|[lobster_150M](https://huggingface.co/asalam91/lobster_150M)
+Lobster_150M | 150 M | uniref50 | 150M parameter protein Masked LLM trained on uniref50|[lobster_150M](https://huggingface.co/asalam91/lobster_150M)
 
 
 #### CB LMs
 | Shorthand | #params | Dataset |  Description  | Model checkpoint |
 |---------|------------|---------|------------------------------------------------------------|-------------|
-cb_Lobster_24M | 24 M | uniref50+SwissProt | 24M parameter a protein concept bottleneck model for protiens with 718 concepts | [cb_lobster_24M](https://huggingface.co/asalam91/cb_lobster_24M)
-cb_Lobster_150M | 150 M | uniref50+SwissProt |150M parameter a protein  concept bottleneck model for protiens with 718 concepts|[cb_lobster_150M](https://huggingface.co/asalam91/cb_lobster_150M)
-cb_Lobster_650M | 650 M | uniref50+SwissProt |650M parameter  a protein concept bottleneck model for protiens with 718 concepts|[cb_lobster_650M](https://huggingface.co/asalam91/cb_lobster_650M)
-cb_Lobster_3B | 3 B | uniref50+SwissProt |3B parameter  a protein concept bottleneck model for protiens with 718 concepts|[cb_lobster_3B](https://huggingface.co/asalam91/cb_lobster_3B)
+cb_Lobster_24M | 24 M | uniref50+SwissProt | 24M parameter a protein concept bottleneck model for proteins with 718 concepts | [cb_lobster_24M](https://huggingface.co/asalam91/cb_lobster_24M)
+cb_Lobster_150M | 150 M | uniref50+SwissProt |150M parameter a protein  concept bottleneck model for proteins with 718 concepts|[cb_lobster_150M](https://huggingface.co/asalam91/cb_lobster_150M)
+cb_Lobster_650M | 650 M | uniref50+SwissProt |650M parameter  a protein concept bottleneck model for proteins with 718 concepts|[cb_lobster_650M](https://huggingface.co/asalam91/cb_lobster_650M)
+cb_Lobster_3B | 3 B | uniref50+SwissProt |3B parameter  a protein concept bottleneck model for proteins with 718 concepts|[cb_lobster_3B](https://huggingface.co/asalam91/cb_lobster_3B)
 
 ### Loading a pre-trained model
 ```python
