@@ -4,7 +4,7 @@ from ._clm import LobsterPCLM
 from ._clm_configuration import PCLM_CONFIG_ARGS
 from ._conditioanalclassifiermlm import LobsterConditionalClassifierPMLM
 from ._conditioanalmlm import LobsterConditionalPMLM
-from ._gemini import GeminiModel
+from ._dyab import DyAbModel
 from ._linear_probe import LobsterLinearProbe
 from ._lobster_fold import FoldseekTransform, LobsterPLMFold
 from ._mgm import LobsterMGM

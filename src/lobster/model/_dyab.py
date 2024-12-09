@@ -16,7 +16,7 @@ from torchvision.transforms import Resize
 from ._utils import model_typer
 
 
-class GeminiModel(pl.LightningModule):
+class DyAbModel(pl.LightningModule):
     def __init__(
         self,
         model_name: Optional[str] = None,
@@ -36,7 +36,7 @@ class GeminiModel(pl.LightningModule):
         diff_channel_2: Optional[Literal["diff", "add", "mul", "div"]] = None,
     ):
         """
-        Gemini head.
+        DyAb head.
         Please make sure max_length is long enough to capture the sequence variation in your dataset!
         E.g. if all variation happens in ixs 561-588 (FLIP AAV), max_length should be at least 588 unless
         the dataset or a transform already truncates sequences to 512. (see AAV dataset)
