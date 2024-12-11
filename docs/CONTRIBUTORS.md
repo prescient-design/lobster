@@ -2,3 +2,4 @@
 * Matthieu Kirchmeyer
 * Sai Pooja Mahajan
 * Amy Wang
+* Jen Hofmann
