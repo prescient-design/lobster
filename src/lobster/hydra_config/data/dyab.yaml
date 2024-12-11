@@ -1,4 +1,4 @@
-_target_: lobster.data.GeminiDataFrameLightningDataModule
+_target_: lobster.data.DyAbDataFrameLightningDataModule
 
 data: ??? # dataframe
 batch_size: 64

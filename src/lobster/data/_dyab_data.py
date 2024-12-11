@@ -14,7 +14,7 @@ from ._dataframe_dataset_in_memory import (
 T = TypeVar("T")
 
 
-class GeminiDataFrameLightningDataModule(LightningDataModule):
+class DyAbDataFrameLightningDataModule(LightningDataModule):
     def __init__(
         self,
         data: DataFrame = None,
@@ -117,7 +117,7 @@ class GeminiDataFrameLightningDataModule(LightningDataModule):
 
     def prepare_data(self) -> None:
         # Load in Dataset, transform sequences
-        dataset = GeminiDataFrameDatasetInMemory(
+        dataset = DyAbDataFrameDatasetInMemory(
             data=self._data,
             columns=["fv_heavy", "fv_light"],
             target_columns=["pKD"],
@@ -191,7 +191,7 @@ class GeminiDataFrameLightningDataModule(LightningDataModule):
         )
 
 
-class GeminiDataFrameDatasetInMemory(DataFrameDatasetInMemory):
+class DyAbDataFrameDatasetInMemory(DataFrameDatasetInMemory):
     def __init__(
         self,
         data: DataFrame,
