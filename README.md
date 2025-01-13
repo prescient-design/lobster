@@ -96,7 +96,7 @@ cb_Lobster_3B | 3 B | uniref50+SwissProt |3B parameter  a protein concept bottle
 ### Loading a pre-trained model
 ```python
 from lobster.model import LobsterPMLM, LobsterPCLM, LobsterCBMPMLM
-masked_language_model = LobsterPMLM("asalam91/lobster_mlm_24M")
+masked_language_model = LobsterPMLM("asalam91/lobster_24M")
 concept_bottleneck_masked_language_model = LobsterCBMPMLM("asalam91/cb_lobster_24M")
 causal_language_model = LobsterPCLM.load_from_checkpoint(<path to ckpt>)
 ```
