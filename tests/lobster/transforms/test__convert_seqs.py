@@ -115,7 +115,7 @@ class TestConvertSeqs:
         # print(smi_seq)
         assert len(smi_seq) == 100, f"Failed for AA seq {aa_seq}, smiles seq does not have the expected length"
         assert smi_seq == (
-            "CC(C)C[C@H](NC(=O)[C@H](CCC(N)=O)NC(=O)[C@@H](NC(=O)[C@@H](N)CCC(=O)O)" "C(C)C)C(=O)N[C@H](C(=O)O)C(C)C"
+            "CC(C)C[C@H](NC(=O)[C@H](CCC(N)=O)NC(=O)[C@@H](NC(=O)[C@@H](N)CCC(=O)O)C(C)C)C(=O)N[C@H](C(=O)O)C(C)C"
         )
 
     def test_convert_smiles_to_aa(self):

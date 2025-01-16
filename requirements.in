@@ -16,11 +16,8 @@ datasets
 tokenizers
 transformers>=4.24.0
 scikit-learn
-matplotlib
-seaborn
 python-dotenv
 torcheval
-fastparquet
 datasketch
 peft
 icecream
@@ -29,5 +26,5 @@ pooch
 edlib
 onnx
 onnxscript
-beignet[all]
+beignet[datasets, mdtraj]
 fair-esm
