@@ -28,14 +28,12 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: "actions/checkout@v4"
-      - uses: "actions/setup-python@v5"
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python }}
-      - run: "python -m pip install -r requirements.in"
-      - run: "python -m pip install -r requirements-dev.in"
-      - run: "python -m pip install -r requirements-mgm.in"
-      - run: "python -m pip install --editable ."
-      - run: "python -m pytest"
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --all-extras --dev
+      - run: uv run pytest
       - env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         uses: "codecov/codecov-action@v3"
