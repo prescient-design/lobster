@@ -26,5 +26,5 @@ pooch
 edlib
 onnx
 onnxscript
-beignet[datasets]
+beignet[datasets, mdtraj]
 fair-esm
