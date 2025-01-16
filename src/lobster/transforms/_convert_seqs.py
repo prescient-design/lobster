@@ -1,7 +1,16 @@
+from importlib.util import find_spec
 from typing import Callable, Dict, Optional
 
-import selfies as sf
-from rdkit import Chem
+_SELFIES_AVAILABLE = False
+_RDKIT_AVAILABLE = False
+
+if find_spec("selfies"):
+    import selfies as sf
+    _SELFIES_AVAILABLE = True
+
+if find_spec("rdkit"):
+    from rdkit import Chem
+    _RDKIT_AVAILABLE = True
 
 
 def convert_nt_to_aa(
@@ -51,6 +60,8 @@ def convert_aa_to_nt(
 
 
 def convert_aa_to_smiles(aa_seq: str, allowed_aa: set) -> Optional[str]:
+    assert _RDKIT_AVAILABLE, "rdkit not available. This dependency is part of the mgm extra"
+
     if not aa_seq.isupper():
         aa_seq = aa_seq.upper()
 
@@ -69,6 +80,8 @@ def convert_aa_to_smiles(aa_seq: str, allowed_aa: set) -> Optional[str]:
 def convert_smiles_to_aa(
     smiles_seq: str,
 ) -> Optional[str]:
+    assert _RDKIT_AVAILABLE, "rdkit not available. This dependency is part of the mgm extra"
+
     try:
         mol = Chem.MolFromSmiles(smiles_seq)
         aa_seq = Chem.MolToSequence(mol)
@@ -81,6 +94,7 @@ def convert_smiles_to_aa(
 def convert_smiles_to_selfies(
     smiles_seq: str,
 ) -> Optional[str]:
+    assert _SELFIES_AVAILABLE, "selfies not available. This dependency is part of the mgm extra"
     try:
         sf_seq = sf.encoder(smiles_seq)
         return sf_seq
@@ -92,6 +106,7 @@ def convert_selfies_to_smiles(
     selfies_seq: str,
 ) -> Optional[str]:
     # TODO: add conversion of unknown selfies tokens to Ala selfies
+    assert _SELFIES_AVAILABLE, "selfies not available. This dependency is part of the mgm extra"
     try:
         smiles_seq = sf.decoder(selfies_seq)
         return smiles_seq
