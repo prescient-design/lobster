@@ -22,8 +22,6 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
     datamodule.setup(stage="fit")
     model = hydra.utils.instantiate(cfg.model, _recursive_=False)
 
-    wandb.login(host="https://genentech.wandb.io/")
-
     wandb.init(
         config=log_cfg,  # type: ignore[arg-type]
         project=cfg.logger.project,
