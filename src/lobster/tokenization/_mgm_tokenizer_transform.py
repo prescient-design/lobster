@@ -1,8 +1,8 @@
 import importlib.resources
+from importlib.util import find_spec
 from os import PathLike
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
-import selfies as sf
 import torch
 from transformers.tokenization_utils_base import (
     BatchEncoding,
@@ -26,6 +26,13 @@ from lobster.transforms import (
     sample_list_with_probs,
     uniform_sample,
 )
+
+_SELFIES_AVAILABLE = False
+
+if find_spec("selfies"):
+    import selfies as sf
+
+    _SELFIES_AVAILABLE = True
 
 logger = logging.get_logger(__name__)
 
@@ -204,10 +211,12 @@ class MgmTokenizerTransform(Transform):
         return seq
 
     def get_selfies_length(self, seq: str) -> int:
+        assert _SELFIES_AVAILABLE, "selfies not available. This dependency is part of the mgm extra"
         symbols = list(sf.split_selfies(seq))
         return len(symbols)
 
     def crop_selfies(self, seq: str, max_len: int, crop_left: bool) -> str:
+        assert _SELFIES_AVAILABLE, "selfies not available. This dependency is part of the mgm extra"
         symbols = list(sf.split_selfies(seq))
         if crop_left:
             symbols = symbols[-max_len:]
