@@ -386,13 +386,13 @@ def intervene_multiproperty(cfg: DictConfig) -> bool:
                 all_data = np.concatenate((all_data, data), axis=1) if all_data is not None else np.array(data)
 
             if all_data.shape[1] > 1000:
-                print(f"{i+1} of {len(predict_dataloader)} Saving")
+                print(f"{i + 1} of {len(predict_dataloader)} Saving")
                 df = pd.DataFrame(all_data.transpose(), columns=columns)
-                df.to_csv(f"{data_folder_dir}/{index__+1}_indexed.csv", index=False)
+                df.to_csv(f"{data_folder_dir}/{index__ + 1}_indexed.csv", index=False)
                 index__ += 1
                 all_data = None
 
         if all_data is not None:
-            print(f"{i+1} of {len(predict_dataloader)} Saving")
+            print(f"{i + 1} of {len(predict_dataloader)} Saving")
             df = pd.DataFrame(all_data.transpose(), columns=columns)
-            df.to_csv(f"{data_folder_dir}/{index__+1}_indexed.csv", index=False)
+            df.to_csv(f"{data_folder_dir}/{index__ + 1}_indexed.csv", index=False)

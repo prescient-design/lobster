@@ -6,10 +6,12 @@ _RDKIT_AVAILABLE = False
 
 if find_spec("selfies"):
     import selfies as sf
+
     _SELFIES_AVAILABLE = True
 
 if find_spec("rdkit"):
     from rdkit import Chem
+
     _RDKIT_AVAILABLE = True
 
 

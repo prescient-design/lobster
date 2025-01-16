@@ -7,12 +7,12 @@ from ._dataframe_dataset_in_memory import (  # nopycln: import
     DataFrameDatasetInMemory,
     DataFrameLightningDataModule,
 )
-from ._farthest_first_traversal import FarthestFirstTraversal, ranked_fft
-from ._fasta_datamodule import FastaLightningDataModule  # nopycln: import
 from ._dyab_data import (  # nopycln: import
     DyAbDataFrameDatasetInMemory,
     DyAbDataFrameLightningDataModule,
 )
+from ._farthest_first_traversal import FarthestFirstTraversal, ranked_fft
+from ._fasta_datamodule import FastaLightningDataModule  # nopycln: import
 from ._minhasher import LobsterMinHasher
 from ._mmseqs import MMSeqsRunner
 from ._structure_datamodule import PDBDataModule
