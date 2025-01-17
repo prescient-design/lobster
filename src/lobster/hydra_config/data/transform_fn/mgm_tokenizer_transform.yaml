@@ -1,0 +1,20 @@
+_target_: lobster.tokenization.MgmTokenizerTransform
+
+pretrained_model_name_or_path: null
+padding: "max_length"
+truncation: True
+max_length: ${model.max_length}
+tokenizer_dir: ${model.tokenizer_dir}
+mlm: True
+codon_sampling_strategy: uniform_sample
+input_modality: nt
+p_aa: 0.111
+p_nt: 0.111
+p_sf: 0.111
+p_aa_nt: 0.111
+p_nt_aa: 0.111
+p_aa_sf: 0.111
+p_sf_aa: 0.111
+p_nt_sf: 0.111
+p_sf_nt: 0.111
+mask_percentage: ${model.mask_percentage}

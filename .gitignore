@@ -22,7 +22,11 @@ docs/_build
 *.err
 *.out
 *.csv
+scripts/*
 scripts/*.fasta
 scripts/fastas/*.fasta
 scripts/combined_db*
 *_play.py
+src/lobster/hydra_config/experiment/*
+
+

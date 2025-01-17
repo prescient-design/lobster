@@ -95,10 +95,10 @@ class CalmDataset(FASTADataset):
         )
 
         self._pattern = re.compile(r"^Calm.+_([A-Z0-9]+)\s.+$")
+        self.root = self._root
 
         super().__init__(
             local_path,
-            index=index,
         )
 
         self._transform_fn = transform_fn

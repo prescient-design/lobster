@@ -153,8 +153,6 @@ class FastaLightningDataModule(LightningDataModule):
         #                 )
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
-        super().__init__()
-
         if stage == "fit":
             if any(["train" in self._path_to_fasta]):  # pre computed splits
                 self._train_dataset = torch.utils.data.ConcatDataset(
