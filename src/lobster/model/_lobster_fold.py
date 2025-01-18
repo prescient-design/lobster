@@ -186,7 +186,7 @@ class LobsterPLMFold(pl.LightningModule):
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
-    def predict_fab(self, fv_heavy, fv_light):
+    def predict_fv(self, fv_heavy, fv_light):
         linker = 'G' * 25
         homodimer_sequence = fv_heavy + linker + fv_light
 
