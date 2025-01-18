@@ -7,6 +7,9 @@ from lobster.extern.openfold_utils import backbone_loss
 from lobster.model import LobsterPLMFold
 from lobster.transforms import StructureFeaturizer
 from torch import Size, Tensor
+from Bio.PDB import PDBParser, SuperImposer
+from io import StringIO
+
 
 torch.backends.cuda.matmul.allow_tf32 = True
 
@@ -14,6 +17,18 @@ torch.backends.cuda.matmul.allow_tf32 = True
 @pytest.fixture
 def max_length():
     return 32
+
+
+@pytest.fixture
+def example_fv():
+    fv_heavy = "VKLLEQSGAEVKKPGASVKVSCKASGYSFTSYGLHWVRQAPGQRLEWMGWISAGTGNTKYSQKFRGRVTFTRDTSATTAYMGLSSLRPEDTAVYYCARDPYGGGKSEFDYWGQGTLVTVSS"
+    fv_light = "ELVMTQSPSSLSASVGDRVNIACRASQGISSALAWYQQKPGKAPRLLIYDASNLESGVPSRFSGSGSGTDFTLTISSLQPEDFAIYYCQQFNSYPLTFGGGTKVEIKRTV"
+    return (fv_heavy, fv_light)
+
+
+@pytest.fixture
+def example_fv(scope="session"):
+    return os.path.join(os.path.dirname(__file__), "../../../test_data/fv.pdb")
 
 
 @pytest.fixture
@@ -58,6 +73,40 @@ class TestLobsterPLMFold:
         assert tokenized_input["input_ids"].size() == Size((len(inputs), max_length))
         assert tokenized_input["attention_mask"][0, :].sum() == len(inputs[0])
         assert tokenized_input["attention_mask"][1, :].sum() == len(inputs[1])
+
+    @pytest.mark.skip(reason="fwd pass too slow")
+    def test_predict_fv(self, model, example_fv):
+        pdb_string = model.predict_fv(example_fv[0],example_fv[1])
+
+        # Parse the input PDB string
+        parser = PDBParser(QUIET=True)
+        structure1 = parser.get_structure("pdb_string_structure", StringIO(pdb_string))
+
+        # Parse the ground truth PDB file
+        structure2 = parser.get_structure("ground_truth_structure", ground_truth_file)
+
+        # Extract CA atoms for alignment
+        atoms1 = [atom for atom in structure1.get_atoms() if atom.get_id() == "CA"]
+        atoms2 = [atom for atom in structure2.get_atoms() if atom.get_id() == "CA"]
+
+        # Ensure same number of atoms for RMSD computation
+        if len(atoms1) != len(atoms2):
+            raise ValueError("Structures do not have the same number of CA atoms.")
+
+        # Extract coordinates
+        coords1 = [atom.get_coord() for atom in atoms1]
+        coords2 = [atom.get_coord() for atom in atoms2]
+
+        # Superimpose and compute RMSD
+        super_imposer = Superimposer()
+        super_imposer.set_atoms(coords2, coords1)
+
+        # Apply the transformation to structure1
+        super_imposer.apply(structure1.get_atoms())
+
+        # Check that RMSD is within tolerance
+        rmsd_tolerance = 2.0
+        assert super_imposer.rms < rmsd_tolerance
 
     @pytest.mark.skip(reason="fwd pass too slow")
     def test_forward_pass_and_fape(self, model, example_pdb_dir, max_length):
