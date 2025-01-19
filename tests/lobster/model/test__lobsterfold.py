@@ -7,7 +7,7 @@ from lobster.extern.openfold_utils import backbone_loss
 from lobster.model import LobsterPLMFold
 from lobster.transforms import StructureFeaturizer
 from torch import Size, Tensor
-from Bio.PDB import PDBParser, SuperImposer
+from Bio.PDB import PDBParser, Superimposer
 from io import StringIO
 
 
@@ -93,13 +93,9 @@ class TestLobsterPLMFold:
         if len(atoms1) != len(atoms2):
             raise ValueError("Structures do not have the same number of CA atoms.")
 
-        # Extract coordinates
-        coords1 = [atom.get_coord() for atom in atoms1]
-        coords2 = [atom.get_coord() for atom in atoms2]
-
         # Superimpose and compute RMSD
         super_imposer = Superimposer()
-        super_imposer.set_atoms(coords2, coords1)
+        super_imposer.set_atoms(atoms2, atoms1)
 
         # Apply the transformation to structure1
         super_imposer.apply(structure1.get_atoms())
