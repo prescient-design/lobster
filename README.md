@@ -32,7 +32,7 @@ image credit: Amy Wang
 * LBSTER is built for pre-training models quickly from scratch. It is "batteries included." This is most useful if you need to control the pre-training data mixture and embedding space, or want to experiment with novel pre-training objectives and fine-tuning strategies.
 * LBSTER is a living, open-source library that will be periodically updated with new code and pre-trained models from the [Frey Lab](https://ncfrey.github.io/) at [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design). The Frey Lab works on real therapeutic molecule design problems and LBSTER models and capabilities reflect the demands of real-world drug discovery campaigns.
 * LBSTER is built with [beignet](https://github.com/Genentech/beignet/tree/main), a standard library for biological research, and integrated with [cortex](https://github.com/prescient-design/cortex/tree/main), a modular framework for multitask modeling, guided generation, and multi-modal models.
-* LBSTER supports concepts; we have a concept-bottleneck protein language model we refer to as CB-LBSTER, which supports 718 concepts.
+* LBSTER supports concepts; we have a concept-bottleneck protein language model, CB-LBSTER, which supports 718 concepts.
 
 ## Citations <a name="citations"></a>
 If you use the code and/or models, please cite the relevant papers.
@@ -68,6 +68,16 @@ For the `cb-lbster` code base cite: [Concept Bottleneck Language Models for Prot
 ```
 
 ## Install <a name="install"></a>
+
+### Using `uv`
+Install [uv](https://github.com/astral-sh/uv)  
+```bash
+uv venv --python 3.12  # create a new virtual environment in the `lobster` directory
+source .venv/bin/activate
+uv pip install -e .
+```
+
+### Using `mamba`
 clone the repo, cd into it and do `mamba env create -f env.yml`
 then from the root of the repo, do
 ```bash
@@ -113,13 +123,16 @@ causal_language_model = LobsterPCLM.load_from_checkpoint(<path to ckpt>)
 
 ### Representation learning
 
-Check out [jupyter notebook tutorial](notebooks/01-inference.ipynb) for example on how extract embedding reprsentations from different models.
+Check out this [jupyter notebook tutorial](notebooks/01-inference.ipynb) for an example on how to extract embedding reprsentations from different models.
 
 
 ### Concept Interventions
 
-Check out [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for example on to intervene on different concepts for our concept-bottleneck models class.
+Check out this [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for an example on how to intervene on different concepts for our concept-bottleneck models class.
 
+## Example scripts
+
+Check out [examples](examples/) for scripts showing how to perform inference and interventions.
 
 ## Training and inference <a name="training"></a>
 
@@ -137,7 +150,7 @@ This will generate a dataframe of embeddings and also log them to wandb.
 For robust multitask modeling, we recommend using `lobster` with [cortex]((https://github.com/prescient-design/cortex/tree/main)). For simple baselines using `lobster` embeddings, use `lobster.model.LinearProbe` and `lobster.model.LobsterMLP`.
 
 ### Likelihoods
-Likelihoods from an autoregressive `PrescientCLM` or pseudo-log likelihoods ("naturalness") from a `PrescientPMLM` can be computed for a list of `sequences` using
+Likelihoods from an autoregressive `LobsterCLM` or pseudo-log likelihoods ("naturalness") from a `LobsterPMLM` can be computed for a list of `sequences` using
 
 ```python
 model.naturalness(sequences)
@@ -158,8 +171,12 @@ Contributions are welcome! We ask that all users and contributors remember that 
 ### Install dev requirements and pre-commit hooks
 
 ```bash
-python -m pip install -r requirements-dev.in
 pre-commit install
+```
+
+### Create lockfile for env
+```bash
+uv pip compile requirements.in -o requirements.txt
 ```
 
 ### Testing

@@ -19,7 +19,7 @@ def dm(tmp_path):
     return datamodule
 
 
-@pytest.mark.skip(reason="Need to mock.")
+# @pytest.mark.skip(reason="Need to mock.")
 class TestCalmLightningDataModule:
     def test_setup(self, dm: CalmLightningDataModule):
         assert len(dm._train_dataset) == 3481
