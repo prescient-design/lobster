@@ -4,12 +4,14 @@ from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
 import pandas as pd
 import torch.utils.data
-from beignet.datasets import FASTADataset
+
+# from beignet.datasets import FASTADataset
 from datasets import Dataset
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
+from lobster.datasets import FASTADataset
 from lobster.tokenization import PmlmTokenizerTransform
 from lobster.transforms import Transform
 
