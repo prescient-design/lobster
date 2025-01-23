@@ -5,14 +5,14 @@ import warnings
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-# Add folder root to path to allow us to use relative imports regardless of what directory the script is run from
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-
 import torch
 import torch.nn as nn
 from einops import rearrange
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
+
+from ._activation import get_act_fn
+from ._initialization import ModuleType, init_weights
 from ._mlp import FlexBertGLU, FlexBertMLP, FlexBertParallelGLU
 from ._normalization import get_norm_layer
 from ._padding import pad_input, unpad_input
@@ -48,6 +48,7 @@ def _count_parameters(model: nn.Module, trainable: bool = True) -> int:
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
     else:
         return sum(p.numel() for p in model.parameters())
+
 
 class FlexBertModel(torch.nn.Module):
     """Overall BERT model.
@@ -168,3 +169,25 @@ class FlexBertModel(torch.nn.Module):
             if hasattr(self.embeddings, "position_embeddings"):
                 params -= _count_parameters(self.embeddings.position_embeddings, trainable)
         return params
+
+
+class FlexBertPredictionHead(nn.Module):
+    def __init__(self, config: FlexBertConfig):
+        super().__init__()
+        self.config = config
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size, config.head_pred_bias)
+        self.act = get_act_fn(config.head_pred_act) if config.head_pred_act else nn.Identity()
+        self.norm = (
+            get_norm_layer(config, compiled_norm=config.compile_model) if config.head_pred_norm else nn.Identity()
+        )
+
+    def _init_weights(self, reset_params: bool = False):
+        if reset_params:
+            self.norm.reset_parameters()
+        init_weights(self.config, self.dense, layer_dim=self.config.hidden_size, type_of_module=ModuleType.in_module)
+
+    def reset_parameters(self):
+        self._init_weights(reset_params=True)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.norm(self.act(self.dense(hidden_states)))

@@ -1,46 +1,10 @@
-inum_attention_heads: 12 # bert-base default
-num_hidden_layers: 22 # bert-base default
-attention_layer: rope
-attention_probs_dropout_prob: 0.0
-attn_out_bias: false
-attn_out_dropout_prob: 0.0
-attn_qkv_bias: false
-bert_layer: prenorm
-embed_dropout_prob: 0.0
-embed_norm: false
-final_norm: true
+_target_: lobster.model.modern_bert.FlexBERT
+
+lr: 1e-3
+num_training_steps: ${trainer.max_steps}
+num_warmup_steps: 10_000
+max_length: 512
+tokenizer_dir: pmlm_tokenizer
 embedding_layer: linear_pos
-loss_function: fa_cross_entropy
-loss_kwargs:
-  reduction: mean
-mlp_dropout_prob: 0.0
-mlp_in_bias: false
-mlp_layer: mlp
-mlp_out_bias: false
-normalization: rmsnorm
-norm_kwargs:
-  eps: 1e-6
-padding: unpadded
-sparse_prediction: false
-rotary_emb_dim: null # will be set to headdim by default
-rotary_emb_base: 10000.0
-rotary_emb_scale_base: null
-rotary_emb_interleaved: false
-hidden_act: gelu
-init_method: full_megatron
-init_std: 0.02
-init_cutoff_factor: 2.0
-init_small_embedding: False
-deterministic_fa2: false
-initial_attention_layer: null
-initial_bert_layer: null
-initial_mlp_layer: null
-num_initial_layers: 0
-skip_first_prenorm: true
-sliding_window: 128
-global_attn_every_n_layers: 3
-unpad_embeddings: true
-pad_logits: false
-vocab_size: 563
-hidden_size: 768
-intermediate_size: 1152
+hidden_size: 252
+ckpt_path: null
