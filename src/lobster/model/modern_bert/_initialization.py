@@ -16,8 +16,8 @@ import torch.nn as nn
 
 from ._utils import StrEnum
 
-from structure_tokenizer.models.modern_bert._config import FlexBertConfig
-from structure_tokenizer.models.modern_bert._normalization import RMSNorm
+from ._config import FlexBertConfig
+from ._normalization import RMSNorm
 
 __all__ = ["init_weights", "ModuleType", "InitFnType"]
 

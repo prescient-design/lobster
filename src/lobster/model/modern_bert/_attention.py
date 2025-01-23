@@ -22,9 +22,9 @@ import logging
 import math
 
 from ._padding import pad_input, unpad_input_only, index_first_axis
-from structure_tokenizer.models.modern_bert._config import FlexBertConfig, maybe_add_padding
-from structure_tokenizer.models.modern_bert._normalization import get_norm_layer
-from structure_tokenizer.models.modern_bert._initialization import ModuleType, init_weights
+from ._config import FlexBertConfig, maybe_add_padding
+from ._normalization import get_norm_layer
+from ._initialization import ModuleType, init_weights
 #import ._utils  # noqa: F401
 
 IMPL_USE_FLASH3 = False

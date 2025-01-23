@@ -13,11 +13,11 @@ import torch.nn as nn
 from einops import rearrange
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
-from structure_tokenizer.models.modern_bert._mlp import FlexBertGLU, FlexBertMLP, FlexBertParallelGLU
-from structure_tokenizer.models.modern_bert._normalization import get_norm_layer
-from structure_tokenizer.models.modern_bert._padding import pad_input, unpad_input
+from ._mlp import FlexBertGLU, FlexBertMLP, FlexBertParallelGLU
+from ._normalization import get_norm_layer
+from ._padding import pad_input, unpad_input
 
-from structure_tokenizer.models.modern_bert._layers import (
+from ._layers import (
     BertAlibiEncoder,
     BertPooler,
     BertPredictionHeadTransform,
@@ -33,7 +33,7 @@ from structure_tokenizer.models.modern_bert._layers import (
     get_encoder_layer,
 )
 
-from structure_tokenizer.models.modern_bert._embedding import (
+from ._embedding import (
     BertAlibiEmbeddings,
     FlexBertAbsoluteEmbeddings,
     FlexBertCompiledSansPositionEmbeddings,
@@ -41,7 +41,7 @@ from structure_tokenizer.models.modern_bert._embedding import (
     get_embedding_layer,
 )
 
-from structure_tokenizer.models.modern_bert._config import FlexBertConfig
+from ._config import FlexBertConfig
 
 def _count_parameters(model: nn.Module, trainable: bool = True) -> int:
     if trainable:
