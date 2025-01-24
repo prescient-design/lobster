@@ -51,7 +51,7 @@ class M320MDataset(Dataset):
                 # TODO
 
         else:
-            url = url_base + "M%5E3_Multi.csv"
+            url = url_base + "M%5E3_Original.csv"
             self.data = pandas.read_csv(url)
 
         self.columns = ["smiles_x", "Description"] if columns is None else columns
