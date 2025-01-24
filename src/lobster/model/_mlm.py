@@ -167,6 +167,7 @@ class LobsterPMLM(pl.LightningModule):
 
     def _compute_loss(self, batch):
         # torch.cuda.empty_cache()
+        batch, _targets = batch  # targets are the FASTA IDs
         toks = batch["input_ids"].squeeze(1)
         labels = toks.clone()
         masked_toks = self._mask_inputs(toks)
