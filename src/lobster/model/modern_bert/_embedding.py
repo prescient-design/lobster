@@ -195,7 +195,7 @@ class RelativePositionalEncoding(nn.Module):
         return embeddings
 
 def posemb_sincos_1d(patches, temperature=10000, residue_index=None):
-    _, n, dim, device, dtype = *patches.shape, patches.device, patches.dtype
+    n, dim, device, dtype = *patches.shape, patches.device, patches.dtype
 
     n = torch.arange(n, device=device) if residue_index is None else residue_index
     assert (dim % 2) == 0, "feature dimension must be multiple of 2 for sincos emb"
@@ -226,13 +226,13 @@ class FlexBertSansPositionEmbeddings(FlexBertEmbeddingsBase):
 
     def forward(self, input_ids: torch.LongTensor, position_ids: Optional[torch.LongTensor] = None) -> torch.Tensor:
         return self.drop(self.norm(self.tok_embeddings(input_ids)))
-    
+
 class FlexBertLinEmbeddings(FlexBertEmbeddingsBase):
     """Construct the embeddings from token embeddings without any positional embeddings."""
 
     def __init__(self, config: FlexBertConfig):
         super().__init__(config)
-        self.tok_embeddings = nn.Linear(config.vocab_size, config.hidden_size, bias=False)
+        self.tok_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
 
         self.norm = get_norm_layer(config) if config.embed_norm else nn.Identity()
         self.drop = nn.Dropout(config.embed_dropout_prob) if config.embed_dropout_prob > 0.0 else nn.Identity()

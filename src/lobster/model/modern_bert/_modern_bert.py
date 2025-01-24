@@ -37,15 +37,19 @@ class FlexBERT(pl.LightningModule):
         self._max_length = max_length
 
         path = importlib.resources.files("lobster") / "assets" / tokenizer_dir
-        self.tokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
+        self.tokenizer: PmlmTokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
         self.tokenize_transform = PmlmTokenizerTransform(
-            tokenizer_dir=tokenizer_dir,
+            path,
             padding="max_length",
             max_length=self._max_length,
             truncation=True,
         )
 
-        config = FlexBertConfig(vocab_size=self.tokenizer.vocab_size, **model_kwargs)
+        config = FlexBertConfig(
+            vocab_size=self.tokenizer.vocab_size,
+            pad_token_id = self.tokenizer.pad_token_id,
+            **model_kwargs,
+        )
         self.model = FlexBertModel(config)
 
         self.decoder = nn.Sequential(
@@ -54,6 +58,7 @@ class FlexBERT(pl.LightningModule):
         )
 
         self.loss_fn = CrossEntropyLoss()
+        self.save_hyperparameters(logger=False)
 
     def training_step(self, batch, batch_idx):
         loss = self._compute_loss(batch)
@@ -83,21 +88,41 @@ class FlexBERT(pl.LightningModule):
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
-    def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
+    def sequences_to_latents(self, sequences: list[str]) -> list[torch.Tensor]:
         transformed_sequences = self.tokenize_transform(sequences)
-        input_ids = torch.concat([batch["input_ids"].to(self.device) for batch in transformed_sequences])
-        attention_mask = torch.concat([batch["attention_mask"].to(self.device) for batch in transformed_sequences])
+        input_ids = torch.concat([batch["input_ids"].squeeze(0) for batch in transformed_sequences]).to(self.device)
+        attention_mask = torch.concat([batch["attention_mask"].squeeze(0) for batch in transformed_sequences]).to(self.device)
+        seqlens = [batch["input_ids"].size(1) for batch in transformed_sequences]
+        cu_seqlens = torch.tensor([sum(seqlens[:i]) for i in range(len(seqlens) + 1)], dtype=torch.int32).to(self.device)
+
         with torch.inference_mode():
-            hidden_states = self.model(input_ids, attention_mask=attention_mask, max_seqlen=self._max_length)
-        return hidden_states
+            hidden_states = self.model(input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self._max_length)
+
+        return [hidden_states[cu_seqlens[i]:cu_seqlens[i+1]] for i in range(len(cu_seqlens) - 1)]
 
     def _compute_loss(self, batch):
-        tokens = batch["input_ids"]
+        batch, _targets = batch
+
+        tokens = batch["input_ids"].squeeze(1)
+        B, length = tokens.shape
+        tokens = tokens.view(-1)
+        attention_mask=batch["attention_mask"].squeeze(1).view(-1)
+
         labels = tokens.clone()
+
         masked_tokens = self._mask_inputs(tokens)
         labels[masked_tokens != self.tokenizer.mask_token_id] = -100  # Ignore loss on unmasked tokens
 
-        hidden_states = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], max_seqlen=self._max_length)
+        # Cumulative sequence lengths.
+        # TODO: Probably we can/should throw away trailing <pad> tokens.
+        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
+        hidden_states = self.model(
+            masked_tokens,
+            attention_mask=attention_mask,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=self._max_length
+        )
+
         logits = self.decoder(hidden_states)
 
         return self.loss_fn(logits.view(-1, self.tokenizer.vocab_size), labels.view(-1))
@@ -114,13 +139,7 @@ class FlexBERT(pl.LightningModule):
             * (train_inputs != self.tokenizer.eos_token_id)
         )  # don't mask cls, pad, eos
 
-        selection = []  # masked token positions
-
-        for i in range(train_inputs.shape[0]):
-            selection.append(torch.flatten(mask_arr[i].nonzero()).tolist())
-
         masked_inputs = train_inputs.clone()
-        for i in range(train_inputs.shape[0]):
-            masked_inputs[i, selection[i]] = self.tokenizer.mask_token_id
+        masked_inputs[mask_arr] = self.tokenizer.mask_token_id
 
         return masked_inputs

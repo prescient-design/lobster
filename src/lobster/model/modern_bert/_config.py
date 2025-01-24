@@ -104,6 +104,7 @@ class FlexBertConfig:
         hidden_size: int = 256,
         intermediate_size: int = 1152,
         hidden_act: str = "gelu",
+        pad_token_id: int = 1,
         **kwargs,
     ):
         """Configure class for Bert.
@@ -229,6 +230,7 @@ class FlexBertConfig:
         self.attention_probs_dropout_prob = attention_probs_dropout_prob
         self.intermediate_size = intermediate_size
         self.hidden_act = hidden_act
+        self.pad_token_id = pad_token_id
 
         if loss_kwargs.get("return_z_loss", False):
             if loss_function != "fa_cross_entropy":
