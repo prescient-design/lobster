@@ -27,29 +27,31 @@ class M320MDataset(Dataset):
         target_transform: Callable | Transform | None = None,
     ):
         super().__init__()
+        url_base = "https://huggingface.co/datasets/Alex99Gsy/M-3_Multi-Modal-Molecule/resolve/main/"
 
         if full_dataset:
-            url = "https://huggingface.co/datasets/Alex99Gsy/M-3_Multi-Modal-Molecule/resolve/main/M%5E3_Multi.rar"
+            url = url_base + "M%5E3_Multi.rar"
+
+            if root is None:
+                root = pooch.os_cache("lbster")
 
             if isinstance(root, str):
-                self.root = Path(root)
+                root = Path(root)
 
-            self.root = self.root.resolve()
-
-            if not self.root.exists():
-                raise FileNotFoundError
+            self.root = root.resolve()
 
             if download:
                 pooch.retrieve(
-                    url="https://huggingface.co/datasets/Alex99Gsy/M-3_Multi-Modal-Molecule/resolve/main/M%5E3_Multi.rar",
+                    url=url,
                     fname=f"{self.__class__.__name__}.rar",
                     known_hash=known_hash,
                     path=root / self.__class__.__name__,
                     progressbar=True,
                 )
                 # TODO
+
         else:
-            url = "https://huggingface.co/datasets/Alex99Gsy/M-3_Multi-Modal-Molecule/resolve/main/M%5E3_Original.csv"
+            url = url_base + "M%5E3_Multi.csv"
             self.data = pandas.read_csv(url)
 
         self.columns = ["smiles_x", "Description"] if columns is None else columns
