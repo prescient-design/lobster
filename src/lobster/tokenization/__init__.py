@@ -14,3 +14,5 @@ from ._pmlm_tokenizer_transform import (
     PT5TeacherForcingTransform,
     PT5TokenizerTransform,
 )
+
+from ._amino_acid import AminoAcidTokenizerFast
