@@ -9,7 +9,7 @@ def dataset(tmp_path):
     return CalmDataset(root=tmp_path, download=True, train=False)
 
 
-@pytest.mark.skip(reason="Requires download.")
+# @pytest.mark.skip(reason="Requires download.")
 class TestCalmDataset:
     """Unit tests for CalmDataset."""
 

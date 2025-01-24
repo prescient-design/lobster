@@ -154,7 +154,6 @@ class CalmLightningDataModule(LightningDataModule):
         return dataset
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
-        super().__init__()
         random.seed(self._seed)
         torch.manual_seed(self._seed)
 

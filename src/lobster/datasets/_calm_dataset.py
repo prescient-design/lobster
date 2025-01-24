@@ -65,7 +65,8 @@ class CalmDataset(FASTADataset):
         if isinstance(root, str):
             root = Path(root)
 
-        self._root = root.resolve()
+        self.root = root.resolve()
+
         self._train = train
         self._download = download
         if self._train:
@@ -73,19 +74,18 @@ class CalmDataset(FASTADataset):
         else:
             self._path = test_url
 
-        if isinstance(self._root, str):
-            self._root = Path(self._root).resolve()
-
         if self._train:
             name = "training_data.fasta"
-            local_path = self._root / "calm" / name
+            local_path = self.root / "calm" / name
         else:
             name = "hsapiens.fasta"
-            local_path = self._root / "calm" / name
+            local_path = self.root / "calm" / name
 
         name = self.__class__.__name__.replace("Dataset", "")
 
-        _path = pooch.retrieve(
+        self._pattern = re.compile(r"^Calm.+_([A-Z0-9]+)\s.+$")
+
+        local_path = pooch.retrieve(
             url if self._train else test_url,
             known_hash,
             f"{name}.fasta.gz",
@@ -94,13 +94,8 @@ class CalmDataset(FASTADataset):
             progressbar=True,
         )
 
-        self._pattern = re.compile(r"^Calm.+_([A-Z0-9]+)\s.+$")
+        super().__init__(local_path)
 
-        super().__init__(
-            local_path,
-            index=index,
-        )
+        self.transform = transform_fn
 
-        self._transform_fn = transform_fn
-
-        self._target_transform_fn = target_transform_fn
+        self.target_transform_fn = target_transform_fn

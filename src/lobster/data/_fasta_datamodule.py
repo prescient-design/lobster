@@ -4,12 +4,14 @@ from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
 import pandas as pd
 import torch.utils.data
-from beignet.datasets import FASTADataset
+
+# from beignet.datasets import FASTADataset
 from datasets import Dataset
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
+from lobster.datasets import FASTADataset
 from lobster.tokenization import PmlmTokenizerTransform
 from lobster.transforms import Transform
 
@@ -153,8 +155,6 @@ class FastaLightningDataModule(LightningDataModule):
         #                 )
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
-        super().__init__()
-
         if stage == "fit":
             if any(["train" in self._path_to_fasta]):  # pre computed splits
                 self._train_dataset = torch.utils.data.ConcatDataset(
