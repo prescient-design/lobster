@@ -186,6 +186,59 @@ class LobsterPLMFold(pl.LightningModule):
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
+    def predict_fv(self, fv_heavy, fv_light):
+        linker = 'G' * 25
+        homodimer_sequence = fv_heavy + linker + fv_light
+
+        tokenized_homodimer = self.tokenizer([homodimer_sequence], return_tensors="pt", add_special_tokens=False)
+
+        with torch.no_grad():
+            position_ids = torch.arange(len(homodimer_sequence), dtype=torch.long)
+            position_ids[len(fv_heavy) + len(linker):] += 512
+            tokenized_homodimer['position_ids'] = position_ids.unsqueeze(0)
+
+        tokenized_homodimer = {key: tensor.cuda() for key, tensor in tokenized_homodimer.items()}
+        with torch.no_grad():
+            output = self.model(**tokenized_homodimer)
+
+        linker_mask = torch.tensor([1] * len(fv_heavy) + [0] * len(linker) + [1] * len(fv_light))[None, :, None]
+        output['atom37_atom_exists'] = output['atom37_atom_exists'] * linker_mask.to(output['atom37_atom_exists'].device)
+
+        pdb_file = self.model.output_to_pdb(output)[0]
+
+        # Split the PDB content into lines and modify chain identifiers and residue numbers
+        pdb_lines = pdb_file.splitlines()
+        modified_pdb_lines = []
+        chain_id = 'H'  # Start with chain H for fv_heavy
+        current_residue_num_offset = 0
+        last_residue_num = 0
+
+        for line in pdb_lines:
+            if line.startswith("ATOM") or line.startswith("HETATM"):
+                res_seq_num = int(line[22:26].strip())
+                if res_seq_num > len(fv_heavy):
+                    chain_id = 'L'  # Switch to chain L for fv_light
+                    if current_residue_num_offset == 0:
+                        # Calculate offset for light chain to start at 1
+                        current_residue_num_offset = res_seq_num - 1
+
+                # Set new residue sequence number
+                new_res_seq_num = res_seq_num - current_residue_num_offset
+                new_res_seq_num_str = f"{new_res_seq_num:>4}"
+                last_residue_num = new_res_seq_num  # Keep track of the last residue number
+    
+                # Modify the original line with the correct chain and residue number
+                modified_line = line[:21] + chain_id + new_res_seq_num_str + line[26:]
+                modified_pdb_lines.append(modified_line)
+            elif line.startswith("TER"):
+                # Modify the TER line to reflect the last residue number
+                modified_line = line[:21] + chain_id + f"{last_residue_num:>4}" + line[26:]
+                modified_pdb_lines.append(modified_line)
+            else:
+                modified_pdb_lines.append(line)
+
+        return "\n".join(modified_pdb_lines)
+
 
 class FoldseekTransform(Transform):
     """
