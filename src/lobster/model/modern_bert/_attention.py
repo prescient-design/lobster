@@ -11,7 +11,6 @@
 # Copyright (c) 2018-2021, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2023, Tri Dao.
 
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

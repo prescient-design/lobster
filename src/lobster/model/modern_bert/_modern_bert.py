@@ -1,4 +1,5 @@
 import importlib.resources
+from importlib.util import find_spec
 import lightning.pytorch as pl
 import torch
 from torch import nn
@@ -9,7 +10,11 @@ from lobster.tokenization._pmlm_tokenizer_transform import PmlmTokenizerTransfor
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
 
-from flash_attn.losses.cross_entropy import CrossEntropyLoss
+_FLASH_ATTN_AVAILABLE = False
+
+if find_spec("flash_attn"):
+    from flash_attn.losses.cross_entropy import CrossEntropyLoss
+    _FLASH_ATTN_AVAILABLE = True
 
 class FlexBERT(pl.LightningModule):
 
@@ -57,6 +62,7 @@ class FlexBERT(pl.LightningModule):
             nn.Linear(config.hidden_size, config.vocab_size)
         )
 
+        assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
         self.loss_fn = CrossEntropyLoss()
         self.save_hyperparameters(logger=False)
 

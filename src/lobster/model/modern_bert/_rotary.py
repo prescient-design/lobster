@@ -4,11 +4,16 @@
 # Copyright (c) 2023, Tri Dao.
 # License: Apache-2.0
 
+from importlib.util import find_spec
 import torch
 from einops import rearrange
-from flash_attn.ops.triton.rotary import apply_rotary
-
 from typing import Optional, Tuple, Union
+
+_FLASH_ATTN_AVAILABLE = False
+
+if find_spec("flash_attn"):
+    from flash_attn.ops.triton.rotary import apply_rotary
+    _FLASH_ATTN_AVAILABLE = True
 
 
 class ApplyRotaryEmbUnpad(torch.autograd.Function):
