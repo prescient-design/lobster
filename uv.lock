@@ -798,7 +798,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/81/f5/59b0727da8c041c0e
 [[package]]
 name = "flash-attn"
 version = "2.7.3"
-source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" }
+source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" }
 resolution-markers = [
     "python_full_version < '3.11' and sys_platform == 'linux'",
 ]
@@ -807,7 +807,7 @@ dependencies = [
     { name = "torch", marker = "python_full_version < '3.11' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl", hash = "sha256:009d7f54ab8588e95e03c38a48057a306053d6f9eac5edaa9917eb1cdf27d5b7" },
+    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl", hash = "sha256:ef3c644667328fa38fa3f522ba79eeabdbee68ea00cb4a4acae1f6aa0c250253" },
 ]
 
 [package.metadata]
@@ -819,7 +819,7 @@ requires-dist = [
 [[package]]
 name = "flash-attn"
 version = "2.7.3"
-source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" }
+source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" }
 resolution-markers = [
     "python_full_version == '3.11.*' and sys_platform == 'linux'",
 ]
@@ -828,7 +828,7 @@ dependencies = [
     { name = "torch", marker = "python_full_version == '3.11.*' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl", hash = "sha256:c40c87c0386997e8e65c35d00b9fda3d307ada24cce94832144f485420751176" },
+    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl", hash = "sha256:62aaf60c411be955061b5416fc0598a554cfa0638844ddbc87019c754bc0a794" },
 ]
 
 [package.metadata]
@@ -840,7 +840,7 @@ requires-dist = [
 [[package]]
 name = "flash-attn"
 version = "2.7.3"
-source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" }
+source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" }
 resolution-markers = [
     "python_full_version == '3.12.*' and sys_platform == 'linux'",
 ]
@@ -849,7 +849,7 @@ dependencies = [
     { name = "torch", marker = "python_full_version == '3.12.*' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl", hash = "sha256:e91714b27998fbc3e40a843a0a9217f727929918ed2d746c4266bf0b4ae3a094" },
+    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl", hash = "sha256:0a46f69c07a82a3434cd423380db09059f69d9ee172b15148ef5c287d9fa48f4" },
 ]
 
 [package.metadata]
@@ -861,7 +861,7 @@ requires-dist = [
 [[package]]
 name = "flash-attn"
 version = "2.7.3"
-source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl" }
+source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl" }
 resolution-markers = [
     "python_full_version == '3.13.*' and sys_platform == 'linux'",
 ]
@@ -870,7 +870,7 @@ dependencies = [
     { name = "torch", marker = "python_full_version == '3.13.*' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl", hash = "sha256:3e82115e10e97a7b6a4faebeba4a458a2aad724ac269106e74c6b9c76eae5790" },
+    { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl", hash = "sha256:0785ae32d0dc15d17f85830023df41bb525c3a72f33012aef51544c434e0e377" },
 ]
 
 [package.metadata]
@@ -1281,6 +1281,7 @@ wheels = [
 
 [[package]]
 name = "lbster"
+version = "0.0.5.post1.dev13"
 source = { editable = "." }
 dependencies = [
     { name = "beignet", extra = ["datasets", "mdtraj"], marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1293,10 +1294,10 @@ dependencies = [
     { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "fair-esm", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "flash-attn", version = "2.7.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and sys_platform == 'linux'" },
-    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" }, marker = "python_full_version < '3.11' and sys_platform == 'linux'" },
-    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" }, marker = "python_full_version == '3.11.*' and sys_platform == 'linux'" },
-    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" }, marker = "python_full_version == '3.12.*' and sys_platform == 'linux'" },
-    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl" }, marker = "python_full_version == '3.13.*' and sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" }, marker = "python_full_version < '3.11' and sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" }, marker = "python_full_version == '3.11.*' and sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" }, marker = "python_full_version == '3.12.*' and sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.7.3", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl" }, marker = "python_full_version == '3.13.*' and sys_platform == 'linux'" },
     { name = "hydra-core", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "icecream", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "lightning", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1347,10 +1348,10 @@ requires-dist = [
     { name = "einops" },
     { name = "fair-esm" },
     { name = "flash-attn", marker = "(python_full_version < '3.10' and sys_platform == 'linux') or (python_full_version >= '3.14' and sys_platform == 'linux')" },
-    { name = "flash-attn", marker = "python_full_version == '3.10.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" },
-    { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" },
-    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" },
-    { name = "flash-attn", marker = "python_full_version == '3.13.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu11torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.10.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.13.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiTRUE-cp313-cp313-linux_x86_64.whl" },
     { name = "hydra-core" },
     { name = "icecream" },
     { name = "ipykernel", marker = "extra == 'dev'" },
