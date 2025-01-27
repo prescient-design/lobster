@@ -75,7 +75,7 @@ ignore = [
 ]
 
 [tool.uv]
-environments = ["sys_platform == 'linux'"]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 constraint-dependencies = ["torch==2.5.1"]
 cache-keys = [{file = "requirements.in"}, {file = "requirements-dev.in"}, {file = "requirements-mgm.in"}]
 
