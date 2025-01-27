@@ -28,4 +28,4 @@ onnx
 onnxscript
 beignet[datasets, mdtraj]
 fair-esm
-flash-attn
+flash-attn; sys_platform == 'linux'
