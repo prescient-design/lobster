@@ -8,17 +8,13 @@ from transformers.tokenization_utils import PreTrainedTokenizer, Trie
 from transformers.tokenization_utils_base import AddedToken
 from transformers.utils import logging
 
+from ._load_vocab_file import load_vocab_file
+
 logger = logging.get_logger(__name__)
 
 VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
 VOCAB_PATH = importlib.resources.files("lobster") / "assets" / "hyena_tokenizer" / "vocab.txt"
-
-
-def load_vocab_file(vocab_file):
-    with open(vocab_file, "r") as f:
-        lines = f.read().splitlines()
-    return [ll.strip() for ll in lines]
 
 
 class HyenaTokenizer(PreTrainedTokenizer):

@@ -1,3 +1,4 @@
+from ._amino_acid import AminoAcidTokenizerFast
 from ._hyena_tokenizer import HyenaTokenizer
 from ._hyena_tokenizer_transform import HyenaTokenizerTransform
 from ._mgm_tokenizer import MgmTokenizer
@@ -14,5 +15,4 @@ from ._pmlm_tokenizer_transform import (
     PT5TeacherForcingTransform,
     PT5TokenizerTransform,
 )
-
-from ._amino_acid import AminoAcidTokenizerFast
+from ._smiles_tokenizer import SmilesTokenizerFast
