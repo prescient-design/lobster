@@ -409,7 +409,8 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
                     deterministic=self.deterministic_fa2,
                     window_size=self.sliding_window,
                 )
-            attn = attn.view(bs, dim)
+            # attn = attn.view(bs, dim)
+            attn = attn.reshape(bs, dim)
         else:
             qkv = pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
             unpad_bs, seqlen, _ = qkv.shape
