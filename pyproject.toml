@@ -45,7 +45,8 @@ line-length = 120
 exclude = [
   "scripts",
   "notebooks",
-  "src/lobster/model/openfold_utils"
+  "src/lobster/model/openfold_utils",
+  "src/lobster/model/modern_bert"
 ]
 
 [tool.ruff.lint]
@@ -71,4 +72,17 @@ ignore = [
 ]
 "tests/**/*.py" = [
   "D"
+]
+
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+constraint-dependencies = ["torch==2.5.1"]
+cache-keys = [{file = "requirements.in"}, {file = "requirements-dev.in"}, {file = "requirements-mgm.in"}]
+
+[tool.uv.sources]
+flash_attn = [
+  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp310-cp310-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.10'"},
+  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp311-cp311-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.11'"},
+  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.12'"},
+  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.13'"}
 ]
