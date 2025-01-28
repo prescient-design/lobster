@@ -70,12 +70,16 @@ class FlexBERT(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss = self._compute_loss(batch)
+        ppl = torch.exp(loss)
         self.log("train_loss", loss, sync_dist=True)
+        self.log("train_perplexity", ppl, sync_dist=True)
         return {"loss": loss}
 
     def validation_step(self, batch, batch_idx):
         loss = self._compute_loss(batch)
+        ppl = torch.exp(loss)
         self.log("val_loss", loss, sync_dist=True)
+        self.log("val_perplexity", ppl, sync_dist=True)
         return {"val_loss": loss}
 
     def configure_optimizers(self):
@@ -86,6 +90,7 @@ class FlexBERT(pl.LightningModule):
             eps=self._eps,
         )
 
+        # TODO: Make this configurable
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=self._num_warmup_steps,
@@ -140,6 +145,7 @@ class FlexBERT(pl.LightningModule):
         rand = torch.rand(train_inputs.shape, device=train_inputs.device)
 
         # create mask array
+        # TODO: update this for special cls tokens that might be introduced with the new tokenizer
         mask_arr = (
             (rand < self._mask_percentage)
             * (train_inputs != self.tokenizer.cls_token_id)
