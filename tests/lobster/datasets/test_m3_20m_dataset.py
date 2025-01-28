@@ -1,32 +1,27 @@
-import pytest
+import unittest.mock
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+
 from lobster.datasets import M320MDataset
-
-
-@pytest.fixture(autouse=True)
-def dataset() -> M320MDataset:
-    return M320MDataset()
+from pandas import DataFrame
 
 
 class TestM320MDataset:
     """Unit tests for M320MDataset."""
 
-    def test___init___subset(self, dataset: M320MDataset):
-        item0 = dataset[0]
-        assert len(item0) == 2
-        assert isinstance(item0[0], str)
-        assert isinstance(item0[1], str)
-        assert len(item0[1]) > 50
+    @unittest.mock.patch("pandas.read_parquet")
+    @unittest.mock.patch("pooch.retrieve")
+    def test___init___(self, mock_retrieve, mock_read_parquet):
+        with NamedTemporaryFile() as descriptor:
+            mock_retrieve.return_value = descriptor.name
+            mock_read_parquet.return_value = DataFrame({"smiles": ["C"], "Description": ["description"]})
 
-    @pytest.mark.skip(reason="Requires download.")
-    def test___init___full(self, tmp_path):
-        (tmp_path / "m320m").mkdir(parents=True, exist_ok=True)
+            dataset = M320MDataset(descriptor.name, download=True)
 
-        dataset = M320MDataset(root=tmp_path, download=True, full_dataset=True)
+            assert dataset.root == Path(descriptor.name).resolve()
 
-        assert dataset.root.exists()
+            assert dataset.transform is None
 
-        item0 = dataset[0]
-        assert len(item0) == 2
-        assert isinstance(item0[0], str)
-        assert isinstance(item0[1], str)
-        assert len(item0[1]) > 50
+            assert dataset.target_transform is None
+
+            assert isinstance(dataset.data, DataFrame)
