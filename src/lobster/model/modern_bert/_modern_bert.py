@@ -15,6 +15,8 @@ _FLASH_ATTN_AVAILABLE = False
 if find_spec("flash_attn"):
     from flash_attn.losses.cross_entropy import CrossEntropyLoss
     _FLASH_ATTN_AVAILABLE = True
+else:
+    from torch.nn import CrossEntropyLoss
 
 class FlexBERT(pl.LightningModule):
 
