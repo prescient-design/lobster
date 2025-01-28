@@ -29,7 +29,7 @@ def _make_smiles_tokenizer(
     """Create PreTrainedTokenizerFast for SMILES Regex tokenization."""
 
     vocab = load_vocab_file(VOCAB_PATH if vocab_file is None else vocab_file)
-    vocab = {v: k for k, v in dict(enumerate(vocab)).items()}
+    vocab = {v: k for k, v in enumerate(vocab)}
 
     tok = Tokenizer(BPE(vocab, merges=[], unk_token="<unk>", ignore_merges=True))
 
