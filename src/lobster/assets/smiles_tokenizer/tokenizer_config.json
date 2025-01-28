@@ -16,6 +16,14 @@
       "single_word": false,
       "special": true
     },
+    "2": {
+      "content": "<cls>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
     "3": {
       "content": "<sep>",
       "lstrip": false,
@@ -24,7 +32,15 @@
       "single_word": false,
       "special": true
     },
-    "582": {
+    "4": {
+      "content": "<mask>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "5": {
       "content": "<eos>",
       "lstrip": false,
       "normalized": false,
@@ -35,8 +51,10 @@
   },
   "bos_token": null,
   "clean_up_tokenization_spaces": false,
+  "cls_token": "<cls>",
   "eos_token": "<eos>",
   "extra_special_tokens": {},
+  "mask_token": "<mask>",
   "model_max_length": 1000000000000000019884624838656,
   "pad_token": "<pad>",
   "padding_side": "right",

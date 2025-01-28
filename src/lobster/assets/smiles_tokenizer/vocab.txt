@@ -3,7 +3,7 @@
 <cls>
 <sep>
 <mask>
-<os>
+<eos>
 c
 C
 (

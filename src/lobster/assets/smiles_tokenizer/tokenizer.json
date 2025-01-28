@@ -22,6 +22,15 @@
       "special": true
     },
     {
+      "id": 2,
+      "content": "<cls>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
       "id": 3,
       "content": "<sep>",
       "single_word": false,
@@ -31,7 +40,16 @@
       "special": true
     },
     {
-      "id": 582,
+      "id": 4,
+      "content": "<mask>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 5,
       "content": "<eos>",
       "single_word": false,
       "lstrip": false,
@@ -176,7 +194,7 @@
       "<cls>": 2,
       "<sep>": 3,
       "<mask>": 4,
-      "<os>": 5,
+      "<eos>": 5,
       "c": 6,
       "C": 7,
       "(": 8,
