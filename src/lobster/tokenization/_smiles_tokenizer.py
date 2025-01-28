@@ -26,6 +26,8 @@ def _make_smiles_tokenizer(
     mask_token: str = "<mask>",
     vocab_file: Optional[str] = None,
 ) -> PreTrainedTokenizerFast:
+    """Create PreTrainedTokenizerFast for SMILES Regex tokenization."""
+
     vocab = load_vocab_file(VOCAB_PATH if vocab_file is None else vocab_file)
     vocab = {v: k for k, v in dict(enumerate(vocab)).items()}
 
@@ -55,6 +57,8 @@ def _make_smiles_tokenizer(
         eos_token=eos_token,
         pad_token=pad_token,
         unk_token=unk_token,
+        cls_token=cls_token,
+        mask_token=mask_token,
     )
 
 
