@@ -14,7 +14,7 @@ SMILES_REGEX_PATTERN = (
     r"""(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\|\/|:|~|@|\?|>>?|\*|\$|\%[0-9]{2}|[0-9])"""
 )
 
-PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "smiles_tokenizer_trained"
+PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "smiles_tokenizer"
 VOCAB_PATH = PRETRAINED_TOKENIZER_PATH / "vocab.txt"
 
 
