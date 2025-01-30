@@ -36,7 +36,6 @@ class M320MDataset(Dataset):
         known_hash: str | None = None,
         columns: Sequence[str] | None = None,
         transform: Callable | Transform | None = None,
-        target_transform: Callable | Transform | None = None,
     ):
         super().__init__()
         url = "https://huggingface.co/datasets/karina-zadorozhny/M320M-multi-modal-molecular-dataset/resolve/main/M320M-Dataset.parquet.gzip"
@@ -64,7 +63,6 @@ class M320MDataset(Dataset):
 
         self.columns = ["smiles", "Description"] if columns is None else columns
         self.transform = transform
-        self.target_transform = target_transform
 
         self._x = self.data[self.columns].apply(tuple, axis=1)
 
@@ -80,4 +78,4 @@ class M320MDataset(Dataset):
         return x
 
     def __len__(self) -> int:
-        return len(self._data)
+        return len(self._x)

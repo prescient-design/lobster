@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Type
+from typing import Any, Callable, Dict, List, Type
 
 from ._transform import Transform
 
@@ -68,3 +68,12 @@ class Lambda(Transform):
         extras.append(f"types={[type.__name__ for type in self._types]}")
 
         return ", ".join(extras)
+
+    def _check_inputs(self, inputs: List[Any]):
+        """
+        Parameters
+        ----------
+        inputs : List[Any]
+            The inputs to be checked.
+        """
+        pass
