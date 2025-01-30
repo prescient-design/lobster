@@ -1,13 +1,14 @@
 import importlib.resources
 from typing import Optional
 
-from tokenizers import Regex, Tokenizer
+from tokenizers import Regex
 from tokenizers.models import BPE
 from tokenizers.pre_tokenizers import Split
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
 
 from ._load_vocab_file import load_vocab_file
+from ._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
 
 SMILES_REGEX_PATTERN = (
     r"""(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\|\/|:|~|@|\?|>>?|\*|\$|\%[0-9]{2}|[0-9])"""
@@ -17,48 +18,51 @@ PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "s
 VOCAB_PATH = PRETRAINED_TOKENIZER_PATH / "vocab.txt"
 
 
-def _make_smiles_tokenizer(
-    cls_token: str = "<cls>",
-    eos_token: str = "<eos>",
-    unk_token: str = "<unk>",
-    pad_token: str = "<pad>",
-    sep_token: str = "<sep>",
-    mask_token: str = "<mask>",
-    vocab_file: Optional[str] = None,
-) -> PreTrainedTokenizerFast:
-    """Create PreTrainedTokenizerFast for SMILES Regex tokenization."""
+def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PATH) -> PreTrainedTokenizerFast:
+    """Create PreTrainedTokenizerFast for SMILES Regex tokenization.
 
-    vocab = load_vocab_file(VOCAB_PATH if vocab_file is None else vocab_file)
+    Usage:
+    ```python
+    tokenizer = _make_ume_tokenizer(save_dirpath=PRETRAINED_TOKENIZER_PATH)
+
+    fast_tokenizer = PreTrainedTokenizerFast.from_pretrained(PRETRAINED_TOKENIZER_PATH)
+    """
+
+    cls_token = "<cls>"
+    eos_token = "<eos>"
+    unk_token = "<unk>"
+    pad_token = "<pad>"
+    sep_token = "<sep>"
+    mask_token = "<mask>"
+
+    vocab = load_vocab_file(VOCAB_PATH)
     vocab = {v: k for k, v in enumerate(vocab)}
 
-    tok = Tokenizer(BPE(vocab, merges=[], unk_token="<unk>", ignore_merges=True))
+    tokenizer_model = BPE(vocab, merges=[], unk_token="<unk>", ignore_merges=True)
 
-    tok.pre_tokenizer = Split(pattern=Regex(SMILES_REGEX_PATTERN), behavior="isolated")
+    pre_tokenizer = Split(pattern=Regex(SMILES_REGEX_PATTERN), behavior="isolated")
 
-    tok.post_processor = TemplateProcessing(
+    post_processor = TemplateProcessing(
         single=f"{cls_token} $A {eos_token}",
         pair=f"{cls_token} $A {eos_token} $B:1 {eos_token}:1",
         special_tokens=[
-            (pad_token, 0),
-            (unk_token, 1),
             (cls_token, 2),
-            (sep_token, 3),
-            (mask_token, 4),
             (eos_token, 5),
         ],
     )
 
-    return PreTrainedTokenizerFast(
-        tokenizer_object=tok,
-        padding_side="right",
-        truncation_side="left",
-        bos_token=None,
-        sep_token=sep_token,
-        eos_token=eos_token,
-        pad_token=pad_token,
-        unk_token=unk_token,
+    return make_pretrained_tokenizer_fast(
+        tokenizer_model=tokenizer_model,
+        save_dirpath=save_dirpath,
+        pre_tokenizer=pre_tokenizer,
+        post_processor=post_processor,
         cls_token=cls_token,
+        eos_token=eos_token,
+        unk_token=unk_token,
+        sep_token=sep_token,
         mask_token=mask_token,
+        pad_token=pad_token,
+        bos_token=None,
     )
 
 
