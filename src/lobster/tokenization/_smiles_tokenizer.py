@@ -35,15 +35,6 @@ def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PA
     sep_token = "<sep>"
     mask_token = "<mask>"
 
-    special_tokens = [
-        (pad_token, 0),
-        (unk_token, 1),
-        (cls_token, 2),
-        (sep_token, 3),
-        (mask_token, 4),
-        (eos_token, 5),
-    ]
-
     vocab = load_vocab_file(VOCAB_PATH)
     vocab = {v: k for k, v in enumerate(vocab)}
 
@@ -54,7 +45,10 @@ def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PA
     post_processor = TemplateProcessing(
         single=f"{cls_token} $A {eos_token}",
         pair=f"{cls_token} $A {eos_token} $B:1 {eos_token}:1",
-        special_tokens=special_tokens,
+        special_tokens=[
+            (cls_token, 2),
+            (eos_token, 5),
+        ],
     )
 
     return make_pretrained_tokenizer_fast(

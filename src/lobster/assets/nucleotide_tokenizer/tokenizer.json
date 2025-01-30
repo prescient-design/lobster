@@ -47,6 +47,15 @@
       "rstrip": false,
       "normalized": false,
       "special": true
+    },
+    {
+      "id": 5,
+      "content": "<sep>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
     }
   ],
   "normalizer": null,
@@ -123,33 +132,6 @@
         "tokens": [
           "<eos>"
         ]
-      },
-      "<mask>": {
-        "id": "<mask>",
-        "ids": [
-          4
-        ],
-        "tokens": [
-          "<mask>"
-        ]
-      },
-      "<pad>": {
-        "id": "<pad>",
-        "ids": [
-          1
-        ],
-        "tokens": [
-          "<pad>"
-        ]
-      },
-      "<unk>": {
-        "id": "<unk>",
-        "ids": [
-          3
-        ],
-        "tokens": [
-          "<unk>"
-        ]
       }
     }
   },
@@ -169,12 +151,13 @@
       "<eos>": 2,
       "<unk>": 3,
       "<mask>": 4,
-      "A": 5,
-      "C": 6,
-      "G": 7,
-      "T": 8,
-      "N": 9,
-      "U": 10
+      "<sep>": 5,
+      "A": 6,
+      "C": 7,
+      "G": 8,
+      "T": 9,
+      "N": 10,
+      "U": 11
     },
     "merges": []
   }
