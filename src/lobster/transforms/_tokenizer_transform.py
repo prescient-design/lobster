@@ -39,7 +39,7 @@ class TokenizerTransform(Module):
         self,
         text: Union[str, List[str], List[int]],
     ) -> BatchEncoding:
-        return self._auto_tokenizer(
+        return self.tokenizer(
             text,
             padding=self._padding,
             truncation=self._truncation,

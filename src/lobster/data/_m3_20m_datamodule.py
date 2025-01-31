@@ -122,8 +122,9 @@ class M320MLightningDataModule(LightningDataModule):
         if transform_fn is None and not use_text_descriptions:
             transform_fn = TokenizerTransform(
                 tokenizer=SmilesTokenizerFast(),
-                padding=True,
+                padding="max_length",
                 max_length=512,
+                truncation=True,
                 return_attention_mask=False,
                 return_token_type_ids=False,
             )
