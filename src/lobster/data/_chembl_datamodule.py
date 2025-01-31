@@ -7,10 +7,9 @@ from beignet.datasets import ChEMBLDataset
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
-from torchvision.transforms import Lambda
 
 from lobster.tokenization import SmilesTokenizerFast
-from lobster.transforms import Transform
+from lobster.transforms import TokenizerTransform, Transform
 
 T = TypeVar("T")
 
@@ -119,8 +118,13 @@ class ChEMBLLightningDataModule(LightningDataModule):
         self._dataset = None
 
         if transform_fn is None:
-            tokenizer = SmilesTokenizerFast()
-            transform_fn = Lambda(lambda item: tokenizer(item, return_tensors="pt"))
+            transform_fn = TokenizerTransform(
+                tokenizer=SmilesTokenizerFast(),
+                padding=True,
+                max_length=512,
+                return_attention_mask=False,
+                return_token_type_ids=False,
+            )
 
         self._transform_fn = transform_fn
 

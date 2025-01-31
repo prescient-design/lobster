@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, Sequence, Tuple
+from typing import Callable, Tuple
 
 import pandas
 import pooch
@@ -34,8 +34,8 @@ class M320MDataset(Dataset):
         *,
         download: bool = True,
         known_hash: str | None = None,
-        columns: Sequence[str] | None = None,
         transform: Callable | Transform | None = None,
+        use_text_descriptions: bool = True,
     ):
         super().__init__()
         url = "https://huggingface.co/datasets/karina-zadorozhny/M320M-multi-modal-molecular-dataset/resolve/main/M320M-Dataset.parquet.gzip"
@@ -61,16 +61,17 @@ class M320MDataset(Dataset):
 
         self.data = pandas.read_parquet(root / self.__class__.__name__ / f"{self.__class__.__name__}{suffix}")
 
-        self.columns = ["smiles", "Description"] if columns is None else columns
+        self.columns = ["smiles"]
+
+        if use_text_descriptions:
+            self.columns += ["Description"]
+
         self.transform = transform
 
         self._x = self.data[self.columns].apply(tuple, axis=1)
 
     def __getitem__(self, index: int) -> Tuple[str, str]:
         x = self._x[index]
-
-        if len(x) == 1:
-            x = x[0]
 
         if self.transform is not None:
             x = self.transform(x)

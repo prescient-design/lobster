@@ -6,11 +6,10 @@ import torch.utils.data
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
-from torchvision.transforms import Lambda
 
 from lobster.datasets import M320MDataset
 from lobster.tokenization import SmilesTokenizerFast
-from lobster.transforms import Transform
+from lobster.transforms import TokenizerTransform, Transform
 
 T = TypeVar("T")
 
@@ -118,19 +117,16 @@ class M320MLightningDataModule(LightningDataModule):
         self._drop_last = drop_last
         self._train = train
         self._dataset = None
+        self._use_text_descriptions = use_text_descriptions
 
-        if transform_fn is None:
-            smiles_tokenizer = SmilesTokenizerFast()
-
-            # If use_text_descriptions is True the output is
-            # ({input_ids: [...], attention_mask: [...]}, text_description)
-            # TODO: add text tokenizer once implemented
-            if use_text_descriptions:
-                transform_fn = Lambda(lambda item: (smiles_tokenizer(item[0], return_tensors="pt"), item[1]))
-
-            # Otherwise, the output is just {input_ids: [...], attention_mask: [...]}
-            else:
-                transform_fn = Lambda(lambda item: smiles_tokenizer(item[0], return_tensors="pt"))
+        if transform_fn is None and not use_text_descriptions:
+            transform_fn = TokenizerTransform(
+                tokenizer=SmilesTokenizerFast(),
+                padding=True,
+                max_length=512,
+                return_attention_mask=False,
+                return_token_type_ids=False,
+            )
 
         self._transform_fn = transform_fn
 
@@ -139,6 +135,7 @@ class M320MLightningDataModule(LightningDataModule):
             root=self._root,
             download=self._download,
             transform=self._transform_fn,
+            use_text_descriptions=self._use_text_descriptions,
         )
         self._dataset = dataset
 
