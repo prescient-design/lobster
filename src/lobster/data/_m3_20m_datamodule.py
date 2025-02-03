@@ -37,23 +37,21 @@ class M320MLightningDataModule(LightningDataModule):
         train: bool = True,
     ) -> None:
         """
-        :param model_name: name of esm model
-
         :param root: Root directory where the dataset subdirectory exists or,
             if :attr:`download` is ``True``, the directory where the dataset
             subdirectory will be created and the dataset downloaded.
 
-        :param cache_sequence_indicies: If ``True``, caches the sequence
-            indicies to disk for faster re-initialization (default: ``True``).
+        :param use_text_descriptions: If ``True``, use text descriptions for the dataset
+            (default: ``False``).
 
-        :param download: If ``True``, download the dataset and to the
+        :param download: If ``True``, download the dataset to the
             :attr:`root` directory (default: ``False``). If the dataset is
             already downloaded, it is not redownloaded.
 
-        :param use_transform_fn: If ``True``, use transform_fn for dataset
-            tokenization, else no transform.
+        :param transform_fn: Function or transform to apply to the dataset
+            for tokenization (default: ``None``).
 
-        :param lengths: Fractions of splits to generate.
+        :param lengths: Fractions of splits to generate (default: ``(0.9, 0.05, 0.05)``).
 
         :param generator: Generator used for the random permutation (default:
             ``None``).
@@ -83,6 +81,8 @@ class M320MLightningDataModule(LightningDataModule):
         :param collate_fn: Merges samples to form a mini-batch of Tensor(s)
             (default: ``None``).
 
+        :param max_length: Maximum length of the sequences (default: ``512``).
+
         :param pin_memory: If ``True``, Tensors are copied to the device's
             (e.g., CUDA) pinned memory before returning them (default:
             ``True``).
@@ -94,9 +94,6 @@ class M320MLightningDataModule(LightningDataModule):
 
         """
         super().__init__()
-
-        if lengths is None:
-            lengths = [0.4, 0.4, 0.2]
 
         if generator is None:
             generator = Generator().manual_seed(seed)
@@ -115,7 +112,6 @@ class M320MLightningDataModule(LightningDataModule):
         self._collate_fn = collate_fn
         self._pin_memory = pin_memory
         self._drop_last = drop_last
-        self._train = train
         self._dataset = None
         self._use_text_descriptions = use_text_descriptions
 

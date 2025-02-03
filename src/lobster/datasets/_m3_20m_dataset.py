@@ -35,7 +35,7 @@ class M320MDataset(Dataset):
         download: bool = True,
         known_hash: str | None = None,
         transform: Callable | Transform | None = None,
-        use_text_descriptions: bool = True,
+        columns: list[str] | None = None,
     ):
         super().__init__()
         url = "https://huggingface.co/datasets/karina-zadorozhny/M320M-multi-modal-molecular-dataset/resolve/main/M320M-Dataset.parquet.gzip"
@@ -61,10 +61,7 @@ class M320MDataset(Dataset):
 
         self.data = pandas.read_parquet(root / self.__class__.__name__ / f"{self.__class__.__name__}{suffix}")
 
-        self.columns = ["smiles"]
-
-        if use_text_descriptions:
-            self.columns += ["Description"]
+        self.columns = ["smiles", "Description"] if columns is None else columns
 
         self.transform = transform
 

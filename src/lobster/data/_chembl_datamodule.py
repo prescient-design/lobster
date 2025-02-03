@@ -36,23 +36,18 @@ class ChEMBLLightningDataModule(LightningDataModule):
         train: bool = True,
     ) -> None:
         """
-        :param model_name: name of esm model
-
         :param root: Root directory where the dataset subdirectory exists or,
             if :attr:`download` is ``True``, the directory where the dataset
             subdirectory will be created and the dataset downloaded.
 
-        :param cache_sequence_indicies: If ``True``, caches the sequence
-            indicies to disk for faster re-initialization (default: ``True``).
-
-        :param download: If ``True``, download the dataset and to the
+        :param download: If ``True``, download the dataset to the
             :attr:`root` directory (default: ``False``). If the dataset is
             already downloaded, it is not redownloaded.
 
-        :param use_transform_fn: If ``True``, use transform_fn for dataset
-            tokenization, else no transform.
+        :param transform_fn: Function or transform to apply to the dataset
+            for tokenization (default: ``None``).
 
-        :param lengths: Fractions of splits to generate.
+        :param lengths: Fractions of splits to generate (default: ``(0.9, 0.05, 0.05)``).
 
         :param generator: Generator used for the random permutation (default:
             ``None``).
@@ -82,6 +77,8 @@ class ChEMBLLightningDataModule(LightningDataModule):
         :param collate_fn: Merges samples to form a mini-batch of Tensor(s)
             (default: ``None``).
 
+        :param max_length: Maximum length of the sequences (default: ``512``).
+
         :param pin_memory: If ``True``, Tensors are copied to the device's
             (e.g., CUDA) pinned memory before returning them (default:
             ``True``).
@@ -91,11 +88,9 @@ class ChEMBLLightningDataModule(LightningDataModule):
             ``False``). If ``False`` and the size of dataset is not divisible
             by the batch size, then the last batch will be smaller.
 
+        :param train: If ``True``, indicates that the datamodule is in training mode (default: ``True``).
         """
         super().__init__()
-
-        if lengths is None:
-            lengths = [0.4, 0.4, 0.2]
 
         if generator is None:
             generator = Generator().manual_seed(seed)
