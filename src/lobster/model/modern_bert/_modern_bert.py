@@ -115,7 +115,7 @@ class FlexBERT(pl.LightningModule):
 
     def _compute_loss(self, batch):
 
-        if not isinstance(batch, dict) and len(batch) == 2:
+        if isinstance(batch, tuple) and len(batch) == 2:
             batch, _targets = batch
 
         tokens = batch["input_ids"].squeeze(1)
