@@ -1,0 +1,9 @@
+_target_: lobster.transforms.TokenizerTransform
+
+tokenizer:
+  _target_: lobster.tokenization.SmilesTokenizerFast
+padding: "max_length"
+truncation: True
+max_length: ${model.max_length}
+return_attention_mask: False
+return_token_type_ids: False
