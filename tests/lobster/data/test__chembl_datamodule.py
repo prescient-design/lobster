@@ -25,7 +25,7 @@ def dm(tmp_path):
         return datamodule
 
 
-class TestM320MLightningDataModule:
+class TestChEMBLLightningDataModule:
     def test_prepare_data(self, dm: ChEMBLLightningDataModule):
         assert dm._dataset is not None
         assert len(dm._dataset) == 10
