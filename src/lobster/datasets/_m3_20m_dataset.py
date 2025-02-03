@@ -73,6 +73,9 @@ class M320MDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[str, str]:
         x = self._x[index]
 
+        if len(x) == 1:
+            x = x[0]
+
         if self.transform is not None:
             x = self.transform(x)
 
