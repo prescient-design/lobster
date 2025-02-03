@@ -26,7 +26,7 @@ pooch
 edlib
 onnx
 onnxscript
-git+https://github.com/Genentech/beignet.git#egg=beignet[datasets,mdtraj]
+beignet[datasets, mdtraj]
 fair-esm
 einops
 flash-attn; sys_platform == 'linux'
