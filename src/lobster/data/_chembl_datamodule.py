@@ -115,8 +115,6 @@ class ChEMBLLightningDataModule(LightningDataModule):
                 padding="max_length",
                 max_length=512,
                 truncation=True,
-                return_attention_mask=False,
-                return_token_type_ids=False,
             )
 
         self._transform_fn = transform_fn
