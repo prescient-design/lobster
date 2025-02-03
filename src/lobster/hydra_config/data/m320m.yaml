@@ -3,7 +3,7 @@ defaults:
   - transform_fn: smiles_tokenizer_transform
 
 _target_: lobster.data.M320MLightningDataModule
-use_text_descriptions: false 
+columns: ["smiles"]
 download: true
 lengths: [0.9,0.05,0.05]
 batch_size: 64
