@@ -114,7 +114,9 @@ class FlexBERT(pl.LightningModule):
         return [hidden_states[cu_seqlens[i]:cu_seqlens[i+1]] for i in range(len(cu_seqlens) - 1)]
 
     def _compute_loss(self, batch):
-        batch, _targets = batch
+
+        if not isinstance(batch, dict) and len(batch) == 2:
+            batch, _targets = batch
 
         tokens = batch["input_ids"].squeeze(1)
         B, length = tokens.shape
