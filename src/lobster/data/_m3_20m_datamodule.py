@@ -132,7 +132,7 @@ class M320MLightningDataModule(LightningDataModule):
             root=self._root,
             download=self._download,
             transform=self._transform_fn,
-            use_text_descriptions=self._use_text_descriptions,
+            columns=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
         )
         self._dataset = dataset
 
