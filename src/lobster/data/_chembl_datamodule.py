@@ -33,7 +33,6 @@ class ChEMBLLightningDataModule(LightningDataModule):
         max_length: int = 512,
         pin_memory: bool = True,
         drop_last: bool = False,
-        train: bool = True,
     ) -> None:
         """
         :param root: Root directory where the dataset subdirectory exists or,
@@ -88,7 +87,6 @@ class ChEMBLLightningDataModule(LightningDataModule):
             ``False``). If ``False`` and the size of dataset is not divisible
             by the batch size, then the last batch will be smaller.
 
-        :param train: If ``True``, indicates that the datamodule is in training mode (default: ``True``).
         """
         super().__init__()
 
@@ -109,7 +107,6 @@ class ChEMBLLightningDataModule(LightningDataModule):
         self._collate_fn = collate_fn
         self._pin_memory = pin_memory
         self._drop_last = drop_last
-        self._train = train
         self._dataset = None
 
         if transform_fn is None:
