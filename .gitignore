@@ -29,4 +29,6 @@ scripts/combined_db*
 *_play.py
 src/lobster/hydra_config/experiment/*
 
+notebooks/nathan/*
+
 
