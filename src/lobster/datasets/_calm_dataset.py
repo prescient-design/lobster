@@ -3,6 +3,7 @@ from typing import Callable, Sequence, Tuple
 
 import pandas as pd
 import pooch
+from datasets import load_dataset
 from torch.utils.data import Dataset
 
 from lobster.transforms import Transform
@@ -27,9 +28,6 @@ class CalmDataset(Dataset):
         columns: Sequence[str] | None = None,
     ):
         super().__init__()
-        url = "https://huggingface.co/datasets/ncfrey/calm"
-
-        suffix = ".parquet.gzip"
 
         if root is None:
             root = pooch.os_cache("lbster")
@@ -39,16 +37,13 @@ class CalmDataset(Dataset):
 
         self.root = root.resolve()
 
-        if download:
-            pooch.retrieve(
-                url=url,
-                fname=f"{self.__class__.__name__}{suffix}",
-                known_hash=known_hash,
-                path=root / self.__class__.__name__,
-                progressbar=True,
-            )
-
-        self.data = pd.read_parquet(root / self.__class__.__name__ / f"{self.__class__.__name__}{suffix}")
+        dataset_path = root / self.__class__.__name__ / f"{self.__class__.__name__}"
+        if not dataset_path.exists():
+            data = load_dataset("ncfrey/calm", split="train")
+            data.to_parquet(dataset_path)
+            self.data = data
+        else:
+            self.data = pd.read_parquet(dataset_path)
 
         self.columns = ["sequence", "description"] if columns is None else columns
         self.transform = transform

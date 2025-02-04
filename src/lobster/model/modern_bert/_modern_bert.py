@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from transformers.optimization import get_linear_schedule_with_warmup
 
-from lobster.tokenization import PmlmTokenizer, SmilesTokenizerFast
+from lobster.tokenization import PmlmTokenizer, SmilesTokenizerFast, AminoAcidTokenizerFast, NucleotideTokenizerFast
 from lobster.tokenization._pmlm_tokenizer_transform import \
     PmlmTokenizerTransform
 from lobster.transforms import TokenizerTransform
@@ -33,7 +33,8 @@ class FlexBERT(pl.LightningModule):
         eps: float = 1e-12,
         num_training_steps: int = 10_000,
         num_warmup_steps: int = 1_000,
-        tokenizer_dir: Literal["plm_tokenizer", "smiles_tokenizer"] = "pmlm_tokenizer",
+        tokenizer_dir: Literal["plm_tokenizer", "smiles_tokenizer", "amino_acid_tokenizer",
+            "nucleotide_tokenizer"] = "amino_acid_tokenizer",
         mask_percentage: float = 0.15,
         max_length: int = 512,
         **model_kwargs,
@@ -55,6 +56,22 @@ class FlexBERT(pl.LightningModule):
             self.tokenizer: PmlmTokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
             self.tokenize_transform = PmlmTokenizerTransform(
                 path,
+                padding="max_length",
+                max_length=self._max_length,
+                truncation=True,
+            )
+        elif tokenizer_dir == "nucleotide_tokenizer":
+            self.tokenizer = NucleotideTokenizerFast()
+            self.tokenize_transform = TokenizerTransform(
+                tokenizer=self.tokenizer,
+                padding="max_length",
+                max_length=self._max_length,
+                truncation=True,
+            )
+        elif tokenizer_dir == "amino_acid_tokenizer":
+            self.tokenizer = AminoAcidTokenizerFast()
+            self.tokenize_transform = TokenizerTransform(
+                tokenizer=self.tokenizer,
                 padding="max_length",
                 max_length=self._max_length,
                 truncation=True,

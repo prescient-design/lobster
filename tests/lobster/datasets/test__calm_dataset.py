@@ -10,7 +10,7 @@ class TestCalmDataset:
     """Unit tests for CalmDataset."""
 
     @unittest.mock.patch("pandas.read_parquet")
-    @unittest.mock.patch("pooch.retrieve")
+    @unittest.mock.patch("datasets.load_dataset")
     def test___init__(self, mock_retrieve, mock_read_parquet):
         """Test __init__ method."""
         with NamedTemporaryFile() as tmp:
