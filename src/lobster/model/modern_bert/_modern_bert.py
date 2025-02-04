@@ -1,14 +1,17 @@
-from typing import Literal
 import importlib.resources
 from importlib.util import find_spec
+from typing import Literal
+
 import lightning.pytorch as pl
 import torch
 from torch import nn
-from lobster.transforms import TokenizerTransform
-from lobster.tokenization import SmilesTokenizerFast, PmlmTokenizer
 from transformers.optimization import get_linear_schedule_with_warmup
 
-from lobster.tokenization._pmlm_tokenizer_transform import PmlmTokenizerTransform
+from lobster.tokenization import PmlmTokenizer, SmilesTokenizerFast
+from lobster.tokenization._pmlm_tokenizer_transform import \
+    PmlmTokenizerTransform
+from lobster.transforms import TokenizerTransform
+
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
 
