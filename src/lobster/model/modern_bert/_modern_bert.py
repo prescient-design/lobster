@@ -68,6 +68,9 @@ class FlexBERT(pl.LightningModule):
                 raise NotImplementedError(f"Tokenizer `{tokenizer}` not supported")
 
         else:
+            if not isinstance(tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)):
+                raise ValueError("Custom `tokenizer` must be an instance of `PreTrainedTokenizer` or `PreTrainedTokenizerFast`")
+            
             tokenizer = tokenizer
             tokenizer_transform_class = TokenizerTransform
 
