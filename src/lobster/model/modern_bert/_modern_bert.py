@@ -1,9 +1,11 @@
+from typing import Literal
 import importlib.resources
 from importlib.util import find_spec
 import lightning.pytorch as pl
 import torch
 from torch import nn
-from lobster.tokenization._pmlm_tokenizer import PmlmTokenizer
+from lobster.transforms import TokenizerTransform
+from lobster.tokenization import SmilesTokenizerFast, PmlmTokenizer
 from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization._pmlm_tokenizer_transform import PmlmTokenizerTransform
@@ -28,7 +30,7 @@ class FlexBERT(pl.LightningModule):
         eps: float = 1e-12,
         num_training_steps: int = 10_000,
         num_warmup_steps: int = 1_000,
-        tokenizer_dir: str = "pmlm_tokenizer",
+        tokenizer_dir: Literal["plm_tokenizer", "smiles_tokenizer"] = "pmlm_tokenizer",
         mask_percentage: float = 0.15,
         max_length: int = 512,
         **model_kwargs,
@@ -43,14 +45,27 @@ class FlexBERT(pl.LightningModule):
         self._mask_percentage = mask_percentage
         self._max_length = max_length
 
-        path = importlib.resources.files("lobster") / "assets" / tokenizer_dir
-        self.tokenizer: PmlmTokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
-        self.tokenize_transform = PmlmTokenizerTransform(
-            path,
-            padding="max_length",
-            max_length=self._max_length,
-            truncation=True,
-        )
+        # TODO zadorozk: currently only accepts one tokenizer at a time
+        # Extend to accept multiple tokenizers for each modality
+        if tokenizer_dir == "pmlm_tokenizer":
+            path = importlib.resources.files("lobster") / "assets" / tokenizer_dir
+            self.tokenizer: PmlmTokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
+            self.tokenize_transform = PmlmTokenizerTransform(
+                path,
+                padding="max_length",
+                max_length=self._max_length,
+                truncation=True,
+            )
+        elif tokenizer_dir == "smiles_tokenizer":
+            self.tokenizer = SmilesTokenizerFast()
+            self.tokenize_transform = TokenizerTransform(
+                tokenizer=self.tokenizer,
+                padding="max_length",
+                max_length=self._max_length,
+                truncation=True,
+            )
+        else:
+            raise NotImplementedError(f"Tokenizer {tokenizer_dir} not implemented")
 
         config = FlexBertConfig(
             vocab_size=self.tokenizer.vocab_size,
@@ -114,7 +129,6 @@ class FlexBERT(pl.LightningModule):
         return [hidden_states[cu_seqlens[i]:cu_seqlens[i+1]] for i in range(len(cu_seqlens) - 1)]
 
     def _compute_loss(self, batch):
-
         if isinstance(batch, tuple) and len(batch) == 2:
             batch, _targets = batch
 
