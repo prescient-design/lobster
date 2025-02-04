@@ -8,8 +8,7 @@ from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
-from lobster.tokenization import SmilesTokenizerFast
-from lobster.transforms import TokenizerTransform, Transform
+from lobster.transforms import Transform
 
 T = TypeVar("T")
 
@@ -108,15 +107,6 @@ class ChEMBLLightningDataModule(LightningDataModule):
         self._pin_memory = pin_memory
         self._drop_last = drop_last
         self._dataset = None
-
-        if transform_fn is None:
-            transform_fn = TokenizerTransform(
-                tokenizer=SmilesTokenizerFast(),
-                padding="max_length",
-                max_length=512,
-                truncation=True,
-            )
-
         self._transform_fn = transform_fn
 
     def prepare_data(self) -> None:

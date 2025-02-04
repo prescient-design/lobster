@@ -65,7 +65,7 @@ class M320MDataset(Dataset):
 
         self.transform = transform
 
-        self._x = self.data[self.columns].apply(tuple, axis=1)
+        self._x = list(self.data[self.columns].apply(tuple, axis=1))
 
     def __getitem__(self, index: int) -> Tuple[str, str]:
         x = self._x[index]

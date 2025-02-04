@@ -8,8 +8,7 @@ from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
 from lobster.datasets import M320MDataset
-from lobster.tokenization import SmilesTokenizerFast
-from lobster.transforms import TokenizerTransform, Transform
+from lobster.transforms import Transform
 
 T = TypeVar("T")
 
@@ -114,15 +113,6 @@ class M320MLightningDataModule(LightningDataModule):
         self._drop_last = drop_last
         self._dataset = None
         self._use_text_descriptions = use_text_descriptions
-
-        if transform_fn is None and not use_text_descriptions:
-            transform_fn = TokenizerTransform(
-                tokenizer=SmilesTokenizerFast(),
-                padding="max_length",
-                max_length=512,
-                truncation=True,
-            )
-
         self._transform_fn = transform_fn
 
     def prepare_data(self) -> None:
