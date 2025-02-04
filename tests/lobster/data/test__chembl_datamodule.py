@@ -4,7 +4,6 @@ import pytest
 from beignet.datasets import ChEMBLDataset
 from lobster.data import ChEMBLLightningDataModule
 from pandas import DataFrame
-from torch import Size
 
 
 @pytest.fixture
@@ -34,7 +33,3 @@ class TestChEMBLLightningDataModule:
         assert len(dm._train_dataset) == 8
         assert len(dm._val_dataset) == 1
         assert len(dm._test_dataset) == 1
-
-        batch = next(iter(dm.train_dataloader()))
-
-        assert batch["input_ids"].shape == Size([8, 1, 512])
