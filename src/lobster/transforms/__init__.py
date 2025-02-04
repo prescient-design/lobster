@@ -23,6 +23,7 @@ from ._convert_seqs import (
 )
 from ._lambda import Lambda
 from ._structure_featurizer import StructureFeaturizer
+from ._tokenizer_transform import TokenizerTransform
 from ._transform import Transform
 from ._utils import (
     invert_residue_to_codon_mapping,

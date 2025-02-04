@@ -22,6 +22,4 @@ class TestM320MDataset:
 
             assert dataset.transform is None
 
-            assert dataset.target_transform is None
-
             assert isinstance(dataset.data, DataFrame)

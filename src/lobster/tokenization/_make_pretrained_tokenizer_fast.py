@@ -2,6 +2,7 @@ from typing import Optional
 
 from tokenizers import Tokenizer
 from tokenizers.models import Model
+from tokenizers.normalizers import Normalizer
 from tokenizers.pre_tokenizers import PreTokenizer
 from tokenizers.processors import PostProcessor
 from tokenizers.trainers import Trainer
@@ -16,6 +17,7 @@ def make_pretrained_tokenizer_fast(
     data_iterator: Optional[iter] = None,
     pre_tokenizer: Optional[PreTokenizer] = None,
     post_processor: Optional[PostProcessor] = None,
+    normalizer: Optional[Normalizer] = None,
     padding_side: str = "right",
     truncation_side: str = "left",
     **kwargs,
@@ -26,6 +28,9 @@ def make_pretrained_tokenizer_fast(
 
     if pre_tokenizer is not None:
         tokenizer.pre_tokenizer = pre_tokenizer
+
+    if normalizer is not None:
+        tokenizer.normalizer = normalizer
 
     if post_processor is not None:
         tokenizer.post_processor = post_processor
