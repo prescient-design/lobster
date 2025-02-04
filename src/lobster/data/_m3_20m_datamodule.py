@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
+from typing import Any, Callable, Iterable, Sequence, TypeVar
 
 import torch.utils.data
 from lightning import LightningDataModule
@@ -16,81 +16,69 @@ T = TypeVar("T")
 class M320MLightningDataModule(LightningDataModule):
     def __init__(
         self,
-        root: Union[str, Path] = None,
+        root: str | Path = None,
         *,
         use_text_descriptions: bool = False,
         download: bool = False,
-        transform_fn: Union[Callable, Transform, None] = None,
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
-        generator: Optional[Generator] = None,
+        transform_fn: Callable | Transform | None = None,
+        lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
+        generator: Generator | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
-        sampler: Optional[Union[Iterable, Sampler]] = None,
-        batch_sampler: Optional[Union[Iterable[Sequence], Sampler[Sequence]]] = None,
+        sampler: Iterable | Sampler | None = None,
+        batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
         num_workers: int = 0,
-        collate_fn: Optional[Callable[[list[T]], Any]] = None,
+        collate_fn: Callable[[list[T]], Any] | None = None,
         max_length: int = 512,
         pin_memory: bool = True,
         drop_last: bool = False,
         train: bool = True,
     ) -> None:
         """
-        :param root: Root directory where the dataset subdirectory exists or,
-            if :attr:`download` is ``True``, the directory where the dataset
-            subdirectory will be created and the dataset downloaded.
+        Initialize the M320MLightningDataModule.
 
-        :param use_text_descriptions: If ``True``, use text descriptions for the dataset
-            (default: ``False``).
-
-        :param download: If ``True``, download the dataset to the
-            :attr:`root` directory (default: ``False``). If the dataset is
-            already downloaded, it is not redownloaded.
-
-        :param transform_fn: Function or transform to apply to the dataset
-            for tokenization (default: ``None``).
-
-        :param lengths: Fractions of splits to generate (default: ``(0.9, 0.05, 0.05)``).
-
-        :param generator: Generator used for the random permutation (default:
-            ``None``).
-
-        :param seed: Desired seed. Value must be within the inclusive range
-            ``[-0x8000000000000000, 0xFFFFFFFFFFFFFFFF]`` (default:
-            ``0xDEADBEEF``). Otherwise, a ``RuntimeError`` is raised. Negative
-            inputs are remapped to positive values with the formula
-            ``0xFFFFFFFFFFFFFFFF + seed``.
-
-        :param batch_size: Samples per batch (default: ``1``).
-
-        :param shuffle: If ``True``, reshuffle datasets at every epoch (default:
-            ``True``).
-
-        :param sampler: Strategy to draw samples from the dataset (default:
-            ``None``). Can be any ``Iterable`` with ``__len__`` implemented.
-            If specified, :attr:`shuffle` must be ``False``.
-
-        :param batch_sampler: :attr:`sampler`, but returns a batch of indices
-            (default: ``None``). Mutually exclusive with :attr:`batch_size`,
-            :attr:`shuffle`, :attr:`sampler`, and :attr:`drop_last`.
-
-        :param num_workers: Subprocesses to use (default: ``0``). ``0`` means
-            that the datasets will be loaded in the main process.
-
-        :param collate_fn: Merges samples to form a mini-batch of Tensor(s)
-            (default: ``None``).
-
-        :param max_length: Maximum length of the sequences (default: ``512``).
-
-        :param pin_memory: If ``True``, Tensors are copied to the device's
-            (e.g., CUDA) pinned memory before returning them (default:
-            ``True``).
-
-        :param drop_last: If ``True``, drop the last incomplete batch, if the
-            dataset size is not divisible by the batch size (default:
-            ``False``). If ``False`` and the size of dataset is not divisible
-            by the batch size, then the last batch will be smaller.
-
+        Parameters
+        ----------
+        root : str or Path, optional
+            Root directory where the dataset subdirectory exists or, if `download` is True,
+            the directory where the dataset subdirectory will be created and the dataset downloaded.
+        use_text_descriptions : bool, optional
+            If True, use text descriptions for the dataset (default: False).
+        download : bool, optional
+            If True, download the dataset to the `root` directory (default: False).
+            If the dataset is already downloaded, it is not redownloaded.
+        transform_fn : Callable or Transform or None, optional
+            Function or transform to apply to the dataset for tokenization (default: None).
+        lengths : Sequence[float] or None, optional
+            Fractions of splits to generate (default: (0.9, 0.05, 0.05)).
+        generator : Generator or None, optional
+            Generator used for the random permutation (default: None).
+        seed : int, optional
+            Desired seed. Value must be within the inclusive range [-0x8000000000000000, 0xFFFFFFFFFFFFFFFF]
+            (default: 0xDEADBEEF). Otherwise, a RuntimeError is raised. Negative inputs are remapped to positive
+            values with the formula 0xFFFFFFFFFFFFFFFF + seed.
+        batch_size : int, optional
+            Samples per batch (default: 1).
+        shuffle : bool, optional
+            If True, reshuffle datasets at every epoch (default: True).
+        sampler : Iterable or Sampler or None, optional
+            Strategy to draw samples from the dataset (default: None). Can be any Iterable with __len__ implemented.
+            If specified, `shuffle` must be False.
+        batch_sampler : Iterable[Sequence] or Sampler[Sequence] or None, optional
+            `sampler`, but returns a batch of indices (default: None). Mutually exclusive with `batch_size`,
+            `shuffle`, `sampler`, and `drop_last`.
+        num_workers : int, optional
+            Subprocesses to use (default: 0). 0 means that the datasets will be loaded in the main process.
+        collate_fn : Callable[[list[T]], Any] or None, optional
+            Merges samples to form a mini-batch of Tensor(s) (default: None).
+        max_length : int, optional
+            Maximum length of the sequences (default: 512).
+        pin_memory : bool, optional
+            If True, Tensors are copied to the device's (e.g., CUDA) pinned memory before returning them (default: True).
+        drop_last : bool, optional
+            If True, drop the last incomplete batch, if the dataset size is not divisible by the batch size (default: False).
+            If False and the size of dataset is not divisible by the batch size, then the last batch will be smaller.
         """
         super().__init__()
 

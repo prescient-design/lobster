@@ -37,6 +37,22 @@ class M320MDataset(Dataset):
         transform: Callable | Transform | None = None,
         columns: list[str] | None = None,
     ):
+        """
+        Initialize the M320MDataset.
+
+        Parameters
+        ----------
+        root : str or Path or None, optional
+            Root directory where the dataset is stored or will be downloaded.
+        download : bool, optional
+            If True, download the dataset if not already present.
+        known_hash : str or None, optional
+            Known hash of the dataset file for verification.
+        transform : Callable or Transform or None, optional
+            Optional transform to be applied on a sample.
+        columns : list of str or None, optional
+            List of columns to be used from the dataset.
+        """
         super().__init__()
         url = "https://huggingface.co/datasets/karina-zadorozhny/M320M-multi-modal-molecular-dataset/resolve/main/M320M-Dataset.parquet.gzip"
 
