@@ -33,3 +33,10 @@ class TestChEMBLLightningDataModule:
         assert len(dm._train_dataset) == 8
         assert len(dm._val_dataset) == 1
         assert len(dm._test_dataset) == 1
+
+    def test_train_dataloader(self, dm: ChEMBLLightningDataModule):
+        dataloader = dm.train_dataloader()
+        batch = next(iter(dataloader))
+
+        assert len(batch) == 8
+        assert batch[0] == "CCO"
