@@ -4,7 +4,6 @@ import pytest
 from lobster.data import M320MLightningDataModule
 from lobster.datasets import M320MDataset
 from pandas import DataFrame
-from torch import Size
 
 
 @pytest.fixture
@@ -35,6 +34,9 @@ class TestM320MLightningDataModule:
         assert len(dm._val_dataset) == 1
         assert len(dm._test_dataset) == 1
 
-        batch = next(iter(dm.train_dataloader()))
+    def test_train_dataloader(self, dm: M320MLightningDataModule):
+        dataloader = dm.train_dataloader()
+        batch = next(iter(dataloader))
 
-        assert batch["input_ids"].shape == Size([8, 1, 512])
+        assert len(batch) == 8
+        assert batch[0] == "CCO"
