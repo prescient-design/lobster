@@ -1,0 +1,7 @@
+_target_: lobster.transforms.TokenizerTransform
+
+tokenizer:
+  _target_: lobster.tokenization.NucleotideTokenizerFast
+padding: "max_length"
+truncation: True
+max_length: ${model.max_length}

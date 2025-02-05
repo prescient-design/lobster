@@ -1,43 +1,40 @@
+import unittest.mock
+
 import pytest
-import torch
 from lobster.data import CalmLightningDataModule
-from lobster.model import LobsterPMLM
+from lobster.datasets import CalmDataset
+from pandas import DataFrame
 from torch import Size
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def dm(tmp_path):
-    datamodule = CalmLightningDataModule(
-        root="/data/bucket/freyn6/data/",
-        batch_size=8,
-        lengths=(0.8, 0.1, 0.1),
-        train=False,
-        download=False,
-    )
-    datamodule.setup(stage="fit")
+    with unittest.mock.patch("lobster.datasets._calm_dataset.load_dataset") as mock_load_dataset:
+        mock_load_dataset.return_value = DataFrame({"sequence": 10 * ["ATG"], "description": 10 * ["dna"]})
 
-    return datamodule
+        datamodule = CalmLightningDataModule(
+            root=tmp_path,
+            batch_size=8,
+            lengths=(0.8, 0.1, 0.1),
+            download=False,
+        )
+        datamodule.prepare_data()
+        datamodule.setup()
+
+        return datamodule
 
 
-@pytest.mark.skip(reason="Need to mock.")
 class TestCalmLightningDataModule:
-    def test_setup(self, dm: CalmLightningDataModule):
-        assert len(dm._train_dataset) == 3481
-        assert len(dm._val_dataset) == 435
-        assert len(dm._test_dataset) == 435
+    def test_prepare_data(self, dm: CalmLightningDataModule):
+        assert dm._dataset is not None
+        assert len(dm._dataset) == 10
+        assert isinstance(dm._dataset, CalmDataset)
 
-        batch, _targets = next(iter(dm.train_dataloader()))
+    def test_setup(self, dm: CalmLightningDataModule):
+        assert len(dm._train_dataset) == 8
+        assert len(dm._val_dataset) == 1
+        assert len(dm._test_dataset) == 1
+
+        batch = next(iter(dm.train_dataloader()))
 
         assert batch["input_ids"].shape == Size([8, 1, 512])
-        assert batch["attention_mask"].shape == Size([8, 1, 512])
-        assert batch["labels"].shape == Size([8, 1, 512])
-
-        model = LobsterPMLM(model_name="MLM_mini", max_length=2048)
-        model.eval()
-
-        batch, _targets = next(iter(dm.train_dataloader()))
-
-        with torch.inference_mode():
-            loss, _ = model._compute_loss(batch)
-
-        assert isinstance(loss, torch.Tensor)

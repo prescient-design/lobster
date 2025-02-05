@@ -30,6 +30,11 @@ def test__make_nucleotide_tokenizer():
     assert tokenized_output.input_ids == [0, 6, 9, 7, 8, 2]
     assert tokenizer.decode(tokenized_output.input_ids) == "<cls> A T C G <eos>"
 
+    tokenized_output = tokenizer("atcg")
+
+    assert tokenized_output.input_ids == [0, 3, 3, 3, 3, 2]
+    assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> <unk> <unk> <unk> <eos>"
+
 
 class TestNucleotideTokenizerFaset:
     def test__init__(self):
@@ -50,6 +55,10 @@ class TestNucleotideTokenizerFaset:
 
         assert tokenized_output.input_ids == [0, 6, 9, 7, 8, 2]
         assert tokenizer.decode(tokenized_output.input_ids) == "<cls> A T C G <eos>"
+
+        tokenized_output = tokenizer("atcg")
+        assert tokenized_output.input_ids == [0, 3, 3, 3, 3, 2]
+        assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> <unk> <unk> <unk> <eos>"
 
         tokenized_output = tokenizer("RAW")
         assert tokenized_output.input_ids == [0, 3, 6, 3, 2]

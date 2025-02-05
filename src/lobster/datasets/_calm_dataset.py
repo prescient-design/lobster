@@ -1,64 +1,34 @@
-import re
 from pathlib import Path
-from typing import Callable, Optional, Sequence, Union
+from typing import Callable, Sequence, Tuple
 
+import pandas as pd
 import pooch
-from beignet.datasets import FASTADataset
-from pooch import Decompress
+from datasets import load_dataset
+from torch.utils.data import Dataset
 
 from lobster.transforms import Transform
 
 
-class CalmDataset(FASTADataset):
+class CalmDataset(Dataset):
     """
     Dataset from Outeiral, C., Deane, C.M.
     Codon language embeddings provide strong signals for use in protein engineering.
     Nat Mach Intell 6, 170–179 (2024). https://doi.org/10.1038/s42256-024-00791-0
 
-    Training data is a single FASTA of sequences.
+    Training data is from FASTA files containing coding DNA sequences.
     """
 
     def __init__(
         self,
-        url: str = "http://opig.stats.ox.ac.uk/data/downloads/training_data.tar.gz",
-        root: Union[str, Path] = None,
-        known_hash: str | None = None,
+        root: str | Path | None = None,
         *,
-        index: bool = True,
-        test_url: Union[str, Path] = "http://opig.stats.ox.ac.uk/data/downloads/heldout.tar.gz",
-        columns: Optional[Sequence[str]] = None,
-        target_columns: Optional[Sequence[str]] = None,
-        train: bool = True,
-        download: bool = False,
-        transform_fn: Union[Callable, Transform, None] = None,
-        target_transform_fn: Union[Callable, Transform, None] = None,
-        **kwargs,
+        download: bool = True,
+        known_hash: str | None = None,
+        transform: Callable | Transform | None = None,
+        columns: Sequence[str] | None = None,
     ):
-        """
-        Parameters
-        ----------
-        url : str
-            URL to the file that needs to be downloaded. Ideally, the URL
-            should end with a file name (e.g., `uniref50.fasta.gz`).
-        root : Union[str, Path]
-            Root directory where the dataset subdirectory exists or,
-            if download is True, the directory where the dataset
-            subdirectory will be created and the dataset downloaded.
-        path : Union[str, Path]
-            Path to the dataset.
-        index : bool, optional
-            If `True`, caches the sequence indexes to disk for faster
-            re-initialization (default: `True`).
-        test_path : Union[str, Path]
-            Path to the test dataset.
-        transform : Callable | Transform, optional
-            A `Callable` or `Transform` that that maps a sequence to a
-            transformed sequence (default: `None`).
-        target_transform : Callable | Transform, optional
-            A `Callable` or `Transform` that maps a target (a cluster
-            identifier) to a transformed target (default: `None`).
+        super().__init__()
 
-        """
         if root is None:
             root = pooch.os_cache("lbster")
 
@@ -67,35 +37,30 @@ class CalmDataset(FASTADataset):
 
         self.root = root.resolve()
 
-        self._train = train
-        self._download = download
-        if self._train:
-            self._path = url
+        dataset_path = root / self.__class__.__name__ / f"{self.__class__.__name__}"
+        if not dataset_path.exists():
+            dataset_path.parent.mkdir(parents=True, exist_ok=True)
+            data = load_dataset("ncfrey/calm", split="train")
+            data.to_parquet(dataset_path)
+            self.data = data
         else:
-            self._path = test_url
+            self.data = pd.read_parquet(dataset_path)
 
-        if self._train:
-            name = "training_data.fasta"
-            local_path = self.root / "calm" / name
-        else:
-            name = "hsapiens.fasta"
-            local_path = self.root / "calm" / name
+        self.columns = ["sequence", "description"] if columns is None else columns
+        self.transform = transform
 
-        name = self.__class__.__name__.replace("Dataset", "")
+        self._x = self.data[self.columns].apply(tuple, axis=1)
 
-        self._pattern = re.compile(r"^Calm.+_([A-Z0-9]+)\s.+$")
+    def __getitem__(self, index: int) -> Tuple[str, str]:
+        x = self._x[index]
 
-        local_path = pooch.retrieve(
-            url if self._train else test_url,
-            known_hash,
-            f"{name}.fasta.gz",
-            root / name,
-            processor=Decompress(),
-            progressbar=True,
-        )
+        if len(x) == 1:
+            x = x[0]
 
-        super().__init__(local_path)
+        if self.transform is not None:
+            x = self.transform(x)
 
-        self.transform = transform_fn
+        return x
 
-        self.target_transform_fn = target_transform_fn
+    def __len__(self) -> int:
+        return len(self._x)

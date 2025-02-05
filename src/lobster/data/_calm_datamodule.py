@@ -1,4 +1,3 @@
-import importlib
 import random
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
@@ -9,8 +8,8 @@ from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
 from lobster.datasets._calm_dataset import CalmDataset
-from lobster.tokenization import PmlmTokenizerTransform
-from lobster.transforms import Transform
+from lobster.tokenization import NucleotideTokenizerFast
+from lobster.transforms import TokenizerTransform, Transform
 
 T = TypeVar("T")
 
@@ -20,7 +19,7 @@ class CalmLightningDataModule(LightningDataModule):
         self,
         root: Union[str, Path] = None,
         *,
-        cache_sequence_indicies: bool = True,
+        use_text_descriptions: bool = False,
         download: bool = False,
         transform_fn: Union[Callable, Transform, None] = None,
         lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
@@ -36,83 +35,55 @@ class CalmLightningDataModule(LightningDataModule):
         pin_memory: bool = True,
         drop_last: bool = False,
         train: bool = True,
-        is_relative_model: bool = False,
-        tokenizer_dir: Optional[str] = "cdna_tokenizer",
-        mlm: bool = True,
     ) -> None:
         """
-        :param model_name: name of esm model
+        Calm Lightning DataModule.
 
-        :param root: Root directory where the dataset subdirectory exists or,
-            if :attr:`download` is ``True``, the directory where the dataset
-            subdirectory will be created and the dataset downloaded.
-
-        :param cache_sequence_indicies: If ``True``, caches the sequence
-            indicies to disk for faster re-initialization (default: ``True``).
-
-        :param download: If ``True``, download the dataset and to the
-            :attr:`root` directory (default: ``False``). If the dataset is
-            already downloaded, it is not redownloaded.
-
-        :param use_transform_fn: If ``True``, use transform_fn for dataset
-            tokenization, else no transform.
-
-        :param lengths: Fractions of splits to generate.
-
-        :param generator: Generator used for the random permutation (default:
-            ``None``).
-
-        :param seed: Desired seed. Value must be within the inclusive range
-            ``[-0x8000000000000000, 0xFFFFFFFFFFFFFFFF]`` (default:
-            ``0xDEADBEEF``). Otherwise, a ``RuntimeError`` is raised. Negative
-            inputs are remapped to positive values with the formula
-            ``0xFFFFFFFFFFFFFFFF + seed``.
-
-        :param batch_size: Samples per batch (default: ``1``).
-
-        :param shuffle: If ``True``, reshuffle datasets at every epoch (default:
-            ``True``).
-
-        :param sampler: Strategy to draw samples from the dataset (default:
-            ``None``). Can be any ``Iterable`` with ``__len__`` implemented.
-            If specified, :attr:`shuffle` must be ``False``.
-
-        :param batch_sampler: :attr:`sampler`, but returns a batch of indices
-            (default: ``None``). Mutually exclusive with :attr:`batch_size`,
-            :attr:`shuffle`, :attr:`sampler`, and :attr:`drop_last`.
-
-        :param num_workers: Subprocesses to use (default: ``0``). ``0`` means
-            that the datasets will be loaded in the main process.
-
-        :param collate_fn: Merges samples to form a mini-batch of Tensor(s)
-            (default: ``None``).
-
-        :param pin_memory: If ``True``, Tensors are copied to the device's
-            (e.g., CUDA) pinned memory before returning them (default:
-            ``True``).
-
-        :param drop_last: If ``True``, drop the last incomplete batch, if the
-            dataset size is not divisible by the batch size (default:
-            ``False``). If ``False`` and the size of dataset is not divisible
-            by the batch size, then the last batch will be smaller.
+        Parameters
+        ----------
+        root : Union[str, Path], optional
+            Root directory of the dataset.
+        use_text_descriptions : bool, optional
+            Whether to use text descriptions, by default False.
+        download : bool, optional
+            Whether to download the dataset, by default False.
+        transform_fn : Union[Callable, Transform, None], optional
+            Function or transform to apply to the data, by default None.
+        lengths : Optional[Sequence[float]], optional
+            Sequence of lengths for splitting the dataset, by default (0.9, 0.05, 0.05).
+        generator : Optional[Generator], optional
+            Random generator for shuffling, by default None.
+        seed : int, optional
+            Seed for the random generator, by default 0xDEADBEEF.
+        batch_size : int, optional
+            Number of samples per batch, by default 1.
+        shuffle : bool, optional
+            Whether to shuffle the data, by default True.
+        sampler : Optional[Union[Iterable, Sampler]], optional
+            Sampler for data loading, by default None.
+        batch_sampler : Optional[Union[Iterable[Sequence], Sampler[Sequence]]], optional
+            Batch sampler for data loading, by default None.
+        num_workers : int, optional
+            Number of worker processes for data loading, by default 0.
+        collate_fn : Optional[Callable[[list[T]], Any]], optional
+            Function to merge a list of samples to form a mini-batch, by default None.
+        max_length : int, optional
+            Maximum length of sequences, by default 512.
+        pin_memory : bool, optional
+            Whether to pin memory during data loading, by default True.
+        drop_last : bool, optional
+            Whether to drop the last incomplete batch, by default False.
+        train : bool, optional
+            Whether the module is in training mode, by default True.
 
 
-        :param is_relative_model: If ``True``, assumes training between two sequences
-            and calls a relative representation data loader
-
-        :param tokenizer_dir: a tokenizer saved to src/lobster/assets.
-            default pmlm_tokenizer is compatible with esm2 models
         """
         super().__init__()
-
-        if lengths is None:
-            lengths = [0.4, 0.4, 0.2]
 
         if generator is None:
             generator = Generator().manual_seed(seed)
 
         self._root = root
-        self._cache_sequence_indicies = cache_sequence_indicies
         self._download = download
         self._lengths = lengths
         self._generator = generator
@@ -126,41 +97,37 @@ class CalmLightningDataModule(LightningDataModule):
         self._collate_fn = collate_fn
         self._pin_memory = pin_memory
         self._drop_last = drop_last
-        self._is_relative_model = is_relative_model
-        self._tokenizer_dir = tokenizer_dir
-        self._mlm = mlm
-        self._train = train
         self._dataset = None
+        self._use_text_descriptions = use_text_descriptions
 
-        path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
-        self._transform_fn = transform_fn or PmlmTokenizerTransform(
-            path,
-            padding="max_length",
-            truncation=True,
-            max_length=self._max_length,
-            mlm=self._mlm,
-        )
+        if transform_fn is None and not use_text_descriptions:
+            transform_fn = TokenizerTransform(
+                tokenizer=NucleotideTokenizerFast(),
+                padding="max_length",
+                max_length=512,
+                truncation=True,
+            )
+
+        self._transform_fn = transform_fn
 
     def prepare_data(self) -> None:
-        # Load in Dataset, transform sequences
         dataset = CalmDataset(
             root=self._root,
-            cache_sequence_indicies=True,
             download=self._download,
-            train=self._train,
-            transform_fn=self._transform_fn,
+            transform=self._transform_fn,
+            columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
         )
 
-        return dataset
+        self._dataset = dataset
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
         random.seed(self._seed)
         torch.manual_seed(self._seed)
 
         if self._dataset is None:
-            self._dataset = self.prepare_data()
+            self.prepare_data()
 
-        if stage == "fit":
+        if stage == "fit" or stage == "test":
             (
                 self._train_dataset,
                 self._val_dataset,

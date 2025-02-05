@@ -8,8 +8,9 @@ from torch import nn
 from transformers.optimization import get_linear_schedule_with_warmup
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from lobster.tokenization import PmlmTokenizer, SmilesTokenizerFast, AminoAcidTokenizerFast
-from lobster.tokenization._pmlm_tokenizer_transform import PmlmTokenizerTransform
+from lobster.tokenization import PmlmTokenizer, SmilesTokenizerFast, AminoAcidTokenizerFast, NucleotideTokenizerFast
+from lobster.tokenization._pmlm_tokenizer_transform import \
+    PmlmTokenizerTransform
 from lobster.transforms import TokenizerTransform
 
 from ._config import FlexBertConfig
@@ -60,13 +61,16 @@ class FlexBERT(pl.LightningModule):
             elif tokenizer == "amino_acid_tokenizer":
                 tokenizer = AminoAcidTokenizerFast()
                 tokenizer_transform_class = TokenizerTransform
+            
+            elif tokenizer == "nucleotide_tokenizer":
+                tokenizer = NucleotideTokenizerFast()
+                tokenizer_transform_class = TokenizerTransform
                 
             elif tokenizer == "smiles_tokenizer":
                 tokenizer = SmilesTokenizerFast()
                 tokenizer_transform_class = TokenizerTransform
             else:
                 raise NotImplementedError(f"Tokenizer `{tokenizer}` not supported")
-
         else:
             if not isinstance(tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)):
                 raise ValueError("Custom `tokenizer` must be an instance of `PreTrainedTokenizer` or `PreTrainedTokenizerFast`")
