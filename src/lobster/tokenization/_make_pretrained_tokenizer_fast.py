@@ -22,7 +22,7 @@ def make_pretrained_tokenizer_fast(
     truncation_side: str = "left",
     **kwargs,
 ) -> PreTrainedTokenizerFast:
-    """Create an instance of PreTrainedTokenizerFast from tokenizers.Tokenizer."""
+    """Create an instance of PreTrainedTokenizerFast from tokenizers."""
 
     tokenizer = Tokenizer(tokenizer_model)
 
