@@ -9,13 +9,8 @@ from torch import Size
 
 @pytest.fixture
 def dm(tmp_path):
-    with unittest.mock.patch("pandas.read_parquet") as mock_read_parquet:
-        mock_read_parquet.return_value = DataFrame(
-            {
-                "sequence": 10 * ["ATG"],
-                "description": 10 * ["dna"],
-            }
-        )
+    with unittest.mock.patch("lobster.datasets._calm_dataset.load_dataset") as mock_load_dataset:
+        mock_load_dataset.return_value = DataFrame({"sequence": 10 * ["ATG"], "description": 10 * ["dna"]})
 
         datamodule = CalmLightningDataModule(
             root=tmp_path,

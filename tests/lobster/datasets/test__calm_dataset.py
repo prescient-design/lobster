@@ -1,6 +1,5 @@
 import unittest.mock
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 from lobster.datasets import CalmDataset
 from pandas import DataFrame
@@ -9,17 +8,17 @@ from pandas import DataFrame
 class TestCalmDataset:
     """Unit tests for CalmDataset."""
 
-    @unittest.mock.patch("pandas.read_parquet")
-    @unittest.mock.patch("datasets.load_dataset")
-    def test___init__(self, mock_retrieve, mock_read_parquet):
+    @unittest.mock.patch("lobster.datasets._calm_dataset.load_dataset")
+    def test___init__(self, mock_load_dataset, tmp_path):
         """Test __init__ method."""
-        with NamedTemporaryFile() as tmp:
-            mock_retrieve.return_value = tmp.name
-            mock_read_parquet.return_value = DataFrame({"sequence": ["ATG"], "description": ["dna"]})
-            dataset = CalmDataset(root=tmp.name, download=True)
+        mock_load_dataset.return_value = DataFrame({"sequence": ["ATG"], "description": ["dna"]})
 
-            assert dataset.root == Path(tmp.name).resolve()
+        dataset = CalmDataset(root=tmp_path, download=False)
 
-            assert dataset.transform is None
+        item = dataset[0]
 
-            assert isinstance(dataset.data, DataFrame)
+        assert item == ("ATG", "dna")
+
+        assert dataset.root == Path(tmp_path).resolve()
+        assert dataset.transform is None
+        assert isinstance(dataset.data, DataFrame)

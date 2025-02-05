@@ -39,6 +39,7 @@ class CalmDataset(Dataset):
 
         dataset_path = root / self.__class__.__name__ / f"{self.__class__.__name__}"
         if not dataset_path.exists():
+            dataset_path.parent.mkdir(parents=True, exist_ok=True)
             data = load_dataset("ncfrey/calm", split="train")
             data.to_parquet(dataset_path)
             self.data = data
