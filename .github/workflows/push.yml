@@ -32,7 +32,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --all-extras --dev
+      - run: uv sync --all-extras --dev --no-cache
       - run: uv run pytest
       - env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
