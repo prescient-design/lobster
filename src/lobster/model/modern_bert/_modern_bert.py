@@ -41,27 +41,27 @@ class FlexBERT(pl.LightningModule):
         self._num_training_steps = num_training_steps
         self._num_warmup_steps = num_warmup_steps
         self._mask_percentage = mask_percentage
-        self._max_length = max_length
+        self.max_length = max_length
 
         path = importlib.resources.files("lobster") / "assets" / tokenizer_dir
         self.tokenizer: PmlmTokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
         self.tokenize_transform = PmlmTokenizerTransform(
             path,
             padding="max_length",
-            max_length=self._max_length,
+            max_length=self.max_length,
             truncation=True,
         )
 
-        config = FlexBertConfig(
+        self.config = FlexBertConfig(
             vocab_size=self.tokenizer.vocab_size,
             pad_token_id = self.tokenizer.pad_token_id,
             **model_kwargs,
         )
-        self.model = FlexBertModel(config)
+        self.model = FlexBertModel(self.config)
 
         self.decoder = nn.Sequential(
-            FlexBertPredictionHead(config),
-            nn.Linear(config.hidden_size, config.vocab_size)
+            FlexBertPredictionHead(self.config),
+            nn.Linear(self.config.hidden_size, self.config.vocab_size)
         )
 
         assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
@@ -109,7 +109,7 @@ class FlexBERT(pl.LightningModule):
         cu_seqlens = torch.tensor([sum(seqlens[:i]) for i in range(len(seqlens) + 1)], dtype=torch.int32).to(self.device)
 
         with torch.inference_mode():
-            hidden_states = self.model(input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self._max_length)
+            hidden_states = self.model(input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length)
 
         return [hidden_states[cu_seqlens[i]:cu_seqlens[i+1]] for i in range(len(cu_seqlens) - 1)]
 
@@ -133,7 +133,7 @@ class FlexBERT(pl.LightningModule):
             masked_tokens,
             attention_mask=attention_mask,
             cu_seqlens=cu_seqlens,
-            max_seqlen=self._max_length
+            max_seqlen=self.max_length
         )
 
         logits = self.decoder(hidden_states)
