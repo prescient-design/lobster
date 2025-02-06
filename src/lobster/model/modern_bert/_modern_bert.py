@@ -48,7 +48,7 @@ class FlexBERT(pl.LightningModule):
         self._num_training_steps = num_training_steps
         self._num_warmup_steps = num_warmup_steps
         self._mask_percentage = mask_percentage
-        self._max_length = max_length
+        self.max_length = max_length
 
         # TODO zadorozk: currently only accepts one tokenizer at a time
         # Extend to accept multiple tokenizers for each modality
@@ -57,15 +57,15 @@ class FlexBERT(pl.LightningModule):
                 path = importlib.resources.files("lobster") / "assets" / "plm_tokenizer"
                 tokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
                 tokenizer_transform_class = PmlmTokenizerTransform
-            
+
             elif tokenizer == "amino_acid_tokenizer":
                 tokenizer = AminoAcidTokenizerFast()
                 tokenizer_transform_class = TokenizerTransform
-            
+
             elif tokenizer == "nucleotide_tokenizer":
                 tokenizer = NucleotideTokenizerFast()
                 tokenizer_transform_class = TokenizerTransform
-                
+
             elif tokenizer == "smiles_tokenizer":
                 tokenizer = SmilesTokenizerFast()
                 tokenizer_transform_class = TokenizerTransform
@@ -74,27 +74,30 @@ class FlexBERT(pl.LightningModule):
         else:
             if not isinstance(tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)):
                 raise ValueError("Custom `tokenizer` must be an instance of `PreTrainedTokenizer` or `PreTrainedTokenizerFast`")
-            
+
             tokenizer = tokenizer
             tokenizer_transform_class = TokenizerTransform
 
         self.tokenizer = tokenizer
-        
+
         self.tokenize_transform = tokenizer_transform_class(
-            tokenizer, 
+            tokenizer,
             max_length=max_length,
             padding="max_length",
             truncation=True
             )
 
-        config = FlexBertConfig(
+        self.config = FlexBertConfig(
             vocab_size=self.tokenizer.vocab_size,
             pad_token_id=self.tokenizer.pad_token_id,
             **model_kwargs,
         )
-        self.model = FlexBertModel(config)
+        self.model = FlexBertModel(self.config)
 
-        self.decoder = nn.Sequential(FlexBertPredictionHead(config), nn.Linear(config.hidden_size, config.vocab_size))
+        self.decoder = nn.Sequential(
+            FlexBertPredictionHead(self.config),
+            nn.Linear(self.config.hidden_size, self.config.vocab_size)
+        )
 
         assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
         self.loss_fn = CrossEntropyLoss()
@@ -145,9 +148,7 @@ class FlexBERT(pl.LightningModule):
         )
 
         with torch.inference_mode():
-            hidden_states = self.model(
-                input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self._max_length
-            )
+            hidden_states = self.model(input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length)
 
         return [hidden_states[cu_seqlens[i] : cu_seqlens[i + 1]] for i in range(len(cu_seqlens) - 1)]
 
@@ -169,7 +170,10 @@ class FlexBERT(pl.LightningModule):
         # TODO: Probably we can/should throw away trailing <pad> tokens.
         cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
         hidden_states = self.model(
-            masked_tokens, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self._max_length
+            masked_tokens,
+            attention_mask=attention_mask,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=self.max_length
         )
 
         logits = self.decoder(hidden_states)
