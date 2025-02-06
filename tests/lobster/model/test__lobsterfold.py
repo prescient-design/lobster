@@ -22,7 +22,9 @@ def max_length():
 @pytest.fixture
 def example_fv():
     fv_heavy = "VKLLEQSGAEVKKPGASVKVSCKASGYSFTSYGLHWVRQAPGQRLEWMGWISAGTGNTKYSQKFRGRVTFTRDTSATTAYMGLSSLRPEDTAVYYCARDPYGGGKSEFDYWGQGTLVTVSS"
-    fv_light = "ELVMTQSPSSLSASVGDRVNIACRASQGISSALAWYQQKPGKAPRLLIYDASNLESGVPSRFSGSGSGTDFTLTISSLQPEDFAIYYCQQFNSYPLTFGGGTKVEIKRTV"
+    fv_light = (
+        "ELVMTQSPSSLSASVGDRVNIACRASQGISSALAWYQQKPGKAPRLLIYDASNLESGVPSRFSGSGSGTDFTLTISSLQPEDFAIYYCQQFNSYPLTFGGGTKVEIKRTV"
+    )
     return (fv_heavy, fv_light)
 
 
@@ -76,7 +78,7 @@ class TestLobsterPLMFold:
 
     @pytest.mark.skip(reason="fwd pass too slow")
     def test_predict_fv(self, model, example_fv):
-        pdb_string = model.predict_fv(example_fv[0],example_fv[1])
+        pdb_string = model.predict_fv(example_fv[0], example_fv[1])
 
         # Parse the input PDB string
         parser = PDBParser(QUIET=True)
