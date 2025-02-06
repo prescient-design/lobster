@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, Sequence, Tuple
+from typing import Callable, Tuple
 
 import pandas
 import pooch
@@ -34,10 +34,25 @@ class M320MDataset(Dataset):
         *,
         download: bool = True,
         known_hash: str | None = None,
-        columns: Sequence[str] | None = None,
         transform: Callable | Transform | None = None,
-        target_transform: Callable | Transform | None = None,
+        columns: list[str] | None = None,
     ):
+        """
+        Initialize the M320MDataset.
+
+        Parameters
+        ----------
+        root : str or Path or None, optional
+            Root directory where the dataset is stored or will be downloaded.
+        download : bool, optional
+            If True, download the dataset if not already present.
+        known_hash : str or None, optional
+            Known hash of the dataset file for verification.
+        transform : Callable or Transform or None, optional
+            Optional transform to be applied on a sample.
+        columns : list of str or None, optional
+            List of columns to be used from the dataset.
+        """
         super().__init__()
         url = "https://huggingface.co/datasets/karina-zadorozhny/M320M-multi-modal-molecular-dataset/resolve/main/M320M-Dataset.parquet.gzip"
 
@@ -63,10 +78,10 @@ class M320MDataset(Dataset):
         self.data = pandas.read_parquet(root / self.__class__.__name__ / f"{self.__class__.__name__}{suffix}")
 
         self.columns = ["smiles", "Description"] if columns is None else columns
-        self.transform = transform
-        self.target_transform = target_transform
 
-        self._x = self.data[self.columns].apply(tuple, axis=1)
+        self.transform = transform
+
+        self._x = list(self.data[self.columns].apply(tuple, axis=1))
 
     def __getitem__(self, index: int) -> Tuple[str, str]:
         x = self._x[index]
@@ -80,4 +95,4 @@ class M320MDataset(Dataset):
         return x
 
     def __len__(self) -> int:
-        return len(self._data)
+        return len(self._x)

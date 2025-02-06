@@ -1,9 +1,10 @@
 import importlib.resources
 
-from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
+
+from ._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
 
 AA_VOCAB = {
     "<cls>": 0,
@@ -57,28 +58,26 @@ def _make_amino_acid_tokenizer() -> PreTrainedTokenizerFast:
     This can now be loaded using
     `PreTrainedTokenizerFast.from_pretrained("src/lobster/assets/amino_acid_tokenizer")`
     """
+
     # BPE with no merges => just use input vocab
-    tok = Tokenizer(BPE(AA_VOCAB, merges=[], unk_token="<unk>", ignore_merges=True))
+    tokenizer_model = BPE(AA_VOCAB, merges=[], unk_token="<unk>", ignore_merges=True)
 
     # bert style post processing
-    tok.post_processor = TemplateProcessing(
+    post_processor = TemplateProcessing(
         single="<cls> $A <eos>",
         pair="<cls> $A <eos> $B:1 <eos>:1",
         special_tokens=[("<cls>", 0), ("<eos>", 2)],  # NOTE must match ids from AA_VOCAB
     )
 
-    tok = PreTrainedTokenizerFast(
-        tokenizer_object=tok,
-        bos_token=None,
+    return make_pretrained_tokenizer_fast(
+        tokenizer_model=tokenizer_model,
+        post_processor=post_processor,
         eos_token="<eos>",
         unk_token="<unk>",
-        sep_token=None,
         pad_token="<pad>",
         cls_token="<cls>",
         mask_token="<mask>",
     )
-
-    return tok
 
 
 class AminoAcidTokenizerFast(PreTrainedTokenizerFast):

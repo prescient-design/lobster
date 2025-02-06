@@ -1,12 +1,18 @@
 import importlib.resources
 from importlib.util import find_spec
+from typing import Literal, Union
+
 import lightning.pytorch as pl
 import torch
 from torch import nn
-from lobster.tokenization._pmlm_tokenizer import PmlmTokenizer
 from transformers.optimization import get_linear_schedule_with_warmup
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from lobster.tokenization._pmlm_tokenizer_transform import PmlmTokenizerTransform
+from lobster.tokenization import PmlmTokenizer, SmilesTokenizerFast, AminoAcidTokenizerFast, NucleotideTokenizerFast
+from lobster.tokenization._pmlm_tokenizer_transform import \
+    PmlmTokenizerTransform
+from lobster.transforms import TokenizerTransform
+
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
 
@@ -14,12 +20,13 @@ _FLASH_ATTN_AVAILABLE = False
 
 if find_spec("flash_attn"):
     from flash_attn.losses.cross_entropy import CrossEntropyLoss
+
     _FLASH_ATTN_AVAILABLE = True
 else:
     from torch.nn import CrossEntropyLoss
 
-class FlexBERT(pl.LightningModule):
 
+class FlexBERT(pl.LightningModule):
     def __init__(
         self,
         lr: float = 1e-3,
@@ -28,7 +35,7 @@ class FlexBERT(pl.LightningModule):
         eps: float = 1e-12,
         num_training_steps: int = 10_000,
         num_warmup_steps: int = 1_000,
-        tokenizer_dir: str = "pmlm_tokenizer",
+        tokenizer: Union[str, PreTrainedTokenizer, PreTrainedTokenizerFast] = "amino_acid_tokenizer",
         mask_percentage: float = 0.15,
         max_length: int = 512,
         **model_kwargs,
@@ -43,18 +50,46 @@ class FlexBERT(pl.LightningModule):
         self._mask_percentage = mask_percentage
         self.max_length = max_length
 
-        path = importlib.resources.files("lobster") / "assets" / tokenizer_dir
-        self.tokenizer: PmlmTokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
-        self.tokenize_transform = PmlmTokenizerTransform(
-            path,
+        # TODO zadorozk: currently only accepts one tokenizer at a time
+        # Extend to accept multiple tokenizers for each modality
+        if isinstance(tokenizer, str):
+            if tokenizer == "pmlm_tokenizer":
+                path = importlib.resources.files("lobster") / "assets" / "plm_tokenizer"
+                tokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
+                tokenizer_transform_class = PmlmTokenizerTransform
+
+            elif tokenizer == "amino_acid_tokenizer":
+                tokenizer = AminoAcidTokenizerFast()
+                tokenizer_transform_class = TokenizerTransform
+
+            elif tokenizer == "nucleotide_tokenizer":
+                tokenizer = NucleotideTokenizerFast()
+                tokenizer_transform_class = TokenizerTransform
+
+            elif tokenizer == "smiles_tokenizer":
+                tokenizer = SmilesTokenizerFast()
+                tokenizer_transform_class = TokenizerTransform
+            else:
+                raise NotImplementedError(f"Tokenizer `{tokenizer}` not supported")
+        else:
+            if not isinstance(tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)):
+                raise ValueError("Custom `tokenizer` must be an instance of `PreTrainedTokenizer` or `PreTrainedTokenizerFast`")
+
+            tokenizer = tokenizer
+            tokenizer_transform_class = TokenizerTransform
+
+        self.tokenizer = tokenizer
+
+        self.tokenize_transform = tokenizer_transform_class(
+            tokenizer,
+            max_length=max_length,
             padding="max_length",
-            max_length=self.max_length,
-            truncation=True,
-        )
+            truncation=True
+            )
 
         self.config = FlexBertConfig(
             vocab_size=self.tokenizer.vocab_size,
-            pad_token_id = self.tokenizer.pad_token_id,
+            pad_token_id=self.tokenizer.pad_token_id,
             **model_kwargs,
         )
         self.model = FlexBertModel(self.config)
@@ -104,22 +139,27 @@ class FlexBERT(pl.LightningModule):
     def sequences_to_latents(self, sequences: list[str]) -> list[torch.Tensor]:
         transformed_sequences = self.tokenize_transform(sequences)
         input_ids = torch.concat([batch["input_ids"].squeeze(0) for batch in transformed_sequences]).to(self.device)
-        attention_mask = torch.concat([batch["attention_mask"].squeeze(0) for batch in transformed_sequences]).to(self.device)
+        attention_mask = torch.concat([batch["attention_mask"].squeeze(0) for batch in transformed_sequences]).to(
+            self.device
+        )
         seqlens = [batch["input_ids"].size(1) for batch in transformed_sequences]
-        cu_seqlens = torch.tensor([sum(seqlens[:i]) for i in range(len(seqlens) + 1)], dtype=torch.int32).to(self.device)
+        cu_seqlens = torch.tensor([sum(seqlens[:i]) for i in range(len(seqlens) + 1)], dtype=torch.int32).to(
+            self.device
+        )
 
         with torch.inference_mode():
             hidden_states = self.model(input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length)
 
-        return [hidden_states[cu_seqlens[i]:cu_seqlens[i+1]] for i in range(len(cu_seqlens) - 1)]
+        return [hidden_states[cu_seqlens[i] : cu_seqlens[i + 1]] for i in range(len(cu_seqlens) - 1)]
 
     def _compute_loss(self, batch):
-        batch, _targets = batch
+        if isinstance(batch, tuple) and len(batch) == 2:
+            batch, _targets = batch
 
         tokens = batch["input_ids"].squeeze(1)
         B, length = tokens.shape
         tokens = tokens.view(-1)
-        attention_mask=batch["attention_mask"].squeeze(1).view(-1)
+        attention_mask = batch["attention_mask"].squeeze(1).view(-1)
 
         labels = tokens.clone()
 

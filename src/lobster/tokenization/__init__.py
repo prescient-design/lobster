@@ -1,7 +1,9 @@
+from ._amino_acid import AminoAcidTokenizerFast
 from ._hyena_tokenizer import HyenaTokenizer
 from ._hyena_tokenizer_transform import HyenaTokenizerTransform
 from ._mgm_tokenizer import MgmTokenizer
 from ._mgm_tokenizer_transform import MgmTokenizerTransform
+from ._nucleotide_tokenizer import NucleotideTokenizerFast
 from ._pmlm_custom_concept_tokenizer_transform import (
     CUSTOM_TOKENIZER,
     UnirefDescriptorTransform,
@@ -14,5 +16,4 @@ from ._pmlm_tokenizer_transform import (
     PT5TeacherForcingTransform,
     PT5TokenizerTransform,
 )
-
-from ._amino_acid import AminoAcidTokenizerFast
+from ._smiles_tokenizer import SmilesTokenizerFast

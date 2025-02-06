@@ -1,82 +1,84 @@
 import random
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
+from typing import Any, Callable, Iterable, Sequence, TypeVar
 
 import torch.utils.data
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
-from lobster.datasets._calm_dataset import CalmDataset
-from lobster.tokenization import NucleotideTokenizerFast
-from lobster.transforms import TokenizerTransform, Transform
+from lobster.datasets import M320MDataset
+from lobster.transforms import Transform
 
 T = TypeVar("T")
 
 
-class CalmLightningDataModule(LightningDataModule):
+class M320MLightningDataModule(LightningDataModule):
     def __init__(
         self,
-        root: Union[str, Path] = None,
+        root: str | Path = None,
         *,
         use_text_descriptions: bool = False,
         download: bool = False,
-        transform_fn: Union[Callable, Transform, None] = None,
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
-        generator: Optional[Generator] = None,
+        transform_fn: Callable | Transform | None = None,
+        lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
+        generator: Generator | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
-        sampler: Optional[Union[Iterable, Sampler]] = None,
-        batch_sampler: Optional[Union[Iterable[Sequence], Sampler[Sequence]]] = None,
+        sampler: Iterable | Sampler | None = None,
+        batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
         num_workers: int = 0,
-        collate_fn: Optional[Callable[[list[T]], Any]] = None,
+        collate_fn: Callable[[list[T]], Any] | None = None,
         max_length: int = 512,
         pin_memory: bool = True,
         drop_last: bool = False,
         train: bool = True,
     ) -> None:
         """
-        Calm Lightning DataModule.
+        Initialize the M320MLightningDataModule.
 
         Parameters
         ----------
-        root : Union[str, Path], optional
-            Root directory of the dataset.
+        root : str or Path, optional
+            Root directory where the dataset subdirectory exists or, if `download` is True,
+            the directory where the dataset subdirectory will be created and the dataset downloaded.
         use_text_descriptions : bool, optional
-            Whether to use text descriptions, by default False.
+            If True, use text descriptions for the dataset (default: False).
         download : bool, optional
-            Whether to download the dataset, by default False.
-        transform_fn : Union[Callable, Transform, None], optional
-            Function or transform to apply to the data, by default None.
-        lengths : Optional[Sequence[float]], optional
-            Sequence of lengths for splitting the dataset, by default (0.9, 0.05, 0.05).
-        generator : Optional[Generator], optional
-            Random generator for shuffling, by default None.
+            If True, download the dataset to the `root` directory (default: False).
+            If the dataset is already downloaded, it is not redownloaded.
+        transform_fn : Callable or Transform or None, optional
+            Function or transform to apply to the dataset for tokenization (default: None).
+        lengths : Sequence[float] or None, optional
+            Fractions of splits to generate (default: (0.9, 0.05, 0.05)).
+        generator : Generator or None, optional
+            Generator used for the random permutation (default: None).
         seed : int, optional
-            Seed for the random generator, by default 0xDEADBEEF.
+            Desired seed. Value must be within the inclusive range [-0x8000000000000000, 0xFFFFFFFFFFFFFFFF]
+            (default: 0xDEADBEEF). Otherwise, a RuntimeError is raised. Negative inputs are remapped to positive
+            values with the formula 0xFFFFFFFFFFFFFFFF + seed.
         batch_size : int, optional
-            Number of samples per batch, by default 1.
+            Samples per batch (default: 1).
         shuffle : bool, optional
-            Whether to shuffle the data, by default True.
-        sampler : Optional[Union[Iterable, Sampler]], optional
-            Sampler for data loading, by default None.
-        batch_sampler : Optional[Union[Iterable[Sequence], Sampler[Sequence]]], optional
-            Batch sampler for data loading, by default None.
+            If True, reshuffle datasets at every epoch (default: True).
+        sampler : Iterable or Sampler or None, optional
+            Strategy to draw samples from the dataset (default: None). Can be any Iterable with __len__ implemented.
+            If specified, `shuffle` must be False.
+        batch_sampler : Iterable[Sequence] or Sampler[Sequence] or None, optional
+            `sampler`, but returns a batch of indices (default: None). Mutually exclusive with `batch_size`,
+            `shuffle`, `sampler`, and `drop_last`.
         num_workers : int, optional
-            Number of worker processes for data loading, by default 0.
-        collate_fn : Optional[Callable[[list[T]], Any]], optional
-            Function to merge a list of samples to form a mini-batch, by default None.
+            Subprocesses to use (default: 0). 0 means that the datasets will be loaded in the main process.
+        collate_fn : Callable[[list[T]], Any] or None, optional
+            Merges samples to form a mini-batch of Tensor(s) (default: None).
         max_length : int, optional
-            Maximum length of sequences, by default 512.
+            Maximum length of the sequences (default: 512).
         pin_memory : bool, optional
-            Whether to pin memory during data loading, by default True.
+            If True, Tensors are copied to the device's (e.g., CUDA) pinned memory before returning them (default: True).
         drop_last : bool, optional
-            Whether to drop the last incomplete batch, by default False.
-        train : bool, optional
-            Whether the module is in training mode, by default True.
-
-
+            If True, drop the last incomplete batch, if the dataset size is not divisible by the batch size (default: False).
+            If False and the size of dataset is not divisible by the batch size, then the last batch will be smaller.
         """
         super().__init__()
 
@@ -99,28 +101,18 @@ class CalmLightningDataModule(LightningDataModule):
         self._drop_last = drop_last
         self._dataset = None
         self._use_text_descriptions = use_text_descriptions
-
-        if transform_fn is None and not use_text_descriptions:
-            transform_fn = TokenizerTransform(
-                tokenizer=NucleotideTokenizerFast(),
-                padding="max_length",
-                max_length=512,
-                truncation=True,
-            )
-
         self._transform_fn = transform_fn
 
     def prepare_data(self) -> None:
-        dataset = CalmDataset(
+        dataset = M320MDataset(
             root=self._root,
             download=self._download,
             transform=self._transform_fn,
-            columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
+            columns=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
         )
-
         self._dataset = dataset
 
-    def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
+    def setup(self, stage: str = "fit") -> None:
         random.seed(self._seed)
         torch.manual_seed(self._seed)
 

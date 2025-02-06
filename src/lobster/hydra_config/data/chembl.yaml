@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - transform_fn: smiles_tokenizer_transform
+
+_target_: lobster.data.ChEMBLLightningDataModule
+download: true
+lengths: [0.9,0.05,0.05]
+batch_size: 64
+num_workers: 1
+seed: 0
+
