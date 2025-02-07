@@ -120,3 +120,11 @@ class UmeLightningDataModule(LightningDataModule):
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
         )
+
+    # TODO zadorozk: Implement validation dataset
+    # The easiest way would be to have separate datasets
+    # for each modality for validation and testing
+    # since IterableDataset does not support random
+    # splitting
+    def val_dataloader(self) -> Any:
+        raise NotImplementedError()
