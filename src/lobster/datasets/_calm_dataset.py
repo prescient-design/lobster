@@ -22,8 +22,6 @@ class CalmDataset(Dataset):
         self,
         root: str | Path | None = None,
         *,
-        download: bool = True,
-        known_hash: str | None = None,
         transform: Callable | Transform | None = None,
         columns: Sequence[str] | None = None,
     ):
