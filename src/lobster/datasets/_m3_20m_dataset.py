@@ -1,13 +1,13 @@
 from pathlib import Path
-from typing import Any, Callable, Iterator, Tuple
+from typing import Callable, Tuple
 
+import pandas
 import pooch
-import pyarrow.parquet
 from beignet.transforms import Transform
-from torch.utils.data import IterableDataset
+from torch.utils.data import Dataset
 
 
-class M320MDataset(IterableDataset):
+class M320MDataset(Dataset):
     """Multi-Modal Molecular (M^3) Dataset with 20M compounds.
     M3-20M is a large-scale multi-modal molecular dataset with over 20 million molecules,
     integrating SMILES, molecular graphs, 3D structures, physicochemical properties,
@@ -32,7 +32,7 @@ class M320MDataset(IterableDataset):
         self,
         root: str | Path | None = None,
         *,
-        download: bool = False,
+        download: bool = True,
         known_hash: str | None = None,
         transform: Callable | Transform | None = None,
         columns: list[str] | None = None,
@@ -74,23 +74,25 @@ class M320MDataset(IterableDataset):
                 path=root / self.__class__.__name__,
                 progressbar=True,
             )
-        self.parquet_file = pyarrow.parquet.ParquetFile(
-            root / self.__class__.__name__ / f"{self.__class__.__name__}{suffix}"
-        )
+
+        self.data = pandas.read_parquet(root / self.__class__.__name__ / f"{self.__class__.__name__}{suffix}")
 
         self.columns = ["smiles", "Description"] if columns is None else columns
 
         self.transform = transform
 
-    def __iter__(self) -> Iterator[Any | Tuple[Any, ...]]:
-        for batch in self.parquet_file.iter_batches():
-            for row in batch.to_pandas()[self.columns].itertuples(index=False):
-                row = tuple(row)
+        self._x = list(self.data[self.columns].apply(tuple, axis=1))
 
-                if len(row) == 1:
-                    row = row[0]
+    def __getitem__(self, index: int) -> Tuple[str, str]:
+        x = self._x[index]
 
-                if self.transform is not None:
-                    row = self.transform(row)
+        if len(x) == 1:
+            x = x[0]
 
-                yield row
+        if self.transform is not None:
+            x = self.transform(x)
+
+        return x
+
+    def __len__(self) -> int:
+        return len(self._x)
