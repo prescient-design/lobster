@@ -59,11 +59,16 @@ class MultiplexedDataset(IterableDataset):
 
     def _get_iterator(self, dataset: IterableDataset) -> Iterator:
         """Get iterator for a dataset with proper worker sharding."""
-        if self._worker_info is None:  # Single worker
+        seed = self._get_shared_seed()
+
+        # Single worker
+        if self._worker_info is None:
+            random.seed(seed)
             return iter(dataset)
 
+        # Multiple workers
         worker_id = self._worker_info.id
-        worker_seed = self._get_shared_seed() + worker_id
+        worker_seed = seed + worker_id
         random.seed(worker_seed)
         iterator = iter(dataset)
 
@@ -88,13 +93,10 @@ class MultiplexedDataset(IterableDataset):
                 except StopIteration:
                     break
         else:
-            active_datasets = set(self.datasets)
             consumed = [False] * len(self.datasets)
 
-            while active_datasets:
-                chosen_dataset = rng.choices(
-                    list(active_datasets), weights=[self.weights[self.datasets.index(d)] for d in active_datasets], k=1
-                )[0]
+            while not all(consumed):
+                chosen_dataset = rng.choices(list(self.datasets), weights=self.weights, k=1)[0]
                 try:
                     yield next(iterators[chosen_dataset])
                 except StopIteration:
