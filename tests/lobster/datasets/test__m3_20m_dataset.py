@@ -1,7 +1,7 @@
 import unittest.mock
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-import pytest
 from lobster.datasets import M320MDataset
 from pandas import DataFrame
 
@@ -11,17 +11,15 @@ class TestM320MDataset:
 
     @unittest.mock.patch("pandas.read_parquet")
     @unittest.mock.patch("pooch.retrieve")
-    @pytest.fixture
-    def dataset(mock_retrieve, mock_read_parquet):
+    def test___init___(self, mock_retrieve, mock_read_parquet):
         with NamedTemporaryFile() as descriptor:
             mock_retrieve.return_value = descriptor.name
             mock_read_parquet.return_value = DataFrame({"smiles": ["C"], "Description": ["description"]})
 
-            return M320MDataset(descriptor.name, download=True)
+            dataset = M320MDataset(descriptor.name, download=True)
 
-    def test__iter__(self, dataset):
-        item = next(iter(dataset))
+            assert dataset.root == Path(descriptor.name).resolve()
 
-        assert len(item) == 2
-        assert isinstance(item[0], str)
-        assert isinstance(item[1], str)
+            assert dataset.transform is None
+
+            assert isinstance(dataset.data, DataFrame)
