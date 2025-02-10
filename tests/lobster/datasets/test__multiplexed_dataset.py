@@ -58,19 +58,18 @@ class Test_MultiplexedDataset:
         weights = [100, 1, 1]
         dataset = MultiplexedDataset(datasets, weights, seed=0, mode="min")
 
-        samples = list(iter(dataset))
+        samples = list(dataset)
         assert samples == ["1"]
 
-    # TODO zadorozk: fix this, it's not deterministic even with seed
-    # @pytest.mark.parametrize(
-    #     "weights, expected_samples",
-    #     [
-    #         pytest.param([1, 1, 1], ["A", "B", "Apple", "1", "Orange", "C", "Apple", "Orange"], id="equal_weights"),
-    #     ],
-    # )
-    # def test__iter__max_size_cycle(self, weights, expected_samples, datasets):
-    #     dataset = MultiplexedDataset(datasets, weights, seed=0, mode="max_size_cycle")
+    @pytest.mark.parametrize(
+        "weights",
+        [
+            pytest.param([1, 1, 1], id="equal_weights"),
+        ],
+    )
+    def test__iter__max_size_cycle(self, weights, datasets):
+        dataset = MultiplexedDataset(datasets, weights, seed=0, mode="max_size_cycle")
 
-    #     samples = list(iter(dataset))
+        samples = list(dataset)
 
-    #     assert samples == expected_samples
+        assert set(samples) == {"1", "A", "Apple", "Orange", "B", "C"}

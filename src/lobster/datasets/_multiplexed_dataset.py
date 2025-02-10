@@ -87,8 +87,8 @@ class MultiplexedDataset(IterableDataset):
 
         if self.mode == "min":
             while True:
+                chosen_dataset = rng.choices(self.datasets, weights=self.weights, k=1)[0]
                 try:
-                    chosen_dataset = rng.choices(self.datasets, weights=self.weights, k=1)[0]
                     yield next(iterators[chosen_dataset])
                 except StopIteration:
                     break
