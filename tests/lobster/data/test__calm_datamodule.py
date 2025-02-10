@@ -16,7 +16,6 @@ def dm(tmp_path):
             root=tmp_path,
             batch_size=8,
             lengths=(0.8, 0.1, 0.1),
-            download=False,
         )
         datamodule.prepare_data()
         datamodule.setup()

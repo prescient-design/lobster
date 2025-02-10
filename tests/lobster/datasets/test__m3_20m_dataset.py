@@ -19,14 +19,7 @@ class TestM320MDataset:
 
             return M320MDataset(descriptor.name, download=True)
 
-    def test__iter__(self):
-        dataset = M320MDataset(
-            root=None,
-            download=False,
-            transform=None,
-            columns=None,
-        )
-
+    def test__iter__(self, dataset):
         item = next(iter(dataset))
 
         assert len(item) == 2
