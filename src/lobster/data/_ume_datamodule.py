@@ -12,6 +12,7 @@ from lobster.datasets import (
     FASTADataset,
     M320MDataset,
     MultiplexedSamplingDataset,
+    ShuffledIterableDataset,
 )
 from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
@@ -88,6 +89,7 @@ class UmeLightningDataModule(LightningDataModule):
         max_length: int = 512,
         pin_memory: bool = True,
         drop_last: bool = False,
+        shuffle: bool = True,
     ) -> None:
         super().__init__()
 
@@ -126,6 +128,7 @@ class UmeLightningDataModule(LightningDataModule):
         self._collate_fn = collate_fn
         self._pin_memory = pin_memory
         self._drop_last = drop_last
+        self._shuffle = shuffle
 
     def _get_tokenizer_transform(self, modality: Literal["SMILES", "amino_acid", "nucleotide"]) -> None:
         match modality:
@@ -187,6 +190,9 @@ class UmeLightningDataModule(LightningDataModule):
                     )
                 )
             )
+
+        if self._shuffle:
+            self.datasets = [ShuffledIterableDataset(dataset) for dataset in self.datasets]
 
         if self._enable_sampling:
             self.dataset = MultiplexedSamplingDataset(
