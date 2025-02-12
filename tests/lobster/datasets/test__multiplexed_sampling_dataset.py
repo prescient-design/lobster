@@ -1,5 +1,5 @@
 import pytest
-from lobster.datasets import MultiplexedDataset
+from lobster.datasets import MultiplexedSamplingDataset
 from torch.utils.data import Dataset, IterableDataset
 
 
@@ -46,9 +46,9 @@ def datasets():
     ]
 
 
-class Test_MultiplexedDataset:
+class TestMultiplexedSamplingDataset:
     def test__init__(self, datasets):
-        dataset = MultiplexedDataset(datasets, seed=0, mode="min")
+        dataset = MultiplexedSamplingDataset(datasets, seed=0, mode="min")
 
         assert len(dataset.datasets) == 3
         assert pytest.approx(dataset.weights) == [1 / 3, 1 / 3, 1 / 3]
@@ -56,7 +56,7 @@ class Test_MultiplexedDataset:
 
     def test__iter__min(self, datasets):
         weights = [100, 1, 1]
-        dataset = MultiplexedDataset(datasets, weights, seed=0, mode="min")
+        dataset = MultiplexedSamplingDataset(datasets, weights, seed=0, mode="min")
 
         samples = list(dataset)
         assert samples == ["1"]
@@ -68,7 +68,7 @@ class Test_MultiplexedDataset:
         ],
     )
     def test__iter__max_size_cycle(self, weights, datasets):
-        dataset = MultiplexedDataset(datasets, weights, seed=0, mode="max_size_cycle")
+        dataset = MultiplexedSamplingDataset(datasets, weights, seed=0, mode="max_size_cycle")
 
         samples = list(dataset)
 
