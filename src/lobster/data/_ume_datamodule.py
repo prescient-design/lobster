@@ -22,6 +22,54 @@ SUPPORTED_DATASETS = {"M320M", "ChEMBL", "Calm", "Uniref50"}
 
 
 class UmeLightningDataModule(LightningDataModule):
+    """Lightning DataModule for handling multiple molecular and biological sequence datasets.
+
+    This DataModule supports multiple datasets including ChEMBL (molecules), M320M (molecules),
+    Calm (nucleotide sequences), and Uniref50 (amino acid sequences). It can handle both
+    regular dataset chaining and weighted sampling between datasets.
+
+    Parameters
+    ----------
+    root : Path | str
+        Root directory for dataset storage.
+    tokenizer_max_length : int
+        Maximum sequence length for tokenizer padding/truncation.
+    datasets : None | Sequence[str] | Dict[str, float], optional
+        Datasets to use. If None, uses all supported datasets.
+        If dict, keys are dataset names and values are sampling weights.
+        Supported datasets are: {M320M, ChEMBL, Calm, Uniref50}.
+    enable_sampling : bool, default=False
+        If True, enables weighted sampling between datasets.
+        Required when providing dataset weights.
+    download : bool, default=False
+        If True, downloads datasets if not present.
+    use_text_descriptions : bool, default=False
+        If True, includes text descriptions in dataset outputs.
+    generator : Generator | None, default=None
+        PyTorch Generator for reproducibility. If None, creates new one with seed.
+    seed : int, default=0xDEADBEEF
+        Random seed for generator initialization.
+    batch_size : int, default=1
+        Number of samples per batch.
+    batch_sampler : Iterable[Sequence] | Sampler[Sequence] | None, default=None
+        Batch sampler for custom sampling strategies.
+    num_workers : int, default=0
+        Number of subprocesses for data loading.
+    collate_fn : Callable[[list[T]], Any] | None, default=None
+        Function to collate samples into batches.
+    max_length : int, default=512
+        Maximum sequence length for dataset processing.
+    pin_memory : bool, default=True
+        If True, pins memory in DataLoader.
+    drop_last : bool, default=False
+        If True, drops last non-full batch.
+
+    Raises
+    ------
+    ValueError
+        If unknown datasets are specified or weights provided without sampling enabled.
+    """
+
     def __init__(
         self,
         *,
