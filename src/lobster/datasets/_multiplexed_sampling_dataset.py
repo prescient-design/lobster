@@ -28,8 +28,10 @@ class MultiplexedSamplingDataset(IterableDataset):
         seed : int | None, optional
             Optional random seed for reproducibility.
         mode : Literal["max_size_cycle", "min"], default="max_size_cycle"
-            Sampling mode. "max_size_cycle" stops after the longest iterable is done, while cycling through the rest.
-            "min" stops after the shortest iterable is done.
+            Sampling mode.
+             - "min" stops after the shortest iterable is done (default)
+             - "max_size_cycle" stops after the longest iterable is done, while cycling through the rest.
+            Similar to https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.utilities.combined_loader.html
         """
         self.datasets = datasets
 
