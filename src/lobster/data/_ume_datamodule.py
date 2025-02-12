@@ -6,22 +6,22 @@ from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
-from lobster.datasets import CalmDataset, M320MDataset, MultiplexedDataset
-from lobster.tokenization import NucleotideTokenizerFast, SmilesTokenizerFast
+from lobster.datasets import CalmDataset, FASTADataset, M320MDataset, MultiplexedDataset
+from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
 
 T = TypeVar("T")
 
-SUPPORTED_DATASETS = {"M320M", "ChEMBL", "Calm"}
+SUPPORTED_DATASETS = {"M320M", "ChEMBL", "Calm", "Uniref50"}
 
 
 class UmeLightningDataModule(LightningDataModule):
     def __init__(
         self,
         *,
+        root: Path | str,
         tokenizer_max_length: int,
-        datasets: Sequence[str] | Dict[str, float] = None,
-        root: Path | str | None = None,
+        datasets: None | Sequence[str] | Dict[str, float] = None,
         download: bool = False,
         use_text_descriptions: bool = False,
         generator: Generator | None = None,
@@ -76,6 +76,9 @@ class UmeLightningDataModule(LightningDataModule):
         nucleotide_transform = TokenizerTransform(
             NucleotideTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
         )
+        amino_acid_transform = TokenizerTransform(
+            AminoAcidTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
+        )
 
         dataset_instances = []
 
@@ -100,6 +103,15 @@ class UmeLightningDataModule(LightningDataModule):
                     root=self._root,
                     transform=nucleotide_transform,
                     columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
+                )
+            )
+        if "Uniref50" in self.datasets:
+            # TODO: update FASTADataset
+            dataset_instances.append(
+                FASTADataset(
+                    root=Path(self._root) / "uniref50.fasta",  # TODO: FIXME
+                    transform=amino_acid_transform,
+                    use_text_descriptions=self._use_text_descriptions,
                 )
             )
 
@@ -127,4 +139,10 @@ class UmeLightningDataModule(LightningDataModule):
     # since IterableDataset does not support random
     # splitting
     def val_dataloader(self) -> Any:
-        raise NotImplementedError()
+        return DataLoader(
+            self.dataset,
+            batch_size=self._batch_size,
+            num_workers=self._num_workers,
+            collate_fn=self._collate_fn,
+            pin_memory=self._pin_memory,
+        )

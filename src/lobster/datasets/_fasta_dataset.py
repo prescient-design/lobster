@@ -15,14 +15,19 @@ class FASTADataset(SizedSequenceDataset):
         root: Union[str, Path],
         *,
         transform: Optional[Callable] = None,
+        use_text_descriptions: bool = True,
     ) -> None:
         if isinstance(root, str):
-            self.root = Path(root)
+            root = Path(root)
+
+        self.root = root
 
         self.root = self.root.resolve()
 
         if not self.root.exists():
             raise FileNotFoundError
+
+        self._use_text_descriptions = use_text_descriptions
 
         self.data = ThreadSafeFile(self.root, open)
 
@@ -49,7 +54,7 @@ class FASTADataset(SizedSequenceDataset):
     def __len__(self) -> int:
         return self.offsets.size
 
-    def get(self, index: int) -> (str, str):
+    def get(self, index: int) -> tuple[str, str]:
         self.data.seek(self.offsets[index])
 
         if index == len(self) - 1:
@@ -58,9 +63,15 @@ class FASTADataset(SizedSequenceDataset):
             data = self.data.read(self.offsets[index + 1] - self.offsets[index])
 
         description, *sequence = data.split("\n")
-        return "".join(sequence), description
 
-    def _build_index(self) -> (numpy.ndarray, numpy.ndarray):
+        sequence = "".join(sequence)
+
+        if self._use_text_descriptions:
+            return sequence, description
+
+        return sequence
+
+    def _build_index(self) -> tuple[numpy.ndarray, numpy.ndarray]:
         return (
             numpy.fromstring(
                 subprocess.check_output(
