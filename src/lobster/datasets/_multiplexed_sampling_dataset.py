@@ -6,7 +6,7 @@ from typing import Iterator, Literal, Sequence
 from torch.utils.data import Dataset, IterableDataset, get_worker_info
 
 
-class MultiplexedDataset(IterableDataset):
+class MultiplexedSamplingDataset(IterableDataset):
     """Dataset that samples from multiple datasets according to specified weights."""
 
     def __init__(
@@ -14,7 +14,7 @@ class MultiplexedDataset(IterableDataset):
         datasets: Sequence[IterableDataset | Dataset],
         weights: Sequence[float] | None = None,
         seed: int | None = None,
-        mode: Literal["max_size_cycle", "min"] = "max_size_cycle",
+        mode: Literal["max_size_cycle", "min"] = "min",
     ):
         """
         Initialize multiplexed dataset.

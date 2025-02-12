@@ -1,12 +1,18 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Sequence, TypeVar
+from typing import Any, Callable, Dict, Iterable, Literal, Sequence, TypeVar
 
 from beignet.datasets import ChEMBLDataset
 from lightning import LightningDataModule
 from torch import Generator
-from torch.utils.data import DataLoader, Sampler
+from torch.utils.data import ChainDataset, DataLoader, Sampler
 
-from lobster.datasets import CalmDataset, FASTADataset, M320MDataset, MultiplexedDataset
+from lobster.datasets import (
+    CalmDataset,
+    DatasetToIterableDataset,
+    FASTADataset,
+    M320MDataset,
+    MultiplexedSamplingDataset,
+)
 from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
 
@@ -22,6 +28,7 @@ class UmeLightningDataModule(LightningDataModule):
         root: Path | str,
         tokenizer_max_length: int,
         datasets: None | Sequence[str] | Dict[str, float] = None,
+        enable_sampling: bool = False,
         download: bool = False,
         use_text_descriptions: bool = False,
         generator: Generator | None = None,
@@ -37,20 +44,22 @@ class UmeLightningDataModule(LightningDataModule):
         super().__init__()
 
         if datasets is None:
-            self.datasets = SUPPORTED_DATASETS
+            self.dataset_names = SUPPORTED_DATASETS
             self.weights = None
         elif isinstance(datasets, dict):
-            self.datasets = set(datasets.keys())
+            self.dataset_names = set(datasets.keys())
             self.weights = list(datasets.values())
         else:
-            self.datasets = set(datasets)
+            self.dataset_names = set(datasets)
             self.weights = None
 
-        if not self.datasets.issubset(SUPPORTED_DATASETS):
+        if not self.dataset_names.issubset(SUPPORTED_DATASETS):
             raise ValueError(
                 f"Only the following datasets are supported: {SUPPORTED_DATASETS}."
-                f"Unknown datasets: {self.datasets - SUPPORTED_DATASETS}"
+                f"Unknown datasets: {self.dataset_names - SUPPORTED_DATASETS}"
             )
+        if self.weights is not None and not enable_sampling:
+            raise ValueError("Weights can only be provided if sampling behavior is enabled.")
 
         if generator is None:
             generator = Generator().manual_seed(seed)
@@ -59,6 +68,7 @@ class UmeLightningDataModule(LightningDataModule):
         self._download = download
         self._tokenizer_max_length = tokenizer_max_length
         self._use_text_descriptions = use_text_descriptions
+        self._enable_sampling = enable_sampling
         self._generator = generator
         self._seed = seed
         self._batch_size = batch_size
@@ -69,57 +79,75 @@ class UmeLightningDataModule(LightningDataModule):
         self._pin_memory = pin_memory
         self._drop_last = drop_last
 
+    def _get_tokenizer_transform(self, modality: Literal["SMILES", "amino_acid", "nucleotide"]) -> None:
+        match modality:
+            case "SMILES":
+                tokenizer = SmilesTokenizerFast()
+            case "amino_acid":
+                tokenizer = AminoAcidTokenizerFast()
+            case "nucleotide":
+                tokenizer = NucleotideTokenizerFast()
+
+        return TokenizerTransform(
+            tokenizer, padding="max_length", truncation=True, max_length=self._tokenizer_max_length
+        )
+
     def prepare_data(self) -> None:
-        smiles_transform = TokenizerTransform(
-            SmilesTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-        )
-        nucleotide_transform = TokenizerTransform(
-            NucleotideTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-        )
-        amino_acid_transform = TokenizerTransform(
-            AminoAcidTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-        )
+        smiles_transform = self._get_tokenizer_transform("SMILES")
+        amino_acid_transform = self._get_tokenizer_transform("amino_acid")
+        nucleotide_transform = self._get_tokenizer_transform("nucleotide")
 
-        dataset_instances = []
+        self.datasets = []
 
-        if "M320M" in self.datasets:
-            dataset_instances.append(
-                M320MDataset(
-                    root=self._root,
-                    download=self._download,
-                    transform=smiles_transform,
-                    columns=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
+        if "M320M" in self.dataset_names:
+            self.datasets.append(
+                DatasetToIterableDataset(
+                    M320MDataset(
+                        root=self._root,
+                        download=self._download,
+                        transform=smiles_transform,
+                        columns=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
+                    )
                 )
             )
 
-        if "ChEMBL" in self.datasets:
-            dataset_instances.append(
-                ChEMBLDataset(root=self._root, download=self._download, transform=smiles_transform)
-            )
-
-        if "Calm" in self.datasets:
-            dataset_instances.append(
-                CalmDataset(
-                    root=self._root,
-                    transform=nucleotide_transform,
-                    columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
-                )
-            )
-        if "Uniref50" in self.datasets:
-            # TODO: update FASTADataset
-            dataset_instances.append(
-                FASTADataset(
-                    root=Path(self._root) / "uniref50.fasta",  # TODO: FIXME
-                    transform=amino_acid_transform,
-                    use_text_descriptions=self._use_text_descriptions,
+        if "ChEMBL" in self.dataset_names:
+            self.datasets.append(
+                DatasetToIterableDataset(
+                    ChEMBLDataset(root=self._root, download=self._download, transform=smiles_transform)
                 )
             )
 
-        self.dataset = MultiplexedDataset(
-            datasets=dataset_instances,
-            weights=self.weights,
-            seed=self._seed,
-        )
+        if "Calm" in self.dataset_names:
+            self.datasets.append(
+                DatasetToIterableDataset(
+                    CalmDataset(
+                        root=self._root,
+                        transform=nucleotide_transform,
+                        columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
+                    )
+                )
+            )
+        if "Uniref50" in self.dataset_names:
+            # TODO: Switch to AMPLIFY
+            self.datasets.append(
+                DatasetToIterableDataset(
+                    FASTADataset(
+                        root=Path(self._root) / "uniref50.fasta",  # TODO: FIXME
+                        transform=amino_acid_transform,
+                        use_text_descriptions=self._use_text_descriptions,
+                    )
+                )
+            )
+
+        if self._enable_sampling:
+            self.dataset = MultiplexedSamplingDataset(
+                datasets=self.datasets,
+                weights=self.weights,
+                seed=self._seed,
+            )
+        else:
+            self.dataset = ChainDataset(self.datasets)
 
     def setup(self, stage: str = "fit") -> None:
         pass
