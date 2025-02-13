@@ -31,15 +31,12 @@ class ShuffledIterableDataset(IterableDataset):
 
         if self._worker_info is None:
             random.seed(shared_seed)
-            print(f"Master seed: {shared_seed}")
             return
 
         # Multiple workers
         worker_id = self._worker_info.id
         worker_seed = shared_seed + worker_id
         random.seed(worker_seed)
-
-        print(f"Worker {worker_id} seed: {worker_seed}")
 
     def __iter__(self):
         self._worker_info = get_worker_info()

@@ -215,11 +215,9 @@ class UmeLightningDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    # TODO zadorozk: Implement validation dataset
-    # The easiest way would be to have separate datasets
-    # for each modality for validation and testing
-    # since IterableDataset does not support random
-    # splitting
+    # NOTE zadorozk: currently uses the same dataset
+    # as for training but since we're using IterableDataset
+    # it will receive different data than training
     def val_dataloader(self) -> Any:
         return DataLoader(
             self.dataset,
