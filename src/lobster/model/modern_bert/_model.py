@@ -116,7 +116,8 @@ class FlexBertModel(torch.nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor,
+        input_ids: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
         indices: Optional[torch.Tensor] = None,
@@ -124,13 +125,16 @@ class FlexBertModel(torch.nn.Module):
         max_seqlen: Optional[int] = None,
         **kwargs,
     ) -> Tuple[Union[List[torch.Tensor], torch.Tensor], Optional[torch.Tensor]]:
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
-
-        embedding_output = self.embeddings(input_ids, position_ids)
+        if inputs_embeds is None:
+            assert input_ids is not None, "input_ids or inputs_embeds must be provided"
+            if attention_mask is None:
+                attention_mask = torch.ones_like(input_ids)
+            embeddings = self.embeddings(input_ids, position_ids)
+        else:
+            embeddings = inputs_embeds
 
         encoder_outputs = self.encoder(
-            hidden_states=embedding_output,
+            hidden_states=embeddings,
             attention_mask=attention_mask,
             indices=indices,
             cu_seqlens=cu_seqlens,
