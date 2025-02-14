@@ -1,14 +1,19 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, Sequence, TypeVar
+from typing import Any, Callable, Dict, Literal, Sequence, TypeVar
 
 import torch.utils.data
 from beignet.datasets import ChEMBLDataset
 from lightning import LightningDataModule
-from lightning.pytorch.utilities.types import EVAL_DATALOADERS
 from torch import Generator
 from torch.utils.data import ConcatDataset, DataLoader
 
-from lobster.datasets import CalmDataset, FASTADataset, M320MDataset
+from lobster.datasets import (
+    CalmDataset,
+    FASTADataset,
+    M320MDataset,
+)
+from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
+from lobster.transforms import TokenizerTransform
 
 from ._weighted_concat_sampler import WeightedConcatSampler
 
@@ -71,6 +76,19 @@ class UmeLightningDataModule(LightningDataModule):
         self._train_datasets = None
         self._val_datasets = None
         self._test_datasets = None
+
+    def _get_tokenizer_transform(self, modality: Literal["SMILES", "amino_acid", "nucleotide"]) -> None:
+        match modality:
+            case "SMILES":
+                tokenizer = SmilesTokenizerFast()
+            case "amino_acid":
+                tokenizer = AminoAcidTokenizerFast()
+            case "nucleotide":
+                tokenizer = NucleotideTokenizerFast()
+
+        return TokenizerTransform(
+            tokenizer, padding="max_length", truncation=True, max_length=self._tokenizer_max_length
+        )
 
     def prepare_data(self) -> None:
         smiles_transform = self._get_tokenizer_transform("SMILES")
@@ -149,7 +167,7 @@ class UmeLightningDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def val_dataloader(self) -> EVAL_DATALOADERS:
+    def val_dataloader(self):
         return DataLoader(
             ConcatDataset(self._val_datasets),
             batch_size=self._batch_size,
@@ -159,7 +177,7 @@ class UmeLightningDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def test_dataloader(self) -> EVAL_DATALOADERS:
+    def test_dataloader(self):
         return DataLoader(
             ConcatDataset(self._test_datasets),
             batch_size=self._batch_size,
