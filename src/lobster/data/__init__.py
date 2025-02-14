@@ -18,6 +18,7 @@ from ._mmseqs import MMSeqsRunner
 from ._structure_datamodule import PDBDataModule
 from ._ume_datamodule import UmeLightningDataModule
 from ._utils import load_pickle
+from ._weighted_concat_sampler import WeightedConcatSampler
 
 __all__ = [
     "CalmLightningDataModule",
@@ -37,5 +38,6 @@ __all__ = [
     "MMSeqsRunner",
     "PDBDataModule",
     "load_pickle",
+    "WeightedConcatSampler",
     "UmeLightningDataModule",
 ]
