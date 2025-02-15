@@ -22,8 +22,6 @@ class CalmDataset(Dataset):
         self,
         root: str | Path | None = None,
         *,
-        download: bool = True,
-        known_hash: str | None = None,
         transform: Callable | Transform | None = None,
         columns: Sequence[str] | None = None,
     ):
@@ -49,7 +47,7 @@ class CalmDataset(Dataset):
         self.columns = ["sequence", "description"] if columns is None else columns
         self.transform = transform
 
-        self._x = self.data[self.columns].apply(tuple, axis=1)
+        self._x = list(self.data[self.columns].apply(tuple, axis=1))
 
     def __getitem__(self, index: int) -> Tuple[str, str]:
         x = self._x[index]

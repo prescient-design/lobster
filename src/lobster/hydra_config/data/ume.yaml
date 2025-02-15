@@ -1,0 +1,7 @@
+_target_: lobster.data.UmeLightningDataModule
+use_text_descriptions: false
+tokenizer_max_length: ???
+download: true
+batch_size: 64
+seed: 0
+

@@ -13,7 +13,7 @@ class TestCalmDataset:
         """Test __init__ method."""
         mock_load_dataset.return_value = DataFrame({"sequence": ["ATG"], "description": ["dna"]})
 
-        dataset = CalmDataset(root=tmp_path, download=False)
+        dataset = CalmDataset(root=tmp_path)
 
         item = dataset[0]
 
