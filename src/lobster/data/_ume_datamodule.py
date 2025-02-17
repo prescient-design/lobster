@@ -21,7 +21,7 @@ from ._weighted_concat_sampler import WeightedConcatSampler
 T = TypeVar("T")
 
 
-SUPPORTED_DATASETS_WITH_MODALITIES = {
+SUPPORTED_DATASETS_MODALITIES_DICT = {
     "M320M": Modality.SMILES,
     "ChEMBL": Modality.SMILES,
     "Calm": Modality.NUCLEOTIDE,
@@ -108,7 +108,7 @@ class UmeLightningDataModule(LightningDataModule):
         """
         super().__init__()
 
-        supported_datasets = set(SUPPORTED_DATASETS_WITH_MODALITIES.keys())
+        supported_datasets = set(SUPPORTED_DATASETS_MODALITIES_DICT.keys())
 
         if isinstance(datasets, dict):
             self.dataset_names = list(datasets.keys())
@@ -158,7 +158,7 @@ class UmeLightningDataModule(LightningDataModule):
 
     def _get_dataset(self, name: str) -> Dataset:
         """Get a dataset instance with appropriate tokenizer transform."""
-        modality = SUPPORTED_DATASETS_WITH_MODALITIES[name]
+        modality = SUPPORTED_DATASETS_MODALITIES_DICT[name]
         transform = self._tokenizer_transforms[modality]
 
         match name:
