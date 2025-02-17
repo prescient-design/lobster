@@ -55,7 +55,7 @@ class TestMultiplexedSamplingDataset:
         assert dataset.seed == 0
 
     def test__iter__min(self, datasets):
-        weights = [100, 1, 1]
+        weights = [1000, 1, 1]
         dataset = MultiplexedSamplingDataset(datasets, weights, seed=0, mode="min")
 
         samples = list(dataset)
