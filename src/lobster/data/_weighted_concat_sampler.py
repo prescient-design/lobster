@@ -3,6 +3,8 @@ from typing import Iterator, Optional, Sequence
 import torch
 from torch.utils.data import Sampler
 
+from lobster.constants import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
+
 
 class WeightedConcatSampler(Sampler[int]):
     """A sampler that handles weighted sampling from concatenated datasets.
@@ -56,6 +58,7 @@ class WeightedConcatSampler(Sampler[int]):
             seed = int(torch.empty((), dtype=torch.int64).random_().item())
             generator = torch.Generator()
             generator.manual_seed(seed)
+
         self.generator = generator
 
         # number of samples for each dataset based on weights and
@@ -65,9 +68,6 @@ class WeightedConcatSampler(Sampler[int]):
     def __iter__(self) -> Iterator[int]:
         indices = []
 
-        # generate indices in chunks
-        CHUNK_SIZE = 32
-
         for dataset_idx in range(self.num_datasets):
             samples_needed = self.samples_per_dataset[dataset_idx]
             dataset_size = self.dataset_sizes[dataset_idx]
@@ -76,21 +76,24 @@ class WeightedConcatSampler(Sampler[int]):
 
             oversample = weight > 1
 
-            for _ in range(samples_needed // CHUNK_SIZE):
+            for _ in range(samples_needed // WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE):
                 # If oversampling, draw with replacement
                 if oversample:
                     chunk = torch.randint(
-                        high=dataset_size, size=(CHUNK_SIZE,), generator=self.generator, dtype=torch.int64
+                        high=dataset_size,
+                        size=(WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE,),
+                        generator=self.generator,
+                        dtype=torch.int64,
                     )
                 # If undersampling or weight=1, draw without replacement
                 else:
-                    remaining = min(CHUNK_SIZE, dataset_size)
+                    remaining = min(WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE, dataset_size)
                     chunk = torch.randperm(dataset_size, generator=self.generator)[:remaining]
 
                 dataset_indices.append(chunk)
 
             # Handle remainder
-            remainder = samples_needed % CHUNK_SIZE
+            remainder = samples_needed % WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
             if remainder > 0:
                 if oversample:
                     chunk = torch.randint(

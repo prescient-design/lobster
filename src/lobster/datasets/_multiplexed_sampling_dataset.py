@@ -1,8 +1,8 @@
-"""Adapted from Keunwoo Cho's https://code.roche.com/choik11/genie-proteinie/-/blob/k/vanilla-data/genie_proteinie/data/utils.py"""
+"""Adapted from Keunwoo Choi's https://code.roche.com/choik11/genie-proteinie/-/blob/k/vanilla-data/genie_proteinie/data/utils.py"""
 
-import random
 from typing import Iterator, Literal, Sequence
 
+import torch
 from torch.utils.data import Dataset, IterableDataset, get_worker_info
 
 
@@ -47,15 +47,16 @@ class MultiplexedSamplingDataset(IterableDataset):
         else:
             weights = [1.0] * len(datasets)
 
-        self.weights = [w / sum(weights) for w in weights]
+        self.weights = torch.tensor([w / sum(weights) for w in weights])
         self.seed = seed
         self._worker_info = None
         self._shared_seed = None
+        self._generator = None
 
     def _get_shared_seed(self) -> int:
         """Get seed shared across workers for consistent sampling."""
         if self._shared_seed is None:
-            base_seed = self.seed if self.seed is not None else random.randint(0, 2**32 - 1)
+            base_seed = self.seed if self.seed is not None else torch.randint(0, 2**32 - 1, (1,)).item()
             self._shared_seed = base_seed
         return self._shared_seed
 
@@ -65,13 +66,15 @@ class MultiplexedSamplingDataset(IterableDataset):
 
         # Single worker
         if self._worker_info is None:
-            random.seed(seed)
+            self._generator = torch.Generator()
+            self._generator.manual_seed(seed)
             return iter(dataset)
 
         # Multiple workers
         worker_id = self._worker_info.id
         worker_seed = seed + worker_id
-        random.seed(worker_seed)
+        self._generator = torch.Generator()
+        self._generator.manual_seed(worker_seed)
         iterator = iter(dataset)
 
         for _ in range(worker_id):
@@ -84,29 +87,28 @@ class MultiplexedSamplingDataset(IterableDataset):
         self._worker_info = get_worker_info()
         iterators = {dataset: self._get_iterator(dataset) for dataset in self.datasets}
 
-        random_seed = self._get_shared_seed()
-        rng = random.Random(random_seed)
-
         if self.mode == "min":
             while True:
-                chosen_dataset = rng.choices(self.datasets, weights=self.weights, k=1)[0]
+                chosen_idx = torch.multinomial(self.weights, 1, generator=self._generator).item()
+                chosen_dataset = self.datasets[chosen_idx]
                 try:
                     yield next(iterators[chosen_dataset])
                 except StopIteration:
                     break
         else:
-            consumed = [False] * len(self.datasets)
+            consumed = torch.zeros(len(self.datasets), dtype=torch.bool)
 
-            while not all(consumed):
-                chosen_dataset = rng.choices(list(self.datasets), weights=self.weights, k=1)[0]
+            while not consumed.all():
+                chosen_idx = torch.multinomial(self.weights, 1, generator=self._generator).item()
+                chosen_dataset = self.datasets[chosen_idx]
                 try:
                     yield next(iterators[chosen_dataset])
                 except StopIteration:
                     # Mark this dataset as consumed
-                    consumed[self.datasets.index(chosen_dataset)] = True
+                    consumed[chosen_idx] = True
 
                     # If all datasets have been consumed at least once, we're done
-                    if all(consumed):
+                    if consumed.all():
                         break
 
                     # Otherwise, reset this iterator and continue
