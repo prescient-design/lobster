@@ -138,39 +138,28 @@ class UmeLightningDataModule(LightningDataModule):
         self._shuffle = shuffle
         self._lengths = length
 
+        # Initialize tokenizer transforms for each modality
+        self._tokenizer_transforms = {
+            Modality.SMILES: TokenizerTransform(
+                SmilesTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
+            ),
+            Modality.AMINO_ACID: TokenizerTransform(
+                AminoAcidTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
+            ),
+            Modality.NUCLEOTIDE: TokenizerTransform(
+                NucleotideTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
+            ),
+        }
+
         self.datasets = None
         self._train_datasets = None
         self._val_datasets = None
         self._test_datasets = None
 
-    def _get_tokenizer_transform(self, modality: Modality) -> TokenizerTransform:
-        """Create a tokenizer transform for the given modality.
-
-        Parameters
-        ----------
-        modality : Modality
-            The modality to create a tokenizer for (SMILES, AMINO_ACID, or NUCLEOTIDE)
-
-        Returns
-        -------
-        TokenizerTransform
-            Configured tokenizer transform for the modality
-        """
-        match modality:
-            case Modality.SMILES:
-                tokenizer = SmilesTokenizerFast()
-            case Modality.AMINO_ACID:
-                tokenizer = AminoAcidTokenizerFast()
-            case Modality.NUCLEOTIDE:
-                tokenizer = NucleotideTokenizerFast()
-
-        return TokenizerTransform(
-            tokenizer, padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-        )
-
     def _get_dataset(self, name: str) -> Dataset:
+        """Get a dataset instance with appropriate tokenizer transform."""
         modality = SUPPORTED_DATASETS_WITH_MODALITIES[name]
-        transform = self._get_tokenizer_transform(modality)
+        transform = self._tokenizer_transforms[modality]
 
         match name:
             case "M320M":
@@ -198,14 +187,7 @@ class UmeLightningDataModule(LightningDataModule):
                 raise ValueError(f"Dataset {name} is not supported")
 
     def prepare_data(self) -> None:
-        """Prepare datasets by creating them with appropriate tokenizers.
-
-        This method is called by the Lightning Trainer to do any necessary preparation
-        of the data before training begins. In this case, it creates all requested
-        datasets with their corresponding tokenizers.
-        """
         self.datasets = []
-
         for name in self.dataset_names:
             dataset = self._get_dataset(name)
             self.datasets.append(dataset)
@@ -214,7 +196,6 @@ class UmeLightningDataModule(LightningDataModule):
         if self.datasets is None:
             self.prepare_data()
 
-        # Split each dataset individually
         self._train_datasets = []
         self._val_datasets = []
         self._test_datasets = []
@@ -244,7 +225,7 @@ class UmeLightningDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader:
         return DataLoader(
             ConcatDataset(self._val_datasets),
             batch_size=self._batch_size,
@@ -254,7 +235,7 @@ class UmeLightningDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> DataLoader:
         return DataLoader(
             ConcatDataset(self._test_datasets),
             batch_size=self._batch_size,
