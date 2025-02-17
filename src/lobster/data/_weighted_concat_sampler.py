@@ -39,8 +39,13 @@ class WeightedConcatSampler(Sampler[int]):
     """
 
     def __init__(
-        self, dataset_sizes: Sequence[int], weights: Sequence[float], generator: Optional[torch.Generator] = None
+        self,
+        dataset_sizes: Sequence[int],
+        weights: Sequence[float] | None = None,
+        generator: Optional[torch.Generator] = None,
     ) -> None:
+        weights = weights if weights is not None else [1.0] * len(dataset_sizes)
+
         if len(dataset_sizes) != len(weights):
             raise ValueError("Number of datasets and weights must match")
 

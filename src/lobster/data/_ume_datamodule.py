@@ -115,7 +115,7 @@ class UmeLightningDataModule(LightningDataModule):
             self.weights = list(datasets.values())
         else:
             self.dataset_names = list(datasets) if datasets is not None else list(supported_datasets)
-            self.weights = [1.0] * len(self.dataset_names)
+            self.weights = None
 
         if not set(self.dataset_names).issubset(supported_datasets):
             raise ValueError(
