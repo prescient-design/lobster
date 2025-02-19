@@ -39,6 +39,7 @@ dependencies = [
     "einops",
     "flash-attn; sys_platform == 'linux'",
     "beignet[datasets,mdtraj]",
+    "deepspeed",
 ]
 
 [build-system]
