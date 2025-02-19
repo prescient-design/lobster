@@ -54,7 +54,7 @@ class M320MDataset(Dataset):
             List of columns to be used from the dataset.
         """
         super().__init__()
-        url = "https://huggingface.co/datasets/karina-zadorozhny/M320M-multi-modal-molecular-dataset/resolve/main/M320M-Dataset.parquet.gzip"
+        url = "https://huggingface.co/datasets/karina-zadorozhny/M320M/resolve/main/M320M-Dataset.parquet.gzip"
 
         suffix = ".parquet.gzip"
 

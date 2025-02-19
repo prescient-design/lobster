@@ -1,0 +1,3 @@
+moleculeace_linear_probe:
+  _target_: lobster.callbacks.MoleculeACELinearProbeCallback
+  max_length: ???
