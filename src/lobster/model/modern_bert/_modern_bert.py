@@ -136,6 +136,30 @@ class FlexBERT(pl.LightningModule):
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
+    def tokens_to_latents(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:        
+        # Remove the middle dimension and flatten
+        input_ids = input_ids.squeeze(1)
+        attention_mask = attention_mask.squeeze(1)
+        
+        batch_size, length = input_ids.shape  # Now shape is (batch_size, sequence_length)
+        input_ids = input_ids.view(-1)  # Flatten to (batch_size * sequence_length)
+        attention_mask = attention_mask.view(-1)
+        
+        # Create cumulative sequence lengths tensor
+        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(batch_size)], 
+                                dtype=torch.int32,
+                                device=input_ids.device)
+        
+        with torch.inference_mode():
+            hidden_states = self.model(
+                input_ids,
+                attention_mask=attention_mask,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=self.max_length
+            )
+        
+        return hidden_states
+
     def sequences_to_latents(self, sequences: list[str]) -> list[torch.Tensor]:
         transformed_sequences = self.tokenize_transform(sequences)
         input_ids = torch.concat([batch["input_ids"].squeeze(0) for batch in transformed_sequences]).to(self.device)
