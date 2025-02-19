@@ -38,7 +38,6 @@ dependencies = [
     "einops",
     "flash-attn; sys_platform == 'linux'",
     "beignet[datasets,mdtraj]",
-    "deepspeed",
 ]
 
 [build-system]
@@ -109,7 +108,6 @@ ignore = [
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 constraint-dependencies = ["torch==2.5.1"]
-no-build-isolation-package = ['deepspeed']
 cache-keys = [{file = "requirements-dev.in"}, {file = "requirements-mgm.in"}]
 
 [tool.uv.sources]
