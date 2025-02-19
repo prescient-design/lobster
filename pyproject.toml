@@ -3,7 +3,7 @@ name = "lbster"
 readme = "README.md"
 description = "Language models for Biological Sequence Transformation and Evolutionary Representation."
 authors = [{name = "Nathan C. Frey", email = "frey.nathan.nf1@gene.com"}]
-dynamic = ["version", "optional-dependencies"]
+dynamic = ["version"]
 requires-python = ">=3.10"
 dependencies = [
     "pooch",
@@ -38,6 +38,7 @@ dependencies = [
     "einops",
     "flash-attn; sys_platform == 'linux'",
     "beignet[datasets,mdtraj]",
+    "deepspeed",
 ]
 
 [build-system]
@@ -52,10 +53,6 @@ lobster_intervene = "lobster.cmdline:intervene"
 lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval = "lobster.cmdline:eval_embed"
-
-[tool.setuptools.dynamic.optional-dependencies]
-dev = {file = ["requirements-dev.in"]}
-mgm = {file = ["requirements-mgm.in"]}
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -118,3 +115,17 @@ flash_attn = [
   { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.13'"}
 ]
 beignet = { git = "https://github.com/Genentech/beignet" }
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "mypy>=1.14.1",
+    "pre-commit>=4.0.1",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.1",
+]
+mgm = [
+    "rdkit>=2024.9.4",
+    "selfies>=2.1.2",
+]
