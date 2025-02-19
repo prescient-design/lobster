@@ -54,6 +54,12 @@ lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval = "lobster.cmdline:eval_embed"
 
+[project.optional-dependencies]
+mgm = [
+    "rdkit>=2024.9.4",
+    "selfies>=2.1.2",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -105,7 +111,6 @@ ignore = [
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 constraint-dependencies = ["torch==2.5.1"]
-cache-keys = [{file = "requirements-dev.in"}, {file = "requirements-mgm.in"}]
 
 [tool.uv.sources]
 flash_attn = [
@@ -124,8 +129,4 @@ dev = [
     "pytest>=8.3.4",
     "pytest-cov>=6.0.0",
     "ruff>=0.9.1",
-]
-mgm = [
-    "rdkit>=2024.9.4",
-    "selfies>=2.1.2",
 ]
