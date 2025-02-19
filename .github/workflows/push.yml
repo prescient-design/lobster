@@ -45,43 +45,6 @@ jobs:
         with:
           args: "format --check"
           version: 0.7.3
-  # pypi:
-  #   environment:
-  #     name: "pypi.org"
-  #     url: "https://pypi.org/project/lbster"
-  #   if: "startsWith(github.ref, 'refs/tags/')"
-  #   needs:
-  #     - "build"
-  #   permissions:
-  #     id-token: "write"
-  #   runs-on: "ubuntu-latest"
-  #   steps:
-  #     - uses: "actions/download-artifact@v3"
-  #       with:
-  #         name: "python-package-distributions"
-  #         path: "dist/"
-  #     - uses: "pypa/gh-action-pypi-publish@release/v1"
-  # release:
-  #   needs:
-  #     - "pypi"
-  #   permissions:
-  #     contents: "write"
-  #     id-token: "write"
-  #   runs-on: "ubuntu-latest"
-  #   steps:
-  #     - uses: "actions/download-artifact@v3"
-  #       with:
-  #         name: "python-package-distributions"
-  #         path: "dist/"
-  #     - uses: "sigstore/gh-action-sigstore-python@v1.2.3"
-  #       with:
-  #         inputs: "./dist/*.tar.gz ./dist/*.whl"
-  #     - env:
-  #         GITHUB_TOKEN: "${{ github.token }}"
-  #       run: "gh release create '${{ github.ref_name }}' --notes '' --repo '${{ github.repository }}'"
-  #     - env:
-  #         GITHUB_TOKEN: "${{ github.token }}"
-  #       run: "gh release upload '${{ github.ref_name }}' dist/** --repo '${{ github.repository }}'"
   testpypi:
     environment:
       name: "test.pypi.org"

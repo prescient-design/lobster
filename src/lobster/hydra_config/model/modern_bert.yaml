@@ -7,4 +7,9 @@ max_length: 512
 tokenizer_dir: pmlm_tokenizer
 embedding_layer: linear_pos
 hidden_size: 252
+num_hidden_layers: 12
+num_attention_heads: 12
+intermediate_size: 1152
+hidden_act: gelu
+mask_percentage: 0.25
 ckpt_path: null
