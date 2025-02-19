@@ -1,7 +1,6 @@
 import importlib.resources
 import math
 
-import esm
 import hydra
 import lightning.pytorch as pl
 import pandas as pd
@@ -9,7 +8,6 @@ import torch
 import wandb
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import DictConfig
-from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Dataset
 
 from lobster.model._utils import model_typer
@@ -60,13 +58,7 @@ def perplexity(cfg: DictConfig) -> bool:
         max_length=512,
     )
 
-    if cfg.model.model_type == "esm":
-        model, alphabet = esm.pretrained.esm2_t30_150M_UR50D()
-        model_helper = (
-            model_typer[cfg.model_helper.model_type].load_from_checkpoint(cfg.model_helper.checkpoint).to(device)
-        )
-    else:
-        model = model_typer[cfg.model.model_type].load_from_checkpoint(cfg.model.checkpoint).to(device)
+    model = model_typer[cfg.model.model_type].load_from_checkpoint(cfg.model.checkpoint).to(device)
 
     model.to(device).eval()
     df = pd.read_csv(cfg.path)
@@ -90,12 +82,8 @@ def perplexity(cfg: DictConfig) -> bool:
         attention_mask = torch.concat([toks["attention_mask"].to(device) for toks in transform_fn(sequences)])
         labels = input_ids.clone()
 
-        if cfg.model.model_type == "esm":
-            masked_toks = model_helper._mask_inputs(input_ids, p_mask=cfg.mask_percentage)
-            labels[masked_toks != model_helper.tokenizer.mask_token_id] = -100  # Only calculate loss on masked tokens
-        else:
-            masked_toks = model._mask_inputs(input_ids, p_mask=cfg.mask_percentage)
-            labels[masked_toks != model.tokenizer.mask_token_id] = -100  # Only calculate loss on masked tokens
+        masked_toks = model._mask_inputs(input_ids, p_mask=cfg.mask_percentage)
+        labels[masked_toks != model.tokenizer.mask_token_id] = -100  # Only calculate loss on masked tokens
 
         if cfg.model.conditional_model:
             if model.config.conditioning_type in ["pre_encoder", "pre_encoder_with_classifier"]:
@@ -120,12 +108,7 @@ def perplexity(cfg: DictConfig) -> bool:
                 )
             loss = outputs["loss"].detach()
         else:
-            if cfg.model.model_type == "esm":
-                logits = model(masked_toks)["logits"].detach()
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, model_helper.config.vocab_size + 1), labels.view(-1)).detach()
-            else:
-                loss = model.model(input_ids=masked_toks, attention_mask=attention_mask, labels=labels)["loss"].detach()
+            loss = model.model(input_ids=masked_toks, attention_mask=attention_mask, labels=labels)["loss"].detach()
 
         total_loss += loss.item()
         ppl = math.exp(loss.item())

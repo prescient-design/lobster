@@ -55,9 +55,6 @@ lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval = "lobster.cmdline:eval_embed"
 
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.in"]}
-
 [tool.setuptools.dynamic.optional-dependencies]
 dev = {file = ["requirements-dev.in"]}
 mgm = {file = ["requirements-mgm.in"]}
@@ -113,7 +110,7 @@ ignore = [
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 constraint-dependencies = ["torch==2.5.1"]
-cache-keys = [{file = "requirements.in"}, {file = "requirements-dev.in"}, {file = "requirements-mgm.in"}]
+cache-keys = [{file = "requirements-dev.in"}, {file = "requirements-mgm.in"}]
 
 [tool.uv.sources]
 flash_attn = [
