@@ -36,7 +36,7 @@ class FlexBERT(pl.LightningModule):
         num_training_steps: int = 10_000,
         num_warmup_steps: int = 1_000,
         tokenizer: Union[str, PreTrainedTokenizer, PreTrainedTokenizerFast] = "amino_acid_tokenizer",
-        mask_percentage: float = 0.15,
+        mask_percentage: float = 0.25,
         max_length: int = 512,
         **model_kwargs,
     ):
