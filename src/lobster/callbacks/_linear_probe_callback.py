@@ -38,7 +38,6 @@ class LinearProbeCallback(Callback):
         # Dictionary to store trained probes
         self.probes: Dict[str, LinearRegression | LogisticRegression] = {}
 
-
     def _set_metrics(self, task_type: TaskType, num_classes: Optional[int] = None) -> None:
         """Initialize metrics based on task type."""
         if task_type == "regression":
@@ -138,8 +137,7 @@ class LinearProbeCallback(Callback):
         else:  # binary, multiclass, or multilabel
             if self.task_type == "multilabel":
                 # Get probabilities for each label
-                predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1]
-                                    for est in probe.estimators_], axis=1)
+                predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1)
             else:  # binary or multiclass
                 predictions_np = probe.predict_proba(embeddings_np)
                 if self.task_type == "binary":

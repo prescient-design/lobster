@@ -53,13 +53,11 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self.aggregate_metrics = defaultdict(list)
 
     def _create_split_datasets(
-        self,
-        task: str,
-        species: Optional[str] = None
+        self, task: str, species: Optional[str] = None
     ) -> Tuple[CalmPropertyDataset, CalmPropertyDataset]:
         """Create train/test splits for a given task."""
 
-        rng = np.random.RandomState(self.seed) # TODO - seed everything fn
+        rng = np.random.RandomState(self.seed)  # TODO - seed everything fn
 
         # Check cache for existing splits
         split_key = f"{task}_{species}" if species else task
@@ -97,7 +95,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_dataset,
         trainer: L.Trainer,
         pl_module: L.LightningModule,
-        ):
+    ):
         """Evaluate a single task."""
 
         task_type, num_classes = CALM_TASKS[task]
@@ -157,6 +155,5 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             if values:  # Only log if we have values
                 avg_value = sum(values) / len(values)
                 trainer.logger.log_metrics(
-                    {f"calm_linear_probe/mean/{metric_name}": avg_value},
-                    step=trainer.current_epoch
+                    {f"calm_linear_probe/mean/{metric_name}": avg_value}, step=trainer.current_epoch
                 )

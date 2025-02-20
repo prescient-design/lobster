@@ -56,7 +56,7 @@ class CalmPropertyDataset(Dataset):
 
         # Get file name and URL based on task type
         if task in [Task.FUNCTION_BP, Task.FUNCTION_CC, Task.FUNCTION_MF]:
-            function_type = task.value.split('_')[1].lower()  # Extract bp, cc, or mf
+            function_type = task.value.split("_")[1].lower()  # Extract bp, cc, or mf
             fname = f"calm_GO_{function_type}_middle_normal.parquet"
             url = f"{FUNCTION_ZENODO_BASE_URL}/{fname}"
             storage_fname = fname
@@ -88,36 +88,44 @@ class CalmPropertyDataset(Dataset):
                 progressbar=True,
             )
         elif not file_path.exists():
-            raise FileNotFoundError(
-                f"Data file {file_path} not found and download=False"
-            )
+            raise FileNotFoundError(f"Data file {file_path} not found and download=False")
 
-        if str(file_path).endswith('.parquet'):
+        if str(file_path).endswith(".parquet"):
             self.data = pd.read_parquet(file_path)
-        elif str(file_path).endswith('.tsv'):
-            self.data = pd.read_csv(file_path, sep='\t')
+        elif str(file_path).endswith(".tsv"):
+            self.data = pd.read_csv(file_path, sep="\t")
         else:
             self.data = pd.read_csv(file_path)
 
         if columns is None:
             if task == Task.FUNCTION_BP:
-                columns = ['sequence', "GO:0051092", "GO:0016573", "GO:0031146", "GO:0071427", "GO:0006613"]
+                columns = ["sequence", "GO:0051092", "GO:0016573", "GO:0031146", "GO:0071427", "GO:0006613"]
             elif task == Task.FUNCTION_CC:
-                columns = ['sequence', "GO:0022627", "GO:0000502", "GO:0034705", "GO:0030665", "GO:0005925"]
+                columns = ["sequence", "GO:0022627", "GO:0000502", "GO:0034705", "GO:0030665", "GO:0005925"]
             elif task == Task.FUNCTION_MF:
-                columns = ['sequence', "GO:0004843", "GO:0004714", "GO:0003774", "GO:0008227", "GO:0004866"]
+                columns = ["sequence", "GO:0004843", "GO:0004714", "GO:0003774", "GO:0008227", "GO:0004866"]
             elif task == Task.LOCALIZATION:
-                columns = ['Sequence', 'Cell membrane', 'Cytoplasm', 'Endoplasmic reticulum',
-                          'Extracellular', 'Golgi apparatus', 'Lysosome/Vacuole',
-                          'Mitochondrion', 'Nucleus', 'Peroxisome', 'Plastid']
+                columns = [
+                    "Sequence",
+                    "Cell membrane",
+                    "Cytoplasm",
+                    "Endoplasmic reticulum",
+                    "Extracellular",
+                    "Golgi apparatus",
+                    "Lysosome/Vacuole",
+                    "Mitochondrion",
+                    "Nucleus",
+                    "Peroxisome",
+                    "Plastid",
+                ]
             elif task == Task.MELTOME:
-                columns = ['sequence', 'melting_temperature']
+                columns = ["sequence", "melting_temperature"]
             elif task == Task.SOLUBILITY:
-                columns = ['cds', 'solubility']
+                columns = ["cds", "solubility"]
             elif task == Task.PROTEIN_ABUNDANCE:
-                columns = ['cds', 'abundance']
+                columns = ["cds", "abundance"]
             elif task == Task.TRANSCRIPT_ABUNDANCE:
-                columns = ['cds', 'logtpm']
+                columns = ["cds", "logtpm"]
             else:
                 columns = list(self.data.columns)
 
@@ -126,7 +134,7 @@ class CalmPropertyDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[str | Tensor, Tensor]:
         item = self.data.iloc[index]
 
-        x = item[self.columns[0]]         # First column is always the input sequence/data
+        x = item[self.columns[0]]  # First column is always the input sequence/data
 
         if self.transform_fn is not None:
             x = self.transform_fn(x)
