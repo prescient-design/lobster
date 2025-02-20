@@ -2,11 +2,21 @@ from enum import Enum
 from pathlib import Path
 import pandas as pd
 import pooch
+import torch
 from torch.utils.data import Dataset
+from torch import Tensor
 from typing import Optional, Literal, Callable, Sequence, Tuple
 
 from lobster.transforms import Transform
-from lobster.constants._calm_tasks import CALM_DATA_GITHUB_URL, Species, Task, TASK_SPECIES, FUNCTION_ZENODO_BASE_URL, FILE_HASHES
+from lobster.constants._calm_tasks import (
+    CALM_DATA_GITHUB_URL, 
+    Species, 
+    Task, 
+    TASK_SPECIES, 
+    FUNCTION_ZENODO_BASE_URL, 
+    FILE_HASHES,
+    CALM_TASKS,
+)
 
 
 class CalmPropertyDataset(Dataset):
@@ -18,7 +28,8 @@ class CalmPropertyDataset(Dataset):
         species: Optional[Species | str] = None,
         split: Optional[Literal["train", "validation", "test"]] = None,
         download: bool = True,
-        transform: Optional[Callable | Transform] = None,
+        transform_fn: Optional[Callable | Transform] = None,
+        target_transform_fn: Optional[Callable | Transform] = None,
         columns: Optional[Sequence[str]] = None,
         known_hash: Optional[str] = None,
     ):
@@ -32,7 +43,10 @@ class CalmPropertyDataset(Dataset):
         self.task = task
         self.species = species
         self.split = split
-        self.transform = transform
+        self.transform_fn = transform_fn
+        self.target_transform_fn = target_transform_fn
+        
+        self.task_type, self.num_classes = CALM_TASKS[task.value]
         
         if root is None:
             root = pooch.os_cache("lbster")
@@ -40,7 +54,7 @@ class CalmPropertyDataset(Dataset):
             root = Path(root)
         self.root = root.resolve()
         
-        # Determine file name and URL based on task type
+        # Get file name and URL based on task type
         if task in [Task.FUNCTION_BP, Task.FUNCTION_CC, Task.FUNCTION_MF]:
             function_type = task.value.split('_')[1].lower()  # Extract bp, cc, or mf
             fname = f"calm_GO_{function_type}_middle_normal.parquet"
@@ -108,18 +122,27 @@ class CalmPropertyDataset(Dataset):
                 columns = list(self.data.columns)
         
         self.columns = columns
-        self._x = self.data[self.columns].apply(tuple, axis=1)
     
-    def __getitem__(self, index: int) -> Tuple:
-        x = self._x[index]
+    def __getitem__(self, index: int) -> Tuple[str | Tensor, Tensor]:
+        item = self.data.iloc[index]
         
-        if len(x) == 1:
-            x = x[0]
+        x = item[self.columns[0]]         # First column is always the input sequence/data
+
+        if self.transform_fn is not None:
+            x = self.transform_fn(x)
+            
+        y_cols = self.columns[1:]
+        y_values = pd.to_numeric(item[y_cols]).values  
         
-        if self.transform is not None:
-            x = self.transform(x)
+        if self.task_type == "regression":
+            y = torch.tensor(y_values, dtype=torch.float32)
+        else:  # multilabel tasks (localization and function prediction)
+            y = torch.tensor(y_values, dtype=torch.long)
+            
+        if self.target_transform_fn is not None:
+            y = self.target_transform_fn(y)
         
-        return x
+        return x, y
     
     def __len__(self) -> int:
-        return len(self._x)
+        return len(self.data)
