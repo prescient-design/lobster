@@ -1,22 +1,22 @@
-from enum import Enum
 from pathlib import Path
+from typing import Callable, Literal, Optional, Sequence, Tuple
+
 import pandas as pd
 import pooch
 import torch
-from torch.utils.data import Dataset
 from torch import Tensor
-from typing import Optional, Literal, Callable, Sequence, Tuple
+from torch.utils.data import Dataset
 
-from lobster.transforms import Transform
 from lobster.constants._calm_tasks import (
-    CALM_DATA_GITHUB_URL, 
-    Species, 
-    Task, 
-    TASK_SPECIES, 
-    FUNCTION_ZENODO_BASE_URL, 
-    FILE_HASHES,
+    CALM_DATA_GITHUB_URL,
     CALM_TASKS,
+    FILE_HASHES,
+    FUNCTION_ZENODO_BASE_URL,
+    TASK_SPECIES,
+    Species,
+    Task,
 )
+from lobster.transforms import Transform
 
 
 class CalmPropertyDataset(Dataset):
@@ -34,26 +34,26 @@ class CalmPropertyDataset(Dataset):
         known_hash: Optional[str] = None,
     ):
         super().__init__()
-        
+
         if isinstance(task, str):
             task = Task(task)
         if isinstance(species, str):
             species = Species(species)
-        
+
         self.task = task
         self.species = species
         self.split = split
         self.transform_fn = transform_fn
         self.target_transform_fn = target_transform_fn
-        
+
         self.task_type, self.num_classes = CALM_TASKS[task.value]
-        
+
         if root is None:
             root = pooch.os_cache("lbster")
         if isinstance(root, str):
             root = Path(root)
         self.root = root.resolve()
-        
+
         # Get file name and URL based on task type
         if task in [Task.FUNCTION_BP, Task.FUNCTION_CC, Task.FUNCTION_MF]:
             function_type = task.value.split('_')[1].lower()  # Extract bp, cc, or mf
@@ -77,7 +77,7 @@ class CalmPropertyDataset(Dataset):
         # Get hash for the storage filename --> to ensure file has not changed
         if known_hash is None and storage_fname in FILE_HASHES:
             known_hash = FILE_HASHES[storage_fname]
-        
+
         file_path = Path(self.root / self.__class__.__name__ / storage_fname)
         if download:
             file_path = pooch.retrieve(
@@ -91,14 +91,14 @@ class CalmPropertyDataset(Dataset):
             raise FileNotFoundError(
                 f"Data file {file_path} not found and download=False"
             )
-            
+
         if str(file_path).endswith('.parquet'):
             self.data = pd.read_parquet(file_path)
         elif str(file_path).endswith('.tsv'):
             self.data = pd.read_csv(file_path, sep='\t')
         else:
             self.data = pd.read_csv(file_path)
-        
+
         if columns is None:
             if task == Task.FUNCTION_BP:
                 columns = ['sequence', "GO:0051092", "GO:0016573", "GO:0031146", "GO:0071427", "GO:0006613"]
@@ -120,29 +120,29 @@ class CalmPropertyDataset(Dataset):
                 columns = ['cds', 'logtpm']
             else:
                 columns = list(self.data.columns)
-        
+
         self.columns = columns
-    
+
     def __getitem__(self, index: int) -> Tuple[str | Tensor, Tensor]:
         item = self.data.iloc[index]
-        
+
         x = item[self.columns[0]]         # First column is always the input sequence/data
 
         if self.transform_fn is not None:
             x = self.transform_fn(x)
-            
+
         y_cols = self.columns[1:]
-        y_values = pd.to_numeric(item[y_cols]).values  
-        
+        y_values = pd.to_numeric(item[y_cols]).values
+
         if self.task_type == "regression":
             y = torch.tensor(y_values, dtype=torch.float32)
         else:  # multilabel tasks (localization and function prediction)
             y = torch.tensor(y_values, dtype=torch.long)
-            
+
         if self.target_transform_fn is not None:
             y = self.target_transform_fn(y)
-        
+
         return x, y
-    
+
     def __len__(self) -> int:
         return len(self.data)

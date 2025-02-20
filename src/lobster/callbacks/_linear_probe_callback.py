@@ -1,10 +1,10 @@
 from typing import Callable, Dict, Literal, Optional, Tuple
 
 import lightning as L
+import numpy as np
 import torch
 from beignet.transforms import Transform
 from lightning.pytorch.callbacks import Callback
-import numpy as np
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
 from torch import Tensor
@@ -48,7 +48,7 @@ class LinearProbeCallback(Callback):
             self.accuracy = None
             self.f1 = None
             self.auroc = None
-        
+
         elif task_type in {"binary", "multiclass", "multilabel"}:
             # For multilabel, we use num_classes as num_labels
             metric_task = task_type
@@ -58,10 +58,10 @@ class LinearProbeCallback(Callback):
             self.mse = None
             self.r2 = None
             self.spearman = None
-        
+
         else:
             raise ValueError("task_type must be: regression, binary, multiclass, or multilabel")
-        
+
         self.task_type = task_type
         self.num_classes = num_classes
 
@@ -82,7 +82,7 @@ class LinearProbeCallback(Callback):
             for batch in dataloader:
                 x, y = batch
                 x = {k: v.to(module.device) for k, v in x.items()}
-     
+
                 # Get token-level embeddings
                 batch_embeddings = module.tokens_to_latents(**x)
 
@@ -96,7 +96,7 @@ class LinearProbeCallback(Callback):
 
                 embeddings.append(seq_embeddings.cpu())
                 targets.append(y.cpu())
-                
+
         return torch.cat(embeddings), torch.cat(targets)
 
     def _train_probe(self, embeddings: Tensor, targets: Tensor):
@@ -107,12 +107,12 @@ class LinearProbeCallback(Callback):
         if self.task_type == "regression":
             probe = LinearRegression()
             probe.fit(embeddings, targets)
-            
+
         elif self.task_type == "multilabel":
             base_classifier = LogisticRegression(random_state=42)
             probe = MultiOutputClassifier(base_classifier)
             probe.fit(embeddings, targets)
-            
+
         else:  # binary or multiclass
             probe = LogisticRegression(
                 multi_class="ovr" if self.task_type == "binary" else "multinomial",
@@ -130,21 +130,21 @@ class LinearProbeCallback(Callback):
         if self.task_type == "regression":
             predictions_np = probe.predict(embeddings_np)
             predictions = torch.from_numpy(predictions_np).float()
-            
+
             metrics["mse"] = self.mse(predictions, targets).item()
             metrics["r2"] = self.r2(predictions, targets).item()
             metrics["spearman"] = self.spearman(predictions.squeeze(), targets.squeeze()).item()
-        
+
         else:  # binary, multiclass, or multilabel
             if self.task_type == "multilabel":
                 # Get probabilities for each label
-                predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1] 
+                predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1]
                                     for est in probe.estimators_], axis=1)
             else:  # binary or multiclass
                 predictions_np = probe.predict_proba(embeddings_np)
                 if self.task_type == "binary":
                     predictions_np = predictions_np[:, 1]
-            
+
             predictions = torch.from_numpy(predictions_np).float()
             metrics["accuracy"] = self.accuracy(predictions, targets).item()
             metrics["f1"] = self.f1(predictions, targets).item()

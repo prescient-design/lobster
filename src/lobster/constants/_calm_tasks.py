@@ -55,11 +55,11 @@ TASK_SPECIES = {
 }
 
 # Files hashes to check upstream data files haven't been changed. Makes data download cleaner
-FILE_HASHES = {    
+FILE_HASHES = {
     "meltome.csv": "sha256:699074debc9e3d66e0c084bca594ce81d26b3126b645d43b0597dbe466153ad4",
     "solubility.csv": "sha256:94b351d0f36b490423b3e80b2ff0ea5114423165948183157cf63d4f57c08d38",
     "localization.csv": "sha256:efedb7c394b96f4569c72d03eac54ca5a3b4a24e15c9c24d9429f9b1a4e29320",
-    
+
     # Function prediction tasks
     "calm_GO_bp_middle_normal.parquet": "md5:898265de59ba1ac97270bffc3621f334",
     "calm_GO_cc_middle_normal.parquet": "md5:a6af91fe40e523c9adf47e6abd98d9c6",
@@ -71,7 +71,7 @@ FILE_HASHES = {
     "protein_abundance_ecoli.csv": "sha256:a6a8f91901a4ea4da62931d1e7c91b3a6aa72e4d6c6a83a6612c0988e94421fb",
     "protein_abundance_hsapiens.csv": "sha256:94ded0486f2f64575bd2d8f2a3e00611a6e8b28b691d0f367ca9210058771a23",
     "protein_abundance_scerevisiae.csv": "sha256:0ce0b6a5b0400c3cc1c568f6c5478a974e80aaecbab93299f81bb94eb2373076",
-    
+
     # Transcript abundance
     "transcript_abundance_athaliana.csv": "sha256:de7a6f57bcfbb60445d17b8461a8a3ea8353942e129f08ac2c6de5874cd6c139",
     "transcript_abundance_dmelanogaster.csv": "sha256:0124d101da004e7a66f4303ff097da39d5e4dd474548fa57e2f9fa7231544c32",
