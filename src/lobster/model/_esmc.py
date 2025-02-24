@@ -133,7 +133,7 @@ class LobsterESMC(pl.LightningModule):
             )
 
         # raw_log_probs [N, 20]: log probability for each WT amino acid
-        raw_log_probs = torch.nn.functional.log_softmax(logits[:, :, 4:24], dim=-1)[
+        raw_log_probs = torch.nn.functional.log_softmax(logits[:, 1:-1, 4:24], dim=-1)[
             torch.arange(N), torch.arange(N), :
         ]
         # sum of log probabilities that the model assigns to the true amino acid in each masked position
