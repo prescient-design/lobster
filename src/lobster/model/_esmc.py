@@ -17,7 +17,7 @@ class LobsterESMC(pl.LightningModule):
 
         Parameters
         ----------
-        use_bfloat: whether to load model weights as bfloat16 instead of float32
+        use_bfloat16: whether to load model weights as bfloat16 instead of float32
         max_length: max sequence length the model will see
 
         """
