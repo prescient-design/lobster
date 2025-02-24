@@ -195,7 +195,7 @@ class RelativePositionalEncoding(nn.Module):
         return embeddings
 
 def posemb_sincos_1d(patches, temperature=10000, residue_index=None):
-    n, dim, device, dtype = *patches.shape, patches.device, patches.dtype
+    n, dim, device, dtype = *patches.shape[-2:], patches.device, patches.dtype
 
     n = torch.arange(n, device=device) if residue_index is None else residue_index
     assert (dim % 2) == 0, "feature dimension must be multiple of 2 for sincos emb"

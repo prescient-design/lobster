@@ -1,6 +1,0 @@
-mypy
-pytest
-pytest-cov
-pre-commit
-ruff
-ipykernel
