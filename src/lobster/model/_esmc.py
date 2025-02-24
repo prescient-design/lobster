@@ -17,15 +17,7 @@ class LobsterESMC(pl.LightningModule):
 
         Parameters
         ----------
-        model_name: pre-trained ESM model (e.g. esm2_t6_8M_UR50D) or name for config (e.g. MLM_small)
-        lr: learning rate
-        freeze: freeze all layers except LM head (decoder)
-        mask_percentage: final masking rate
-        initial_mask_percentage: initial masking rate, if not None, linear dynamic mask rate
-            scheduler will be used. initial should be greater than final.
-        transform_fn: defines tokenizer transform
-        config: huggingface config for instantiating a model if ``model_name`` is not specified
-        tokenizer_dir: a tokenizer saved to src/lobster/assets
+        use_bfloat: whether to load model weights as bfloat16 instead of float32
         max_length: max sequence length the model will see
 
         """
