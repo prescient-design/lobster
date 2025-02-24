@@ -13,7 +13,7 @@ class LobsterESMC(pl.LightningModule):
         max_length: int = 512,
     ):
         """
-        Prescient Protein Masked Language Model.
+        ESM-C wrapper using https://huggingface.co/Synthyra/ESMplusplus_small.
 
         Parameters
         ----------
