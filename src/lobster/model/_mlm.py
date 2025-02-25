@@ -88,11 +88,15 @@ class LobsterPMLM(pl.LightningModule):
                     truncation=True,
                     max_length=self._max_length,
                 )
-            elif model_name=="esmc":
+            elif model_name == "esmc":
                 if not use_bfloat16:
-                    self.model = AutoModelForMaskedLM.from_pretrained('Synthyra/ESMplusplus_small', trust_remote_code=True)
+                    self.model = AutoModelForMaskedLM.from_pretrained(
+                        "Synthyra/ESMplusplus_small", trust_remote_code=True
+                    )
                 else:
-                    self.model = AutoModelForMaskedLM.from_pretrained('Synthyra/ESMplusplus_small', trust_remote_code=True, torch_dtype=torch.bfloat16)
+                    self.model = AutoModelForMaskedLM.from_pretrained(
+                        "Synthyra/ESMplusplus_small", trust_remote_code=True, torch_dtype=torch.bfloat16
+                    )
                 self._use_esmc = True
             else:
                 self.tokenizer = PmlmTokenizer.from_pretrained(model_name, do_lower_case=False)
@@ -117,7 +121,7 @@ class LobsterPMLM(pl.LightningModule):
             # TODO remove special handling for esm models
             if "esm2" in model_name:
                 self.model = EsmForMaskedLM.from_pretrained(f"facebook/{model_name}")
-            elif model_name=="esmc":
+            elif model_name == "esmc":
                 self.tokenizer = self.model.tokenizer
             else:
                 self.model = LMBaseForMaskedLM.from_pretrained(model_name)
@@ -261,18 +265,20 @@ class LobsterPMLM(pl.LightningModule):
 
         return df
 
-    def embed_dataset(self, sequences: list[str], batch_size: int = 32, residue_wise: bool = True, num_workers: int = 0) -> dict[str, torch.Tensor]:
+    def embed_dataset(
+        self, sequences: list[str], batch_size: int = 32, residue_wise: bool = True, num_workers: int = 0
+    ) -> dict[str, torch.Tensor]:
         if not self._use_esmc:
             raise NotImplementedError("This method is only implemented for ESM-C models.")
         embeddings = self.model.embed_dataset(
-            sequences=sequences, # list of protein strings
-            batch_size=batch_size, # embedding batch size
-            max_len=self._max_length, # truncate to max_len
-            full_embeddings=residue_wise, # return residue-wise embeddings
-            full_precision=False, # store as float32
-            pooling_type='mean', # use mean pooling if protein-wise embeddings
-            num_workers=0, # data loading num workers
-            sql=False, # return dictionary of sequences and embeddings
+            sequences=sequences,  # list of protein strings
+            batch_size=batch_size,  # embedding batch size
+            max_len=self._max_length,  # truncate to max_len
+            full_embeddings=residue_wise,  # return residue-wise embeddings
+            full_precision=False,  # store as float32
+            pooling_type="mean",  # use mean pooling if protein-wise embeddings
+            num_workers=0,  # data loading num workers
+            sql=False,  # return dictionary of sequences and embeddings
         )
         return embeddings
 
@@ -304,7 +310,7 @@ class LobsterPMLM(pl.LightningModule):
             # Generate full sequence variants with aa's masked one by one, tokenize
             seqs_masked = [copy.deepcopy(encoded_seq) for x in range(N)]
             for i in range(N):
-                seqs_masked[i][i+1] = self.tokenizer.mask_token_id
+                seqs_masked[i][i + 1] = self.tokenizer.mask_token_id
             seqs_mask_encoded = torch.tensor(seqs_masked, device=self.device)
         else:
             # Tokenize full sequence
@@ -398,7 +404,9 @@ class LobsterPMLM(pl.LightningModule):
 
     def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
         if self._use_esmc:
-            input_ids = self.tokenizer(sequences, padding="max_length", truncation=True, max_length=self._max_length, return_tensors='pt')
+            input_ids = self.tokenizer(
+                sequences, padding="max_length", truncation=True, max_length=self._max_length, return_tensors="pt"
+            )
             input_ids = input_ids["input_ids"].to(self.device)
         else:
             input_ids = torch.concat([toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)])
