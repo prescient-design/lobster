@@ -12,7 +12,7 @@ try:
     from nodehaha.collate import Collator
     from sethaha.sources import CalmDataset, M320MDataset
     from sethaha.transforms.text import TokenizeNode
-    from torchdata.nodes import Batcher, Loader, MultiNodeWeightedSampler
+    from torchdata.nodes import Batcher, Loader, MultiNodeWeightedSampler, PinMemory, Prefetcher
 except (ImportError, ModuleNotFoundError):
     pass
 
@@ -70,6 +70,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
                 return_tensors="pt",
                 padding="max_length",
                 max_length=self._tokenizer_max_length,
+                truncation=True,
             ),
             Modality.AMINO_ACID: partial(
                 TokenizeNode,  # Note: only passing class, not instantiating it
@@ -77,6 +78,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
                 return_tensors="pt",
                 padding="max_length",
                 max_length=self._tokenizer_max_length,
+                truncation=True,
             ),
             Modality.NUCLEOTIDE: partial(
                 TokenizeNode,  # Note: only passing class, not instantiating it
@@ -84,6 +86,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
                 return_tensors="pt",
                 padding="max_length",
                 max_length=self._tokenizer_max_length,
+                truncation=True,
             ),
         }
 
@@ -143,7 +146,12 @@ class UmeHahaLightningDataModule(LightningDataModule):
         node = Batcher(node, batch_size=self._batch_size)
         node = Collator(node)
 
-        return Loader(node)
+        if self._pin_memory:
+            node = PinMemory(node)
+
+        node = Prefetcher(node, prefetch_factor=2)
+
+        return Loader(node, restart_on_stop_iteration=True)
 
     def train_dataloader(self) -> DataLoader:
         return self._get_loader(self._train_nodes)

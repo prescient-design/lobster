@@ -114,7 +114,12 @@ class CalmIterableDataset(IterableDataset):
         if split not in self.SUPPORTED_SPLITS:
             raise ValueError(f"Split '{split}' is not supported.")
 
-        self.dataset = load_dataset("ncfrey/calm", split="train", cache_dir=root, streaming=True)
+        self.dataset = load_dataset(
+            "ncfrey/calm",
+            split="train",
+            cache_dir=root,
+        )
+        self.dataset = self.dataset.to_iterable_dataset()
 
         self.keys = ["sequence", "description"] if keys is None else keys
         self.transform = transform
