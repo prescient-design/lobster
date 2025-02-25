@@ -1,22 +1,6 @@
 {
   "added_tokens_decoder": {
     "0": {
-      "content": "<pad>",
-      "lstrip": false,
-      "normalized": false,
-      "rstrip": false,
-      "single_word": false,
-      "special": true
-    },
-    "1": {
-      "content": "<unk>",
-      "lstrip": false,
-      "normalized": false,
-      "rstrip": false,
-      "single_word": false,
-      "special": true
-    },
-    "2": {
       "content": "<cls>",
       "lstrip": false,
       "normalized": false,
@@ -24,8 +8,24 @@
       "single_word": false,
       "special": true
     },
+    "1": {
+      "content": "<pad>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "2": {
+      "content": "<eos>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
     "3": {
-      "content": "<sep>",
+      "content": "<unk>",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,
@@ -41,7 +41,7 @@
       "special": true
     },
     "5": {
-      "content": "<eos>",
+      "content": "<sep>",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,
@@ -59,7 +59,7 @@
   "pad_token": "<pad>",
   "padding_side": "right",
   "sep_token": "<sep>",
-  "tokenizer_class": "PreTrainedTokenizerFast",
+  "tokenizer_class": "PreTrainedTokenizer",
   "truncation_side": "left",
   "unk_token": "<unk>"
 }

@@ -46,8 +46,8 @@ def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PA
         single=f"{cls_token} $A {eos_token}",
         pair=f"{cls_token} $A {eos_token} $B:1 {eos_token}:1",
         special_tokens=[
-            (cls_token, 2),
-            (eos_token, 5),
+            (cls_token, 0),
+            (eos_token, 2),
         ],
     )
 
