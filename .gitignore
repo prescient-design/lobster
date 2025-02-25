@@ -33,6 +33,13 @@ notebooks/nathan/*
 notebooks/karina/*
 
 dev
+<<<<<<< HEAD
 wandb
 lightning_logs
 outputs
+=======
+outputs
+wandb
+lightning_logs
+
+>>>>>>> 844d2897e8c84ee24af1999f713a13f39ec89b48
