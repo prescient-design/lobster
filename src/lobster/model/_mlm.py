@@ -1,11 +1,12 @@
 import importlib.resources
 import os
+import copy
 from typing import Callable, Iterable, Literal, Optional, Union
 
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-from transformers import AutoTokenizer, EsmForMaskedLM
+from transformers import AutoTokenizer, EsmForMaskedLM, AutoModelForMaskedLM
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
 
@@ -35,6 +36,7 @@ class LobsterPMLM(pl.LightningModule):
         tokenizer_dir: Optional[str] = "pmlm_tokenizer",
         max_length: int = 512,
         position_embedding_type: Literal["rotary", "absolute"] = "rotary",
+        use_bfloat16: bool = False,
     ):
         """
         Prescient Protein Masked Language Model.
@@ -51,6 +53,7 @@ class LobsterPMLM(pl.LightningModule):
         config: huggingface config for instantiating a model if ``model_name`` is not specified
         tokenizer_dir: a tokenizer saved to src/lobster/assets
         max_length: max sequence length the model will see
+        use_bfloat16: use bfloat16 instead of float32 for ESM-C model weights
 
         """
         super().__init__()
@@ -68,6 +71,7 @@ class LobsterPMLM(pl.LightningModule):
         self._tokenizer_dir = tokenizer_dir
         self._max_length = max_length
         self._position_embedding_type = position_embedding_type
+        self._use_esmc = False
 
         load_pretrained = config is None and model_name not in PMLM_CONFIG_ARGS
 
@@ -84,6 +88,12 @@ class LobsterPMLM(pl.LightningModule):
                     truncation=True,
                     max_length=self._max_length,
                 )
+            elif model_name=="esmc":
+                if not use_bfloat16:
+                    self.model = AutoModelForMaskedLM.from_pretrained('Synthyra/ESMplusplus_small', trust_remote_code=True)
+                else:
+                    self.model = AutoModelForMaskedLM.from_pretrained('Synthyra/ESMplusplus_small', trust_remote_code=True, torch_dtype=torch.bfloat16)
+                self._use_esmc = True
             else:
                 self.tokenizer = PmlmTokenizer.from_pretrained(model_name, do_lower_case=False)
                 self._transform_fn = PmlmTokenizerTransform(
@@ -107,6 +117,8 @@ class LobsterPMLM(pl.LightningModule):
             # TODO remove special handling for esm models
             if "esm2" in model_name:
                 self.model = EsmForMaskedLM.from_pretrained(f"facebook/{model_name}")
+            elif model_name=="esmc":
+                self.tokenizer = self.model.tokenizer
             else:
                 self.model = LMBaseForMaskedLM.from_pretrained(model_name)
         else:
@@ -249,6 +261,21 @@ class LobsterPMLM(pl.LightningModule):
 
         return df
 
+    def embed_dataset(self, sequences: list[str], batch_size: int = 32, residue_wise: bool = True, num_workers: int = 0) -> dict[str, torch.Tensor]:
+        if not self._use_esmc:
+            raise NotImplementedError("This method is only implemented for ESM-C models.")
+        embeddings = self.model.embed_dataset(
+            sequences=sequences, # list of protein strings
+            batch_size=batch_size, # embedding batch size
+            max_len=self._max_length, # truncate to max_len
+            full_embeddings=residue_wise, # return residue-wise embeddings
+            full_precision=False, # store as float32
+            pooling_type='mean', # use mean pooling if protein-wise embeddings
+            num_workers=0, # data loading num workers
+            sql=False, # return dictionary of sequences and embeddings
+        )
+        return embeddings
+
     def naturalness(self, sequences: Iterable[str]) -> torch.Tensor:
         out = [
             self._naturalness_single_sequence(
@@ -268,17 +295,29 @@ class LobsterPMLM(pl.LightningModule):
     ) -> tuple[float, Optional[tuple[torch.Tensor, torch.Tensor]]]:
         N = len(sequence)
 
-        # Tokenize full sequence
-        ref_seq = " ".join(sequence)
-        ref_seq_indices = torch.tensor(self.tokenizer.encode(ref_seq)) - 4
-        # -4 to align since first tokens are special, BERT-related.
+        if self._use_esmc:
+            # Tokenize full sequence
+            encoded_seq = self.tokenizer.encode(sequence)
+            ref_seq_indices = torch.tensor(encoded_seq) - 4
+            # -4 to align since first tokens are special, BERT-related.
 
-        # Generate full sequence variants with aa's masked one by one, tokenize
-        seqs_masked = [" ".join([aa if j != i else "<mask>" for j, aa in enumerate(sequence)]) for i in range(N)]
-        seqs_mask_encoded = torch.tensor(
-            [self.tokenizer.encode(masked_seq) for masked_seq in seqs_masked],
-            device=self.device,
-        )
+            # Generate full sequence variants with aa's masked one by one, tokenize
+            seqs_masked = [copy.deepcopy(encoded_seq) for x in range(N)]
+            for i in range(N):
+                seqs_masked[i][i+1] = self.tokenizer.mask_token_id
+            seqs_mask_encoded = torch.tensor(seqs_masked, device=self.device)
+        else:
+            # Tokenize full sequence
+            ref_seq = " ".join(sequence)
+            ref_seq_indices = torch.tensor(self.tokenizer.encode(ref_seq)) - 4
+            # -4 to align since first tokens are special, BERT-related.
+
+            # Generate full sequence variants with aa's masked one by one, tokenize
+            seqs_masked = [" ".join([aa if j != i else "<mask>" for j, aa in enumerate(sequence)]) for i in range(N)]
+            seqs_mask_encoded = torch.tensor(
+                [self.tokenizer.encode(masked_seq) for masked_seq in seqs_masked],
+                device=self.device,
+            )
 
         if N < batch_size:
             batch_size_ = N
@@ -347,7 +386,10 @@ class LobsterPMLM(pl.LightningModule):
     def latent_embeddings_to_sequences(self, x: torch.Tensor) -> list[str]:
         """x: (B, L, H) size tensor of hidden states"""
         with torch.inference_mode():
-            logits = self.model.lm_head(x)
+            if self._use_esmc:
+                logits = self.model.sequence_head(x)
+            else:
+                logits = self.model.lm_head(x)
         tokens = [self.tokenizer.decode(logit.argmax(dim=-1)) for logit in logits]
         aa_toks = list("ARNDCEQGHILKMFPSTWYV")
         tokens = [t.replace(" ", "") for t in tokens]
@@ -355,7 +397,11 @@ class LobsterPMLM(pl.LightningModule):
         return tokens
 
     def sequences_to_latents(self, sequences: list[str]) -> torch.Tensor:
-        input_ids = torch.concat([toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)])
+        if self._use_esmc:
+            input_ids = self.tokenizer(sequences, padding="max_length", truncation=True, max_length=self._max_length, return_tensors='pt')
+            input_ids = input_ids["input_ids"].to(self.device)
+        else:
+            input_ids = torch.concat([toks["input_ids"].to(self.device) for toks in self._transform_fn(sequences)])
         with torch.inference_mode():
             hidden_states = self.model(input_ids=input_ids, output_hidden_states=True)["hidden_states"]  # [-1]
         return hidden_states
