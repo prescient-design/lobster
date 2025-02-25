@@ -17,6 +17,7 @@ from ._minhasher import LobsterMinHasher
 from ._mmseqs import MMSeqsRunner
 from ._structure_datamodule import PDBDataModule
 from ._ume_datamodule import UmeLightningDataModule
+from ._ume_haha_datamodule import UmeHahaLightningDataModule
 from ._utils import load_pickle
 from ._weighted_concat_sampler import WeightedConcatSampler
 
@@ -40,4 +41,5 @@ __all__ = [
     "load_pickle",
     "WeightedConcatSampler",
     "UmeLightningDataModule",
+    "UmeHahaLightningDataModule",
 ]

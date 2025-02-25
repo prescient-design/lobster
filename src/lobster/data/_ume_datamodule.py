@@ -107,32 +107,26 @@ class UmeLightningDataModule(LightningDataModule):
                 raise ValueError(f"Dataset {name} is not supported")
 
     def setup(self, stage: str | None = None) -> None:
-        if stage is None or stage == "fit":
-            self._train_datasets = []
-            self._val_datasets = []
+        # Initialize all datasets regardless of stage
+        self._train_datasets = []
+        self._val_datasets = []
+        self._test_datasets = []
 
-            for dataset_name in self.dataset_names:
-                dataset_info = SUPPORTED_DATASETS_INFO[dataset_name]
-                supported_splits = dataset_info["supported_splits"]
+        for dataset_name in self.dataset_names:
+            dataset_info = SUPPORTED_DATASETS_INFO[dataset_name]
+            supported_splits = dataset_info["supported_splits"]
 
-                if "train" in supported_splits:
-                    train_dataset = self._get_dataset(dataset_name, "train")
-                    self._train_datasets.append(train_dataset)
+            if "train" in supported_splits:
+                train_dataset = self._get_dataset(dataset_name, "train")
+                self._train_datasets.append(train_dataset)
 
-                if "validation" in supported_splits:
-                    val_dataset = self._get_dataset(dataset_name, "validation")
-                    self._val_datasets.append(val_dataset)
+            if "validation" in supported_splits:
+                val_dataset = self._get_dataset(dataset_name, "validation")
+                self._val_datasets.append(val_dataset)
 
-        if stage is None or stage == "test":
-            self._test_datasets = []
-
-            for dataset_name in self.dataset_names:
-                dataset_info = SUPPORTED_DATASETS_INFO[dataset_name]
-                supported_splits = dataset_info["supported_splits"]
-
-                if "test" in supported_splits:
-                    test_dataset = self._get_dataset(dataset_name, "test")
-                    self._test_datasets.append(test_dataset)
+            if "test" in supported_splits:
+                test_dataset = self._get_dataset(dataset_name, "test")
+                self._test_datasets.append(test_dataset)
 
     def train_dataloader(self) -> DataLoader:
         if not self._train_datasets:

@@ -153,7 +153,8 @@ class M320MIterableDataset(IterableDataset):
 
         self.split = split
 
-        self.dataset = load_dataset("karina-zadorozhny/M320M", split=split, cache_dir=root, streaming=True)
+        self.dataset = load_dataset("karina-zadorozhny/M320M", split=split, cache_dir=root)
+        self.dataset = self.dataset.to_iterable_dataset()
 
         self.keys = ["smiles", "Description"] if keys is None else keys
 
