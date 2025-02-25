@@ -1,12 +1,12 @@
+import copy
 import importlib.resources
 import os
-import copy
 from typing import Callable, Iterable, Literal, Optional, Union
 
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-from transformers import AutoTokenizer, EsmForMaskedLM, AutoModelForMaskedLM
+from transformers import AutoModelForMaskedLM, AutoTokenizer, EsmForMaskedLM
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
 

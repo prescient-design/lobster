@@ -5,8 +5,9 @@ import tempfile
 import onnx
 import pytest
 import torch
-from lobster.model import LobsterPMLM
 from torch import Size, Tensor
+
+from lobster.model import LobsterPMLM
 
 
 @pytest.fixture(scope="module", autouse=True)
