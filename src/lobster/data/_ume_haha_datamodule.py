@@ -146,10 +146,10 @@ class UmeHahaLightningDataModule(LightningDataModule):
         node = Batcher(node, batch_size=self._batch_size)
         node = Collator(node)
 
-        if self._pin_memory:
-            node = PinMemory(node)
+        # if self._pin_memory:
+        #     node = PinMemory(node)
 
-        node = Prefetcher(node, prefetch_factor=2)
+        # # node = Prefetcher(node, prefetch_factor=2)
 
         return Loader(node, restart_on_stop_iteration=True)
 
