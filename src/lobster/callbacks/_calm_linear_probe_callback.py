@@ -15,8 +15,54 @@ from ._linear_probe_callback import LinearProbeCallback
 
 
 class CalmLinearProbeCallback(LinearProbeCallback):
-    """Callback for evaluating embedding models on the CALM dataset collection."""
-
+    """Callback for evaluating embedding models on the CALM dataset collection.
+    
+    This callback performs linear probing evaluation on various cDNA sequence property
+    prediction tasks from the CALM dataset collection. It creates train/test splits for each task,
+    extracts embeddings from the model, trains linear probes on these embeddings, and evaluates
+    their performance.
+    
+    Parameters
+    ----------
+    max_length : int
+        Maximum sequence length for tokenization.
+    tasks : Optional[Sequence[str]], default=None
+        Specific CALM tasks to evaluate. If None, all available tasks will be used.
+        Available tasks:
+        - 'meltome': Predicts protein melting temperature (regression)
+        - 'solubility': Predicts protein solubility (regression)
+        - 'localization': Predicts cellular localization (multilabel, 10 classes)
+        - 'protein_abundance': Predicts protein abundance (regression, species-specific)
+        - 'transcript_abundance': Predicts transcript abundance (regression, species-specific)
+        - 'function_bp': Predicts Gene Ontology biological process terms (multilabel, 4 classes)
+        - 'function_cc': Predicts Gene Ontology cellular component terms (multilabel, 4 classes)
+        - 'function_mf': Predicts Gene Ontology molecular function terms (multilabel, 4 classes)
+    species : Optional[Sequence[str]], default=None
+        Species to include for species-specific tasks. Required for 'protein_abundance' and
+        'transcript_abundance' tasks. If None, species-specific tasks will be skipped.
+        Available species:
+        - For protein_abundance: 'athaliana', 'dmelanogaster', 'ecoli', 'hsapiens', 'scerevisiae'
+        - For transcript_abundance: All of the above plus 'hvolcanii' and 'ppastoris'
+    batch_size : int, default=32
+        Batch size for embedding extraction and evaluation.
+    run_every_n_epochs : Optional[int], default=None
+        Run this callback every n epochs. If None, runs every validation epoch.
+    test_size : float, default=0.2
+        Fraction of data to use for testing.
+    max_samples : int, default=3000
+        Maximum number of samples to use from each dataset.
+    seed : int, default=42
+        Random seed for reproducibility in dataset splitting.
+        
+    Attributes
+    ----------
+    dataset_splits : dict
+        Cache of train/test splits for each task.
+    aggregate_metrics : defaultdict
+        Collection of metrics across all tasks for averaging.
+    probes : dict
+        Trained linear probes for each task.
+    """
     def __init__(
         self,
         max_length: int,
@@ -28,6 +74,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         max_samples: int = 3000,
         seed: int = 42,
     ):
+
         tokenizer_transform = TokenizerTransform(
             tokenizer=NucleotideTokenizerFast(),
             padding="max_length",
@@ -55,36 +102,48 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     def _create_split_datasets(
         self, task: str, species: Optional[str] = None
     ) -> Tuple[CalmPropertyDataset, CalmPropertyDataset]:
-        """Create train/test splits for a given task."""
+        """Create train/test splits for a given task.
 
-        rng = np.random.RandomState(self.seed)  # TODO - seed everything fn
-
+        Parameters
+        ----------
+        task : str
+            The CALM task name to create splits for
+        species : Optional[str], default=None
+            The species name for species-specific tasks
+            
+        Returns
+        -------
+        Tuple[CalmPropertyDataset, CalmPropertyDataset]
+            A tuple containing (train_dataset, test_dataset)
+        """
         # Check cache for existing splits
         split_key = f"{task}_{species}" if species else task
         if split_key in self.dataset_splits:
             return self.dataset_splits[split_key]
 
+        current_seed = L.seed_everything(self.seed)
+        
         dataset = CalmPropertyDataset(task=task, species=species, transform_fn=self.transform_fn)
-
+        
         indices = np.arange(len(dataset))
-
+        
         # If dataset is too large, subsample it first
         if len(indices) > self.max_samples:
-            indices = rng.choice(indices, size=self.max_samples, replace=False)
-
+            indices = np.random.choice(indices, size=self.max_samples, replace=False)
+        
         # Create train/test split from (possibly subsampled) indices
         test_size = int(len(indices) * self.test_size)
         train_size = len(indices) - test_size
-        shuffled_indices = rng.permutation(indices)
+        shuffled_indices = np.random.permutation(indices)
         train_indices = shuffled_indices[:train_size]
         test_indices = shuffled_indices[train_size:]
-
+        
         train_dataset = Subset(dataset, train_indices)
         test_dataset = Subset(dataset, test_indices)
-
+        
         # Cache the splits
         self.dataset_splits[split_key] = (train_dataset, test_dataset)
-
+        
         return train_dataset, test_dataset
 
     def _evaluate_task(
