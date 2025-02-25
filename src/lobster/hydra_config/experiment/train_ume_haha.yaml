@@ -53,7 +53,8 @@ model:
 callbacks:
   moleculeace_linear_probe:
     max_length: ${model.max_length}
-  run_every_n_epochs: null
+    run_every_n_epochs: 1
+
 
 logger:
   name: ume_haha_${now:%Y-%m-%d_%H-%M-%S}

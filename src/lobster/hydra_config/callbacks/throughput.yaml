@@ -3,6 +3,6 @@ throughput:
   batch_size_fn: 
     _target_: lobster.callbacks.throughput_batch_size_fn
     _partial_: true
-  length_fn:
-    _target_: lobster.callbacks.throughput_length_fn
-    _partial_: true
+  # length_fn:
+  #   _target_: lobster.callbacks.throughput_length_fn
+  #   _partial_: true
