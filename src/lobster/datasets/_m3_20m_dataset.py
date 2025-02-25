@@ -162,7 +162,10 @@ class M320MIterableDataset(IterableDataset):
 
     def __iter__(self):
         for sample in self.dataset:
-            x = tuple(sample[key] for key in self.keys)
+            x = tuple(sample[key] for key in self.keys if isinstance(sample[key], str))
+
+            if not x:
+                continue
 
             if len(x) == 1:
                 x = x[0]
