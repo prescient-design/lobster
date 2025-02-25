@@ -1,17 +1,10 @@
-import importlib.resources
 from importlib.util import find_spec
-from typing import Literal, Union
 
 import lightning.pytorch as pl
 import torch
 from torch import nn
 from transformers.optimization import get_linear_schedule_with_warmup
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from lobster.tokenization import PmlmTokenizer, SmilesTokenizerFast, AminoAcidTokenizerFast, NucleotideTokenizerFast
-from lobster.tokenization._pmlm_tokenizer_transform import \
-    PmlmTokenizerTransform
-from lobster.transforms import TokenizerTransform
 
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
@@ -172,7 +165,7 @@ class FlexBERT(pl.LightningModule):
         # create mask array
         # TODO: update this for special cls tokens that might be introduced with the new tokenizer
         mask_arr = (
-            (rand < self._mask_percentage)``
+            (rand < self._mask_percentage)
             * (train_inputs != self.cls_token_id)
             * (train_inputs != self.pad_token_id)
             * (train_inputs != self.eos_token_id)
