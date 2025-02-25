@@ -1,15 +1,16 @@
 import importlib.resources
 import os
+import copy
 from typing import Callable, Iterable, Literal, Optional, Union
 
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-from transformers import AutoTokenizer, EsmForMaskedLM
+from transformers import AutoTokenizer, EsmForMaskedLM, AutoModelForMaskedLM
 from transformers.configuration_utils import PretrainedConfig
 from transformers.optimization import get_linear_schedule_with_warmup
 
-from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform, AutoModelForMaskedLM
+from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import AutoTokenizerTransform, Transform
 
 from ._mlm_configuration import PMLM_CONFIG_ARGS, PMLMConfig
@@ -260,7 +261,7 @@ class LobsterPMLM(pl.LightningModule):
 
         return df
 
-    def embed_dataset(self, sequences: List[str], batch_size: int = 32, residue_wise: bool = True, num_workers: int = 0) -> Dict[str, torch.Tensor]:
+    def embed_dataset(self, sequences: list[str], batch_size: int = 32, residue_wise: bool = True, num_workers: int = 0) -> dict[str, torch.Tensor]:
         if not self._use_esmc:
             raise NotImplementedError("This method is only implemented for ESM-C models.")
         embeddings = self.model.embed_dataset(
