@@ -65,28 +65,25 @@ class UmeHahaLightningDataModule(LightningDataModule):
         # Initialize tokenizers for each modality
         self._tokenize_nodes = {
             Modality.SMILES: partial(
-                TokenizeNode(
-                    "karina-zadorozhny/smiles_tokenizer",
-                    return_tensors="pt",
-                    padding="max_length",
-                    max_length=self._tokenizer_max_length,
-                )
+                TokenizeNode,  # Note: only passing class, not instantiating it
+                tokenizer_name="karina-zadorozhny/smiles_tokenizer",
+                return_tensors="pt",
+                padding="max_length",
+                max_length=self._tokenizer_max_length,
             ),
             Modality.AMINO_ACID: partial(
-                TokenizeNode(
-                    "karina-zadorozhny/amino_acid_tokenizer",
-                    return_tensors="pt",
-                    padding="max_length",
-                    max_length=self._tokenizer_max_length,
-                )
+                TokenizeNode,  # Note: only passing class, not instantiating it
+                tokenizer_name="karina-zadorozhny/amino_acid_tokenizer",
+                return_tensors="pt",
+                padding="max_length",
+                max_length=self._tokenizer_max_length,
             ),
             Modality.NUCLEOTIDE: partial(
-                TokenizeNode(
-                    "karina-zadorozhny/nucleotide_tokenizer",
-                    return_tensors="pt",
-                    padding="max_length",
-                    max_length=self._tokenizer_max_length,
-                )
+                TokenizeNode,  # Note: only passing class, not instantiating it
+                tokenizer_name="karina-zadorozhny/nucleotide_tokenizer",
+                return_tensors="pt",
+                padding="max_length",
+                max_length=self._tokenizer_max_length,
             ),
         }
 
