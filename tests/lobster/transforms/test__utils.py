@@ -2,6 +2,7 @@ import importlib.resources
 from typing import Dict, List
 
 import pytest
+
 from lobster.transforms import (
     invert_residue_to_codon_mapping,
     json_load,

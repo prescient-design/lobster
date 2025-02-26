@@ -1,7 +1,8 @@
 import pytest
 import torch
-from lobster.model import LobsterLinearProbe
 from torch.autograd import gradcheck
+
+from lobster.model import LobsterLinearProbe
 
 
 @pytest.fixture(scope="module")

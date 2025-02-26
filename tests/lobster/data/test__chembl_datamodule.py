@@ -2,8 +2,9 @@ import unittest.mock
 
 import pytest
 from beignet.datasets import ChEMBLDataset
-from lobster.data import ChEMBLLightningDataModule
 from pandas import DataFrame
+
+from lobster.data import ChEMBLLightningDataModule
 
 
 @pytest.fixture

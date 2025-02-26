@@ -1,5 +1,6 @@
-from lobster.model.hyena import LobsterHyenaCLM
 from torch import Size, Tensor
+
+from lobster.model.hyena import LobsterHyenaCLM
 
 
 class TestLobsterHyenaCLM:

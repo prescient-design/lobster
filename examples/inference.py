@@ -1,6 +1,7 @@
 # Lobster Model Inference
 
 import torch
+
 from lobster.model import LobsterCBMPMLM, LobsterPMLM
 
 # Define the test protein sequence

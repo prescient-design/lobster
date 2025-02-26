@@ -1,8 +1,9 @@
-from lobster.tokenization._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
 from tokenizers.models import BPE
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
+
+from lobster.tokenization._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
 
 
 def test_make_pretrained_tokenizer_fast():

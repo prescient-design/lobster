@@ -5,6 +5,7 @@ import tempfile
 import onnx
 import pytest
 import torch
+
 from lobster.model import LobsterMGM
 
 

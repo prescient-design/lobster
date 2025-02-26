@@ -1,10 +1,11 @@
 import unittest.mock
 
 import pytest
-from lobster.data import CalmLightningDataModule
-from lobster.datasets import CalmDataset
 from pandas import DataFrame
 from torch import Size
+
+from lobster.data import CalmLightningDataModule
+from lobster.datasets import CalmDataset
 
 
 @pytest.fixture
