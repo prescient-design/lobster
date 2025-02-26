@@ -7,12 +7,12 @@
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
-  - override /callbacks: [base, throughput]
+  - override /callbacks: [base]
 
 data:
   _target_: lobster.data.UmeLightningDataModule
   root: ${paths.root_dir}/data
-  datasets: ["M320M", "Calm"]
+  datasets: ["M320M", "Calm", "AMPLIFY"]
   batch_size: 16
   tokenizer_max_length: ${model.max_length}
 
@@ -35,10 +35,10 @@ model:
   num_training_steps: ${trainer.max_steps}
   lr: 4e-4
   mask_percentage: 0.25
-  hidden_size: 1008
-  num_hidden_layers: 36
+  hidden_size: 768
+  num_hidden_layers: 12
   num_attention_heads: 12
-  intermediate_size: 2304
+  intermediate_size: 3072
   beta1: 0.9
   beta2: 0.98
   eps: 1e-12
