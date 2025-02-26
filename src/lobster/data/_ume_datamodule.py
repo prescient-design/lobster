@@ -3,10 +3,10 @@ from typing import Sequence
 
 from lightning import LightningDataModule
 from torch import Generator
-from torch.utils.data import ChainDataset, DataLoader, Dataset, IterableDataset, ShuffledIterableDataset
+from torch.utils.data import ChainDataset, DataLoader, Dataset, IterableDataset
 
 from lobster.constants import Modality
-from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MIterableDataset
+from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MIterableDataset, ShuffledIterableDataset
 from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
 
