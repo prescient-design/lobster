@@ -97,6 +97,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
         split: str = "train",
         download: bool = False,
         shuffle: bool = False,
+        shuffle_buffer_size: int = 1000,
     ):
         """
         Initialize the CalmIterableDataset.
@@ -120,6 +121,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
             split=split,
             shuffle=shuffle,
             download=download,
+            shuffle_buffer_size=shuffle_buffer_size,
         )
 
     def _passes_type_check(self, sample: tuple[str]) -> bool:

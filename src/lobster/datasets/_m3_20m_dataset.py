@@ -132,6 +132,7 @@ class M320MIterableDataset(HuggingFaceIterableDataset):
         split: str = "train",
         download: bool = False,
         shuffle: bool = False,
+        shuffle_buffer_size: int = 1000,
     ):
         """
         Initialize the M320MDataset.
