@@ -129,7 +129,7 @@ class HuggingFaceIterableDataset(IterableDataset):
             dataset = dataset.shard(num_shards=worker_info.num_workers, index=worker_info.id)
 
             # Log once to prevent excessive logging
-            if worker_info.worker_id == 0:
+            if worker_info.id == 0:
                 logger.info(f"Dataset sharded among {worker_info.num_workers} workers")
 
         # Process samples from the dataset
