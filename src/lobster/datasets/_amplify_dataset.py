@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, ClassVar, Literal, Sequence
+from typing import Callable, ClassVar, Literal
 
 from datasets import load_dataset
 from torch.utils.data import IterableDataset
@@ -67,7 +67,6 @@ class AMPLIFYIterableDataset(IterableDataset):
         root: str | Path | None = None,
         *,
         transform: Callable | Transform | None = None,
-        keys: Sequence[str] | None = None,
         download: bool = False,
         shuffle: bool = True,
         split: str = "train",
@@ -84,9 +83,6 @@ class AMPLIFYIterableDataset(IterableDataset):
         transform : Callable or Transform or None, optional
             Optional transform to be applied on a sample, such as tokenization
             or tensor conversion.
-        keys : Sequence of str or None, optional
-            List of keys to be used from the dataset. Defaults to ["sequence"].
-            Other available keys may vary depending on the data source.
         download : bool, optional
             If True, downloads the full dataset before streaming. If False,
             streams the dataset on-the-fly (more memory efficient). Default is False.
@@ -121,18 +117,17 @@ class AMPLIFYIterableDataset(IterableDataset):
         if shuffle:
             self.dataset = self.dataset.shuffle()
 
-        self.keys = ["sequence"] if keys is None else keys
+        self.key = "sequence"
         self.transform = transform
 
     def __iter__(self):
         for sample in self.dataset:
-            x = tuple(sample[key] for key in self.keys if isinstance(sample[key], str))
+            x = sample.get(self.key)
 
-            if not x:
+            if not x or not isinstance(x, str):
                 continue
 
-            if len(x) == 1:
-                x = x[0]
+            x = x.replace("|", ".")  # Replace '|' with '.' for compatibility with tokenizers
 
             if self.transform is not None:
                 x = self.transform(x)

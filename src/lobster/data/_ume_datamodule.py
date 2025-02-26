@@ -89,7 +89,6 @@ class UmeLightningDataModule(LightningDataModule):
                 return M320MIterableDataset(
                     root=self._root,
                     transform=transform,
-                    download=True,
                     keys=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
                     split=split,
                 )
@@ -97,7 +96,6 @@ class UmeLightningDataModule(LightningDataModule):
                 return CalmIterableDataset(
                     root=self._root,
                     transform=transform,
-                    download=True,
                     keys=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
                 )
             case "AMPLIFY":
