@@ -111,6 +111,7 @@ class HuggingFaceIterableDataset(IterableDataset):
 
     def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
         # Handle distributed training if enabled
+
         if self.distributed:
             try:
                 dataset = split_dataset_by_node(self.dataset, rank=self.rank, world_size=self.world_size)
@@ -119,6 +120,8 @@ class HuggingFaceIterableDataset(IterableDataset):
                     f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
                 )
                 self.distributed = False
+        else:
+            dataset = self.dataset
 
         # Process samples from the dataset
         for sample in dataset:
