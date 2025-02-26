@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Sequence, TypeVar
+from typing import Sequence
 
 from lightning import LightningDataModule
 from torch import Generator
@@ -10,10 +10,7 @@ from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MI
 from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
 
-T = TypeVar("T")
-
-
-# Updated dictionary to include supported splits for each dataset
+# Supported datasets with modalities and supported splits
 SUPPORTED_DATASETS_INFO = {
     "M320M": {"modality": Modality.SMILES, "supported_splits": ["train", "validation"]},
     "Calm": {"modality": Modality.NUCLEOTIDE, "supported_splits": ["train"]},
@@ -29,7 +26,7 @@ class UmeLightningDataModule(LightningDataModule):
         datasets: None | Sequence[str] = None,
         root: Path | str | None = None,
         use_text_descriptions: bool = False,
-        seed: int = 0xDEADBEEF,
+        seed: int = 0,
         batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = True,
