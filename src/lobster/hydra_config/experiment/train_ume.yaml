@@ -7,7 +7,7 @@
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
-  - override /callbacks: [base, tokens_per_second]
+  - override /callbacks: [base, tokens_per_second, moleculeace_linear_probe]
 
 data:
   _target_: lobster.data.UmeLightningDataModule
