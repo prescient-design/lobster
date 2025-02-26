@@ -3,13 +3,13 @@ import os
 import random
 import warnings
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, ClassVar, Iterator, List, Sequence, Tuple, Union
 
 import torch
 from datasets import IterableDataset as HFIterableDataset
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
-from torch.utils.data import IterableDataset
+from torch.utils.data import IterableDataset, get_worker_info
 
 from lobster.transforms import Transform
 
@@ -28,16 +28,16 @@ class HuggingFaceIterableDataset(IterableDataset):
     def __init__(
         self,
         dataset_name: str,
-        root: Optional[Union[str, Path]] = None,
+        root: str | Path | None = None,
         *,
-        transform: Optional[Union[Callable, Transform]] = None,
+        transform: Callable | Transform | None = None,
         keys: Sequence[str] | None = None,
         split: str = "train",
         shuffle: bool = True,
         shuffle_buffer_size: int = 10000,
-        seed: Optional[int] = None,
+        seed: int = 0,
         download: bool = False,
-        distributed: Optional[bool] = None,
+        distributed: bool | None = None,
         **kwargs,
     ):
         """
@@ -117,18 +117,21 @@ class HuggingFaceIterableDataset(IterableDataset):
             self.rank = 0
             self.world_size = 1
 
-        # Create a worker-specific and node-specific seed if a seed is provided
-        if self.seed is not None:
-            worker_info = torch.utils.data.get_worker_info()
-            worker_id = worker_info.id if worker_info else 0
+        # We'll defer loading the dataset to the __iter__ method to properly handle worker sharding
 
-            # Combine seed with rank and worker_id for unique seeds across nodes and workers
-            self.actual_seed = self.seed + self.rank * 10000 + worker_id
+    def _passes_type_check(self, sample: tuple[Any]) -> bool:
+        """Implement a type check for the sample.
+        Used for filtering out unwanted samples, such as those with missing data."""
+        raise NotImplementedError
 
-            # Set the seed for reproducibility
-            random.seed(self.actual_seed)
+    def _process_sample(self, sample: tuple[Any]) -> Any:
+        return sample
 
-        # Load the dataset
+    def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
+        # Get worker info for sharding
+        worker_info = get_worker_info()
+
+        # Load the dataset with proper sharding
         dataset = load_dataset(
             self.dataset_name,
             split=self.split,
@@ -141,39 +144,41 @@ class HuggingFaceIterableDataset(IterableDataset):
         if not isinstance(dataset, HFIterableDataset):
             dataset = dataset.to_iterable_dataset()
 
-        # Apply shuffling before splitting for distributed training
+        # Apply shuffling before sharding for distributed training
         if self.shuffle:
-            shuffle_seed = self.seed if self.seed is not None else 42
-            dataset = dataset.shuffle(buffer_size=self.shuffle_buffer_size, seed=shuffle_seed)
+            # Create a worker-specific and node-specific seed if a seed is provided
+            worker_id = worker_info.id if worker_info else 0
+            # Combine seed with rank and worker_id for unique seeds across nodes and workers
+            actual_seed = self.seed + self.rank * 10000 + worker_id
 
-        # Handle distributed training if enabled
+            # Set the seed for reproducibility
+            random.seed(actual_seed)
+            dataset = dataset.shuffle(buffer_size=self.shuffle_buffer_size, seed=actual_seed)
+
+        # Handle distributed training if enabled - this should happen before worker sharding
         if self.distributed:
             try:
                 # Split the dataset across nodes
                 dataset = split_dataset_by_node(dataset, rank=self.rank, world_size=self.world_size)
-
-                # Log information about the distributed setup
                 logger.info(f"Dataset distributed: rank {self.rank}/{self.world_size}")
-
             except Exception as e:
                 warnings.warn(
                     f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
                 )
                 self.distributed = False
 
-        self.dataset = dataset
+        # Implement worker sharding
+        if worker_info is not None:
+            # Calculate the number of shards and which shard this worker should process
+            num_workers = worker_info.num_workers
+            worker_id = worker_info.id
 
-    def _passes_type_check(self, sample: tuple[Any]) -> bool:
-        """Implement a type check for the sample.
-        Used for filtering out unwanted samples, such as those with missing data."""
-        raise NotImplementedError
+            # Use the HuggingFace shard() method to split the dataset among workers
+            dataset = dataset.shard(num_shards=num_workers, index=worker_id)
+            logger.info(f"Dataset sharded: worker {worker_id}/{num_workers}")
 
-    def _process_sample(self, sample: tuple[Any]) -> Any:
-        return sample
-
-    def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
         # Process examples from the dataset
-        for sample in self.dataset:
+        for sample in dataset:
             if self.keys is not None:
                 sample = tuple(sample[k] for k in self.keys if k in sample)
             else:
