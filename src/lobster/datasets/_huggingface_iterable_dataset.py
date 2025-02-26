@@ -174,7 +174,7 @@ class HuggingFaceIterableDataset(IterableDataset):
             worker_id = worker_info.id
 
             # Use the HuggingFace shard() method to split the dataset among workers
-            dataset = dataset.shard(num_shards=num_workers, index=worker_id)
+            dataset = dataset.shard(num_shards=num_workers, index=0)
             logger.info(f"Dataset sharded: worker {worker_id}/{num_workers}")
 
         # Process examples from the dataset
