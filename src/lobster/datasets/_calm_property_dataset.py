@@ -61,6 +61,7 @@ class CalmPropertyDataset(Dataset):
     force_download : bool, default=False
         If True, forces re-download from Hugging Face even if local cache exists.
     """
+
     def __init__(
         self,
         task: Task | str,
@@ -99,7 +100,7 @@ class CalmPropertyDataset(Dataset):
         self.hf_data_file, self.cache_path = self._configure_paths()
 
         # Load data from Hugging Face or cache
-        self._load_data('taylor-joren/calm-property', download, force_download)
+        self._load_data("taylor-joren/calm-property", download, force_download)
 
         self._set_columns(columns)
 
@@ -159,11 +160,7 @@ class CalmPropertyDataset(Dataset):
                 self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
                 # Load from Hugging Face
-                dataset = load_dataset(
-                    huggingface_repo,
-                    data_files=self.hf_data_file,
-                    split="train"
-                )
+                dataset = load_dataset(huggingface_repo, data_files=self.hf_data_file, split="train")
 
                 # Convert to pandas and save to cache
                 df = dataset.to_pandas()
@@ -181,9 +178,7 @@ class CalmPropertyDataset(Dataset):
             self.data = pd.read_parquet(self.cache_path)
 
         else:
-            raise FileNotFoundError(
-                f"Dataset file {self.cache_path} not found locally and download=False"
-            )
+            raise FileNotFoundError(f"Dataset file {self.cache_path} not found locally and download=False")
 
     def _set_columns(self, columns=None):
         """Set the columns to use based on the task."""

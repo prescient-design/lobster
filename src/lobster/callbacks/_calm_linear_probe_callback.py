@@ -62,6 +62,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     probes : dict
         Trained linear probes for each task.
     """
+
     def __init__(
         self,
         max_length: int,
@@ -73,7 +74,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         max_samples: int = 3000,
         seed: int = 42,
     ):
-
         tokenizer_transform = TokenizerTransform(
             tokenizer=NucleotideTokenizerFast(),
             padding="max_length",
