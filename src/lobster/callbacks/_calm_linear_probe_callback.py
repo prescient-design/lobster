@@ -122,28 +122,28 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             return self.dataset_splits[split_key]
 
         current_seed = L.seed_everything(self.seed)
-        
+
         dataset = CalmPropertyDataset(task=task, species=species, transform_fn=self.transform_fn)
-        
+
         indices = np.arange(len(dataset))
-        
+
         # If dataset is too large, subsample it first
         if len(indices) > self.max_samples:
             indices = np.random.choice(indices, size=self.max_samples, replace=False)
-        
+
         # Create train/test split from (possibly subsampled) indices
         test_size = int(len(indices) * self.test_size)
         train_size = len(indices) - test_size
         shuffled_indices = np.random.permutation(indices)
         train_indices = shuffled_indices[:train_size]
         test_indices = shuffled_indices[train_size:]
-        
+
         train_dataset = Subset(dataset, train_indices)
         test_dataset = Subset(dataset, test_indices)
-        
+
         # Cache the splits
         self.dataset_splits[split_key] = (train_dataset, test_dataset)
-        
+
         return train_dataset, test_dataset
 
     def _evaluate_task(

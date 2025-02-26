@@ -1,6 +1,7 @@
 from shutil import which
 
 import pytest
+
 from lobster.model import FoldseekTransform
 
 

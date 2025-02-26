@@ -2,8 +2,9 @@ import unittest.mock
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from lobster.datasets import M320MDataset
 from pandas import DataFrame
+
+from lobster.datasets import M320MDataset
 
 
 class TestM320MDataset:

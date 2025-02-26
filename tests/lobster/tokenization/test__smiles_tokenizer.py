@@ -1,8 +1,9 @@
 from unittest.mock import patch
 
 import pytest
-from lobster.tokenization._smiles_tokenizer import SmilesTokenizerFast, _make_smiles_tokenizer
 from transformers import PreTrainedTokenizerFast
+
+from lobster.tokenization._smiles_tokenizer import SmilesTokenizerFast, _make_smiles_tokenizer
 
 
 @pytest.fixture

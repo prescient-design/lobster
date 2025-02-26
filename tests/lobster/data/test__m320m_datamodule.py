@@ -1,9 +1,10 @@
 import unittest.mock
 
 import pytest
+from pandas import DataFrame
+
 from lobster.data import M320MLightningDataModule
 from lobster.datasets import M320MDataset
-from pandas import DataFrame
 
 
 @pytest.fixture

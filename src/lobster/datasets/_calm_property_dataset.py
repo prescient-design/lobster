@@ -4,9 +4,9 @@ from typing import Callable, Literal, Optional, Sequence, Tuple
 import pandas as pd
 import pooch
 import torch
+from datasets import load_dataset
 from torch import Tensor
 from torch.utils.data import Dataset
-from datasets import load_dataset
 
 from lobster.constants import (
     CALM_TASKS,
@@ -100,7 +100,7 @@ class CalmPropertyDataset(Dataset):
 
         # Load data from Hugging Face or cache
         self._load_data('taylor-joren/calm-property', download, force_download)
-        
+
         self._set_columns(columns)
 
     def _configure_paths(self) -> Tuple[str, Path]:
@@ -113,29 +113,29 @@ class CalmPropertyDataset(Dataset):
         """
         task = self.task
         species = self.species
-        
+
         # Get the appropriate file path in the HF repo
         if task in [Task.FUNCTION_BP, Task.FUNCTION_CC, Task.FUNCTION_MF]:
             function_type = task.value.split("_")[1].lower()
             filename = f"calm_GO_{function_type}_middle_normal.parquet"
             hf_data_file = f"{task.value}/{filename}"
-            
+
         elif task in [Task.MELTOME, Task.SOLUBILITY, Task.LOCALIZATION]:
             filename = f"{task.value}.parquet"
             hf_data_file = f"{task.value}/{filename}"
-            
+
         elif task in [Task.PROTEIN_ABUNDANCE, Task.TRANSCRIPT_ABUNDANCE]:
             if species is None:
                 raise ValueError(f"Must specify species for {task.value} task")
             if species not in TASK_SPECIES[task]:
                 raise ValueError(f"Species {species.value} not available for {task.value} task")
-            
+
             filename = f"{task.value}_{species.value}.parquet"
             hf_data_file = f"{task.value}/{filename}"
-        
+
         # Local cache path
         cache_path = self.root / self.__class__.__name__ / filename
-        
+
         return hf_data_file, cache_path
 
     def _load_data(self, huggingface_repo: str, download: bool, force_download: bool) -> None:
@@ -152,33 +152,33 @@ class CalmPropertyDataset(Dataset):
         """
         # Check if we need to download
         need_download = force_download or not self.cache_path.exists()
-        
+
         if need_download and download:
             try:
                 # Create parent directory if it doesn't exist
                 self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 # Load from Hugging Face
                 dataset = load_dataset(
-                    huggingface_repo, 
-                    data_files=self.hf_data_file, 
+                    huggingface_repo,
+                    data_files=self.hf_data_file,
                     split="train"
                 )
-                
+
                 # Convert to pandas and save to cache
                 df = dataset.to_pandas()
                 df.to_parquet(self.cache_path, index=False)
-                
+
                 # Use the dataframe
                 self.data = df
-                
+
             except Exception as e:
                 raise RuntimeError(f"Failed to load dataset from Hugging Face: {e}")
-                
+
         elif self.cache_path.exists():
             # Load from local cache
             self.data = pd.read_parquet(self.cache_path)
-            
+
         else:
             raise FileNotFoundError(
                 f"Dataset file {self.cache_path} not found locally and download=False"

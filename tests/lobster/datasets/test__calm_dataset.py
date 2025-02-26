@@ -1,8 +1,9 @@
 import unittest.mock
 from pathlib import Path
 
-from lobster.datasets import CalmDataset
 from pandas import DataFrame
+
+from lobster.datasets import CalmDataset
 
 
 class TestCalmDataset:

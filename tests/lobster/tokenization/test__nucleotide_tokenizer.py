@@ -1,5 +1,6 @@
-from lobster.tokenization._nucleotide_tokenizer import NucleotideTokenizerFast, _make_nucleotide_tokenizer
 from transformers import PreTrainedTokenizerFast
+
+from lobster.tokenization._nucleotide_tokenizer import NucleotideTokenizerFast, _make_nucleotide_tokenizer
 
 
 def test__make_nucleotide_tokenizer():

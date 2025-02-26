@@ -1,7 +1,8 @@
 import importlib.resources
 
-from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from torch import Size
+
+from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 
 
 class TestPmlmTokenizer:

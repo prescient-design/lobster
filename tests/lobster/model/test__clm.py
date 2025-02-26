@@ -6,10 +6,11 @@ import onnx
 import pandas as pd
 import pytest
 import torch
-from lobster.data import DataFrameDatasetInMemory
-from lobster.model import LobsterPCLM
 from torch import Size, Tensor
 from torch.utils.data import DataLoader
+
+from lobster.data import DataFrameDatasetInMemory
+from lobster.model import LobsterPCLM
 
 CUR_DIR = os.path.dirname(__file__)
 
