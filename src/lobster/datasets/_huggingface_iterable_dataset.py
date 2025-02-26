@@ -126,11 +126,18 @@ class HuggingFaceIterableDataset(IterableDataset):
 
         # Add per-worker sharding
         if worker_info is not None:
-            dataset = dataset.shard(num_shards=worker_info.num_workers, index=worker_info.id)
-
-            # Log once to prevent excessive logging
-            if worker_info.id == 0:
-                logger.info(f"Dataset sharded among {worker_info.num_workers} workers")
+            try:
+                dataset = dataset.shard(num_shards=worker_info.num_workers, index=worker_info.id)
+                # Log once to prevent excessive logging
+                if worker_info.id == 0:
+                    logger.info(f"Dataset sharded among {worker_info.num_workers} workers")
+            except IndexError as e:
+                # Handle the case where sharding fails due to empty dataset or initialization issues
+                warnings.warn(
+                    f"Failed to shard dataset: {e}. This might be because the dataset is empty. "
+                    f"Continuing without sharding for worker {worker_info.id}.",
+                    stacklevel=2,
+                )
 
         # Process samples from the dataset
         for sample in dataset:
