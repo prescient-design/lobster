@@ -14,8 +14,7 @@ if find_spec("flash_attn"):
 class TestFlexBERT:
     def test_sequences_to_latents(self):
         if _FLASH_ATTN_AVAILABLE and torch.cuda.is_available():
-            hidden_size = 252
-            model = FlexBERT(embedding_layer="linear_pos", hidden_size=hidden_size).cuda()
+            model = FlexBERT(model_name="UME_mini").cuda()
 
             inputs = ["ACDAC", "ACDAC"]
             outputs = model.sequences_to_latents(inputs)

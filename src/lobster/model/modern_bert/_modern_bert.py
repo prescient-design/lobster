@@ -15,6 +15,7 @@ from lobster.transforms import TokenizerTransform
 
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
+from ._modern_bert_configuration import FLEXBERT_CONFIG_ARGS
 
 _FLASH_ATTN_AVAILABLE = False
 
@@ -29,6 +30,7 @@ else:
 class FlexBERT(pl.LightningModule):
     def __init__(
         self,
+        model_name: Literal["UME_mini", "UME_small", "UME_medium", "UME_large"] = "UME_mini",
         lr: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.98,
@@ -41,6 +43,7 @@ class FlexBERT(pl.LightningModule):
         **model_kwargs,
     ):
         super().__init__()
+        self._model_name = model_name
         self._lr = lr
         self._beta1 = beta1
         self._beta2 = beta2
@@ -87,10 +90,12 @@ class FlexBERT(pl.LightningModule):
             truncation=True
             )
 
+        config_args = FLEXBERT_CONFIG_ARGS[model_name]
+
         self.config = FlexBertConfig(
             vocab_size=self.tokenizer.vocab_size,
             pad_token_id=self.tokenizer.pad_token_id,
-            **model_kwargs,
+            **config_args,
         )
         self.model = FlexBertModel(self.config)
 
