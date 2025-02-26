@@ -6,7 +6,7 @@ from typing import Any, Callable, ClassVar, Iterator, List, Sequence, Tuple, Uni
 from datasets import IterableDataset as HFIterableDataset
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
-from torch.utils.data import IterableDataset, get_worker_info
+from torch.utils.data import IterableDataset
 
 from lobster.transforms import Transform
 
@@ -110,34 +110,15 @@ class HuggingFaceIterableDataset(IterableDataset):
         return sample
 
     def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
-        worker_info = get_worker_info()
-
-        dataset = self.dataset
-
         # Handle distributed training if enabled
         if self.distributed:
             try:
-                dataset = split_dataset_by_node(dataset, rank=self.rank, world_size=self.world_size)
+                dataset = split_dataset_by_node(self.dataset, rank=self.rank, world_size=self.world_size)
             except Exception as e:
                 warnings.warn(
                     f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
                 )
                 self.distributed = False
-
-        # Add per-worker sharding
-        if worker_info is not None:
-            try:
-                dataset = dataset.shard(num_shards=worker_info.num_workers, index=worker_info.id)
-                # Log once to prevent excessive logging
-                if worker_info.id == 0:
-                    logger.info(f"Dataset sharded among {worker_info.num_workers} workers")
-            except IndexError as e:
-                # Handle the case where sharding fails due to empty dataset or initialization issues
-                warnings.warn(
-                    f"Failed to shard dataset: {e}. This might be because the dataset is empty. "
-                    f"Continuing without sharding for worker {worker_info.id}.",
-                    stacklevel=2,
-                )
 
         # Process samples from the dataset
         for sample in dataset:
