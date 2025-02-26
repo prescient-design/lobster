@@ -7,7 +7,7 @@
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
-  - override /callbacks: [base]
+  - override /callbacks: [base, tokens_per_second]
 
 data:
   _target_: lobster.data.UmeLightningDataModule
@@ -15,6 +15,10 @@ data:
   datasets: ["M320M", "Calm", "AMPLIFY"]
   batch_size: 16
   tokenizer_max_length: ${model.max_length}
+  pin_memory: true
+  shuffle_buffer_size: 10_000
+  num_workers: 32
+  seed: 0
 
 paths:
   root_dir: dev
