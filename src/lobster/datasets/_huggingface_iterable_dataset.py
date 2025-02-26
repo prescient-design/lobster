@@ -82,7 +82,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         self.keys = list(keys) if keys is not None else None
 
         # Detect distributed environment
-        self.distributed = detect_distributed_environment()
+        self.distributed, self.rank, self.world_size = detect_distributed_environment()
 
         self.dataset = load_dataset(
             self.dataset_name,
