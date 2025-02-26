@@ -15,7 +15,7 @@ def test__make_smiles_tokenizer(mock_load_vocab_file):
     mock_vocab = ["<pad>", "<unk>", "<cls>", "<sep>", "<mask>", "<eos>", "c", "C", "(", ")", "O", "1", "2", "=", "N"]
     mock_load_vocab_file.return_value = mock_vocab
 
-    tokenizer = _make_smiles_tokenizer()
+    tokenizer = _make_smiles_tokenizer(save_dirpath=None)
 
     assert isinstance(tokenizer, PreTrainedTokenizerFast)
 
@@ -29,7 +29,7 @@ def test__make_smiles_tokenizer(mock_load_vocab_file):
     assert tokenizer.vocab_size == len(mock_vocab)
 
     ids = tokenizer.encode("CCO")
-    assert ids == [2, 7, 7, 10, 5]
+    assert ids == [0, 7, 7, 10, 5]
     assert tokenizer.decode(ids) == "<cls> C C O <eos>"
     assert tokenizer.special_tokens_map == {
         "eos_token": "<eos>",
@@ -53,7 +53,7 @@ class TestSmilesTokenizerFast:
         assert tokenizer.mask_token == "<mask>"
 
         ids = tokenizer.encode("CCO")
-        assert ids == [2, 7, 7, 10, 5]
+        assert ids == [0, 7, 7, 10, 5]
         assert tokenizer.decode(ids) == "<cls> C C O <eos>"
         assert tokenizer.special_tokens_map == {
             "eos_token": "<eos>",

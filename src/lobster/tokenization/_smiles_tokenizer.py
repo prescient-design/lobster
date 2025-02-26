@@ -18,7 +18,7 @@ PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "s
 VOCAB_PATH = PRETRAINED_TOKENIZER_PATH / "vocab.txt"
 
 
-def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PATH) -> PreTrainedTokenizerFast:
+def _make_smiles_tokenizer(save_dirpath: Optional[str] = None) -> PreTrainedTokenizerFast:
     """Create PreTrainedTokenizerFast for SMILES Regex tokenization.
 
     Usage:
