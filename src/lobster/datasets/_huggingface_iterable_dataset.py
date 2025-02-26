@@ -1,17 +1,16 @@
 import logging
-import os
-import random
 import warnings
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Iterator, List, Sequence, Tuple, Union
 
-import torch
 from datasets import IterableDataset as HFIterableDataset
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
 from torch.utils.data import IterableDataset, get_worker_info
 
 from lobster.transforms import Transform
+
+from ._utils import detect_distributed_environment
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,6 @@ class HuggingFaceIterableDataset(IterableDataset):
         shuffle_buffer_size: int = 10000,
         seed: int = 0,
         download: bool = False,
-        distributed: bool | None = None,
         **kwargs,
     ):
         """
@@ -63,9 +61,6 @@ class HuggingFaceIterableDataset(IterableDataset):
             Random seed for reproducible shuffling.
         download : bool, optional
             If True, download the dataset instead of streaming.
-        distributed : bool or None, optional
-            If True, force distributed mode. If False, disable distributed mode.
-            If None (default), auto-detect distributed environment.
         kwargs : dict
             Additional keyword arguments to pass to the `load_dataset` function.
         """
@@ -86,53 +81,10 @@ class HuggingFaceIterableDataset(IterableDataset):
 
         self.keys = list(keys) if keys is not None else None
 
-        # Auto-detect distributed training environment if not explicitly set
-        if distributed is None:
-            # Check for PyTorch distributed
-            distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
+        # Detect distributed environment
+        self.distributed = detect_distributed_environment()
 
-            # If PyTorch distributed is not initialized, check for common env variables
-            if not distributed:
-                distributed = all(var in os.environ for var in ["RANK", "WORLD_SIZE"])
-
-        self.distributed = distributed
-
-        # Get rank and world size for distributed setup
-        if self.distributed:
-            try:
-                if torch.distributed.is_available() and torch.distributed.is_initialized():
-                    self.rank = torch.distributed.get_rank()
-                    self.world_size = torch.distributed.get_world_size()
-                else:
-                    self.rank = int(os.environ.get("RANK", 0))
-                    self.world_size = int(os.environ.get("WORLD_SIZE", 1))
-            except Exception as e:
-                warnings.warn(
-                    f"Failed to get distributed info: {e}. Falling back to non-distributed setting", stacklevel=2
-                )
-                self.rank = 0
-                self.world_size = 1
-                self.distributed = False
-        else:
-            self.rank = 0
-            self.world_size = 1
-
-        # We'll defer loading the dataset to the __iter__ method to properly handle worker sharding
-
-    def _passes_type_check(self, sample: tuple[Any]) -> bool:
-        """Implement a type check for the sample.
-        Used for filtering out unwanted samples, such as those with missing data."""
-        raise NotImplementedError
-
-    def _process_sample(self, sample: tuple[Any]) -> Any:
-        return sample
-
-    def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
-        # Get worker info for sharding
-        worker_info = get_worker_info()
-
-        # Load the dataset with proper sharding
-        dataset = load_dataset(
+        self.dataset = load_dataset(
             self.dataset_name,
             split=self.split,
             streaming=not self.download,
@@ -141,43 +93,46 @@ class HuggingFaceIterableDataset(IterableDataset):
         )
 
         # Make it an iterable dataset if it's not already (happens when download=True)
-        if not isinstance(dataset, HFIterableDataset):
-            dataset = dataset.to_iterable_dataset()
+        if not isinstance(self.dataset, HFIterableDataset):
+            self.dataset = self.dataset.to_iterable_dataset()
 
-        # Apply shuffling before sharding for distributed training
         if self.shuffle:
-            # Create a worker-specific and node-specific seed if a seed is provided
-            worker_id = worker_info.id if worker_info else 0
-            # Combine seed with rank and worker_id for unique seeds across nodes and workers
-            actual_seed = self.seed + self.rank * 10000 + worker_id
+            self.dataset = self.dataset.shuffle(seed=self.seed)
 
-            # Set the seed for reproducibility
-            random.seed(actual_seed)
-            dataset = dataset.shuffle(buffer_size=self.shuffle_buffer_size, seed=actual_seed)
+    def _passes_type_check(self, sample: tuple[Any]) -> bool:
+        """Implement a type check for the sample. Used for filtering out unwanted samples,
+        such as those with missing data."""
+        raise NotImplementedError
 
-        # Handle distributed training if enabled - this should happen before worker sharding
+    def _process_sample(self, sample: tuple[Any]) -> Any:
+        """Very simple processing of the sample. Anything that needs more complex
+        processing should go into a transform."""
+        return sample
+
+    def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
+        worker_info = get_worker_info()
+
+        dataset = self.dataset
+
+        # Handle distributed training if enabled
         if self.distributed:
             try:
-                # Split the dataset across nodes
                 dataset = split_dataset_by_node(dataset, rank=self.rank, world_size=self.world_size)
-                logger.info(f"Dataset distributed: rank {self.rank}/{self.world_size}")
             except Exception as e:
                 warnings.warn(
                     f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
                 )
                 self.distributed = False
 
-        # Implement worker sharding
+        # Add per-worker sharding
         if worker_info is not None:
-            # Calculate the number of shards and which shard this worker should process
-            num_workers = worker_info.num_workers
-            worker_id = worker_info.id
+            dataset = dataset.shard(num_shards=worker_info.num_workers, index=worker_info.id)
 
-            # Use the HuggingFace shard() method to split the dataset among workers
-            dataset = dataset.shard(num_shards=num_workers, index=0)
-            logger.info(f"Dataset sharded: worker {worker_id}/{num_workers}")
+            # Log once to prevent excessive logging
+            if worker_info.worker_id == 0:
+                logger.info(f"Dataset sharded among {worker_info.num_workers} workers")
 
-        # Process examples from the dataset
+        # Process samples from the dataset
         for sample in dataset:
             if self.keys is not None:
                 sample = tuple(sample[k] for k in self.keys if k in sample)
