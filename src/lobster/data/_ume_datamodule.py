@@ -3,7 +3,7 @@ from typing import Sequence, TypeVar
 
 from lightning import LightningDataModule
 from torch import Generator
-from torch.utils.data import ChainDataset, DataLoader, Dataset, IterableDataset
+from torch.utils.data import ChainDataset, DataLoader, Dataset, IterableDataset, ShuffledIterableDataset
 
 from lobster.constants import Modality
 from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MIterableDataset
@@ -34,6 +34,7 @@ class UmeLightningDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = True,
         drop_last: bool = False,
+        shuffle_buffer_size: int = 10000,
     ) -> None:
         super().__init__()
 
@@ -56,6 +57,7 @@ class UmeLightningDataModule(LightningDataModule):
         self._num_workers = num_workers
         self._pin_memory = pin_memory
         self._drop_last = drop_last
+        self._shuffle_buffer_size = shuffle_buffer_size
 
         # Initialize tokenizer transforms for each modality
         self._tokenizer_transforms = {
@@ -86,20 +88,20 @@ class UmeLightningDataModule(LightningDataModule):
 
         match name:
             case "M320M":
-                return M320MIterableDataset(
+                dataset = M320MIterableDataset(
                     root=self._root,
                     transform=transform,
                     keys=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
                     split=split,
                 )
             case "Calm":
-                return CalmIterableDataset(
+                dataset = CalmIterableDataset(
                     root=self._root,
                     transform=transform,
                     keys=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
                 )
             case "AMPLIFY":
-                return AMPLIFYIterableDataset(
+                dataset = AMPLIFYIterableDataset(
                     root=self._root,
                     transform=transform,
                     download=False,
@@ -107,6 +109,11 @@ class UmeLightningDataModule(LightningDataModule):
                 )
             case _:
                 raise ValueError(f"Dataset {name} is not supported")
+
+        if split == "train":
+            return ShuffledIterableDataset(dataset, seed=self._seed, buffer_size=self._shuffle_buffer_size)
+        else:
+            return dataset
 
     def setup(self, stage: str | None = None) -> None:
         self._train_datasets = []
