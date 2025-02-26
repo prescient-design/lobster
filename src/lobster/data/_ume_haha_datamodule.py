@@ -1,6 +1,6 @@
 from functools import partial
 from pathlib import Path
-from typing import Sequence, TypeVar
+from typing import Sequence
 
 from lightning import LightningDataModule
 from torch import Generator
@@ -12,20 +12,19 @@ try:
     from nodehaha.collate import Collator
     from sethaha.sources import AMPLIFYDataset, CalmDataset, M320MDataset
     from sethaha.transforms.text import TokenizeNode
-    from torchdata.nodes import Batcher, Loader, MultiNodeWeightedSampler, PinMemory
+    from torchdata.nodes import BaseNode, Batcher, Loader, MultiNodeWeightedSampler, PinMemory
 
     HAHA = True
 
 except (ImportError, ModuleNotFoundError):
     HAHA = False
 
-T = TypeVar("T")
-
 
 # Updated dictionary to include supported splits for each dataset
 SUPPORTED_DATASETS_INFO = {
     "M320M": {"modality": Modality.SMILES, "supported_splits": ["train", "validation", "test"]},
     "Calm": {"modality": Modality.NUCLEOTIDE, "supported_splits": ["train"]},
+    "AMPLIFY": {"modality": Modality.AMINO_ACID, "supported_splits": ["train", "test"]},
 }
 
 
@@ -41,7 +40,6 @@ class UmeHahaLightningDataModule(LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = True,
-        drop_last: bool = False,
     ) -> None:
         if not HAHA:
             raise ImportError("Haha! Error! The datahaha package is required to use this data module. ")
@@ -65,7 +63,6 @@ class UmeHahaLightningDataModule(LightningDataModule):
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._pin_memory = pin_memory
-        self._drop_last = drop_last
 
         # Initialize tokenizers for each modality
         self._tokenize_nodes = {
@@ -97,7 +94,6 @@ class UmeHahaLightningDataModule(LightningDataModule):
 
         self._train_nodes = {}
         self._val_nodes = {}
-        self._test_nodes = {}
 
     def _get_tokenized_dataset_node(self, name: str, split: str):
         dataset_info = SUPPORTED_DATASETS_INFO[name]
@@ -146,7 +142,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
                 val_nodes = self._get_tokenized_dataset_node(dataset_name, "test")
                 self._val_nodes[dataset_name] = val_nodes
 
-    def _get_loader(self, dataset_nodes: dict[str, T]) -> Loader | None:
+    def _get_loader(self, dataset_nodes: dict[str, BaseNode]) -> Loader | None:
         node = MultiNodeWeightedSampler(
             dataset_nodes,
             # TODO add support for weights
@@ -167,6 +163,3 @@ class UmeHahaLightningDataModule(LightningDataModule):
 
     def val_dataloader(self) -> DataLoader | None:
         return self._get_loader(self._val_nodes)
-
-    def test_dataloader(self) -> DataLoader | None:
-        return self._get_loader(self._test_nodes)
