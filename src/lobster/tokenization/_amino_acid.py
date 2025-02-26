@@ -40,6 +40,7 @@ AA_VOCAB = {
     "-": 30,
     "<null_1>": 31,
     "<mask>": 32,
+    "|": 33,  # Used in AMPLIFY to separate sequences
 }
 
 PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "amino_acid_tokenizer"

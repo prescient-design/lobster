@@ -1,3 +1,4 @@
+from ._amplify_dataset import AMPLIFYIterableDataset
 from ._calm_dataset import CalmDataset, CalmIterableDataset
 from ._dataset_to_iterable_dataset import DatasetToIterableDataset
 from ._fasta_dataset import FASTADataset
@@ -16,4 +17,5 @@ __all__ = [
     "DatasetToIterableDataset",
     "ShuffledIterableDataset",
     "MoleculeACEDataset",
+    "AMPLIFYIterableDataset",
 ]

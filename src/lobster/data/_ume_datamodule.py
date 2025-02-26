@@ -6,7 +6,7 @@ from torch import Generator
 from torch.utils.data import ChainDataset, DataLoader, Dataset, IterableDataset
 
 from lobster.constants import Modality
-from lobster.datasets import CalmIterableDataset, M320MIterableDataset
+from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MIterableDataset
 from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
 
@@ -15,8 +15,9 @@ T = TypeVar("T")
 
 # Updated dictionary to include supported splits for each dataset
 SUPPORTED_DATASETS_INFO = {
-    "M320M": {"modality": Modality.SMILES, "supported_splits": ["train", "validation", "test"]},
+    "M320M": {"modality": Modality.SMILES, "supported_splits": ["train", "validation"]},
     "Calm": {"modality": Modality.NUCLEOTIDE, "supported_splits": ["train"]},
+    "AMPLIFY": {"modality": Modality.AMINO_ACID, "supported_splits": ["train", "test"]},
 }
 
 
@@ -73,9 +74,6 @@ class UmeLightningDataModule(LightningDataModule):
         self._val_datasets: list[IterableDataset] = []
         self._test_datasets: list[IterableDataset] = []
 
-        # Optional: Add a collate function if needed
-        self._collate_fn = None
-
     def _get_dataset(self, name: str, split: str) -> Dataset:
         """Get a dataset instance with appropriate tokenizer transform."""
         dataset_info = SUPPORTED_DATASETS_INFO[name]
@@ -91,26 +89,30 @@ class UmeLightningDataModule(LightningDataModule):
                 return M320MIterableDataset(
                     root=self._root,
                     transform=transform,
+                    download=True,
                     keys=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
                     split=split,
                 )
             case "Calm":
-                if split != "train":
-                    raise ValueError("Calm dataset only supports training split")
-
                 return CalmIterableDataset(
                     root=self._root,
                     transform=transform,
+                    download=True,
                     keys=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
+                )
+            case "AMPLIFY":
+                return AMPLIFYIterableDataset(
+                    root=self._root,
+                    transform=transform,
+                    download=False,
+                    split=split,
                 )
             case _:
                 raise ValueError(f"Dataset {name} is not supported")
 
     def setup(self, stage: str | None = None) -> None:
-        # Initialize all datasets regardless of stage
         self._train_datasets = []
         self._val_datasets = []
-        self._test_datasets = []
 
         for dataset_name in self.dataset_names:
             dataset_info = SUPPORTED_DATASETS_INFO[dataset_name]
@@ -120,46 +122,28 @@ class UmeLightningDataModule(LightningDataModule):
                 train_dataset = self._get_dataset(dataset_name, "train")
                 self._train_datasets.append(train_dataset)
 
+            # Combine test and validation datasets into a single validation set
+            # (datasets name their splits differently, for testing, we'll use completely separate datasets)
             if "validation" in supported_splits:
                 val_dataset = self._get_dataset(dataset_name, "validation")
                 self._val_datasets.append(val_dataset)
 
             if "test" in supported_splits:
                 test_dataset = self._get_dataset(dataset_name, "test")
-                self._test_datasets.append(test_dataset)
+                self._val_datasets.append(test_dataset)
 
     def train_dataloader(self) -> DataLoader:
-        if not self._train_datasets:
-            raise ValueError("No training datasets available")
-
         return DataLoader(
             ChainDataset(self._train_datasets),
             batch_size=self._batch_size,
             num_workers=self._num_workers,
-            collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
         )
 
     def val_dataloader(self) -> DataLoader | None:
-        if not self._val_datasets:
-            return None
-
         return DataLoader(
             ChainDataset(self._val_datasets),
             batch_size=self._batch_size,
             num_workers=self._num_workers,
-            collate_fn=self._collate_fn,
-            pin_memory=self._pin_memory,
-        )
-
-    def test_dataloader(self) -> DataLoader | None:
-        if not self._test_datasets:
-            return None
-
-        return DataLoader(
-            ChainDataset(self._test_datasets),
-            batch_size=self._batch_size,
-            num_workers=self._num_workers,
-            collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
         )
