@@ -16,12 +16,11 @@ from ._linear_probe_callback import LinearProbeCallback
 
 class CalmLinearProbeCallback(LinearProbeCallback):
     """Callback for evaluating embedding models on the CALM dataset collection.
-    
     This callback performs linear probing evaluation on various cDNA sequence property
     prediction tasks from the CALM dataset collection. It creates train/test splits for each task,
     extracts embeddings from the model, trains linear probes on these embeddings, and evaluates
     their performance.
-    
+
     Parameters
     ----------
     max_length : int
@@ -53,7 +52,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         Maximum number of samples to use from each dataset.
     seed : int, default=42
         Random seed for reproducibility in dataset splitting.
-        
+
     Attributes
     ----------
     dataset_splits : dict
@@ -110,7 +109,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             The CALM task name to create splits for
         species : Optional[str], default=None
             The species name for species-specific tasks
-            
+
         Returns
         -------
         Tuple[CalmPropertyDataset, CalmPropertyDataset]
@@ -121,7 +120,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         if split_key in self.dataset_splits:
             return self.dataset_splits[split_key]
 
-        current_seed = L.seed_everything(self.seed)
+        L.seed_everything(self.seed)
 
         dataset = CalmPropertyDataset(task=task, species=species, transform_fn=self.transform_fn)
 

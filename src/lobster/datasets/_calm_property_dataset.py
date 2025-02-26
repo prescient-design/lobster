@@ -19,11 +19,11 @@ from lobster.transforms import Transform
 
 class CalmPropertyDataset(Dataset):
     """Dataset for CALM property prediction tasks.
-    
-    This dataset provides access to various biological sequence property prediction tasks from 
+
+    This dataset provides access to various biological sequence property prediction tasks from
     the CALM dataset collection, supporting both regression and multilabel classification tasks.
     Data is loaded from Hugging Face with local caching.
-    
+
     Parameters
     ----------
     task : Task | str
@@ -41,11 +41,11 @@ class CalmPropertyDataset(Dataset):
     species : Optional[Species | str], default=None
         Species for species-specific tasks. Required for 'protein_abundance' and
         'transcript_abundance' tasks.
-        
+
         Available species per task:
         - For protein_abundance: 'athaliana', 'dmelanogaster', 'ecoli', 'hsapiens', 'scerevisiae'
         - For transcript_abundance: All of the above plus 'hvolcanii' and 'ppastoris'
-        
+
         Not applicable for other tasks.
     split : Optional[Literal["train", "validation", "test"]], default=None
         Data split to use (if available). Currently ignored as all data is in a single split.
@@ -56,7 +56,7 @@ class CalmPropertyDataset(Dataset):
     target_transform_fn : Optional[Callable | Transform], default=None
         Transformation to apply to target values.
     columns : Optional[Sequence[str]], default=None
-        Specific columns to use from the dataset. If None, appropriate columns are 
+        Specific columns to use from the dataset. If None, appropriate columns are
         selected based on the task.
     force_download : bool, default=False
         If True, forces re-download from Hugging Face even if local cache exists.
@@ -105,7 +105,7 @@ class CalmPropertyDataset(Dataset):
 
     def _configure_paths(self) -> Tuple[str, Path]:
         """Configure file paths based on task and species.
-        
+
         Returns
         -------
         Tuple[str, Path]
@@ -140,7 +140,7 @@ class CalmPropertyDataset(Dataset):
 
     def _load_data(self, huggingface_repo: str, download: bool, force_download: bool) -> None:
         """Load data from Hugging Face or local cache.
-        
+
         Parameters
         ----------
         huggingface_repo : str
@@ -173,7 +173,8 @@ class CalmPropertyDataset(Dataset):
                 self.data = df
 
             except Exception as e:
-                raise RuntimeError(f"Failed to load dataset from Hugging Face: {e}")
+                print(f"Failed to load dataset from Hugging Face: {e}")
+                raise
 
         elif self.cache_path.exists():
             # Load from local cache
