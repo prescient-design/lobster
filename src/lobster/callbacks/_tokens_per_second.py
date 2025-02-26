@@ -12,26 +12,26 @@ class TokensPerSecondCallback(L.Callback):
 
     Parameters:
     -----------
-    log_interval : int
-        How often to log the tokens per second metric (in batches).
-        Default is every 100 batches.
+    log_interval_steps : int
+        How often to log the tokens per second metric (in steps).
+        Default is every 100 steps.
     batch_size_fn : Callable
         Function to extract batch size from the batch.
-    length_fn : Callable
+    batch_length_fn : Callable
         Function to extract sequence length from the batch.
     """
 
     def __init__(
         self,
-        log_interval: int = 100,
+        log_interval_steps: int = 500,
         batch_size_fn: Union[Callable[[Any], int], None] = None,
         batch_length_fn: Union[Callable[[Any], int], None] = None,
     ):
         super().__init__()
-        self.log_interval = log_interval
+        self.log_interval_steps = log_interval_steps
         self.tokens_processed = 0
         self.start_time = None
-        self.last_logged_batch = 0
+        self.last_logged_step = 0
         self.batch_size_fn = batch_size_fn or default_batch_size_fn
         self.length_fn = batch_length_fn or default_batch_length_fn
 
@@ -39,7 +39,7 @@ class TokensPerSecondCallback(L.Callback):
         """Called when training begins."""
         self.start_time = time.time()
         self.tokens_processed = 0
-        self.last_logged_batch = 0
+        self.last_logged_step = 0
 
     def on_train_batch_end(
         self, trainer: Trainer, pl_module: LightningModule, outputs: Dict[str, Any], batch: Any, batch_idx: int
@@ -56,7 +56,7 @@ class TokensPerSecondCallback(L.Callback):
         self.tokens_processed += batch_tokens
 
         # Log tokens per second at specified intervals
-        if (batch_idx + 1) % self.log_interval == 0:
+        if (batch_idx + 1) % self.log_interval_steps == 0:
             current_time = time.time()
             elapsed_time = current_time - self.start_time
 
@@ -73,10 +73,10 @@ class TokensPerSecondCallback(L.Callback):
                 )
 
                 # Optionally print to console
-                print(f"Batch {batch_idx}: {tokens_per_sec:.2f} tokens/sec")
+                print(f"Step {batch_idx + 1}: {tokens_per_sec:.2f} tokens/sec")
 
-            # Save the last logged batch
-            self.last_logged_batch = batch_idx
+            # Save the last logged step
+            self.last_logged_step = batch_idx
 
     def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """Called at the end of a training epoch."""
