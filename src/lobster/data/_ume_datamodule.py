@@ -90,6 +90,7 @@ class UmeLightningDataModule(LightningDataModule):
                     split=split,
                     shuffle=(split == "train"),
                     download=True,
+                    shuffle_buffer_size=self._shuffle_buffer_size,
                 )
             case "Calm":
                 dataset = CalmIterableDataset(
@@ -98,6 +99,7 @@ class UmeLightningDataModule(LightningDataModule):
                     keys=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
                     shuffle=(split == "train"),
                     download=True,
+                    shuffle_buffer_size=self._shuffle_buffer_size,
                 )
             case "AMPLIFY":
                 dataset = AMPLIFYIterableDataset(
@@ -106,6 +108,7 @@ class UmeLightningDataModule(LightningDataModule):
                     download=False,
                     split=split,
                     shuffle=(split == "train"),
+                    shuffle_buffer_size=self._shuffle_buffer_size,
                 )
             case _:
                 raise ValueError(f"Dataset {name} is not supported")

@@ -40,6 +40,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = True,
+        shuffle_buffer_size: int = 1000,
     ) -> None:
         if not HAHA:
             raise ImportError("Haha! Error! The datahaha package is required to use this data module. ")
@@ -63,6 +64,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._pin_memory = pin_memory
+        self._shuffle_buffer_size = shuffle_buffer_size
 
         # Initialize tokenizers for each modality
         self._tokenize_nodes = {
@@ -117,7 +119,14 @@ class UmeHahaLightningDataModule(LightningDataModule):
             case _:
                 raise ValueError(f"Dataset {name} is not supported")
 
-        dataset = dataset_class(split=split, download=True, streaming=True, cache_dir=self._root)
+        dataset = dataset_class(
+            split=split,
+            download=True,
+            streaming=True,
+            cache_dir=self._root,
+            example_shuffle_buffer=self._shuffle_buffer_size if split == "train" else None,
+        )
+
         node = dataset.create_node()
         node = partial_tokenize_node(source_node=node, text_key=text_key)
 
