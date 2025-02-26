@@ -110,19 +110,22 @@ class UmeHahaLightningDataModule(LightningDataModule):
             case "M320M":
                 dataset_class = M320MDataset
                 text_key = "smiles"
+                download = True
             case "Calm":
                 dataset_class = CalmDataset
                 text_key = "sequence"
+                download = True
             case "AMPLIFY":
                 dataset_class = AMPLIFYDataset
                 text_key = "sequence"
+                download = False
             case _:
                 raise ValueError(f"Dataset {name} is not supported")
 
         dataset = dataset_class(
             split=split,
-            download=True,
             streaming=True,
+            download=download,
             cache_dir=self._root,
             example_shuffle_buffer=self._shuffle_buffer_size if split == "train" else None,
         )
