@@ -30,7 +30,6 @@ class UmeLightningDataModule(LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = True,
-        drop_last: bool = False,
         shuffle_buffer_size: int = 10000,
     ) -> None:
         super().__init__()
@@ -53,7 +52,6 @@ class UmeLightningDataModule(LightningDataModule):
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._pin_memory = pin_memory
-        self._drop_last = drop_last
         self._shuffle_buffer_size = shuffle_buffer_size
 
         # Initialize tokenizer transforms for each modality
@@ -140,6 +138,7 @@ class UmeLightningDataModule(LightningDataModule):
             batch_size=self._batch_size,
             num_workers=self._num_workers,
             pin_memory=self._pin_memory,
+            drop_last=True,
         )
 
     def val_dataloader(self) -> DataLoader | None:
@@ -148,4 +147,5 @@ class UmeLightningDataModule(LightningDataModule):
             batch_size=self._batch_size,
             num_workers=self._num_workers,
             pin_memory=self._pin_memory,
+            drop_last=False,
         )
