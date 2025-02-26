@@ -1,6 +1,7 @@
 from ._amplify_dataset import AMPLIFYIterableDataset
 from ._calm_dataset import CalmDataset, CalmIterableDataset
 from ._fasta_dataset import FASTADataset
+from ._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from ._m3_20m_dataset import M320MDataset, M320MIterableDataset
 from ._moleculeace_dataset import MoleculeACEDataset
 from ._multiplexed_sampling_dataset import MultiplexedSamplingDataset
@@ -17,4 +18,5 @@ __all__ = [
     "ShuffledIterableDataset",
     "MoleculeACEDataset",
     "AMPLIFYIterableDataset",
+    "HuggingFaceIterableDataset",
 ]

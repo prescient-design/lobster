@@ -6,7 +6,7 @@ from torch import Generator
 from torch.utils.data import ChainDataset, DataLoader, Dataset, IterableDataset
 
 from lobster.constants import Modality
-from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MIterableDataset, ShuffledIterableDataset
+from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MIterableDataset
 from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
 
@@ -88,12 +88,16 @@ class UmeLightningDataModule(LightningDataModule):
                     transform=transform,
                     keys=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
                     split=split,
+                    shuffle=(split == "train"),
+                    download=True,
                 )
             case "Calm":
                 dataset = CalmIterableDataset(
                     root=self._root,
                     transform=transform,
                     keys=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
+                    shuffle=(split == "train"),
+                    download=True,
                 )
             case "AMPLIFY":
                 dataset = AMPLIFYIterableDataset(
@@ -101,14 +105,12 @@ class UmeLightningDataModule(LightningDataModule):
                     transform=transform,
                     download=False,
                     split=split,
+                    shuffle=(split == "train"),
                 )
             case _:
                 raise ValueError(f"Dataset {name} is not supported")
 
-        if split == "train":
-            return ShuffledIterableDataset(dataset, seed=self._seed, buffer_size=self._shuffle_buffer_size)
-        else:
-            return dataset
+        return dataset
 
     def setup(self, stage: str | None = None) -> None:
         self._train_datasets = []

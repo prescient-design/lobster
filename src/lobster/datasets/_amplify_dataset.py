@@ -1,13 +1,11 @@
 from pathlib import Path
 from typing import Callable, ClassVar, Literal
 
-from datasets import load_dataset
-from torch.utils.data import IterableDataset
-
+from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from lobster.transforms import Transform
 
 
-class AMPLIFYIterableDataset(IterableDataset):
+class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
     """
     Iterable Dataset for the AMPLIFY protein language model dataset (UR100P).
 
@@ -68,7 +66,7 @@ class AMPLIFYIterableDataset(IterableDataset):
         *,
         transform: Callable | Transform | None = None,
         download: bool = False,
-        shuffle: bool = True,
+        shuffle: bool = False,
         split: str = "train",
         data_dir: Literal["UniProt", "OAS", "SCOP"] | None = None,
     ):
@@ -98,38 +96,19 @@ class AMPLIFYIterableDataset(IterableDataset):
             - "SCOP": Protein structure sequences
             If None, uses all available sources.
         """
-        super().__init__()
-
-        if split not in self.SUPPORTED_SPLITS:
-            raise ValueError(f"Split '{split}' is not supported.")
-
-        self.dataset = load_dataset(
-            "chandar-lab/UR100P",
+        super().__init__(
+            dataset_name="chandar-lab/UR100P",
+            root=root,
+            transform=transform,
+            keys=["sequence"],
             split=split,
+            shuffle=shuffle,
             data_dir=data_dir,
-            streaming=not download,  # If download is True, first download the whole dataset to stream locally
-            cache_dir=root,
+            download=download,
         )
-        # And then convert to an iterable dataset
-        if download:
-            self.dataset = self.dataset.to_iterable_dataset()
 
-        if shuffle:
-            self.dataset = self.dataset.shuffle()
+    def _process_sample(self, sample: tuple[str]) -> str:
+        return sample[0].replace("|", ".")
 
-        self.key = "sequence"
-        self.transform = transform
-
-    def __iter__(self):
-        for sample in self.dataset:
-            x = sample.get(self.key)
-
-            if not x or not isinstance(x, str):
-                continue
-
-            x = x.replace("|", ".")  # Replace '|' with '.' for compatibility with tokenizers
-
-            if self.transform is not None:
-                x = self.transform(x)
-
-            yield x
+    def _passes_type_check(self, sample: tuple[str]) -> bool:
+        return all(isinstance(s, str) for s in sample)

@@ -4,8 +4,9 @@ from typing import Callable, ClassVar, Sequence, Tuple
 import pandas as pd
 import pooch
 from datasets import load_dataset
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset
 
+from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from lobster.transforms import Transform
 
 
@@ -64,7 +65,7 @@ class CalmDataset(Dataset):
         return len(self._x)
 
 
-class CalmIterableDataset(IterableDataset):
+class CalmIterableDataset(HuggingFaceIterableDataset):
     """
     Iterable Dataset from Outeiral, C., Deane, C.M.
     Codon language embeddings provide strong signals for use in protein engineering.
@@ -94,6 +95,8 @@ class CalmIterableDataset(IterableDataset):
         transform: Callable | Transform | None = None,
         keys: Sequence[str] | None = None,
         split: str = "train",
+        download: bool = False,
+        shuffle: bool = False,
     ):
         """
         Initialize the CalmIterableDataset.
@@ -109,32 +112,15 @@ class CalmIterableDataset(IterableDataset):
         split : str, optional
             Which split of the dataset to use (only 'train' is available).
         """
-        super().__init__()
-
-        if split not in self.SUPPORTED_SPLITS:
-            raise ValueError(f"Split '{split}' is not supported.")
-
-        self.dataset = load_dataset(
-            "ncfrey/calm",
-            split="train",
-            cache_dir=root,
+        super().__init__(
+            dataset_name="ncfrey/calm",
+            root=root,
+            transform=transform,
+            keys=keys or ["sequence", "description"],
+            split=split,
+            shuffle=shuffle,
+            download=download,
         )
-        self.dataset = self.dataset.to_iterable_dataset()
 
-        self.keys = ["sequence", "description"] if keys is None else keys
-        self.transform = transform
-
-    def __iter__(self):
-        for sample in self.dataset:
-            x = tuple(sample[key] for key in self.keys if isinstance(sample[key], str))
-
-            if not x:
-                continue
-
-            if len(x) == 1:
-                x = x[0]
-
-            if self.transform is not None:
-                x = self.transform(x)
-
-            yield x
+    def _passes_type_check(self, sample: tuple[str]) -> bool:
+        return all(isinstance(s, str) for s in sample)
