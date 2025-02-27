@@ -6,7 +6,7 @@ from typing import Any, Callable, ClassVar, Iterator, List, Sequence, Tuple, Uni
 from datasets import IterableDataset as HFIterableDataset
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
-from torch.utils.data import IterableDataset, get_worker_info
+from torch.utils.data import IterableDataset
 
 from lobster.transforms import Transform
 
@@ -94,6 +94,19 @@ class HuggingFaceIterableDataset(IterableDataset):
             **self.kwargs,
         )
 
+        if self.distributed:
+            try:
+                self.dataset = split_dataset_by_node(self.dataset, rank=self.rank, world_size=self.world_size)
+                logging.debug(f"Split dataset for node {self.rank} with world size {self.world_size}")
+            except Exception as e:
+                warnings.warn(
+                    f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
+                )
+                self.distributed = False
+
+        if not isinstance(self.dataset, HFIterableDataset):
+            self.dataset = self.dataset.to_iterable_dataset(num_shards=64)  # MANUAL
+
     def _passes_type_check(self, sample: tuple[Any]) -> bool:
         """Implement a type check for the sample. Used for filtering out unwanted samples,
         such as those with missing data."""
@@ -105,35 +118,8 @@ class HuggingFaceIterableDataset(IterableDataset):
         return sample
 
     def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
-        # Handle distributed training if enabled
-        if self.distributed:
-            try:
-                dataset = split_dataset_by_node(self.dataset, rank=self.rank, world_size=self.world_size)
-                logging.debug(f"Split dataset for node {self.rank} with world size {self.world_size}")
-            except Exception as e:
-                warnings.warn(
-                    f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
-                )
-                self.distributed = False
-        else:
-            dataset = self.dataset
-
-        # Handle worker sharding if DataLoader uses multiple workers
-        if (worker_info := get_worker_info()) is not None:
-            worker_id = worker_info.id
-            num_workers = worker_info.num_workers
-        else:
-            worker_id = 0
-            num_workers = 1
-
-        if not isinstance(dataset, HFIterableDataset):
-            dataset = dataset.to_iterable_dataset(num_shards=num_workers)
-
-        # Get the correct shard
-        dataset = dataset.shard(num_shards=num_workers, index=worker_id)
-
         # Process samples from the dataset
-        for sample in dataset:
+        for sample in self.dataset:
             if self.keys is not None:
                 sample = tuple(sample[k] for k in self.keys if k in sample)
             else:
