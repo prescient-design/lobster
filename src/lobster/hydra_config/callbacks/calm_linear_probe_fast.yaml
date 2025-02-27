@@ -1,10 +1,4 @@
 calm_linear_probe:
   _target_: lobster.callbacks.CalmLinearProbeCallback
   max_length: ???
-  tasks:
-    - solubility
-    - localization
-    - function_bp
-    - function_mf
-    - function_cc
-
+  max_samples: 500
