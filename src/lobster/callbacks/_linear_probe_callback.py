@@ -1,17 +1,15 @@
 from typing import Callable, Dict, Literal, Optional, Tuple
 
 import lightning as L
-import numpy as np
 import torch
 from beignet.transforms import Transform
 from lightning.pytorch.callbacks import Callback
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.multioutput import MultiOutputClassifier
 from torch import Tensor
 from torch.utils.data import DataLoader
 from torchmetrics import AUROC, Accuracy, F1Score, MeanSquaredError, R2Score, SpearmanCorrCoef
 
-TaskType = Literal["regression", "binary", "multiclass", "multilabel"]
+TaskType = Literal["regression", "binary", "multiclass"]
 
 
 class LinearProbeCallback(Callback):
@@ -23,53 +21,38 @@ class LinearProbeCallback(Callback):
         transform_fn: Transform | Callable | None = None,
         num_classes: Optional[int] = None,
         batch_size: int = 32,
-        run_every_n_steps: int | None = None,
+        run_every_n_epochs: int | None = None,
     ):
         super().__init__()
         self.transform_fn = transform_fn
         self.task_type = task_type
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.run_every_n_steps = run_every_n_steps
+        self.run_every_n_epochs = run_every_n_epochs
 
         # Initialize metrics based on task type
-        self._set_metrics(task_type, num_classes)
-
-        # Dictionary to store trained probes
-        self.probes: Dict[str, LinearRegression | LogisticRegression] = {}
-
-    def _set_metrics(self, task_type: TaskType, num_classes: Optional[int] = None) -> None:
-        """Initialize metrics based on task type."""
         if task_type == "regression":
             self.mse = MeanSquaredError()
             self.r2 = R2Score()
             self.spearman = SpearmanCorrCoef()
-            self.accuracy = None
-            self.f1 = None
-            self.auroc = None
 
-        elif task_type in {"binary", "multiclass", "multilabel"}:
-            # For multilabel, we use num_classes as num_labels
-            metric_task = task_type
-            self.accuracy = Accuracy(task=metric_task, num_labels=num_classes)
-            self.f1 = F1Score(task=metric_task, num_labels=num_classes)
-            self.auroc = AUROC(task=metric_task, num_labels=num_classes)
-            self.mse = None
-            self.r2 = None
-            self.spearman = None
+        elif task_type in {"binary", "multiclass"}:
+            self.accuracy = Accuracy(task=task_type, num_classes=num_classes)
+            self.f1 = F1Score(task=task_type, num_classes=num_classes)
+            self.auroc = AUROC(task_type=task_type, num_classes=num_classes)
 
         else:
-            raise ValueError("task_type must be: regression, binary, multiclass, or multilabel")
+            raise ValueError("task_type must be: regression, binary, or multiclass")
 
-        self.task_type = task_type
-        self.num_classes = num_classes
+        # Dictionary to store trained probes
+        self.probes: Dict[str, LinearRegression | LogisticRegression] = {}
 
     def _skip(self, trainer: L.Trainer) -> bool:
-        """Determine if we should skip validation this step."""
-        if self.run_every_n_steps is None:
+        """Determine if we should skip validation this epoch."""
+        if self.run_every_n_epochs is None:
             return False
 
-        return trainer.global_step % self.run_every_n_steps != 0
+        return trainer.current_epoch % self.run_every_n_epochs != 0
 
     def _get_embeddings(self, module: L.LightningModule, dataloader: DataLoader) -> Tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader."""
@@ -105,63 +88,40 @@ class LinearProbeCallback(Callback):
 
         if self.task_type == "regression":
             probe = LinearRegression()
-            probe.fit(embeddings, targets)
-
-        elif self.task_type == "multilabel":
-            base_classifier = LogisticRegression(random_state=42)
-            probe = MultiOutputClassifier(base_classifier)
-            probe.fit(embeddings, targets)
-
-        else:  # binary or multiclass
+        else:
             probe = LogisticRegression(
                 multi_class="ovr" if self.task_type == "binary" else "multinomial",
-                random_state=42,
             )
-            probe.fit(embeddings, targets.ravel())
+
+        probe.fit(embeddings, targets)
 
         return probe
 
     def _evaluate_probe(self, probe, embeddings: Tensor, targets: Tensor) -> Dict[str, float]:
         """Evaluate a trained probe using task-appropriate metrics."""
-        embeddings_np = embeddings.numpy()  # Convert to numpy for probe prediction
         metrics = {}
 
         if self.task_type == "regression":
-            predictions_np = probe.predict(embeddings_np)
-            predictions = torch.from_numpy(predictions_np).float()
+            predictions = probe.predict(embeddings.numpy())
+            predictions = torch.from_numpy(predictions).float()
 
             metrics["mse"] = self.mse(predictions, targets).item()
             metrics["r2"] = self.r2(predictions, targets).item()
             metrics["spearman"] = self.spearman(predictions.squeeze(), targets.squeeze()).item()
 
-        else:  # binary, multiclass, or multilabel
-            if self.task_type == "multilabel":
-                # Get probabilities for each label
-                predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1)
-            else:  # binary or multiclass
-                predictions_np = probe.predict_proba(embeddings_np)
-                if self.task_type == "binary":
-                    predictions_np = predictions_np[:, 1]
+        else:  # binary or multiclass
+            pred_probs = probe.predict_proba(embeddings.numpy())
+            predictions = torch.from_numpy(pred_probs).float()
 
-            predictions = torch.from_numpy(predictions_np).float()
+            if self.task_type == "binary":
+                predictions = predictions[:, 1]
+
             metrics["accuracy"] = self.accuracy(predictions, targets).item()
             metrics["f1"] = self.f1(predictions, targets).item()
             metrics["auroc"] = self.auroc(predictions, targets).item()
 
         return metrics
 
-    def on_validation_batch_end(
-        self, trainer: L.Trainer, pl_module: L.LightningModule, outputs, batch, batch_idx: int
-    ) -> None:
-        """Check if we should run the probe evaluation after this batch."""
-        if batch_idx == 0 and not self._skip(trainer):
-            self.evaluate_probes(trainer, pl_module)
-
-    def evaluate_probes(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        """Train and evaluate linear probes."""
-        # Implementation should be provided in subclasses
-        raise NotImplementedError("Subclasses must implement evaluate_probes")
-
-    def on_validation_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        """For compatibility with older implementations"""
-        raise NotImplementedError("Subclasses must implement on_validation_start")
+    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
+        """Train and evaluate linear probes, optionally at specified epochs."""
+        raise NotImplementedError("Subclasses must implement on_validation_epoch_end")

@@ -34,8 +34,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         max_length: int,
         tasks: Optional[Sequence[str]] = None,
         batch_size: int = 32,
-        run_every_n_steps: int | None = None,
-        log_individual_tasks: bool = False,
+        run_every_n_epochs: int | None = None,
     ):
         tokenizer_transform = TokenizerTransform(
             tokenizer=SmilesTokenizerFast(),
@@ -48,14 +47,13 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
             transform_fn=tokenizer_transform,
             task_type="regression",
             batch_size=batch_size,
-            run_every_n_steps=run_every_n_steps,
+            run_every_n_epochs=run_every_n_epochs,
         )
 
         # Set tasks
         self.tasks = set(tasks) if tasks is not None else MOLECULEACE_TASKS
-        self.log_individual_tasks = log_individual_tasks
 
-    def on_validation_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
+    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         """Train and evaluate linear probes at specified epochs."""
         if self._skip(trainer):
             return
@@ -82,10 +80,10 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
 
             # Log metrics and store for averaging
             for metric_name, value in metrics.items():
-                if self.log_individual_tasks:
-                    trainer.logger.log_metrics(
-                        {f"moleculeace_linear_probe/{task}/{metric_name}": value}, step=trainer.current_epoch
-                    )
+                trainer.logger.log_metrics(
+                    {f"moleculeace_linear_probe/{task}/{metric_name}": value}, step=trainer.current_epoch
+                )
+
                 aggregate_metrics[metric_name].append(value)
 
         # Calculate and log aggregate metrics
