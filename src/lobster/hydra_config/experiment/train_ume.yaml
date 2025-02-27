@@ -2,8 +2,6 @@
 
 # lobster_train experiment=train_ume logger.entity=zadorozk logger.project=lobster logger.group=ume-dev ++trainer.accelerator=gpu ++trainer.devices=auto 
 
-# @package _global_
-
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
