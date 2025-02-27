@@ -156,11 +156,11 @@ class UmeLightningDataModule(LightningDataModule):
                 self._train_datasets.append(train_dataset)
                 self._train_sizes.append(dataset_info.train_size)
 
-            if Split.VALIDATION in dataset_info.supported_splits:
-                val_dataset = self._get_dataset(dataset_info, split=Split.VALIDATION)
+            if Split.TEST in dataset_info.supported_splits:
+                val_dataset = self._get_dataset(dataset_info, split=Split.TEST)
 
                 self._val_datasets.append(val_dataset)
-                self._val_sizes.append(dataset_info.val_size)
+                self._val_sizes.append(dataset_info.test_size)
 
         self.train_dataset = MultiplexedSamplingDataset(
             self._train_datasets,
