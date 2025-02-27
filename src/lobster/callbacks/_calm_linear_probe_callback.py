@@ -44,7 +44,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         - For transcript_abundance: All of the above plus 'hvolcanii' and 'ppastoris'
     batch_size : int, default=32
         Batch size for embedding extraction and evaluation.
-    run_every_n_steps : Optional[int], default=None
+    run_every_n_epochs : Optional[int], default=None
         Run this callback every n epochs. If None, runs every validation epoch.
     test_size : float, default=0.2
         Fraction of data to use for testing.
@@ -69,7 +69,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         tasks: Optional[Sequence[str]] = None,
         species: Optional[Sequence[str]] = None,
         batch_size: int = 32,
-        run_every_n_steps: Optional[int] = None,
+        run_every_n_epochs: Optional[int] = None,
         test_size: float = 0.2,
         max_samples: int = 3000,
         seed: int = 42,
@@ -85,7 +85,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             transform_fn=tokenizer_transform,
             task_type="regression",
             batch_size=batch_size,
-            run_every_n_steps=run_every_n_steps,
+            run_every_n_epochs=run_every_n_epochs,
         )
 
         self.tasks = set(tasks) if tasks else set(CALM_TASKS.keys())
@@ -182,7 +182,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             print(f"Error in _evaluate_task for {task_key}: {str(e)}")
             raise
 
-    def on_validation_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
+    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         if self._skip(trainer):
             return
 
