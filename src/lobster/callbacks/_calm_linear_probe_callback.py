@@ -182,7 +182,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             print(f"Error in _evaluate_task for {task_key}: {str(e)}")
             raise
 
-    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
+    def on_validation_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         if self._skip(trainer):
             return
 

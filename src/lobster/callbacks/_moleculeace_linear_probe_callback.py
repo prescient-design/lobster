@@ -55,7 +55,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         self.tasks = set(tasks) if tasks is not None else MOLECULEACE_TASKS
         self.log_individual_tasks = log_individual_tasks
 
-    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
+    def on_validation_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         """Train and evaluate linear probes at specified epochs."""
         if self._skip(trainer):
             return

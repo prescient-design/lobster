@@ -162,6 +162,6 @@ class LinearProbeCallback(Callback):
         # Implementation should be provided in subclasses
         raise NotImplementedError("Subclasses must implement evaluate_probes")
 
-    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
+    def on_validation_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         """For compatibility with older implementations"""
-        pass
+        raise NotImplementedError("Subclasses must implement on_validation_start")
