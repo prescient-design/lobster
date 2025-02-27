@@ -115,26 +115,12 @@ class HuggingFaceIterableDataset(IterableDataset):
             dataset = self.dataset
 
         if (worker_info := get_worker_info()) is not None:
-            worker_id = worker_info.id
             num_workers = worker_info.num_workers
         else:
-            worker_id = 0
             num_workers = 1
 
         if not isinstance(dataset, HFIterableDataset):
             dataset = dataset.to_iterable_dataset(num_shards=num_workers)
-
-        try:
-            dataset = dataset.shard(num_shards=num_workers, index=worker_id)
-            logging.info(f"Sharding: Worker {worker_id} out of {num_workers} workers is processing shard {worker_id}.")
-        except Exception as e:
-            logger.exception(
-                f"""
-                Failed to get the correct shard for worker {worker_id} out of {num_workers} workers.
-                Dataset num shards: {dataset.num_shards}
-                """
-            )
-            raise e
 
         # Process samples from the dataset
         for sample in dataset:
