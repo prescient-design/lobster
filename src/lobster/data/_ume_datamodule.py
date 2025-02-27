@@ -1,20 +1,40 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, Type
 
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import ChainDataset, DataLoader, Dataset, IterableDataset
 
-from lobster.constants import Modality
+from lobster.constants import Modality, Split
 from lobster.datasets import AMPLIFYIterableDataset, CalmIterableDataset, M320MIterableDataset
 from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
 from lobster.transforms import TokenizerTransform
 
-# Supported datasets with modalities and supported splits
+
+@dataclass
+class DatasetInfo:
+    dataset_class: Type
+    modality: Modality
+    supported_splits: set[Split]
+
+
 SUPPORTED_DATASETS_INFO = {
-    "M320M": {"modality": Modality.SMILES, "supported_splits": ["train", "validation"]},
-    "Calm": {"modality": Modality.NUCLEOTIDE, "supported_splits": ["train"]},
-    "AMPLIFY": {"modality": Modality.AMINO_ACID, "supported_splits": ["train", "test"]},
+    "M320M": DatasetInfo(
+        dataset_class=M320MIterableDataset,
+        modality=Modality.SMILES,
+        supported_splits={Split.TRAIN, Split.VALIDATION, Split.TEST},
+    ),
+    "Calm": DatasetInfo(
+        dataset_class=CalmIterableDataset,
+        modality=Modality.NUCLEOTIDE,
+        supported_splits={Split.TRAIN},
+    ),
+    "AMPLIFY": DatasetInfo(
+        dataset_class=AMPLIFYIterableDataset,
+        modality=Modality.AMINO_ACID,
+        supported_splits={Split.TRAIN, Split.TEST},
+    ),
 }
 
 
@@ -25,7 +45,6 @@ class UmeLightningDataModule(LightningDataModule):
         tokenizer_max_length: int,
         datasets: None | Sequence[str] = None,
         root: Path | str | None = None,
-        use_text_descriptions: bool = False,
         seed: int = 0,
         batch_size: int = 1,
         num_workers: int = 0,
@@ -46,7 +65,6 @@ class UmeLightningDataModule(LightningDataModule):
 
         self._root = root
         self._tokenizer_max_length = tokenizer_max_length
-        self._use_text_descriptions = use_text_descriptions
         self._generator = Generator().manual_seed(seed)
         self._seed = seed
         self._batch_size = batch_size
@@ -55,59 +73,58 @@ class UmeLightningDataModule(LightningDataModule):
         self._shuffle_buffer_size = shuffle_buffer_size
 
         # Initialize tokenizer transforms for each modality
+        tokenizer_instances = {
+            Modality.SMILES: SmilesTokenizerFast(),
+            Modality.AMINO_ACID: AminoAcidTokenizerFast(),
+            Modality.NUCLEOTIDE: NucleotideTokenizerFast(),
+        }
+
         self._tokenizer_transforms = {
-            Modality.SMILES: TokenizerTransform(
-                SmilesTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-            ),
-            Modality.AMINO_ACID: TokenizerTransform(
-                AminoAcidTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-            ),
-            Modality.NUCLEOTIDE: TokenizerTransform(
-                NucleotideTokenizerFast(), padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-            ),
+            modality: TokenizerTransform(
+                tokenizer, padding="max_length", truncation=True, max_length=self._tokenizer_max_length
+            )
+            for modality, tokenizer in tokenizer_instances.items()
         }
 
         self._train_datasets: list[IterableDataset] = []
         self._val_datasets: list[IterableDataset] = []
         self._test_datasets: list[IterableDataset] = []
 
-    def _get_dataset(self, name: str, split: str) -> Dataset:
+    def _get_dataset(self, name: str, split: Split) -> Dataset:
         """Get a dataset instance with appropriate tokenizer transform."""
         dataset_info = SUPPORTED_DATASETS_INFO[name]
-        modality = dataset_info["modality"]
-        transform = self._tokenizer_transforms[modality]
 
-        # Check if the requested split is supported
-        if split not in dataset_info["supported_splits"]:
-            raise ValueError(f"Split '{split}' is not supported for dataset '{name}'")
+        modality = dataset_info.modality
+        transform = self._tokenizer_transforms[modality]
+        dataset_class = dataset_info.dataset_class
 
         match name:
             case "M320M":
-                dataset = M320MIterableDataset(
+                dataset = dataset_class(
                     root=self._root,
                     transform=transform,
                     keys=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
-                    split=split,
-                    shuffle=(split == "train"),
+                    split=split.value,
+                    shuffle=(split == Split.TRAIN),
                     download=True,
                     shuffle_buffer_size=self._shuffle_buffer_size,
                 )
             case "Calm":
-                dataset = CalmIterableDataset(
+                dataset = dataset_class(
                     root=self._root,
                     transform=transform,
                     keys=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
-                    shuffle=(split == "train"),
+                    shuffle=(split == Split.TRAIN),
                     download=True,
                     shuffle_buffer_size=self._shuffle_buffer_size,
                 )
             case "AMPLIFY":
-                dataset = AMPLIFYIterableDataset(
+                dataset = dataset_class(
                     root=self._root,
                     transform=transform,
                     download=False,
-                    split=split,
-                    shuffle=(split == "train"),
+                    split=split.value,
+                    shuffle=(split == Split.TRAIN),
                     shuffle_buffer_size=self._shuffle_buffer_size,
                 )
             case _:
@@ -121,20 +138,19 @@ class UmeLightningDataModule(LightningDataModule):
 
         for dataset_name in self.dataset_names:
             dataset_info = SUPPORTED_DATASETS_INFO[dataset_name]
-            supported_splits = dataset_info["supported_splits"]
 
-            if "train" in supported_splits:
-                train_dataset = self._get_dataset(dataset_name, "train")
+            if Split.TRAIN in dataset_info.supported_splits:
+                train_dataset = self._get_dataset(dataset_name, split=Split.TRAIN)
                 self._train_datasets.append(train_dataset)
 
             # Combine test and validation datasets into a single validation set
             # (datasets name their splits differently, for testing, we'll use completely separate datasets)
-            if "validation" in supported_splits:
-                val_dataset = self._get_dataset(dataset_name, "validation")
+            if Split.VALIDATION in dataset_info.supported_splits:
+                val_dataset = self._get_dataset(dataset_name, split=Split.VALIDATION)
                 self._val_datasets.append(val_dataset)
 
-            if "test" in supported_splits:
-                test_dataset = self._get_dataset(dataset_name, "test")
+            if Split.TEST in dataset_info.supported_splits:
+                test_dataset = self._get_dataset(dataset_name, split=Split.TEST)
                 self._val_datasets.append(test_dataset)
 
     def train_dataloader(self) -> DataLoader:

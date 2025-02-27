@@ -43,7 +43,8 @@ class UmeHahaLightningDataModule(LightningDataModule):
         shuffle_buffer_size: int = 1000,
     ) -> None:
         if not HAHA:
-            raise ImportError("Haha! Error! The datahaha package is required to use this data module. ")
+            raise ImportError("Haha! Error! The datahaha package is required to use this data module.")
+
         super().__init__()
 
         supported_datasets = set(SUPPORTED_DATASETS_INFO.keys())

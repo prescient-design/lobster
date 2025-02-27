@@ -41,6 +41,7 @@
       "special": true
     }
   },
+  "bos_token": null,
   "clean_up_tokenization_spaces": false,
   "cls_token": "<cls>",
   "eos_token": "<eos>",
@@ -48,8 +49,7 @@
   "mask_token": "<mask>",
   "model_max_length": 1000000000000000019884624838656,
   "pad_token": "<pad>",
-  "padding_side": "right",
-  "tokenizer_class": "PreTrainedTokenizer",
-  "truncation_side": "left",
+  "sep_token": null,
+  "tokenizer_class": "PreTrainedTokenizerFast",
   "unk_token": "<unk>"
 }
