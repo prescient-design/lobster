@@ -89,6 +89,9 @@ class HuggingFaceIterableDataset(IterableDataset):
             **self.kwargs,
         )
 
+        if not isinstance(self.dataset, HFIterableDataset):
+            self.dataset = self.dataset.to_iterable_dataset(num_shards=64)
+
     def _passes_type_check(self, sample: tuple[Any]) -> bool:
         """Implement a type check for the sample. Used for filtering out unwanted samples,
         such as those with missing data."""
@@ -116,29 +119,6 @@ class HuggingFaceIterableDataset(IterableDataset):
         else:
             dataset = self.dataset
 
-        # Handle worker sharding if DataLoader uses multiple workers
-        if (worker_info := get_worker_info()) is not None:
-            logging.info(f"Worker info: {worker_info}")
-            worker_id = worker_info.id
-            num_workers = worker_info.num_workers
-        else:
-            worker_id = 0
-            num_workers = 1
-
-        if not isinstance(dataset, HFIterableDataset):
-            logging.info("Converting dataset to IterableDataset")
-            dataset = dataset.to_iterable_dataset(num_shards=num_workers)
-            logging.info(f"Converted dataset to IterableDataset with {dataset.num_shards} shards")
-
-        # Get the correct shard
-        try:
-            dataset = dataset.shard(num_shards=num_workers, index=worker_id)
-            logger.info(f"Sharded dataset with {dataset.num_shards} shards")
-        except Exception:
-            logging.info(
-                f"Attemping to shard dataset {self.__class__.__name__} dataset.num_shards={dataset.num_shards} num_workers={num_workers} worker_id={worker_id}"
-            )
-            raise ValueError("Failed to shard dataset")
 
         # Process samples from the dataset
         for sample in dataset:
