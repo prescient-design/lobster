@@ -90,7 +90,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         )
 
         if not isinstance(self.dataset, HFIterableDataset):
-            self.dataset = self.dataset.to_iterable_dataset(num_shards=64)  # MANUAL
+            self.dataset = self.dataset.to_iterable_dataset()
 
     def _passes_type_check(self, sample: tuple[Any]) -> bool:
         """Implement a type check for the sample. Used for filtering out unwanted samples,

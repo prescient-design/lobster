@@ -162,17 +162,11 @@ class UmeLightningDataModule(LightningDataModule):
                 self._val_datasets.append(val_dataset)
                 self._val_sizes.append(dataset_info.test_size)
 
-        self.train_dataset = MultiplexedSamplingDataset(
-            self._train_datasets,
-            weights=self._train_sizes,
-            seed=self._seed,
-            max_size=sum(self._train_sizes),
-        )
+        self.train_dataset = MultiplexedSamplingDataset(self._train_datasets, seed=self._seed, mode="min")
         self.val_dataset = MultiplexedSamplingDataset(
             self._val_datasets,
-            weights=self._val_sizes,
+            mode="min",
             seed=self._seed,
-            max_size=100_000,  # sum(self._val_sizes), TODO: remove this once M320M-val is smaller
         )
 
     def train_dataloader(self) -> DataLoader:
