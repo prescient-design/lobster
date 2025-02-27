@@ -84,7 +84,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         # Detect distributed environment
         self.distributed, self.rank, self.world_size = detect_distributed_environment()
 
-        logging.debug(f"Using distributed training: {self.distributed}")
+        logging.info(f"Using distributed training: {self.distributed}")
 
         self.dataset = load_dataset(
             self.dataset_name,
@@ -100,7 +100,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         if self.distributed:
             try:
                 self.dataset = split_dataset_by_node(self.dataset, rank=self.rank, world_size=self.world_size)
-                logging.debug(f"Split dataset for node {self.rank} with world size {self.world_size}")
+                logging.info(f"Split dataset for node {self.rank} with world size {self.world_size}")
             except Exception as e:
                 warnings.warn(
                     f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
