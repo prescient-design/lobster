@@ -133,10 +133,12 @@ class HuggingFaceIterableDataset(IterableDataset):
         # Get the correct shard
         try:
             dataset = dataset.shard(num_shards=num_workers, index=worker_id)
+            logger.info(f"Sharded dataset with {dataset.num_shards} shards")
         except Exception:
             logging.info(
-                f"Attemping to shard dataset dataset.num_shards={dataset.num_shards} num_workers={num_workers} worker_id={worker_id}"
+                f"Attemping to shard dataset {self.__class__.__name__} dataset.num_shards={dataset.num_shards} num_workers={num_workers} worker_id={worker_id}"
             )
+            raise ValueError("Failed to shard dataset")
 
         # Process samples from the dataset
         for sample in dataset:
