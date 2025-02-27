@@ -4,11 +4,12 @@ from io import StringIO
 import pytest
 import torch
 from Bio.PDB import PDBParser, Superimposer
+from torch import Size, Tensor
+
 from lobster.data import PDBDataModule
 from lobster.extern.openfold_utils import backbone_loss
 from lobster.model import LobsterPLMFold
 from lobster.transforms import StructureFeaturizer
-from torch import Size, Tensor
 
 torch.backends.cuda.matmul.allow_tf32 = True
 

@@ -1,5 +1,6 @@
 import Levenshtein
 import torch
+
 from lobster.model import LobsterCBMPMLM
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

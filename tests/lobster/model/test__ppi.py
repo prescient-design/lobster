@@ -1,4 +1,5 @@
 import pytest
+
 from lobster.model import LobsterPMLM, PPIClassifier
 
 

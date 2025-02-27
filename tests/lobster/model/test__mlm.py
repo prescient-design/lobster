@@ -5,8 +5,9 @@ import tempfile
 import onnx
 import pytest
 import torch
-from lobster.model import LobsterPMLM
 from torch import Size, Tensor
+
+from lobster.model import LobsterPMLM
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -27,6 +28,13 @@ def model():
     return model
 
 
+@pytest.fixture(scope="module")
+def esmc():
+    model = LobsterPMLM(model_name="esmc")
+    model.eval()
+    return model
+
+
 class TestLobsterPMLM:
     def test_sequences_to_latents(self, model):
         inputs = ["ACDAC"]
@@ -39,6 +47,18 @@ class TestLobsterPMLM:
         assert isinstance(outputs[0], Tensor)
 
         assert outputs[0].device == model.device
+
+    def test_sequences_to_latents_esmc(self, esmc):
+        inputs = ["ACDAC"]
+        outputs = esmc.sequences_to_latents(inputs)
+
+        assert len(outputs) == 30
+
+        assert outputs[0].shape == Size([1, 512, 960])
+
+        assert isinstance(outputs[0], Tensor)
+
+        assert outputs[0].device == esmc.device
 
     def test_onnx(self, model):
         input_ids = torch.randint(0, 2, (4, 512)).long()  # (B, L)

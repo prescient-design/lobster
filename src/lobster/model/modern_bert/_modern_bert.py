@@ -1,13 +1,15 @@
 from importlib.util import find_spec
+from typing import Literal, Sequence
 
 import lightning.pytorch as pl
 import torch
 from torch import nn
 from transformers.optimization import get_linear_schedule_with_warmup
-
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
+from ._modern_bert_configuration import FLEXBERT_CONFIG_ARGS
 
 _FLASH_ATTN_AVAILABLE = False
 
@@ -22,11 +24,14 @@ else:
 class FlexBERT(pl.LightningModule):
     def __init__(
         self,
-        vocab_size: int,
-        pad_token_id: int,
-        mask_token_id: int,
-        cls_token_id: int,
-        eos_token_id: int,
+        model_name: Literal["UME_mini", "UME_small", "UME_medium", "UME_large"] = "UME_mini",
+        *,
+        vocab_size: int | None = None,
+        pad_token_id: int | None = None,
+        mask_token_id: int | None = None,
+        cls_token_id: int | None = None,
+        eos_token_id: int | None = None,
+        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None = None,
         lr: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.98,
@@ -38,6 +43,7 @@ class FlexBERT(pl.LightningModule):
         **model_kwargs,
     ):
         super().__init__()
+        self._model_name = model_name
         self._lr = lr
         self._beta1 = beta1
         self._beta2 = beta2
@@ -47,7 +53,10 @@ class FlexBERT(pl.LightningModule):
         self._mask_percentage = mask_percentage
         self.max_length = max_length
 
+        config_args = FLEXBERT_CONFIG_ARGS[model_name]
+
         self.config = FlexBertConfig(
+            **config_args,
             vocab_size=vocab_size,
             pad_token_id=pad_token_id,
             **model_kwargs,
@@ -62,12 +71,26 @@ class FlexBERT(pl.LightningModule):
         assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
         self.loss_fn = CrossEntropyLoss()
         self.save_hyperparameters(logger=False)
+        
+        # Check that either a tokenizer OR vocab_size and special token IDs are provided
+        if tokenizer is None and any(
+            arg is None for arg in (vocab_size, pad_token_id, mask_token_id, cls_token_id, eos_token_id)
+        ):
+            raise ValueError("Either a tokenizer OR vocab_size and special token IDs must be provided")
+        
+        if tokenizer is not None:
+            self.vocab_size = tokenizer.vocab_size
+            self.pad_token_id = tokenizer.pad_token_id
+            self.mask_token_id = tokenizer.mask_token_id
+            self.cls_token_id = tokenizer.cls_token_id
+            self.eos_token_id = tokenizer.eos_token_id
+        else:
+            self.vocab_size = vocab_size
+            self.pad_token_id = pad_token_id
+            self.mask_token_id = mask_token_id
+            self.cls_token_id = cls_token_id
+            self.eos_token_id = eos_token_id
 
-        self.vocab_size = vocab_size
-        self.pad_token_id = pad_token_id
-        self.mask_token_id = mask_token_id
-        self.cls_token_id = cls_token_id
-        self.eos_token_id = eos_token_id
 
     def training_step(self, batch, batch_idx):
         loss = self._compute_loss(batch)

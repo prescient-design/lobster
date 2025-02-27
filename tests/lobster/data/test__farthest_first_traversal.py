@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+
 from lobster.data import FarthestFirstTraversal, ranked_fft
 
 

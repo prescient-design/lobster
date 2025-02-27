@@ -1,5 +1,6 @@
-from lobster.tokenization import HyenaTokenizerTransform
 from torch import Size
+
+from lobster.tokenization import HyenaTokenizerTransform
 
 
 class TestHyenaTokenizerTransform:

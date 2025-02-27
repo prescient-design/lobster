@@ -3,8 +3,9 @@ import shutil
 import tempfile
 
 import pytest
-from lobster.model import LobsterCBMPMLM
 from torch import Size, Tensor
+
+from lobster.model import LobsterCBMPMLM
 
 
 @pytest.fixture(scope="module", autouse=True)
