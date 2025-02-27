@@ -172,7 +172,7 @@ class UmeLightningDataModule(LightningDataModule):
             self._val_datasets,
             weights=self._val_sizes,
             seed=self._seed,
-            max_size=sum(self._val_sizes),
+            max_size=100_000,  # sum(self._val_sizes), TODO: remove this once M320M-val is smaller
         )
 
     def train_dataloader(self) -> DataLoader:

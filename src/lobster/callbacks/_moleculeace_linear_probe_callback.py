@@ -34,7 +34,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         max_length: int,
         tasks: Optional[Sequence[str]] = None,
         batch_size: int = 32,
-        run_every_n_epochs: int | None = None,
+        run_every_n_steps: int | None = None,
         log_individual_tasks: bool = False,
     ):
         tokenizer_transform = TokenizerTransform(
@@ -48,7 +48,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
             transform_fn=tokenizer_transform,
             task_type="regression",
             batch_size=batch_size,
-            run_every_n_epochs=run_every_n_epochs,
+            run_every_n_steps=run_every_n_steps,
         )
 
         # Set tasks

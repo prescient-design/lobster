@@ -23,14 +23,14 @@ class LinearProbeCallback(Callback):
         transform_fn: Transform | Callable | None = None,
         num_classes: Optional[int] = None,
         batch_size: int = 32,
-        run_every_n_epochs: int | None = None,
+        run_every_n_steps: int | None = None,
     ):
         super().__init__()
         self.transform_fn = transform_fn
         self.task_type = task_type
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.run_every_n_epochs = run_every_n_epochs
+        self.run_every_n_steps = run_every_n_steps
 
         # Initialize metrics based on task type
         self._set_metrics(task_type, num_classes)
@@ -65,11 +65,11 @@ class LinearProbeCallback(Callback):
         self.num_classes = num_classes
 
     def _skip(self, trainer: L.Trainer) -> bool:
-        """Determine if we should skip validation this epoch."""
-        if self.run_every_n_epochs is None:
+        """Determine if we should skip validation this step."""
+        if self.run_every_n_steps is None:
             return False
 
-        return trainer.current_epoch % self.run_every_n_epochs != 0
+        return trainer.global_step % self.run_every_n_steps != 0
 
     def _get_embeddings(self, module: L.LightningModule, dataloader: DataLoader) -> Tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader."""
@@ -150,6 +150,18 @@ class LinearProbeCallback(Callback):
 
         return metrics
 
+    def on_validation_batch_end(
+        self, trainer: L.Trainer, pl_module: L.LightningModule, outputs, batch, batch_idx: int
+    ) -> None:
+        """Check if we should run the probe evaluation after this batch."""
+        if batch_idx == 0 and not self._skip(trainer):
+            self.evaluate_probes(trainer, pl_module)
+
+    def evaluate_probes(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
+        """Train and evaluate linear probes."""
+        # Implementation should be provided in subclasses
+        raise NotImplementedError("Subclasses must implement evaluate_probes")
+
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        """Train and evaluate linear probes, optionally at specified epochs."""
-        raise NotImplementedError("Subclasses must implement on_validation_epoch_end")
+        """For compatibility with older implementations"""
+        pass

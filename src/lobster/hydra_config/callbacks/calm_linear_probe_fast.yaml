@@ -1,0 +1,11 @@
+calm_linear_probe:
+  _target_: lobster.callbacks.CalmLinearProbeCallback
+  max_length: ???
+  run_every_n_steps: 5000
+  tasks:
+    - solubility
+    - localization
+    - function_bp
+    - function_mf
+    - function_cc
+
