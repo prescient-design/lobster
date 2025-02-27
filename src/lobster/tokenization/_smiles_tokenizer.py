@@ -38,6 +38,8 @@ def _make_smiles_tokenizer(save_dirpath: Optional[str] = None) -> PreTrainedToke
     vocab = load_vocab_file(VOCAB_PATH)
     vocab = {v: k for k, v in enumerate(vocab)}
 
+    print(vocab)
+
     tokenizer_model = BPE(vocab, merges=[], unk_token="<unk>", ignore_merges=True)
 
     pre_tokenizer = Split(pattern=Regex(SMILES_REGEX_PATTERN), behavior="isolated")

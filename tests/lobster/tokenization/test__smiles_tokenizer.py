@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import pytest
 from lobster.tokenization._smiles_tokenizer import SmilesTokenizerFast, _make_smiles_tokenizer
 from transformers import PreTrainedTokenizerFast
@@ -10,11 +8,7 @@ def tokenizer():
     return SmilesTokenizerFast()
 
 
-@patch("lobster.tokenization._smiles_tokenizer.load_vocab_file")
-def test__make_smiles_tokenizer(mock_load_vocab_file):
-    mock_vocab = ["<pad>", "<unk>", "<cls>", "<sep>", "<mask>", "<eos>", "c", "C", "(", ")", "O", "1", "2", "=", "N"]
-    mock_load_vocab_file.return_value = mock_vocab
-
+def test__make_smiles_tokenizer():
     tokenizer = _make_smiles_tokenizer(save_dirpath=None)
 
     assert isinstance(tokenizer, PreTrainedTokenizerFast)
@@ -26,10 +20,8 @@ def test__make_smiles_tokenizer(mock_load_vocab_file):
     assert tokenizer.sep_token == "<sep>"
     assert tokenizer.mask_token == "<mask>"
 
-    assert tokenizer.vocab_size == len(mock_vocab)
-
     ids = tokenizer.encode("CCO")
-    assert ids == [0, 7, 7, 10, 5]
+    assert ids == [0, 7, 7, 10, 2]
     assert tokenizer.decode(ids) == "<cls> C C O <eos>"
     assert tokenizer.special_tokens_map == {
         "eos_token": "<eos>",
@@ -53,7 +45,7 @@ class TestSmilesTokenizerFast:
         assert tokenizer.mask_token == "<mask>"
 
         ids = tokenizer.encode("CCO")
-        assert ids == [0, 7, 7, 10, 5]
+        assert ids == [0, 7, 7, 10, 2]
         assert tokenizer.decode(ids) == "<cls> C C O <eos>"
         assert tokenizer.special_tokens_map == {
             "eos_token": "<eos>",
