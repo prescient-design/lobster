@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Union
 
 import lightning as L
 from lightning.pytorch import LightningModule, Trainer
+from torch import Tensor
 
 
 class TokensPerSecondCallback(L.Callback):
@@ -96,13 +97,15 @@ class TokensPerSecondCallback(L.Callback):
             )
 
 
-def default_batch_size_fn(batch: Any) -> int:
+def default_batch_size_fn(batch: dict[str, Tensor]) -> int:
     """Default batch size function that returns the batch size."""
     x = batch["input_ids"].squeeze(1)
+
     return x.shape[0]
 
 
-def default_batch_length_fn(batch: Any) -> int:
+def default_batch_length_fn(batch: dict[str, Tensor]) -> int:
     """Default length function that returns the length of the batch."""
     x = batch["input_ids"].squeeze(1)
+
     return x.shape[1]
