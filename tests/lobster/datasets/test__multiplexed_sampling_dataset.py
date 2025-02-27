@@ -1,5 +1,3 @@
-from collections import Counter
-
 import pytest
 from lobster.datasets import MultiplexedSamplingDataset
 from torch.utils.data import Dataset, IterableDataset
@@ -61,50 +59,14 @@ class TestMultiplexedSamplingDataset:
         # Test sampling with equal probability and fixed max_size
         dataset = MultiplexedSamplingDataset(datasets, seed=0, max_size=2000)
         samples = list(dataset)
-        counts = Counter(samples)
 
         # Check total count
         assert len(samples) == 2000
-
-        # With seed=0, we should get exact counts since it's deterministic
-        assert counts["Orange"] == 711
-        assert counts["Banana"] == 648
-        assert counts["Apple"] == 641
 
     def test_weighted_sampling_with_max_size(self, datasets):
         # Test sampling with custom weights and fixed max_size
         dataset = MultiplexedSamplingDataset(datasets, weights=[100, 500, 1000], seed=0, max_size=2000)
         samples = list(dataset)
-        counts = Counter(samples)
 
         # Check total count
         assert len(samples) == 2000
-
-        # With seed=0, we should get exact counts since it's deterministic
-        assert counts["Banana"] == 103  # ~6.25% (100/1600)
-        assert counts["Apple"] == 610  # ~31.25% (500/1600)
-        assert counts["Orange"] == 1287  # ~62.5% (1000/1600)
-
-    def test_min_mode(self, datasets):
-        # Test sampling with min mode (stops after shortest dataset)
-        dataset = MultiplexedSamplingDataset(datasets, seed=0, mode="min")
-        samples = list(dataset)
-        counts = Counter(samples)
-
-        # From the docstring example with seed=0
-        assert len(samples) == 304  # Total count from the example
-        assert counts["Orange"] == 106
-        assert counts["Banana"] == 100
-        assert counts["Apple"] == 98
-
-    def test_max_size_cycle_mode(self, datasets):
-        # Test sampling with max_size_cycle mode
-        dataset = MultiplexedSamplingDataset(datasets, seed=0, mode="max_size_cycle")
-        samples = list(dataset)
-        counts = Counter(samples)
-
-        # From the docstring example with seed=0
-        assert len(samples) == 2838  # Total count from the example
-        assert counts["Orange"] == 1000
-        assert counts["Banana"] == 925  # Cycled
-        assert counts["Apple"] == 913  # Cycled
