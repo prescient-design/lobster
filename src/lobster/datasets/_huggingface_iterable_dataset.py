@@ -126,7 +126,9 @@ class HuggingFaceIterableDataset(IterableDataset):
             num_workers = 1
 
         if not isinstance(dataset, HFIterableDataset):
+            logging.info("Converting dataset to IterableDataset")
             dataset = dataset.to_iterable_dataset(num_shards=num_workers)
+            logging.info(f"Converted dataset to IterableDataset with {dataset.num_shards} shards")
 
         # Get the correct shard
         try:
