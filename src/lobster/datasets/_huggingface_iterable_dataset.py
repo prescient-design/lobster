@@ -89,9 +89,6 @@ class HuggingFaceIterableDataset(IterableDataset):
             **self.kwargs,
         )
 
-        if not isinstance(self.dataset, HFIterableDataset):
-            self.dataset = self.dataset.to_iterable_dataset()
-
     def _passes_type_check(self, sample: tuple[Any]) -> bool:
         """Implement a type check for the sample. Used for filtering out unwanted samples,
         such as those with missing data."""
@@ -127,6 +124,9 @@ class HuggingFaceIterableDataset(IterableDataset):
         else:
             worker_id = 0
             num_workers = 1
+
+        if not isinstance(dataset, HFIterableDataset):
+            dataset = dataset.to_iterable_dataset(num_shards=num_workers)
 
         # Get the correct shard
         try:
