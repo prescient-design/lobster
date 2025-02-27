@@ -89,9 +89,6 @@ class HuggingFaceIterableDataset(IterableDataset):
             **self.kwargs,
         )
 
-        if not isinstance(self.dataset, HFIterableDataset):
-            self.dataset = self.dataset.to_iterable_dataset(num_shards=64)
-
     def _passes_type_check(self, sample: tuple[Any]) -> bool:
         """Implement a type check for the sample. Used for filtering out unwanted samples,
         such as those with missing data."""
@@ -105,12 +102,10 @@ class HuggingFaceIterableDataset(IterableDataset):
     def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
         # Detect distributed environment
         self.distributed, self.rank, self.world_size = detect_distributed_environment()
-        logging.info(f"Using distributed training: {self.distributed}")
 
         if self.distributed:
             try:
                 dataset = split_dataset_by_node(self.dataset, rank=self.rank, world_size=self.world_size)
-                logging.info(f"Split dataset for node {self.rank} with world size {self.world_size}")
             except Exception as e:
                 warnings.warn(
                     f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
@@ -119,6 +114,26 @@ class HuggingFaceIterableDataset(IterableDataset):
         else:
             dataset = self.dataset
 
+        if (worker_info := get_worker_info()) is not None:
+            worker_id = worker_info.id
+            num_workers = worker_info.num_workers
+        else:
+            worker_id = 0
+            num_workers = 1
+
+        if not isinstance(self.dataset, HFIterableDataset):
+            dataset = dataset.to_iterable_dataset(num_shards=num_workers)
+
+        try:
+            dataset = dataset.shard(num_shards=num_workers, index=worker_id)
+        except Exception as e:
+            logger.exception(
+                f"""
+                Failed to get the correct shard for worker {worker_id} out of {num_workers} workers.
+                Dataset num shards: {dataset.num_shards}
+                """
+            )
+            raise e
 
         # Process samples from the dataset
         for sample in dataset:
