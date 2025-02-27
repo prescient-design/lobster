@@ -126,6 +126,7 @@ class HuggingFaceIterableDataset(IterableDataset):
 
         try:
             dataset = dataset.shard(num_shards=num_workers, index=worker_id)
+            logging.info(f"Sharding: Worker {worker_id} out of {num_workers} workers is processing shard {worker_id}.")
         except Exception as e:
             logger.exception(
                 f"""
