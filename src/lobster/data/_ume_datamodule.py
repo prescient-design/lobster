@@ -44,7 +44,7 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.TEST},
         train_size=19_400_000,
         test_size=1_000_000,
-        kwargs={"download": True, "keys": ["smiles"]},
+        kwargs={"download": False, "keys": ["smiles"]},
     ),
     DatasetInfo(
         name="Calm",
@@ -52,7 +52,7 @@ SUPPORTED_DATASETS_INFO = [
         modality=Modality.NUCLEOTIDE,
         supported_splits={Split.TRAIN},
         train_size=8_780_000,
-        kwargs={"download": True, "keys": ["sequence"]},
+        kwargs={"download": False, "keys": ["sequence"]},
     ),
     DatasetInfo(
         name="AMPLIFY",
