@@ -103,7 +103,7 @@ class UmeLightningDataModule(LightningDataModule):
                 dataset = dataset_class(
                     root=self._root,
                     transform=transform,
-                    keys=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
+                    keys=["smiles"],
                     split=split.value,
                     shuffle=(split == Split.TRAIN),
                     download=True,
@@ -113,7 +113,7 @@ class UmeLightningDataModule(LightningDataModule):
                 dataset = dataset_class(
                     root=self._root,
                     transform=transform,
-                    keys=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
+                    keys=["sequence"],
                     shuffle=(split == Split.TRAIN),
                     download=True,
                     shuffle_buffer_size=self._shuffle_buffer_size,
