@@ -121,7 +121,7 @@ class HuggingFaceIterableDataset(IterableDataset):
             worker_id = 0
             num_workers = 1
 
-        if not isinstance(self.dataset, HFIterableDataset):
+        if not isinstance(dataset, HFIterableDataset):
             dataset = dataset.to_iterable_dataset(num_shards=num_workers)
 
         try:
