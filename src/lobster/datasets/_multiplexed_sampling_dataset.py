@@ -1,5 +1,3 @@
-"""Adapted from Keunwoo Choi's https://code.roche.com/choik11/genie-proteinie/-/blob/k/vanilla-data/genie_proteinie/data/utils.py"""
-
 from typing import Iterator, Literal, Sequence
 
 import torch
@@ -7,7 +5,7 @@ from torch.utils.data import Dataset, IterableDataset, get_worker_info
 
 
 class MultiplexedSamplingDataset(IterableDataset):
-    """Dataset that samples from multiple datasets according to specified weights."""
+    """Dataset that samples from multiple iterable datasets according to specified weights."""
 
     def __init__(
         self,
@@ -15,9 +13,42 @@ class MultiplexedSamplingDataset(IterableDataset):
         weights: Sequence[float] | None = None,
         seed: int | None = None,
         mode: Literal["max_size_cycle", "min"] = "min",
+        max_size: int | None = None,
     ):
         """
         Initialize multiplexed dataset.
+
+        Important: We cannot take dataset sizes into account
+                   If you know the dataset sizes, you can adjust the weights accordingly.
+                   See examples below.
+
+
+        Examples:
+            ```py
+            # Sample with equal probability from each dataset
+            >>> dataset = MultiplexedSamplingDataset(datasets, seed=0, max_size=2000)
+            >>> samples = list(dataset)
+            >>> Counter(samples)
+            Counter({'Orange': 711, 'Banana': 648, 'Apple': 641})
+
+            # Sample more proportionally from each dataset
+            >>> dataset = MultiplexedSamplingDataset(datasets, weights=[100,500,1000], seed=0, max_size=2000)
+            >>> samples = list(dataset)
+            >>> Counter(samples), len(samples)
+            Counter({'Orange': 1287, 'Apple': 610, 'Banana': 103})
+
+            # Sample with equal probability from each dataset, but stop after the shortest dataset is done
+            >>> dataset = MultiplexedSamplingDataset(datasets, seed=0, mode="min")
+            >>> samples = list(dataset)
+            >>> Counter(samples)
+            Counter({'Orange': 106, 'Banana': 100, 'Apple': 98})
+
+            # Sample with equal probability from each dataset, but cycle through the longest dataset
+            >>> dataset = MultiplexedSamplingDataset(datasets, seed=0, mode="max_size_cycle")
+            >>> samples = list(dataset)
+            >>> Counter(samples)
+            Counter({'Orange': 1000, 'Banana': 925, 'Apple': 913})
+            ```
 
         Parameters
         ----------
@@ -28,12 +59,18 @@ class MultiplexedSamplingDataset(IterableDataset):
         seed : int | None, optional
             Optional random seed for reproducibility.
         mode : Literal["max_size_cycle", "min"], default="max_size_cycle"
+            Ignored if `max_size` is not None.
             Sampling mode.
              - "min" stops after the shortest iterable is done (default)
+                Effect: downsamples the longer datasets to match the shortest dataset.
              - "max_size_cycle" stops after the longest iterable is done, while cycling through the rest.
+                Effect: cycles through the shorter datasets to match the longest dataset.
             Similar to https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.utilities.combined_loader.html
+        max_size : int | None, optional
+            Optional maximum number of samples to return. If None, uses `mode` to determine stopping condition.
         """
         self.datasets = datasets
+        self.max_size = max_size
 
         if mode not in {"max_size_cycle", "min"}:
             raise ValueError("mode must be 'max_size_cycle' or 'min'")
@@ -87,7 +124,45 @@ class MultiplexedSamplingDataset(IterableDataset):
         self._worker_info = get_worker_info()
         iterators = {dataset: self._get_iterator(dataset) for dataset in self.datasets}
 
-        if self.mode == "min":
+        # Calculate per-worker sample limit if max_size is specified
+        samples_per_worker = None
+        if self.max_size is not None:
+            if self._worker_info is not None:
+                # Distribute max_size among workers
+                num_workers = self._worker_info.num_workers
+                worker_id = self._worker_info.id
+
+                # Calculate base samples per worker and remainder
+                base_samples = self.max_size // num_workers
+                remainder = self.max_size % num_workers
+
+                # Distribute remainder among workers
+                # Workers with ID < remainder get one extra sample
+                if worker_id < remainder:
+                    samples_per_worker = base_samples + 1
+                else:
+                    samples_per_worker = base_samples
+            else:
+                # Single worker gets all samples
+                samples_per_worker = self.max_size
+
+        # Counter for samples yielded by this worker
+        samples_yielded = 0
+
+        # If max_size is set, it takes precedence over mode
+        if samples_per_worker is not None:
+            while samples_yielded < samples_per_worker:
+                chosen_idx = torch.multinomial(self.weights, 1, generator=self._generator).item()
+                chosen_dataset = self.datasets[chosen_idx]
+                try:
+                    yield next(iterators[chosen_dataset])
+                    samples_yielded += 1
+                except StopIteration:
+                    # Reset this iterator and continue if we're still under max_size
+                    iterators[chosen_dataset] = self._get_iterator(chosen_dataset)
+
+        # Otherwise, use the specified mode
+        elif self.mode == "min":
             while True:
                 chosen_idx = torch.multinomial(self.weights, 1, generator=self._generator).item()
                 chosen_dataset = self.datasets[chosen_idx]
@@ -95,7 +170,7 @@ class MultiplexedSamplingDataset(IterableDataset):
                     yield next(iterators[chosen_dataset])
                 except StopIteration:
                     break
-        else:
+        else:  # max_size_cycle mode
             consumed = torch.zeros(len(self.datasets), dtype=torch.bool)
 
             while not consumed.all():
