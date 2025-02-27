@@ -158,6 +158,7 @@ class M320MIterableDataset(HuggingFaceIterableDataset):
             split=split,
             download=download,
             shuffle=shuffle,
+            shuffle_buffer_size=shuffle_buffer_size,
         )
 
     def _passes_type_check(self, sample: tuple[str]) -> bool:
