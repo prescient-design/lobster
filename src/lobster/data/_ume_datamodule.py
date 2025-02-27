@@ -166,11 +166,13 @@ class UmeLightningDataModule(LightningDataModule):
             self._train_datasets,
             weights=self._train_sizes,
             seed=self._seed,
+            max_size=sum(self._train_sizes),
         )
         self.val_dataset = MultiplexedSamplingDataset(
             self._val_datasets,
             weights=self._val_sizes,
             seed=self._seed,
+            max_size=sum(self._val_sizes),
         )
 
     def train_dataloader(self) -> DataLoader:
