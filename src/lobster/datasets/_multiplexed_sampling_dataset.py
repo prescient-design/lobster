@@ -25,25 +25,44 @@ class MultiplexedSamplingDataset(IterableDataset):
 
         Examples:
             ```py
-            # Sample with equal probability from each dataset
+
+            from collections import Counter
+            from lobster.datasets import MultiplexedSamplingDataset
+            from torch.utils.data import Dataset, IterableDataset
+
+            class IterableStringDataset(IterableDataset):
+                def __init__(self, data):
+                    self.data = data
+
+                def __iter__(self):
+                    for item in self.data:
+                        yield item
+
+            datasets= [
+                IterableStringDataset(["Banana"] * 100),
+                IterableStringDataset(["Apple"] * 500),
+                IterableStringDataset(["Orange"] * 1000),
+            ]
+
+            # 1. Sample with equal probability from each dataset
             >>> dataset = MultiplexedSamplingDataset(datasets, seed=0, max_size=2000)
             >>> samples = list(dataset)
             >>> Counter(samples)
             Counter({'Orange': 711, 'Banana': 648, 'Apple': 641})
 
-            # Sample more proportionally from each dataset
+            # 2. Sample more proportionally from each dataset
             >>> dataset = MultiplexedSamplingDataset(datasets, weights=[100,500,1000], seed=0, max_size=2000)
             >>> samples = list(dataset)
             >>> Counter(samples), len(samples)
             Counter({'Orange': 1287, 'Apple': 610, 'Banana': 103})
 
-            # Sample with equal probability from each dataset, but stop after the shortest dataset is done
+            # 3. Sample with equal probability from each dataset, but stop after the shortest dataset is done
             >>> dataset = MultiplexedSamplingDataset(datasets, seed=0, mode="min")
             >>> samples = list(dataset)
             >>> Counter(samples)
             Counter({'Orange': 106, 'Banana': 100, 'Apple': 98})
 
-            # Sample with equal probability from each dataset, but cycle through the longest dataset
+            # 4. Sample with equal probability from each dataset, but cycle through the longest dataset
             >>> dataset = MultiplexedSamplingDataset(datasets, seed=0, mode="max_size_cycle")
             >>> samples = list(dataset)
             >>> Counter(samples)
