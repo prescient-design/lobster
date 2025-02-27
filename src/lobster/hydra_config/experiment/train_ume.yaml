@@ -33,25 +33,21 @@ trainer:
 
 
 model:
-  max_length: 512
-  num_warmup_steps: 1_000
-  tokenizer_dir: nucleotide_tokenizer
-  num_training_steps: ${trainer.max_steps}
-  lr: 4e-4
-  mask_percentage: 0.25
-  hidden_size: 768
-  num_hidden_layers: 12
-  num_attention_heads: 12
-  intermediate_size: 3072
-  beta1: 0.9
-  beta2: 0.98
-  eps: 1e-12
+  model_name: UME_mini
   vocab_size:  627
   pad_token_id: 1
   cls_token_id: 0
   mask_token_id: 4
   sep_token_id: 5
   eos_token_id: 2
+  lr: 4e-4
+  beta1: 0.9
+  beta2: 0.98
+  eps: 1e-12
+  num_training_steps: ${trainer.max_steps}
+  num_warmup_steps: 1_000
+  mask_percentage: 0.25
+  max_length: 512
   unpad_embeddings: true
 
 callbacks:
@@ -60,6 +56,6 @@ callbacks:
     run_every_n_epochs: 1
 
 logger:
-  name: ume_amplify_m320m_calm_strategy=${trainer.strategy}_${now:%Y-%m-%d_%H-%M-%S}
+  name: ume_amplify_m320m_calm_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
   project: lobster
   group: ume-dev
