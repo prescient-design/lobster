@@ -3,6 +3,7 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Iterator, List, Sequence, Tuple, Union
 
+from datasets import Dataset as HFDataset
 from datasets import IterableDataset as HFIterableDataset
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
@@ -81,7 +82,13 @@ class HuggingFaceIterableDataset(IterableDataset):
 
         self.keys = list(keys) if keys is not None else None
 
-        self.dataset: HFIterableDataset | None = None
+        self.dataset: HFIterableDataset | HFDataset = load_dataset(
+            self.dataset_name,
+            split=self.split,
+            streaming=not self.download,
+            cache_dir=self.root,
+            **self.kwargs,
+        )
 
     def _passes_type_check(self, sample: tuple[Any]) -> bool:
         """Implement a type check for the sample. Used for filtering out unwanted samples,
@@ -94,20 +101,10 @@ class HuggingFaceIterableDataset(IterableDataset):
         return sample
 
     def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
-        self.dataset = load_dataset(
-            self.dataset_name,
-            split=self.split,
-            streaming=not self.download,
-            cache_dir=self.root,
-            **self.kwargs,
-        )
-
-        if self.shuffle:
-            self.dataset = self.dataset.shuffle(seed=self.seed, buffer_size=self.shuffle_buffer_size)
-
         # Detect distributed environment
         self.distributed, self.rank, self.world_size = detect_distributed_environment()
 
+        # Split the dataset across nodes if in distributed mode
         if self.distributed:
             try:
                 dataset = split_dataset_by_node(self.dataset, rank=self.rank, world_size=self.world_size)
@@ -119,6 +116,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         else:
             dataset = self.dataset
 
+        # Convert to an iterable dataset if not already
         if not isinstance(dataset, HFIterableDataset):
             if (worker_info := get_worker_info()) is not None:
                 num_workers = worker_info.num_workers
@@ -126,6 +124,10 @@ class HuggingFaceIterableDataset(IterableDataset):
                 num_workers = 1
 
             dataset = dataset.to_iterable_dataset(num_shards=num_workers)
+
+        # Shuffle the dataset
+        if self.shuffle:
+            dataset = dataset.shuffle(buffer_size=self.shuffle_buffer_size, seed=self.seed)
 
         # Process samples from the dataset
         for sample in dataset:
