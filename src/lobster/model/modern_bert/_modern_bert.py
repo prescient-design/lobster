@@ -200,33 +200,33 @@ class FlexBERT(pl.LightningModule):
 
         return masked_inputs
     
-    def setup(self, stage: str | None):
-        """Used to measure FLOPs"""
+    # def setup(self, stage: str | None):
+    #     """Used to measure FLOPs"""
 
-        with torch.device("meta"):
-            model = FlexBERT(self.config)
+    #     with torch.device("meta"):
+    #         model = FlexBERT(self.config)
 
-            def sample_forward():
-                batch_size = 64 # TODO figure out how to avoid setting this manually
-                batch = {
-                    "input_ids": torch.randint(0, model.vocab_size, (batch_size, model.max_length)),
-                    "attention_mask": torch.ones(batch_size, model.max_length),
-                }
+    #         def sample_forward():
+    #             batch_size = 64 # TODO figure out how to avoid setting this manually
+    #             batch = {
+    #                 "input_ids": torch.randint(0, model.vocab_size, (batch_size, model.max_length)),
+    #                 "attention_mask": torch.ones(batch_size, model.max_length),
+    #             }
 
-                tokens = batch["input_ids"]
-                B, length = tokens.shape
-                tokens = tokens.view(-1)
-                attention_mask = batch["attention_mask"].view(-1)
+    #             tokens = batch["input_ids"]
+    #             B, length = tokens.shape
+    #             tokens = tokens.view(-1)
+    #             attention_mask = batch["attention_mask"].view(-1)
 
-                cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
+    #             cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
 
-                return model.model(
-                    tokens,
-                    attention_mask=attention_mask,
-                    cu_seqlens=cu_seqlens,
-                    max_seqlen=model.max_length
-                )
+    #             return model.model(
+    #                 tokens,
+    #                 attention_mask=attention_mask,
+    #                 cu_seqlens=cu_seqlens,
+    #                 max_seqlen=model.max_length
+    #             )
             
-            # Measure FLOPS - for forward pass only
-            self.flops_per_batch = lightning.fabric.utilities.throughput.measure_flops(model, sample_forward)
+    #         # Measure FLOPS - for forward pass only
+    #         self.flops_per_batch = lightning.fabric.utilities.throughput.measure_flops(model, sample_forward)
         
