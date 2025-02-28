@@ -10,6 +10,7 @@ from lobster.constants import Modality, Split
 from lobster.datasets import (
     AMPLIFYIterableDataset,
     CalmIterableDataset,
+    ConcatIterableDataset,
     HuggingFaceIterableDataset,
     M320MIterableDataset,
     MultiplexedSamplingDataset,
@@ -162,11 +163,9 @@ class UmeLightningDataModule(LightningDataModule):
                 self._val_datasets.append(val_dataset)
                 self._val_sizes.append(dataset_info.test_size)
 
-        self.train_dataset = MultiplexedSamplingDataset(self._train_datasets, seed=self._seed, mode="min")
-        self.val_dataset = MultiplexedSamplingDataset(
+        self.train_dataset = ConcatIterableDataset(self._train_datasets)
+        self.val_dataset = ConcatIterableDataset(
             self._val_datasets,
-            mode="min",
-            seed=self._seed,
         )
 
     def train_dataloader(self) -> DataLoader:
