@@ -2,9 +2,8 @@ import unittest.mock
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+from lobster.datasets import M320MDataset, M320MIterableDataset
 from pandas import DataFrame
-
-from lobster.datasets import M320MDataset
 
 
 class TestM320MDataset:
@@ -24,3 +23,11 @@ class TestM320MDataset:
             assert dataset.transform is None
 
             assert isinstance(dataset.data, DataFrame)
+
+
+class TestAMPLIFYIterableDataset:
+    def test__iter__(self):
+        dataset = M320MIterableDataset(keys=["smiles"], shuffle=False, download=False)
+        example = next(iter(dataset))
+
+        assert isinstance(example, str)

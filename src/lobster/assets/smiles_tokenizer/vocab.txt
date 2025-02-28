@@ -1,9 +1,9 @@
-<pad>
-<unk>
 <cls>
-<sep>
-<mask>
+<pad>
 <eos>
+<unk>
+<mask>
+<sep>
 c
 C
 (
