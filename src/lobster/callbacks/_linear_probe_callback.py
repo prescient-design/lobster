@@ -24,6 +24,7 @@ class LinearProbeCallback(Callback):
         num_classes: Optional[int] = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
+        run_on_sanity_check: bool = True,
     ):
         super().__init__()
         self.transform_fn = transform_fn
@@ -31,6 +32,7 @@ class LinearProbeCallback(Callback):
         self.num_classes = num_classes
         self.batch_size = batch_size
         self.run_every_n_epochs = run_every_n_epochs
+        self.run_on_sanity_check = run_on_sanity_check
 
         # Initialize metrics based on task type
         self._set_metrics(task_type, num_classes)
@@ -68,6 +70,15 @@ class LinearProbeCallback(Callback):
         """Determine if we should skip validation this epoch."""
         if self.run_every_n_epochs is None:
             return False
+
+        if trainer.global_rank != 0:
+            return False
+
+        if trainer.sanity_checking:
+            if self.run_on_sanity_check:
+                return False
+            else:
+                return True
 
         return trainer.current_epoch % self.run_every_n_epochs != 0
 
