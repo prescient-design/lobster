@@ -12,3 +12,4 @@ defaults:
 
 dryrun: false
 run_test: null
+compile: false
