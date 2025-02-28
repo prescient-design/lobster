@@ -108,4 +108,4 @@ def default_batch_length_fn(batch: dict[str, Tensor]) -> int:
     """Default length function that returns the length of the batch."""
     x = batch["input_ids"].squeeze(1)
 
-    return x.shape[1]
+    return x.shape[0] * x.shape[1]
