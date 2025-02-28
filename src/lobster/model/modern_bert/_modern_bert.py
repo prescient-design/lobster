@@ -204,6 +204,8 @@ class FlexBERT(pl.LightningModule):
     #     """Used to measure FLOPs"""
 
     #     with torch.device("meta"):
+    #         config_args = FLEXBERT_CONFIG_ARGS[model_name]
+
     #         model = FlexBERT(self.config)
 
     #         def sample_forward():
