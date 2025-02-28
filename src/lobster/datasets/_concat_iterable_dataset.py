@@ -26,12 +26,7 @@ class ConcatIterableDataset(IterableDataset):
                 try:
                     yield next(iterator)
                 except StopIteration:
-                    # Replace exhausted iterator with a new one
-                    iterators[i] = self._get_iterator(self.datasets[i])
-                    try:
-                        yield next(iterators[i])
-                    except StopIteration:
-                        # If we can't get any items from this dataset, remove it
-                        del iterators[i]
-                        if not iterators:  # If all datasets are exhausted
-                            return
+                    # If we can't get any items from this dataset, remove it
+                    del iterators[i]
+                    if not iterators:  # If all datasets are exhausted
+                        return
