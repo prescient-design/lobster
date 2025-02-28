@@ -92,32 +92,6 @@ class FlexBERT(pl.LightningModule):
             self.cls_token_id = cls_token_id
             self.eos_token_id = eos_token_id
 
-
-        # Measure FLOPS - for forward pass only
-        self.flops_per_batch = lightning.fabric.utilities.throughput.measure_flops(self.model, self._sample_forward)
-
-    def _sample_forward(self):
-        batch_size = 64 # FIXME
-        batch = {
-                    "input_ids": torch.randint(0, self.vocab_size, (batch_size, self.max_length)),
-                    "attention_mask": torch.ones(batch_size, self.max_length),
-                }
-
-        tokens = batch["input_ids"]
-        B, length = tokens.shape
-        tokens = tokens.view(-1)
-        attention_mask = batch["attention_mask"].view(-1)
-
-        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
-
-        return self.model(
-                    tokens,
-                    attention_mask=attention_mask,
-                    cu_seqlens=cu_seqlens,
-                    max_seqlen=self.max_length
-        )
-    
-
     def training_step(self, batch, batch_idx):
         loss = self._compute_loss(batch)
         ppl = torch.exp(loss)
@@ -225,5 +199,33 @@ class FlexBERT(pl.LightningModule):
 
         return masked_inputs
     
+
+    def setup(self, stage: str):
+
+        with torch.device("meta"):
+
+            def _sample_forward():
+                batch_size = 64 # FIXME
+                batch = {
+                            "input_ids": torch.randint(0, self.vocab_size, (batch_size, self.max_length)),
+                            "attention_mask": torch.ones(batch_size, self.max_length),
+                        }
+
+                tokens = batch["input_ids"]
+                B, length = tokens.shape
+                tokens = tokens.view(-1)
+                attention_mask = batch["attention_mask"].view(-1)
+
+                cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
+
+                return self.model(
+                            tokens,
+                            attention_mask=attention_mask,
+                            cu_seqlens=cu_seqlens,
+                            max_seqlen=self.max_length
+                )
+        
+        self.flops_per_batch = lightning.fabric.utilities.throughput.measure_flops(self.model, _sample_forward)
+
 
         
