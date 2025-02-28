@@ -1,0 +1,7 @@
+throughput:
+  _target_: lobster.callbacks.ThroughputMonitor
+  batch_size_fn:
+    _target_: lobster.callbacks._tokens_per_second.default_batch_size_fn
+  length_fn: 
+    _target_: lobster.callbacks._tokens_per_second.default_batch_length_fn
+  
