@@ -198,34 +198,3 @@ class FlexBERT(pl.LightningModule):
         masked_inputs[mask_arr] = self.mask_token_id
 
         return masked_inputs
-    
-
-    def setup(self, stage: str):
-
-        with torch.device("meta"):
-
-            def _sample_forward():
-                batch_size = 64 # FIXME
-                batch = {
-                            "input_ids": torch.randint(0, self.vocab_size, (batch_size, self.max_length)),
-                            "attention_mask": torch.ones(batch_size, self.max_length),
-                        }
-
-                tokens = batch["input_ids"]
-                B, length = tokens.shape
-                tokens = tokens.view(-1)
-                attention_mask = batch["attention_mask"].view(-1)
-
-                cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
-
-                return self.model(
-                            tokens,
-                            attention_mask=attention_mask,
-                            cu_seqlens=cu_seqlens,
-                            max_seqlen=self.max_length
-                )
-        
-        self.flops_per_batch = lightning.fabric.utilities.throughput.measure_flops(self.model, _sample_forward)
-
-
-        
