@@ -75,9 +75,12 @@ class LinearProbeCallback(Callback):
             return False
 
         if trainer.sanity_checking:
+            print("Inside sanity check...")
             if self.run_on_sanity_check:
+                print("Skipping because run_on_sanity_check is True")
                 return False
             else:
+                print("Not skipping because run_on_sanity_check is False")
                 return True
 
         return trainer.current_epoch % self.run_every_n_epochs != 0
