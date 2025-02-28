@@ -4,7 +4,7 @@ import random
 from torch.utils.data import IterableDataset
 
 
-class MultiplexedDataset(IterableDataset):
+class MultiplexedSamplingDataset(IterableDataset):
     """Dataset that samples from multiple datasets according to specified weights."""
 
     def __init__(
