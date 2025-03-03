@@ -1,7 +1,9 @@
 """From Keunwoo Choi's https://code.roche.com/choik11/genie-proteinie/-/blob/k/vanilla-data/genie_proteinie/data/utils.py"""
-import random
 
-from torch.utils.data import IterableDataset
+from typing import Sequence
+
+import torch
+from torch.utils.data import Dataset, IterableDataset
 
 
 class MultiplexedSamplingDataset(IterableDataset):
@@ -9,61 +11,49 @@ class MultiplexedSamplingDataset(IterableDataset):
 
     def __init__(
         self,
-        datasets: dict[IterableDataset, float],
+        datasets: Sequence[Dataset | IterableDataset],
+        weights: Sequence[float | int] = None,
         seed: int | None = None,
     ):
-        self.datasets = list(datasets.keys())
-        total_weight = sum(datasets.values())
-        self.weights = [w / total_weight for w in datasets.values()]
+        if weights is not None:
+            if len(datasets) != len(weights):
+                raise ValueError("Number of datasets and weights must match")
+            if not all(w >= 0 for w in weights):
+                raise ValueError("Weights must be non-negative")
+
+        self.datasets = datasets
         self.seed = seed
+        self.weights = weights if weights is not None else [1.0] * len(datasets)
 
-        # For worker sharding
-        self._worker_info = None
-        self._shared_seed = None
+        # Normalize weights
+        total = sum(self.weights)
+        self.weights = [w / total for w in self.weights]
 
-    def _get_shared_seed(self) -> int:
-        """Get seed shared across workers for consistent sampling."""
-        if self._shared_seed is None:
-            # Use provided seed or random value
-            base_seed = self.seed if self.seed is not None else random.randint(0, 2**32 - 1)
-            # Add epoch to seed for different permutations per epoch
-            self._shared_seed = base_seed
-        return self._shared_seed
-
-    # def _get_iterator(self, dataset: IterableDataset) -> Iterator:
-    #     """Get iterator for a dataset with proper worker sharding."""
-    #     if self._worker_info is None:  # Single worker
-    #         return iter(dataset)
-
-    #     # Multiple workers: each worker gets a different slice of data
-    #     worker_id = self._worker_info.id
-
-    #     # Set worker seed for reproducibility
-    #     worker_seed = self._get_shared_seed() + worker_id
-    #     random.seed(worker_seed)
-
-    #     # Get iterator and advance to worker's section
-    #     it = iter(dataset)
-    #     for _ in range(worker_id):
-    #         next(it)
-    #     return it
+        # Set random seed for sampling
+        if self.seed is not None:
+            self.generator = torch.Generator()
+            self.generator.manual_seed(self.seed)
+        else:
+            self.generator = None
 
     def __iter__(self):
         """Iterate over samples from datasets according to weights."""
-        # self._worker_info = get_worker_info()
 
         # Create iterators for each dataset
+        # Assume each dataset handles worker sharding internally
         iterators = {dataset: iter(dataset) for dataset in self.datasets}
-
-        # Set random seed for sampling
-        random_seed = self._get_shared_seed()
-        rng = random.Random(random_seed)
 
         # Sample from datasets according to weights
         while True:
             try:
-                chosen_dataset = rng.choices(self.datasets, weights=self.weights, k=1)[0]
+                idx = torch.multinomial(
+                    torch.tensor(self.weights), 1, replacement=True, generator=self.generator
+                ).item()
+
+                chosen_dataset = self.datasets[idx]
+
                 yield next(iterators[chosen_dataset])
+
             except StopIteration:
                 # If any dataset is exhausted, stop iteration
                 break
