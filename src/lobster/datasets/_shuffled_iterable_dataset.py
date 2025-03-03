@@ -10,6 +10,33 @@ class ShuffledIterableDataset(IterableDataset):
         buffer_size: int = 10000,
         seed: int | None = None,
     ):
+        """
+        A dataset wrapper that applies shuffling to an iterable dataset using a buffer.
+
+        This implementation maintains a buffer of items from the underlying dataset
+        and yields a random item from this buffer each time, replacing it with a new
+        item from the dataset. This provides approximate shuffling for iterable datasets
+        that cannot be fully loaded into memory.
+
+        Parameters
+        ----------
+        dataset : IterableDataset
+            The underlying dataset to shuffle.
+        buffer_size : int, optional
+            The size of the buffer used for shuffling, by default 10000.
+            Larger buffer sizes provide better shuffling at the cost of memory.
+        seed : int or None, optional
+            Random seed for reproducibility, by default None.
+            If None, a random seed will be generated.
+
+        Notes
+        -----
+        The shuffling is approximate and depends on the buffer size. A larger buffer
+        provides better shuffling but requires more memory.
+
+        This implementation also handles distributed data loading with multiple workers
+        by ensuring each worker uses a different random seed derived from a shared base seed.
+        """
         super().__init__()
 
         self.dataset = dataset
