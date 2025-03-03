@@ -80,7 +80,7 @@ class TokensPerSecondCallback(L.Callback):
         current_time = time.time()
         elapsed_time = current_time - self.start_time
 
-        tokens = torch.tensor(self.tokens_processed)
+        tokens = torch.tensor(self.tokens_processed, device=trainer.lightning_module.device)
 
         # All-reduce to sum token counts across all processes
         if trainer.world_size > 1:
