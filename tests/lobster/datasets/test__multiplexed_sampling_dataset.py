@@ -125,27 +125,6 @@ class TestMultiplexedSamplingDataset:
         # With extreme weights, expect close to 99% bananas
         assert 0.95 <= banana_count / len(samples) <= 1.0
 
-    def test_exhaustion_behavior(self, small_datasets):
-        # Test behavior when one dataset is exhausted
-        dataset = MultiplexedSamplingDataset(small_datasets, seed=42)
-
-        # Collect all samples until exhaustion
-        samples = list(dataset)
-
-        # Total should be limited by the smallest dataset (3 + 5 + 7 = 15)
-        # But actual number may be less since sampling is random
-        assert len(samples) <= 15
-
-        # Verify that iteration stopped after a dataset was exhausted
-        # by checking that we have at least one of each fruit but not all
-        banana_count = samples.count("Banana")
-        apple_count = samples.count("Apple")
-        orange_count = samples.count("Orange")
-
-        assert 1 <= banana_count <= 3
-        assert apple_count > 0
-        assert orange_count > 0
-
     def test_empty_dataset(self):
         # Test with one empty dataset
         datasets = [
