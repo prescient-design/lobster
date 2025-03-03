@@ -22,6 +22,8 @@ class TestTokensPerSecondCallback:
         trainer.logger = MagicMock()
         trainer.logger.experiment = MagicMock()
         trainer.logger.experiment.log = MagicMock()
+        trainer.world_size = 1
+
         return trainer
 
     @pytest.fixture
