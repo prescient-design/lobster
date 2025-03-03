@@ -73,6 +73,8 @@ class LinearProbeCallback(Callback):
         # Don't skip if global_rank=0 (main process)
         if trainer.global_rank == 0:
             return False
+        else:
+            return True
 
         return trainer.current_epoch % self.run_every_n_epochs != 0
 
