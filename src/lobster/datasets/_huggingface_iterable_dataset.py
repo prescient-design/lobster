@@ -11,7 +11,7 @@ from torch.utils.data import IterableDataset, get_worker_info
 
 from lobster.transforms import Transform
 
-from ._utils import detect_distributed_environment
+from ._distributed_environment_utils import detect_distributed_environment
 
 logger = logging.getLogger(__name__)
 
