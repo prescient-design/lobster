@@ -48,8 +48,8 @@ class TestTokensPerSecondCallback:
         assert callback.length_fn == default_batch_length_fn
 
         # Test with custom parameters
-        custom_batch_size_fn = lambda x: len(x)
-        custom_batch_length_fn = lambda x: sum(len(i) for i in x)
+        custom_batch_size_fn = lambda x: len(x)  # noqa
+        custom_batch_length_fn = lambda x: sum(len(i) for i in x)  # noqa
 
         callback = TokensPerSecondCallback(
             log_interval_steps=100, batch_size_fn=custom_batch_size_fn, batch_length_fn=custom_batch_length_fn
