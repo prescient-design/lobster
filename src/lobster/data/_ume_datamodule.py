@@ -31,10 +31,7 @@ class DatasetInfo:
 
     def __post_init__(self):
         if not issubclass(self.dataset_class, HuggingFaceIterableDataset):
-            raise ValueError("Only HuggingFaceIterableDataset subclasses are currently supported.")
-
-        if Split.TEST in self.supported_splits and self.test_size is None:
-            raise ValueError("test_size must be provided if Split.TEST is supported.")
+            raise NotImplementedError("Only HuggingFaceIterableDataset subclasses are currently supported.")
 
 
 SUPPORTED_DATASETS_INFO = [
@@ -157,6 +154,8 @@ class UmeLightningDataModule(LightningDataModule):
                 self._train_datasets.append(train_dataset)
                 self._train_sizes.append(dataset_info.train_size)
 
+            # Uses test sets for validation
+            # This assumes that we're going to test on completely different datasets
             if Split.TEST in dataset_info.supported_splits:
                 val_dataset = self._get_dataset(dataset_info, split=Split.TEST)
 
