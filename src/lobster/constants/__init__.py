@@ -1,3 +1,4 @@
+from ._architecture_analyzer import GPUType, ModelType
 from ._calm_tasks import CALM_TASKS, TASK_SPECIES, Species, Task
 from ._modality import Modality
 from ._moleculeace_tasks import MOLECULEACE_TASKS
@@ -13,4 +14,6 @@ __all__ = [
     "Species",
     "Task",
     "Split",
+    "GPUType",
+    "ModelType",
 ]
