@@ -35,7 +35,6 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         tasks: Optional[Sequence[str]] = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
-        run_on_sanity_check: bool = True,
     ):
         tokenizer_transform = TokenizerTransform(
             tokenizer=SmilesTokenizerFast(),
@@ -49,7 +48,6 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
             task_type="regression",
             batch_size=batch_size,
             run_every_n_epochs=run_every_n_epochs,
-            run_on_sanity_check=run_on_sanity_check,
         )
 
         # Set tasks
