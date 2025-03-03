@@ -53,21 +53,49 @@ class ArchitectureAnalyzer:
     --------
     Analyzing GPT-3 2.7B:
 
-    >>> from lobster.model.utils import Architecture, ArchitectureAnalyzer
+    >>> from lobster.model.utils import Architecture, ArchitectureAnalyzer, ModelType
     >>> config = Architecture(
     ...     hidden_size=2560,
     ...     num_attention_heads=32,
     ...     num_hidden_layers=32,
     ...     vocab_size=50257,
+    ...     model_type=ModelType.ENCODER_ONLY,
+    ...     name="My Model"
     ... )
     >>> analyzer = ArchitectureAnalyzer(config)
     >>> result = analyzer.analyze()
-    >>> print(result["analysis"]["efficiency_score"])
-    60.0
-    >>> for suggestion in result["analysis"]["suggestions"]:
-    ...     print(suggestion)
-    Change attention heads from 32 to 20 to get head dimension of 128
-    Pad vocabulary size from 50257 to 50304 (+47 tokens)
+    >>> ================================================================================
+        GPU EFFICIENCY ANALYSIS: My Model
+        ================================================================================
+        Model Configuration:
+        Model Type:          encoder_only
+        Hidden Size:         2560
+        Attention Heads:     32
+        Head Dimension:      80
+        Hidden Layers:       32
+        Vocabulary Size:     50257
+        Intermediate Size:   10240
+        Tensor Parallel:     1
+
+        Efficiency Score: 78.8/100 (Good)
+
+        Identified Issues:
+        1. Head dimension (80) is not divisible by 64
+        2. Vocabulary size (50257) is not divisible by 64
+
+        Optimization Suggestions:
+        1. Change attention heads from 32 to 1 to get head dimension of 2560
+        2. Change attention heads from 32 to 2 to get head dimension of 1280
+        3. Change attention heads from 32 to 4 to get head dimension of 640
+        4. Change attention heads from 32 to 5 to get head dimension of 512
+        5. Change attention heads from 32 to 8 to get head dimension of 320
+        6. Change attention heads from 32 to 10 to get head dimension of 256
+        7. Change attention heads from 32 to 20 to get head dimension of 128
+        8. Pad vocabulary size from 50257 to 50304 (+47 tokens)
+
+        Note: These recommendations aim to optimize GPU compute efficiency
+            without consideration for model quality or convergence.
+        ================================================================================
     """
 
     def __init__(self, architecture: Architecture, gpu_type: GPUType = GPUType.A100):
