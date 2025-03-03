@@ -7,7 +7,7 @@ from lobster.constants import GPUType, ModelType
 
 @dataclass
 class Architecture:
-    """Configuration for a transformer model."""
+    """Architecture configuration for a transformer model."""
 
     hidden_size: int
     num_attention_heads: int
