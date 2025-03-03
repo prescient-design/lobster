@@ -16,20 +16,23 @@ class TestTokensPerSecondCallback:
         return TokensPerSecondCallback()
 
     @pytest.fixture
-    def trainer_mock(self):
+    def pl_module_mock(self):
+        """Create a mock LightningModule."""
+        module = MagicMock(spec=LightningModule)
+        module.device = "cpu"
+        return module
+
+    @pytest.fixture
+    def trainer_mock(self, pl_module_mock):
         """Create a mock Trainer object."""
         trainer = MagicMock(spec=Trainer)
         trainer.logger = MagicMock()
         trainer.logger.experiment = MagicMock()
         trainer.logger.experiment.log = MagicMock()
         trainer.world_size = 1
+        trainer.lightning_module = pl_module_mock
 
         return trainer
-
-    @pytest.fixture
-    def pl_module_mock(self):
-        """Create a mock LightningModule."""
-        return MagicMock(spec=LightningModule)
 
     @pytest.fixture
     def sample_batch(self):
