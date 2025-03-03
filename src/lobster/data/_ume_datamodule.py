@@ -48,7 +48,7 @@ SUPPORTED_DATASETS_INFO = [
         name="Calm",
         dataset_class=CalmIterableDataset,
         modality=Modality.NUCLEOTIDE,
-        supported_splits={Split.TRAIN},
+        supported_splits={Split.TRAIN},  # TODO: add splits
         train_size=8_780_000,
         kwargs={"download": False, "keys": ["sequence"]},
     ),
@@ -156,6 +156,7 @@ class UmeLightningDataModule(LightningDataModule):
 
             # Uses test sets for validation
             # This assumes that we're going to test on completely different datasets
+            # TODO: standardize train,val, test in dataset creation pipeline
             if Split.TEST in dataset_info.supported_splits:
                 val_dataset = self._get_dataset(dataset_info, split=Split.TEST)
 
