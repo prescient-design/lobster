@@ -20,7 +20,6 @@ class CalmLightningDataModule(LightningDataModule):
         root: Union[str, Path] = None,
         *,
         use_text_descriptions: bool = False,
-        download: bool = False,
         transform_fn: Union[Callable, Transform, None] = None,
         lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
         generator: Optional[Generator] = None,
@@ -84,7 +83,6 @@ class CalmLightningDataModule(LightningDataModule):
             generator = Generator().manual_seed(seed)
 
         self._root = root
-        self._download = download
         self._lengths = lengths
         self._generator = generator
         self._seed = seed
@@ -113,7 +111,6 @@ class CalmLightningDataModule(LightningDataModule):
     def prepare_data(self) -> None:
         dataset = CalmDataset(
             root=self._root,
-            download=self._download,
             transform=self._transform_fn,
             columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
         )

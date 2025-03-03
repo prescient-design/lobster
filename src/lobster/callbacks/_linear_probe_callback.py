@@ -66,8 +66,13 @@ class LinearProbeCallback(Callback):
 
     def _skip(self, trainer: L.Trainer) -> bool:
         """Determine if we should skip validation this epoch."""
+        # Don't skip if run_every_n_epochs is not set
         if self.run_every_n_epochs is None:
             return False
+
+        # Skip if not in the main process
+        if trainer.global_rank != 0:
+            return True
 
         return trainer.current_epoch % self.run_every_n_epochs != 0
 

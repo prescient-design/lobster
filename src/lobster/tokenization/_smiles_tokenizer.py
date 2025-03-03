@@ -18,7 +18,7 @@ PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "s
 VOCAB_PATH = PRETRAINED_TOKENIZER_PATH / "vocab.txt"
 
 
-def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PATH) -> PreTrainedTokenizerFast:
+def _make_smiles_tokenizer(save_dirpath: Optional[str] = None) -> PreTrainedTokenizerFast:
     """Create PreTrainedTokenizerFast for SMILES Regex tokenization.
 
     Usage:
@@ -38,6 +38,8 @@ def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PA
     vocab = load_vocab_file(VOCAB_PATH)
     vocab = {v: k for k, v in enumerate(vocab)}
 
+    print(vocab)
+
     tokenizer_model = BPE(vocab, merges=[], unk_token="<unk>", ignore_merges=True)
 
     pre_tokenizer = Split(pattern=Regex(SMILES_REGEX_PATTERN), behavior="isolated")
@@ -46,8 +48,8 @@ def _make_smiles_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PA
         single=f"{cls_token} $A {eos_token}",
         pair=f"{cls_token} $A {eos_token} $B:1 {eos_token}:1",
         special_tokens=[
-            (cls_token, 2),
-            (eos_token, 5),
+            (cls_token, 0),
+            (eos_token, 2),
         ],
     )
 

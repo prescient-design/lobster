@@ -1,3 +1,8 @@
 moleculeace_linear_probe:
   _target_: lobster.callbacks.MoleculeACELinearProbeCallback
   max_length: ???
+  tasks:
+    - CHEMBL2835_Ki
+    - CHEMBL2047_EC50
+    - CHEMBL1871_Ki
+    - CHEMBL4616_EC50

@@ -1,0 +1,4 @@
+calm_linear_probe:
+  _target_: lobster.callbacks.CalmLinearProbeCallback
+  max_length: ???
+  max_samples: 500

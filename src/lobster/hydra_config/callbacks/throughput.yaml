@@ -1,0 +1,9 @@
+throughput:
+  _target_: lightning.pytorch.callbacks.ThroughputMonitor
+  batch_size_fn:
+    _target_: lobster.callbacks.default_batch_size_fn
+    _partial_: true
+  length_fn: 
+    _target_: lobster.callbacks.default_batch_length_fn
+    _partial_: true
+  

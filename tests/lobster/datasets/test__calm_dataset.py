@@ -1,9 +1,8 @@
 import unittest.mock
 from pathlib import Path
 
+from lobster.datasets import CalmDataset, CalmIterableDataset
 from pandas import DataFrame
-
-from lobster.datasets import CalmDataset
 
 
 class TestCalmDataset:
@@ -14,7 +13,7 @@ class TestCalmDataset:
         """Test __init__ method."""
         mock_load_dataset.return_value = DataFrame({"sequence": ["ATG"], "description": ["dna"]})
 
-        dataset = CalmDataset(root=tmp_path, download=False)
+        dataset = CalmDataset(root=tmp_path)
 
         item = dataset[0]
 
@@ -23,3 +22,11 @@ class TestCalmDataset:
         assert dataset.root == Path(tmp_path).resolve()
         assert dataset.transform is None
         assert isinstance(dataset.data, DataFrame)
+
+
+class TestAMPLIFYIterableDataset:
+    def test__iter__(self):
+        dataset = CalmIterableDataset(keys=["sequence"], shuffle=False, download=False)
+        example = next(iter(dataset))
+
+        assert isinstance(example, str)

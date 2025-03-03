@@ -1,0 +1,2 @@
+tokens_per_second:
+  _target_: lobster.callbacks.TokensPerSecondCallback
