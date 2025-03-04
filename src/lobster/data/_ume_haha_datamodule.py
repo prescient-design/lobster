@@ -126,6 +126,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
             text_key="sequence",
             return_tensors="pt",
             padding="max_length",
+            truncation=True,
             max_length=self._tokenizer_max_length,
             num_workers=self._num_workers,
         )
