@@ -2,6 +2,7 @@ import unittest.mock
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+from datasets import Dataset
 from lobster.datasets import M320MDataset, M320MIterableDataset
 from pandas import DataFrame
 
@@ -25,8 +26,17 @@ class TestM320MDataset:
             assert isinstance(dataset.data, DataFrame)
 
 
-class TestAMPLIFYIterableDataset:
-    def test__iter__(self):
+class TestM320MIterableDataset:
+    @unittest.mock.patch("lobster.datasets._huggingface_iterable_dataset.load_dataset")
+    def test__iter__(self, mock_load_dataset):
+        mock_load_dataset.return_value = Dataset.from_list(
+            [
+                {
+                    "Description": "text",
+                    "smiles": "CCCO",
+                }
+            ]
+        )
         dataset = M320MIterableDataset(keys=["smiles"], shuffle=False, download=False)
         example = next(iter(dataset))
 
