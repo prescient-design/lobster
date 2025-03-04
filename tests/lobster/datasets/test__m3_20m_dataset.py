@@ -26,7 +26,7 @@ class TestM320MDataset:
             assert isinstance(dataset.data, DataFrame)
 
 
-class TestAMPLIFYIterableDataset:
+class TestM320MIterableDataset:
     @unittest.mock.patch("lobster.datasets._huggingface_iterable_dataset.load_dataset")
     def test__iter__(self, mock_load_dataset):
         mock_load_dataset.return_value = Dataset.from_list(
