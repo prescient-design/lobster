@@ -126,6 +126,7 @@ class UmeHahaLightningDataModule(LightningDataModule):
             return_tensors="pt",
             padding="max_length",
             max_length=self._tokenizer_max_length,
+            num_workers=self._num_workers,
         )
 
         return node
