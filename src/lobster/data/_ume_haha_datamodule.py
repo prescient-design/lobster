@@ -115,7 +115,8 @@ class UmeHahaLightningDataModule(LightningDataModule):
 
         dataset = dataset_class(
             split=split.value,
-            example_shuffle_buffer=self._shuffle_buffer_size if split == Split.TRAIN else 1,
+            shuffle=True if split == Split.TRAIN else False,
+            example_shuffle_buffer=self._shuffle_buffer_size,
         )
         node = dataset.create_node()
 
