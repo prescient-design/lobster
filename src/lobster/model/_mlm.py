@@ -6,9 +6,10 @@ from typing import Callable, Iterable, Literal, Optional, Union
 import lightning.pytorch as pl
 import pandas as pd
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from transformers import AutoModelForMaskedLM, AutoTokenizer, EsmForMaskedLM
 from transformers.configuration_utils import PretrainedConfig
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import AutoTokenizerTransform, Transform
@@ -37,6 +38,7 @@ class LobsterPMLM(pl.LightningModule):
         max_length: int = 512,
         position_embedding_type: Literal["rotary", "absolute"] = "rotary",
         use_bfloat16: bool = False,
+        scheduler_cfg: DictConfig = None,
     ):
         """
         Prescient Protein Masked Language Model.
@@ -72,6 +74,7 @@ class LobsterPMLM(pl.LightningModule):
         self._max_length = max_length
         self._position_embedding_type = position_embedding_type
         self._use_esmc = False
+        self.scheduler_cfg = scheduler_cfg
 
         load_pretrained = config is None and model_name not in PMLM_CONFIG_ARGS
 
@@ -238,11 +241,7 @@ class LobsterPMLM(pl.LightningModule):
             betas=(self._beta1, self._beta2),
             eps=self._eps,
         )
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

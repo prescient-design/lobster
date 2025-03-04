@@ -7,6 +7,7 @@ defaults:
   - trainer: default.yaml
   - setup: default.yaml
   - paths: default.yaml
+  - lr_scheduler: default.yaml
   - plugins: null
   - experiment: null
 

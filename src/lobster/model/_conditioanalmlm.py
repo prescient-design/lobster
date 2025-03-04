@@ -4,8 +4,8 @@ from typing import Callable, Iterable, Literal, Optional, Union
 import lightning.pytorch as pl
 import pandas as pd
 import torch
+from hydra.utils import instantiate
 from transformers.configuration_utils import PretrainedConfig
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import CUSTOM_TOKENIZER, PmlmConceptTokenizerTransform, PmlmTokenizer
 from lobster.transforms import Transform
@@ -180,11 +180,7 @@ class LobsterConditionalPMLM(pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
         )
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

@@ -1,0 +1,7 @@
+defaults:
+  - _self_
+
+scheduler:
+  _target_: "transformers.optimization.get_linear_schedule_with_warmup"
+  num_warmup_steps: ${model.num_warmup_steps}
+  num_training_steps: ${model.num_training_steps}
