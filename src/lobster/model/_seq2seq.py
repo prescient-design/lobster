@@ -3,6 +3,8 @@ from typing import Callable, Union
 
 import lightning.pytorch as pl
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from transformers import (
     AutoModelForSeq2SeqLM,
     T5Config,
@@ -11,7 +13,6 @@ from transformers import (
     T5Tokenizer,
 )
 from transformers.configuration_utils import PretrainedConfig
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.transforms import Transform
 
@@ -33,6 +34,7 @@ class PrescientPT5(pl.LightningModule):
         transform_fn: Union[Callable, Transform, None] = None,
         config: Union[PretrainedConfig, T5Config, None] = None,
         ckpt_path: str = None,
+        scheduler_cfg: DictConfig = None,
     ):
         """
         Prescient Protein T5 Model.
@@ -63,6 +65,7 @@ class PrescientPT5(pl.LightningModule):
         self._num_training_steps = num_training_steps
         self._num_warmup_steps = num_warmup_steps
         self.tokenizer = T5Tokenizer.from_pretrained(f"Rostlab/{model_name}", do_lower_case=False)
+        self.scheduler_cfg = scheduler_cfg
 
         if is_training:
             self.model = T5ForConditionalGeneration.from_pretrained(f"Rostlab/{model_name}")
@@ -106,11 +109,7 @@ class PrescientPT5(pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
         )
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

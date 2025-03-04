@@ -3,9 +3,10 @@ from typing import Callable, Optional, Tuple, Union
 
 import lightning.pytorch as pl
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from torch.nn import CrossEntropyLoss
 from transformers import LlamaConfig, LlamaForCausalLM, pipeline
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import Transform
@@ -29,6 +30,7 @@ class LobsterPCLM(pl.LightningModule):
         max_length: int = 512,
         num_key_value_heads: int = None,
         attention_bias: bool = False,
+        scheduler_cfg: DictConfig = None,
     ):
         """
         Prescient Protein Causal Language Model.
@@ -55,6 +57,7 @@ class LobsterPCLM(pl.LightningModule):
         self._tokenizer_dir = tokenizer_dir
         self._max_length = max_length
         self._attention_bias = attention_bias
+        self.scheduler_cfg = scheduler_cfg
 
         if self._tokenizer_dir is not None:
             path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
@@ -95,8 +98,6 @@ class LobsterPCLM(pl.LightningModule):
         self.log("train_loss", loss, sync_dist=True)
         self.log("train_perplexity", ppl, sync_dist=True)
 
-        # self.log("loss", loss, batch_size=len(batch["input_ids"]), sync_dist=True)
-
         return {"loss": loss}
 
     def validation_step(self, batch, batch_idx):
@@ -115,11 +116,8 @@ class LobsterPCLM(pl.LightningModule):
             eps=self._eps,
         )
 
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        # Initialize the scheduler using Hydra
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

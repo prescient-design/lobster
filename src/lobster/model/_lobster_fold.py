@@ -4,9 +4,10 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import lightning.pytorch as pl
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from transformers import AutoTokenizer, EsmForProteinFolding
 from transformers.configuration_utils import PretrainedConfig
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.extern.openfold_utils import atom14_to_atom37, backbone_loss
 from lobster.transforms import AutoTokenizerTransform, Transform
@@ -33,6 +34,7 @@ class LobsterPLMFold(pl.LightningModule):
         tokenizer_dir: Optional[str] = "pmlm_tokenizer",
         max_length: int = 512,
         cache_dir: str = None,
+        scheduler_cfg: DictConfig = None,
     ):
         """
         Prescient Protein Language Model for Folding.
@@ -62,6 +64,7 @@ class LobsterPLMFold(pl.LightningModule):
         self._num_warmup_steps = num_warmup_steps
         self._tokenizer_dir = tokenizer_dir
         self._max_length = max_length
+        self.scheduler_cfg = scheduler_cfg
 
         cache_dir = cache_dir or "~/.cache/huggingface/datasets"
         self._cache_dir = cache_dir
@@ -176,11 +179,7 @@ class LobsterPLMFold(pl.LightningModule):
             betas=(self._beta1, self._beta2),
             eps=self._eps,
         )
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

@@ -3,10 +3,10 @@ from typing import Callable, Optional, Union
 
 import lightning.pytorch as pl
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 
 # from transformers import LlamaConfig, LlamaForCausalLM, pipeline
-from transformers.optimization import get_linear_schedule_with_warmup
-
 # from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.tokenization import HyenaTokenizer, HyenaTokenizerTransform
 from lobster.transforms import Transform
@@ -29,6 +29,7 @@ class LobsterHyenaCLM(pl.LightningModule):
         tokenizer_dir: Optional[str] = "hyena_tokenizer",
         ckpt_path: str = None,
         max_length: int = 1024,
+        scheduler_cfg: DictConfig = None,
     ):
         """
         Prescient HyenaDNA Causal Language Model.
@@ -51,6 +52,7 @@ class LobsterHyenaCLM(pl.LightningModule):
         self._ckpt_path = ckpt_path
         self._tokenizer_dir = tokenizer_dir
         self._max_length = max_length
+        self.scheduler_cfg = scheduler_cfg
 
         if self._tokenizer_dir is not None:
             path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
@@ -101,11 +103,7 @@ class LobsterHyenaCLM(pl.LightningModule):
             eps=self._eps,
         )
 
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

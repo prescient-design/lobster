@@ -4,9 +4,11 @@ from typing import Literal, Sequence
 import lightning.pytorch as pl
 import torch
 from torch import nn
-from transformers.optimization import get_linear_schedule_with_warmup
+from omegaconf import DictConfig, OmegaConf
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
-import lightning.fabric.utilities.throughput 
+import lightning.fabric.utilities.throughput
+from hydra.utils import instantiate
+from omegaconf import DictConfig, OmegaConf 
 
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
@@ -41,6 +43,7 @@ class FlexBERT(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         mask_percentage: float = 0.25,
         max_length: int = 512,
+        scheduler_cfg: DictConfig = None,
         **model_kwargs,
     ):
         super().__init__()
@@ -53,6 +56,7 @@ class FlexBERT(pl.LightningModule):
         self._num_warmup_steps = num_warmup_steps
         self._mask_percentage = mask_percentage
         self.max_length = max_length
+        self.scheduler_cfg = scheduler_cfg
 
         config_args = FLEXBERT_CONFIG_ARGS[model_name]
 
@@ -114,12 +118,8 @@ class FlexBERT(pl.LightningModule):
             eps=self._eps,
         )
 
-        # TODO: Make this configurable
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        # Initialize the scheduler using Hydra
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as models
+from omegaconf import DictConfig
 from torchmetrics import (
     MeanAbsoluteError,
     R2Score,
@@ -34,6 +35,7 @@ class DyAbModel(pl.LightningModule):
         diff_channel_0: Literal["diff", "add", "mul", "div"] = "diff",
         diff_channel_1: Optional[Literal["sub", "add", "mul", "div"]] = None,
         diff_channel_2: Optional[Literal["diff", "add", "mul", "div"]] = None,
+        scheduler_cfg: DictConfig = None,
     ):
         """
         DyAb head.
@@ -78,6 +80,7 @@ class DyAbModel(pl.LightningModule):
         self._diff_channel_0 = diff_channel_0
         self._diff_channel_1 = diff_channel_1
         self._diff_channel_2 = diff_channel_2
+        self.scheduler_cfg = scheduler_cfg
 
         if model_name is None and checkpoint is None:
             model_name = "esm2_t6_8M_UR50D"

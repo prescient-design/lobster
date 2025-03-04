@@ -4,9 +4,10 @@ from typing import Callable, Iterable, Literal, Optional, Union
 import lightning.pytorch as pl
 import pandas as pd
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from transformers import AutoTokenizer, EsmForMaskedLM
 from transformers.configuration_utils import PretrainedConfig
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import MgmTokenizer, MgmTokenizerTransform, PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import AutoTokenizerTransform, Transform
@@ -34,6 +35,7 @@ class LobsterMGM(pl.LightningModule):
         tokenizer_dir: Optional[str] = "mgm_tokenizer",
         max_length: int = 512,
         position_embedding_type: Literal["rotary", "absolute"] = "rotary",
+        scheduler_cfg: DictConfig = None,
     ):
         """
         Multi-granularity model (MGM).
@@ -68,6 +70,7 @@ class LobsterMGM(pl.LightningModule):
         self._tokenizer_dir = tokenizer_dir
         self._max_length = max_length
         self._position_embedding_type = position_embedding_type
+        self.scheduler_cfg = scheduler_cfg
 
         if model_name and "esm2" in model_name:
             self.tokenizer = AutoTokenizer.from_pretrained(f"facebook/{model_name}", do_lower_case=False)
@@ -239,11 +242,7 @@ class LobsterMGM(pl.LightningModule):
             betas=(self._beta1, self._beta2),
             eps=self._eps,
         )
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
