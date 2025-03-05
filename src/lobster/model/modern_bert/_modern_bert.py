@@ -5,7 +5,7 @@ import lightning.pytorch as pl
 import torch
 from torch import nn
 from omegaconf import DictConfig, OmegaConf
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, get_scheduler
 import lightning.fabric.utilities.throughput
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf 
@@ -43,8 +43,12 @@ class FlexBERT(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         mask_percentage: float = 0.25,
         max_length: int = 512,
-        scheduler_cfg: DictConfig = None,
-        **model_kwargs,
+        scheduler: Literal["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup",
+                           "inverse_sqrt", "reduce_lr_on_plateau", "cosine_with_min_lr", "warmup_stable_decay",
+                           ] = "constant_with_warmup",
+        model_kwargs: dict = None,
+        scheduler_kwargs: dict = None,
+        **kwargs,
     ):
         super().__init__()
         self._model_name = model_name
@@ -56,9 +60,11 @@ class FlexBERT(pl.LightningModule):
         self._num_warmup_steps = num_warmup_steps
         self._mask_percentage = mask_percentage
         self.max_length = max_length
-        self.scheduler_cfg = scheduler_cfg
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
 
         config_args = FLEXBERT_CONFIG_ARGS[model_name]
+        model_kwargs = model_kwargs or {}
 
         self.config = FlexBertConfig(
             **config_args,
@@ -118,8 +124,21 @@ class FlexBERT(pl.LightningModule):
             eps=self._eps,
         )
 
-        # Initialize the scheduler using Hydra
-        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
+        # Create base kwargs for the scheduler
+        scheduler_params = {
+            "num_warmup_steps": self._num_warmup_steps,
+            "num_training_steps": self._num_training_steps,
+        }
+    
+        # Add any additional scheduler kwargs from initialization
+        if hasattr(self, 'scheduler_kwargs'):
+            scheduler_params.update(self.scheduler_kwargs)
+
+        scheduler = get_scheduler(
+            self.scheduler,
+            optimizer,
+            **scheduler_params
+        )
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
