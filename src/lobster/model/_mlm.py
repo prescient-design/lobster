@@ -6,9 +6,8 @@ from typing import Callable, Iterable, Literal, Optional, Union
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-from transformers import AutoModelForMaskedLM, AutoTokenizer, EsmForMaskedLM
+from transformers import AutoModelForMaskedLM, AutoTokenizer, EsmForMaskedLM, get_scheduler
 from transformers.configuration_utils import PretrainedConfig
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import AutoTokenizerTransform, Transform
@@ -37,6 +36,20 @@ class LobsterPMLM(pl.LightningModule):
         max_length: int = 512,
         position_embedding_type: Literal["rotary", "absolute"] = "rotary",
         use_bfloat16: bool = False,
+        scheduler: Literal[
+            "linear",
+            "cosine",
+            "cosine_with_restarts",
+            "polynomial",
+            "constant",
+            "constant_with_warmup",
+            "inverse_sqrt",
+            "reduce_lr_on_plateau",
+            "cosine_with_min_lr",
+            "warmup_stable_decay",
+        ] = "constant_with_warmup",
+        model_kwargs: dict = None,
+        scheduler_kwargs: dict = None,
     ):
         """
         Prescient Protein Masked Language Model.
@@ -54,6 +67,12 @@ class LobsterPMLM(pl.LightningModule):
         tokenizer_dir: a tokenizer saved to src/lobster/assets
         max_length: max sequence length the model will see
         use_bfloat16: use bfloat16 instead of float32 for ESM-C model weights
+        scheduler: str, optional
+            The type of learning rate scheduler.
+        model_kwargs: dict, optional
+            Additional keyword arguments to pass to the model.
+        scheduler_kwargs: dict, optional
+            Additional keyword arguments to pass to the scheduler.
 
         """
         super().__init__()
@@ -72,6 +91,9 @@ class LobsterPMLM(pl.LightningModule):
         self._max_length = max_length
         self._position_embedding_type = position_embedding_type
         self._use_esmc = False
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
+        model_kwargs = model_kwargs or {}
 
         load_pretrained = config is None and model_name not in PMLM_CONFIG_ARGS
 
@@ -133,13 +155,14 @@ class LobsterPMLM(pl.LightningModule):
                 assert model_name in PMLM_CONFIG_ARGS
                 config_args = PMLM_CONFIG_ARGS[model_name]
                 config = PMLMConfig(
+                    **config_args,
                     attention_probs_dropout_prob=0.0,
                     mask_token_id=self.tokenizer.mask_token_id,
                     pad_token_id=self.tokenizer.pad_token_id,
                     position_embedding_type=self._position_embedding_type,
                     vocab_size=len(self.tokenizer.get_vocab()),
                     max_position_embeddings=self._max_length,
-                    **config_args,
+                    **model_kwargs,
                 )
             self.model = LMBaseForMaskedLM(config)
 
@@ -238,11 +261,17 @@ class LobsterPMLM(pl.LightningModule):
             betas=(self._beta1, self._beta2),
             eps=self._eps,
         )
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+
+        # Create base kwargs for the scheduler
+        scheduler_params = {
+            "num_warmup_steps": self._num_warmup_steps,
+            "num_training_steps": self._num_training_steps,
+        }
+
+        # Add any additional scheduler kwargs from initialization
+        scheduler_params.update(self.scheduler_kwargs)
+
+        scheduler = get_scheduler(self.scheduler, optimizer, **scheduler_params)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

@@ -4,9 +4,10 @@ from typing import Literal, Sequence
 import lightning.pytorch as pl
 import torch
 from torch import nn
-from transformers.optimization import get_linear_schedule_with_warmup
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
-import lightning.fabric.utilities.throughput 
+from omegaconf import DictConfig, OmegaConf
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, get_scheduler
+import lightning.fabric.utilities.throughput
+from omegaconf import DictConfig, OmegaConf 
 
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
@@ -41,8 +42,58 @@ class FlexBERT(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         mask_percentage: float = 0.25,
         max_length: int = 512,
-        **model_kwargs,
+        scheduler: Literal["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup",
+                           "inverse_sqrt", "reduce_lr_on_plateau", "cosine_with_min_lr", "warmup_stable_decay",
+                           ] = "constant_with_warmup",
+        model_kwargs: dict = None,
+        scheduler_kwargs: dict = None,
+        **kwargs,
     ):
+        """FlexBERT model for unsupervised pretraining.
+
+        Parameters
+        ----------
+        model_name: str
+            One of the keys in `FLEXBERT_CONFIG_ARGS`.
+        vocab_size: int, optional
+            The size of the vocabulary. Required if `tokenizer` is not provided.
+        pad_token_id: int, optional
+            The ID of the padding token. Required if `tokenizer` is not provided.
+        mask_token_id: int, optional
+            The ID of the mask token. Required if `tokenizer` is not provided.
+        cls_token_id: int, optional
+            The ID of the classification token. Required if `tokenizer` is not provided.
+        eos_token_id: int, optional
+            The ID of the end-of-sequence token. Required if `tokenizer` is not provided.
+        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, optional
+            A pretrained tokenizer. Required if `vocab_size`, `pad_token_id`, `mask_token_id`, `cls_token_id`, and
+            `eos_token_id` are not provided.
+        lr: float, optional
+            The learning rate.
+        beta1: float, optional
+            The beta1 parameter for the Adam optimizer.
+        beta2: float, optional
+            The beta2 parameter for the Adam optimizer.
+        eps: float, optional
+            The epsilon parameter for the Adam optimizer.
+        num_training_steps: int, optional
+            The total number of training steps.
+        num_warmup_steps: int, optional
+            The number of warmup steps.
+        mask_percentage: float, optional
+            The percentage of tokens to mask.
+        max_length: int, optional
+            The maximum sequence length.
+        scheduler: str, optional
+            The type of learning rate scheduler.
+        model_kwargs: dict, optional
+            Additional keyword arguments to pass to the model.
+        scheduler_kwargs: dict, optional
+            Additional keyword arguments to pass to the scheduler.
+        kwargs
+            Additional keyword arguments.
+        """
+        
         super().__init__()
         self._model_name = model_name
         self._lr = lr
@@ -53,8 +104,11 @@ class FlexBERT(pl.LightningModule):
         self._num_warmup_steps = num_warmup_steps
         self._mask_percentage = mask_percentage
         self.max_length = max_length
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
 
         config_args = FLEXBERT_CONFIG_ARGS[model_name]
+        model_kwargs = model_kwargs or {}
 
         self.config = FlexBertConfig(
             **config_args,
@@ -114,11 +168,19 @@ class FlexBERT(pl.LightningModule):
             eps=self._eps,
         )
 
-        # TODO: Make this configurable
-        scheduler = get_linear_schedule_with_warmup(
+        # Create base kwargs for the scheduler
+        scheduler_params = {
+            "num_warmup_steps": self._num_warmup_steps,
+            "num_training_steps": self._num_training_steps,
+        }
+    
+        # Add any additional scheduler kwargs from initialization
+        scheduler_params.update(self.scheduler_kwargs)
+
+        scheduler = get_scheduler(
+            self.scheduler,
             optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
+            **scheduler_params
         )
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}

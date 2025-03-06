@@ -9,8 +9,8 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
+from hydra.utils import instantiate
 from transformers.configuration_utils import PretrainedConfig
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from lobster.tokenization import CUSTOM_TOKENIZER, PmlmConceptTokenizerTransform, PmlmTokenizer
 
@@ -291,11 +291,7 @@ class LobsterCBMPMLM(pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=self._lr, betas=(self._beta1, self._beta2), eps=self._eps
         )
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self._num_warmup_steps,
-            num_training_steps=self._num_training_steps,
-        )
+        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 

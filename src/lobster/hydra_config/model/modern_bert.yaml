@@ -1,12 +1,24 @@
 _target_: lobster.model.modern_bert.FlexBERT
 
+# Base model parameters
 lr: 1e-3
 num_training_steps: ${trainer.max_steps}
 model_name: UME_mini
 num_warmup_steps: 10_000
 max_length: 512
 tokenizer_dir: pmlm_tokenizer
-embedding_layer: linear_pos
-hidden_act: gelu
 mask_percentage: 0.25
+scheduler: "constant_with_warmup"
 ckpt_path: null
+
+# Model-specific configuration parameters
+model_kwargs:
+  embedding_layer: linear_pos 
+  hidden_act: gelu
+
+# Scheduler-specific configuration parameters
+scheduler_kwargs:
+  # Any specific scheduler parameters would go here
+  # For example:
+  # min_lr: 1e-7  # For cosine_with_min_lr scheduler
+
