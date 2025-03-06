@@ -4,6 +4,7 @@ from ._hyena_tokenizer_transform import HyenaTokenizerTransform
 from ._mgm_tokenizer import MgmTokenizer
 from ._mgm_tokenizer_transform import MgmTokenizerTransform
 from ._nucleotide_tokenizer import NucleotideTokenizerFast
+from ._latent_generator_tokens import LatentGeneratorTokenizerFast
 from ._pmlm_custom_concept_tokenizer_transform import (
     CUSTOM_TOKENIZER,
     UnirefDescriptorTransform,
