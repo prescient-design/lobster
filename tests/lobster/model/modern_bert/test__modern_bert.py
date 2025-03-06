@@ -1,5 +1,5 @@
-import os
 from importlib.util import find_spec
+from pathlib import Path
 
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
@@ -32,13 +32,8 @@ class TestFlexBERT:
             pytest.skip("flash_attn not available")
 
         # Define path to the config file
-        config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))),
-            "src",
-            "lobster",
-            "hydra_config",
-            "model",
-            "modern_bert.yaml",
+        config_path = config_path = (
+            Path(__file__).parents[4] / "src" / "lobster" / "hydra_config" / "model" / "modern_bert.yaml"
         )
 
         # Load the config directly from YAML

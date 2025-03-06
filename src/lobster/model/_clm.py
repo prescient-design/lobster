@@ -1,12 +1,10 @@
 import importlib.resources
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Literal, Optional, Tuple, Union
 
 import lightning.pytorch as pl
 import torch
-from hydra.utils import instantiate
-from omegaconf import DictConfig
 from torch.nn import CrossEntropyLoss
-from transformers import LlamaConfig, LlamaForCausalLM, pipeline
+from transformers import LlamaConfig, LlamaForCausalLM, get_scheduler, pipeline
 
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import Transform
@@ -30,7 +28,20 @@ class LobsterPCLM(pl.LightningModule):
         max_length: int = 512,
         num_key_value_heads: int = None,
         attention_bias: bool = False,
-        scheduler_cfg: DictConfig = None,
+        scheduler: Literal[
+            "linear",
+            "cosine",
+            "cosine_with_restarts",
+            "polynomial",
+            "constant",
+            "constant_with_warmup",
+            "inverse_sqrt",
+            "reduce_lr_on_plateau",
+            "cosine_with_min_lr",
+            "warmup_stable_decay",
+        ] = "constant_with_warmup",
+        model_kwargs: dict = None,
+        scheduler_kwargs: dict = None,
     ):
         """
         Prescient Protein Causal Language Model.
@@ -42,6 +53,12 @@ class LobsterPCLM(pl.LightningModule):
             Grouped Query Attention. If`num_key_value_heads=num_attention_heads`, the model will
             use Multi Head Attention (MHA), if `num_key_value_heads=1 the model will use
             Multi Query Attention (MQA) otherwise GQA is used.
+        scheduler: str, optional
+            The type of learning rate scheduler.
+        model_kwargs: dict, optional
+            Additional keyword arguments to pass to the model.
+        scheduler_kwargs: dict, optional
+            Additional keyword arguments to pass to the scheduler.
 
         """
         super().__init__()
@@ -57,7 +74,9 @@ class LobsterPCLM(pl.LightningModule):
         self._tokenizer_dir = tokenizer_dir
         self._max_length = max_length
         self._attention_bias = attention_bias
-        self.scheduler_cfg = scheduler_cfg
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
+        model_kwargs = model_kwargs or {}
 
         if self._tokenizer_dir is not None:
             path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
@@ -76,6 +95,7 @@ class LobsterPCLM(pl.LightningModule):
         self._num_key_value_heads = num_key_value_heads
 
         config = LlamaConfig(
+            **config_args,
             mask_token_id=self.tokenizer.mask_token_id,
             pad_token_id=self.tokenizer.pad_token_id,
             cls_token_id=self.tokenizer.cls_token_id,
@@ -84,7 +104,7 @@ class LobsterPCLM(pl.LightningModule):
             max_position_embeddings=self._max_length,
             num_key_value_heads=self._num_key_value_heads,
             attention_bias=self._attention_bias,
-            **config_args,
+            **model_kwargs,
         )
         self.model = LlamaForCausalLM(config)
         self.config = self.model.config
@@ -116,8 +136,16 @@ class LobsterPCLM(pl.LightningModule):
             eps=self._eps,
         )
 
-        # Initialize the scheduler using Hydra
-        scheduler = instantiate(self.scheduler_cfg, optimizer=optimizer)
+        # Create base kwargs for the scheduler
+        scheduler_params = {
+            "num_warmup_steps": self._num_warmup_steps,
+            "num_training_steps": self._num_training_steps,
+        }
+
+        # Add any additional scheduler kwargs from initialization
+        scheduler_params.update(self.scheduler_kwargs)
+
+        scheduler = get_scheduler(self.scheduler, optimizer, **scheduler_params)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

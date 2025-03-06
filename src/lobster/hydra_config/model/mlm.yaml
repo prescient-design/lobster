@@ -8,3 +8,14 @@ num_warmup_steps: 10_000
 tokenizer_dir: pmlm_tokenizer
 max_length: 512
 num_training_steps: ${trainer.max_steps}
+
+# Model-specific configuration parameters
+model_kwargs:
+  embedding_layer: linear_pos 
+  hidden_act: gelu
+
+# Scheduler-specific configuration parameters
+scheduler_kwargs:
+  # Any specific scheduler parameters would go here
+  # For example:
+  # min_lr: 1e-7  # For cosine_with_min_lr scheduler
