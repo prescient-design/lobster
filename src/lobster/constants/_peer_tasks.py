@@ -1,13 +1,11 @@
 from enum import Enum
 
-
 class PEERTaskCategory(str, Enum):
     FUNCTION_PREDICTION = "function_prediction"
     LOCALIZATION_PREDICTION = "localization_prediction"
     PROTEIN_LIGAND_INTERACTION = "protein_ligand_interaction"
     PROTEIN_PROTEIN_INTERACTION = "protein_protein_interaction"
     STRUCTURE_PREDICTION = "structure_prediction"
-
 
 class PEERTask(str, Enum):
     # Function prediction tasks
@@ -31,7 +29,6 @@ class PEERTask(str, Enum):
     HUMANPPI = "humanppi"
     PPIAFFINITY = "ppiaffinity"
     YEASTPPI = "yeastppi"
-
     # Structure prediction tasks
     FOLD = "fold"
     PROTEINNET = "proteinnet"

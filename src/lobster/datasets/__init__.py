@@ -10,6 +10,7 @@ from ._multiplexed_sampling_dataset import MultiplexedSamplingDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
 from ._peer_dataset import PEERDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
+from ._peer_dataset import PEERDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
 
 __all__ = [
