@@ -9,11 +9,11 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from lobster.constants import (
-    PEERTask,
-    PEER_TASK_SPLITS,
-    PEER_TASKS,
     PEER_TASK_CATEGORIES,
     PEER_TASK_COLUMNS,
+    PEER_TASK_SPLITS,
+    PEER_TASKS,
+    PEERTask,
 )
 
 
@@ -78,30 +78,22 @@ class PEERDataset(Dataset):
         self.transform_fn = transform_fn
         self.target_transform_fn = target_transform_fn
 
-        # Validate the split
         if split not in PEER_TASK_SPLITS[task]:
-            raise ValueError(
-                f"Invalid split '{split}' for task '{task}'. Available splits: {PEER_TASK_SPLITS[task]}"
-            )
+            raise ValueError(f"Invalid split '{split}' for task '{task}'. Available splits: {PEER_TASK_SPLITS[task]}")
 
-        # Get task type information
         self.task_type, self.num_classes = PEER_TASKS[task]
         self.task_category = PEER_TASK_CATEGORIES[task]
 
-        # Set up root path
         if root is None:
             root = pooch.os_cache("lbster")
         if isinstance(root, str):
             root = Path(root)
         self.root = root.resolve()
 
-        # Configure paths based on task and split
         self.hf_data_file, self.cache_path = self._configure_paths()
 
-        # Load data from Hugging Face or cache
         self._load_data("taylor-joren/peer", download, force_download)
 
-        # Set up columns to use
         self._set_columns(columns)
 
     def _configure_paths(self) -> Tuple[str, Path]:
@@ -115,11 +107,11 @@ class PEERDataset(Dataset):
         task_category = self.task_category.value
         task = self.task.value
         split = self.split
-        
+
         # Construct the file path in the HF repo
         filename = f"{split}.parquet"
         hf_data_file = f"{task_category}/{task}/{filename}"
-        
+
         # Local cache path
         cache_path = self.root / self.__class__.__name__ / task_category / task / filename
 
@@ -140,21 +132,17 @@ class PEERDataset(Dataset):
         need_download = force_download or not self.cache_path.exists()
 
         if need_download and download:
-            try:
-                self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Load from Hugging Face
-                dataset = load_dataset(huggingface_repo, data_files=self.hf_data_file, split="train")
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Convert to pandas and save to cache
-                df = dataset.to_pandas()
-                df.to_parquet(self.cache_path, index=False)
+            # Load from Hugging Face
+            dataset = load_dataset(huggingface_repo, data_files=self.hf_data_file, split="train")
 
-                self.data = df
+            # Save to cache --> TODO - consider changing to polars
+            df = dataset.to_pandas()
+            df.to_parquet(self.cache_path, index=False)
 
-            except Exception as e:
-                print(f"Failed to load dataset from Hugging Face: {e}")
-                raise
+            self.data = df
 
         elif self.cache_path.exists():
             # Load from local cache
@@ -168,16 +156,18 @@ class PEERDataset(Dataset):
         if columns is None:
             if self.task not in PEER_TASK_COLUMNS:
                 raise ValueError(f"No column mapping defined for task '{self.task}'")
-                
+
             input_cols, target_cols = PEER_TASK_COLUMNS[self.task]
             columns = input_cols + target_cols
-            
+
             # Verify that all expected columns exist in the dataset
             for col in columns:
                 if col not in self.data.columns:
-                    raise ValueError(f"Expected column '{col}' not found in dataset for task '{self.task}'. "
-                                    f"Available columns: {list(self.data.columns)}")
-        
+                    raise ValueError(
+                        f"Expected column '{col}' not found in dataset for task '{self.task}'. "
+                        f"Available columns: {list(self.data.columns)}"
+                    )
+
         self.columns = columns
 
     def __getitem__(self, index: int) -> Tuple[Union[str, Tensor], Tensor]:
@@ -212,15 +202,15 @@ class PEERDataset(Dataset):
             else:
                 input_cols_count = 1
             target_cols = self.columns[input_cols_count:]
-        
+
         # Handle empty target_cols case (e.g., for unsupervised tasks)
         if not target_cols:
             y = torch.tensor([])
         else:
             # Convert to numeric, handling various potential data types
             try:
-                y_values = pd.to_numeric(item[target_cols], errors='coerce').values
-            except:
+                y_values = pd.to_numeric(item[target_cols], errors="coerce").values
+            except Exception:
                 # If values are non-numeric, handle based on task_type
                 if self.task_type in ["classification", "multilabel", "binary"]:
                     # For categorical data, use categorical encoding
