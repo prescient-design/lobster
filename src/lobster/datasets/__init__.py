@@ -7,6 +7,7 @@ from ._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from ._m3_20m_dataset import M320MDataset, M320MIterableDataset
 from ._moleculeace_dataset import MoleculeACEDataset
 from ._multiplexed_sampling_dataset import MultiplexedSamplingDataset
+from ._peer_dataset import PEERDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "AMPLIFYIterableDataset",
     "HuggingFaceIterableDataset",
     "ConcatIterableDataset",
+    "PEERDataset",
 ]

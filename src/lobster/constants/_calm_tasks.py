@@ -12,7 +12,7 @@ CALM_TASKS = {
 }
 
 
-class Species(str, Enum):
+class CALMSpecies(str, Enum):
     ATHALIANA = "athaliana"
     DMELANOGASTER = "dmelanogaster"
     ECOLI = "ecoli"
@@ -22,7 +22,7 @@ class Species(str, Enum):
     SCEREVISIAE = "scerevisiae"
 
 
-class Task(Enum):
+class CALMTask(Enum):
     MELTOME = "meltome"
     SOLUBILITY = "solubility"
     LOCALIZATION = "localization"
@@ -33,21 +33,21 @@ class Task(Enum):
     FUNCTION_MF = "function_mf"
 
 
-TASK_SPECIES = {
-    Task.PROTEIN_ABUNDANCE: [
-        Species.ATHALIANA,
-        Species.DMELANOGASTER,
-        Species.ECOLI,
-        Species.HSAPIENS,
-        Species.SCEREVISIAE,
+CALM_TASK_SPECIES = {
+    CALMTask.PROTEIN_ABUNDANCE: [
+        CALMSpecies.ATHALIANA,
+        CALMSpecies.DMELANOGASTER,
+        CALMSpecies.ECOLI,
+        CALMSpecies.HSAPIENS,
+        CALMSpecies.SCEREVISIAE,
     ],
-    Task.TRANSCRIPT_ABUNDANCE: [
-        Species.ATHALIANA,
-        Species.DMELANOGASTER,
-        Species.ECOLI,
-        Species.HSAPIENS,
-        Species.HVOLCANII,
-        Species.PPASTORIS,
-        Species.SCEREVISIAE,
+    CALMTask.TRANSCRIPT_ABUNDANCE: [
+        CALMSpecies.ATHALIANA,
+        CALMSpecies.DMELANOGASTER,
+        CALMSpecies.ECOLI,
+        CALMSpecies.HSAPIENS,
+        CALMSpecies.HVOLCANII,
+        CALMSpecies.PPASTORIS,
+        CALMSpecies.SCEREVISIAE,
     ],
 }
