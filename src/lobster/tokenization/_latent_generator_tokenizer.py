@@ -1,6 +1,8 @@
 import importlib.resources
 
-from tokenizers.models import BPE
+from tokenizers import pre_tokenizers
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
 
@@ -39,7 +41,7 @@ PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "l
 
 
 def _make_latent_generator_tokenizer() -> PreTrainedTokenizerFast:
-    """Create a `PreTrainedTokenizerFast` object for tokenization of protein structure latent generator sequences.
+    """Create a `PreTrainedTokenizerFast` object for tokenization of protein structure 3d coordinate to tokens.
 
     To create the tokenizer config stored under lobster/assets/latent_generator_tokenizer we run
 
@@ -52,8 +54,12 @@ def _make_latent_generator_tokenizer() -> PreTrainedTokenizerFast:
     `PreTrainedTokenizerFast.from_pretrained("src/lobster/assets/latent_generator_tokenizer")`
     """
 
-    # BPE with no merges => just use input vocab
-    tokenizer_model = BPE(LG_VOCAB, merges=[], unk_token="<unk>", ignore_merges=True)
+    # WordLevel tokenizer
+    tokenizer_model = WordLevel(LG_VOCAB, unk_token="<unk>")
+
+    #pretokenizers
+    pre_tokenizer = pre_tokenizers.Sequence([WhitespaceSplit()])
+
 
     # bert style post processing
     post_processor = TemplateProcessing(
@@ -65,6 +71,7 @@ def _make_latent_generator_tokenizer() -> PreTrainedTokenizerFast:
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
         post_processor=post_processor,
+        pre_tokenizer = pre_tokenizer,
         eos_token="<eos>",
         unk_token="<unk>",
         pad_token="<pad>",
@@ -89,3 +96,6 @@ class LatentGeneratorTokenizerFast(PreTrainedTokenizerFast):
             cls_token="<cls>",
             mask_token="<mask>",
         )
+if __name__ == "__main__":
+    tokenizer = _make_latent_generator_tokenizer()
+    tokenizer.save_pretrained("/Users/lisanzas/Research/Develop/lobster/src/lobster/assets/latent_generator_tokenizer")
