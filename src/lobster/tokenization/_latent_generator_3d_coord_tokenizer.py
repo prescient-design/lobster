@@ -331,8 +331,3 @@ class LatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
             cls_token="<cls>",
             mask_token="<mask>",
         )
-
-
-if __name__ == "__main__":
-    tokenizer = _make_latent_generator_3d_coord_tokenizer()
-    tokenizer.save_pretrained("/Users/lisanzas/Research/Develop/lobster/src/lobster/assets/latent_generator_tokenizer")
