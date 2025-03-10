@@ -1,6 +1,8 @@
+from lobster.tokenization._latent_generator_3d_coord_tokenizer import (
+    LatentGenerator3DCoordTokenizerFast,
+    _make_latent_generator_3d_coord_tokenizer,
+)
 from transformers import PreTrainedTokenizerFast
-
-from lobster.tokenization._latent_generator_3d_coord_tokenizer import LatentGenerator3DCoordTokenizerFast, _make_latent_generator_3d_coord_tokenizer
 
 
 def test__make_latent_generator_3d_coord_tokenizer():
@@ -32,7 +34,10 @@ def test__make_latent_generator_3d_coord_tokenizer():
     tokenized_output = tokenizer("GD FH DS FH AD GF FE CZ EK DS CQ")
 
     assert tokenized_output.input_ids == [0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2]
-    assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <eos>"
+    assert (
+        tokenizer.decode(tokenized_output.input_ids)
+        == "<cls> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <eos>"
+    )
 
     tokenized_output = tokenizer("R A gd fh ds")
     assert tokenized_output.input_ids == [0, 3, 3, 191, 169, 128, 2]
@@ -59,7 +64,10 @@ class TestLatentGenerator3DCoordTokenizerFast:
 
         tokenized_output = tokenizer("GD FH DS FH AD GF FE CZ EK DS CQ")
         assert tokenized_output.input_ids == [0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2]
-        assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <eos>"
+        assert (
+            tokenizer.decode(tokenized_output.input_ids)
+            == "<cls> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <unk> <eos>"
+        )
 
         tokenized_output = tokenizer("R A gd fh ds")
         assert tokenized_output.input_ids == [0, 3, 3, 191, 169, 128, 2]
@@ -72,6 +80,7 @@ class TestLatentGenerator3DCoordTokenizerFast:
             "cls_token": "<cls>",
             "mask_token": "<mask>",
         }
+
 
 if __name__ == "__main__":
     test__make_latent_generator_3d_coord_tokenizer()
