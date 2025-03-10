@@ -40,13 +40,13 @@ LG_VOCAB = {'<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3, '<mask>': 4, '.': 5,
 PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "latent_generator_tokenizer"
 
 
-def _make_latent_generator_tokenizer() -> PreTrainedTokenizerFast:
-    """Create a `PreTrainedTokenizerFast` object for tokenization of protein structure 3d coordinate to tokens.
+def _make_latent_generator_3d_coord_tokenizer() -> PreTrainedTokenizerFast:
+    """Create a `PreTrainedTokenizerFast` object for tokenization of protein structure 3d coordinate to tokens via Latent Generator.
 
     To create the tokenizer config stored under lobster/assets/latent_generator_tokenizer we run
 
     ```
-    tokenizer = _make_latent_generator_tokenizer()
+    tokenizer = _make_latent_generator_3d_coord_tokenizer()
     tokenizer.save_pretrained("src/lobster/assets/latent_generator_tokenizer")
     ```
 
@@ -80,7 +80,7 @@ def _make_latent_generator_tokenizer() -> PreTrainedTokenizerFast:
     )
 
 
-class LatentGeneratorTokenizerFast(PreTrainedTokenizerFast):
+class LatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
     padding_side = "right"
     truncation_side = "right"
     model_input_names = ["input_ids", "attention_mask"]
@@ -97,5 +97,5 @@ class LatentGeneratorTokenizerFast(PreTrainedTokenizerFast):
             mask_token="<mask>",
         )
 if __name__ == "__main__":
-    tokenizer = _make_latent_generator_tokenizer()
+    tokenizer = _make_latent_generator_3d_coord_tokenizer()
     tokenizer.save_pretrained("/Users/lisanzas/Research/Develop/lobster/src/lobster/assets/latent_generator_tokenizer")

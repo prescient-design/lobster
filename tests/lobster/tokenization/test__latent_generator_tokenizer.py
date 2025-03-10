@@ -1,10 +1,10 @@
 from transformers import PreTrainedTokenizerFast
 
-from lobster.tokenization._latent_generator_tokenizer import LatentGeneratorTokenizerFast, _make_latent_generator_tokenizer
+from lobster.tokenization._latent_generator_3d_coord_tokenizer import LatentGenerator3DCoordTokenizerFast, _make_latent_generator_3d_coord_tokenizer
 
 
-def test__make_latent_generator_tokenizer():
-    tokenizer = _make_latent_generator_tokenizer()
+def test__make_latent_generator_3d_coord_tokenizer():
+    tokenizer = _make_latent_generator_3d_coord_tokenizer()
 
     assert isinstance(tokenizer, PreTrainedTokenizerFast)
 
@@ -39,9 +39,9 @@ def test__make_latent_generator_tokenizer():
     assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> <unk> gd fh ds <eos>"
 
 
-class TestLatentGeneratorTokenizerFast:
+class TestLatentGenerator3DCoordTokenizerFast:
     def test__init__(self):
-        tokenizer = LatentGeneratorTokenizerFast()
+        tokenizer = LatentGenerator3DCoordTokenizerFast()
 
         assert isinstance(tokenizer, PreTrainedTokenizerFast)
 
@@ -74,5 +74,5 @@ class TestLatentGeneratorTokenizerFast:
         }
 
 if __name__ == "__main__":
-    test__make_latent_generator_tokenizer()
-    TestLatentGeneratorTokenizerFast().test__init__()
+    test__make_latent_generator_3d_coord_tokenizer()
+    TestLatentGenerator3DCoordTokenizerFast().test__init__()
