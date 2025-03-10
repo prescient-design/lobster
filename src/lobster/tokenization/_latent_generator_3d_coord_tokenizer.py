@@ -32,9 +32,8 @@ def _make_latent_generator_3d_coord_tokenizer() -> PreTrainedTokenizerFast:
     # WordLevel tokenizer
     tokenizer_model = WordLevel(LG_VOCAB, unk_token="<unk>")
 
-    #pretokenizers
+    # pretokenizers
     pre_tokenizer = pre_tokenizers.Sequence([WhitespaceSplit()])
-
 
     # bert style post processing
     post_processor = TemplateProcessing(
@@ -46,7 +45,7 @@ def _make_latent_generator_3d_coord_tokenizer() -> PreTrainedTokenizerFast:
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
         post_processor=post_processor,
-        pre_tokenizer = pre_tokenizer,
+        pre_tokenizer=pre_tokenizer,
         eos_token="<eos>",
         unk_token="<unk>",
         pad_token="<pad>",
@@ -71,6 +70,3 @@ class LatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
             cls_token="<cls>",
             mask_token="<mask>",
         )
-if __name__ == "__main__":
-    tokenizer = _make_latent_generator_3d_coord_tokenizer()
-    tokenizer.save_pretrained("/Users/lisanzas/Research/Develop/lobster/src/lobster/assets/latent_generator_tokenizer")
