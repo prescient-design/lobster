@@ -86,4 +86,3 @@ class TestLatentGenerator3DCoordTokenizerFast:
 if __name__ == "__main__":
     test__make_latent_generator_3d_coord_tokenizer()
     TestLatentGenerator3DCoordTokenizerFast().test__init__()
-    
