@@ -26,7 +26,3 @@ class TestLatentGeneratorPinderIterableDataset:
         assert isinstance(example, list)
         assert "|" not in example[0]
         assert "." in example[0]
-
-
-if __name__ == "__main__":
-    TestLatentGeneratorPinderIterableDataset().test__iter__()
