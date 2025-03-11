@@ -9,8 +9,8 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from lobster.constants import (
-    CALM_TASKS,
     CALM_TASK_SPECIES,
+    CALM_TASKS,
     CALMSpecies,
     CALMTask,
 )

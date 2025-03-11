@@ -1,11 +1,13 @@
+import ast
+import re
 from pathlib import Path
 from typing import Callable, Optional, Sequence, Tuple, Union
 
+import numpy as np
 import pandas as pd
 import pooch
 import torch
 from datasets import load_dataset
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from lobster.constants import (
@@ -70,6 +72,7 @@ class PEERDataset(Dataset):
     ):
         super().__init__()
 
+        # Convert string task to enum if needed
         if isinstance(task, str):
             task = PEERTask(task)
 
@@ -78,70 +81,48 @@ class PEERDataset(Dataset):
         self.transform_fn = transform_fn
         self.target_transform_fn = target_transform_fn
 
+        # Validate the requested split is available for this task
         if split not in PEER_TASK_SPLITS[task]:
             raise ValueError(f"Invalid split '{split}' for task '{task}'. Available splits: {PEER_TASK_SPLITS[task]}")
 
         self.task_type, self.num_classes = PEER_TASKS[task]
         self.task_category = PEER_TASK_CATEGORIES[task]
 
+        # Set up the root directory for data storage
         if root is None:
             root = pooch.os_cache("lbster")
         if isinstance(root, str):
             root = Path(root)
         self.root = root.resolve()
 
+        # Configure paths and load data
         self.hf_data_file, self.cache_path = self._configure_paths()
-
         self._load_data("taylor-joren/peer", download, force_download)
-
         self._set_columns(columns)
 
     def _configure_paths(self) -> Tuple[str, Path]:
-        """Configure file paths based on task and split.
-
-        Returns
-        -------
-        Tuple[str, Path]
-            A tuple containing (huggingface_data_file, local_cache_path)
-        """
+        """Configure file paths based on task and split."""
         task_category = self.task_category.value
         task = self.task.value
         split = self.split
 
-        # Construct the file path in the HF repo
+        # Paths for both Hugging Face repo and local cache
         filename = f"{split}.parquet"
         hf_data_file = f"{task_category}/{task}/{filename}"
-
-        # Local cache path
         cache_path = self.root / self.__class__.__name__ / task_category / task / filename
 
         return hf_data_file, cache_path
 
     def _load_data(self, huggingface_repo: str, download: bool, force_download: bool) -> None:
-        """Load data from Hugging Face or local cache.
-
-        Parameters
-        ----------
-        huggingface_repo : str
-            Hugging Face repository ID
-        download : bool
-            Whether to download data if not found locally
-        force_download : bool
-            Force re-download even if local cache exists
-        """
+        """Load data from Hugging Face or local cache."""
         need_download = force_download or not self.cache_path.exists()
 
         if need_download and download:
-
+            # Download from Hugging Face and save locally
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Load from Hugging Face
             dataset = load_dataset(huggingface_repo, data_files=self.hf_data_file, split="train")
-
-            # Save to cache --> TODO - consider changing to polars
             df = dataset.to_pandas()
             df.to_parquet(self.cache_path, index=False)
-
             self.data = df
 
         elif self.cache_path.exists():
@@ -152,15 +133,16 @@ class PEERDataset(Dataset):
             raise FileNotFoundError(f"Dataset file {self.cache_path} not found locally and download=False")
 
     def _set_columns(self, columns=None):
-        """Set the columns to use based on the task using predefined column mappings."""
+        """Set the columns to use based on the task or user specification."""
         if columns is None:
+            # Use predefined column mappings if no specific columns provided
             if self.task not in PEER_TASK_COLUMNS:
                 raise ValueError(f"No column mapping defined for task '{self.task}'")
 
             input_cols, target_cols = PEER_TASK_COLUMNS[self.task]
             columns = input_cols + target_cols
 
-            # Verify that all expected columns exist in the dataset
+            # Verify all expected columns exist in the dataset
             for col in columns:
                 if col not in self.data.columns:
                     raise ValueError(
@@ -170,62 +152,94 @@ class PEERDataset(Dataset):
 
         self.columns = columns
 
-    def __getitem__(self, index: int) -> Tuple[Union[str, Tensor], Tensor]:
+    @staticmethod
+    def string_to_tensor(
+        string_data: str, dtype: torch.dtype = torch.float32, shape: Optional[Tuple] = None
+    ) -> torch.Tensor:
+        """
+        Convert string representation directly to PyTorch tensor.
+        Handles various input formats including tensors, arrays, lists, and string representations.
+        """
+        # Handle cases where input is already a tensor or array
+        if isinstance(string_data, torch.Tensor):
+            return string_data.to(dtype=dtype)
+
+        if isinstance(string_data, np.ndarray):
+            return torch.tensor(string_data, dtype=dtype)
+
+        if isinstance(string_data, list):
+            return torch.tensor(string_data, dtype=dtype)
+
+        # Parse string representations
+        try:
+            # Try parsing with ast.literal_eval for safety
+            parsed_data = ast.literal_eval(string_data)
+            tensor = torch.tensor(parsed_data, dtype=dtype)
+        except (ValueError, SyntaxError, TypeError):
+            # Fallback to regex extraction for non-standard formats
+            numeric_values = re.findall(r"-?\d+\.\d+|-?\d+", string_data)
+            tensor = torch.tensor([float(x) for x in numeric_values], dtype=dtype)
+
+        # Reshape if needed and possible
+        if shape and tensor.numel() == np.prod(shape):
+            tensor = tensor.reshape(shape)
+        elif shape and shape[0] == -1 and tensor.numel() % shape[1] == 0:
+            # For cases like (-1, 3) where we want to reshape to nx3 matrix
+            tensor = tensor.reshape(-1, shape[1])
+
+        return tensor
+
+    def __getitem__(self, index: int):
+        """
+        Get a single item from the dataset with task-specific handling.
+        Returns a tuple of (input, target) where format depends on the specific task.
+        """
         item = self.data.iloc[index]
 
-        # Handle single input vs multiple inputs (like protein pairs)
+        # Extract input features based on task configuration
         if self.task in PEER_TASK_COLUMNS:
-            input_cols, _ = PEER_TASK_COLUMNS[self.task]
+            input_cols, target_cols = PEER_TASK_COLUMNS[self.task]
             if len(input_cols) == 1:
-                # Single input case (most tasks)
                 x = item[input_cols[0]]
                 if self.transform_fn is not None:
                     x = self.transform_fn(x)
             else:
-                # Multiple inputs case (protein pairs, protein-ligand)
                 x = [item[col] for col in input_cols]
                 if self.transform_fn is not None:
                     x = [self.transform_fn(xi) for xi in x]
         else:
-            # Fallback: just use the first column as input
             x = item[self.columns[0]]
             if self.transform_fn is not None:
                 x = self.transform_fn(x)
 
-        # Get target values (all columns except the input columns)
-        if self.task in PEER_TASK_COLUMNS:
-            _, target_cols = PEER_TASK_COLUMNS[self.task]
-        else:
-            # Fallback: use all non-input columns as targets
-            if isinstance(x, list):
-                input_cols_count = len(x)
-            else:
-                input_cols_count = 1
-            target_cols = self.columns[input_cols_count:]
+        # Handle target data with special cases for specific tasks
+        if self.task == PEERTask.PROTEINNET:
+            # Special handling for contact map prediction
+            tertiary_data = PEERDataset.string_to_tensor(
+                item["tertiary"]
+            )  # TODO - using static method for now, consider moving to a utils module
+            valid_mask = PEERDataset.string_to_tensor(item["valid_mask"])
+            y = (tertiary_data, valid_mask)
 
-        # Handle empty target_cols case (e.g., for unsupervised tasks)
-        if not target_cols:
-            y = torch.tensor([])
-        else:
-            # Convert to numeric, handling various potential data types
-            try:
-                y_values = pd.to_numeric(item[target_cols], errors="coerce").values
-            except Exception:
-                # If values are non-numeric, handle based on task_type
-                if self.task_type in ["classification", "multilabel", "binary"]:
-                    # For categorical data, use categorical encoding
-                    y_values = item[target_cols].values
-                else:
-                    # For regression, try to force numeric
-                    y_values = item[target_cols].astype(float).values
+        elif self.task == PEERTask.SECONDARY_STRUCTURE:
+            y = torch.tensor(item["ss3"], dtype=torch.long)
 
-            # Create appropriate tensor based on task type
+        else:
+            # Generic handling based on task type
             if self.task_type == "regression":
-                y = torch.tensor(y_values, dtype=torch.float32)
-            elif self.task_type == "binary":
-                y = torch.tensor(y_values, dtype=torch.float32)
-            else:  # classification/multilabel
-                y = torch.tensor(y_values, dtype=torch.long)
+                if isinstance(item[target_cols[0]], torch.Tensor):
+                    y = item[target_cols[0]]
+                    # Special handling for tasks that need first element extraction
+                    if self.task in [PEERTask.FLUORESCENCE, PEERTask.STABILITY] and y.numel() > 1:
+                        y = y[0].reshape(1)
+                else:
+                    y = torch.tensor(item[target_cols[0]], dtype=torch.float32)
+            else:
+                # Classification tasks (binary & multiclass)
+                if isinstance(item[target_cols[0]], torch.Tensor):
+                    y = item[target_cols[0]]
+                else:
+                    y = torch.tensor(item[target_cols[0]], dtype=torch.long)
 
         if self.target_transform_fn is not None:
             y = self.target_transform_fn(y)
