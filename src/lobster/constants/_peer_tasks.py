@@ -129,7 +129,7 @@ PEER_TASK_COLUMNS = {
     PEERTask.SUBCELLULAR_LOCALIZATION: (["protein_sequence"], ["localization"]),
     PEERTask.FOLD: (["protein_sequence"], ["fold_label"]),
     # Tasks with multiple targets
-    PEERTask.SECONDARY_STRUCTURE: (["protein_sequence"], ["ss3", "valid_mask"]),
+    PEERTask.SECONDARY_STRUCTURE: (["protein_sequence"], ["ss3"]),
     PEERTask.PROTEINNET: (["protein_sequence"], ["tertiary", "valid_mask"]),
     # Protein-ligand interaction tasks
     PEERTask.BINDINGDB: (["protein_sequence", "ligand_smiles"], ["affinity"]),
