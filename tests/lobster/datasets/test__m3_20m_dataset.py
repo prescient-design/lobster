@@ -3,8 +3,9 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from datasets import Dataset
-from lobster.datasets import M320MDataset, M320MIterableDataset
 from pandas import DataFrame
+
+from lobster.datasets import M320MDataset, M320MIterableDataset
 
 
 class TestM320MDataset:

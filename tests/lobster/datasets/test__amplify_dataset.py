@@ -1,6 +1,7 @@
 import unittest.mock
 
 from datasets import Dataset
+
 from lobster.datasets import AMPLIFYIterableDataset
 
 
