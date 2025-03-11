@@ -25,6 +25,6 @@ __all__ = [
     "AMPLIFYIterableDataset",
     "HuggingFaceIterableDataset",
     "RoundRobinConcatIterableDataset",
-    "LatentGeneratorPinderIterableDataset",
     "PEERDataset",
+    "LatentGeneratorPinderIterableDataset",
 ]
