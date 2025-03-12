@@ -1,8 +1,10 @@
+import warnings
 from collections import defaultdict
 from typing import Optional, Sequence, Tuple
 
 import lightning as L
 import numpy as np
+from sklearn.exceptions import ConvergenceWarning
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
@@ -12,6 +14,8 @@ from lobster.tokenization import NucleotideTokenizerFast
 from lobster.transforms import TokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 
 class CalmLinearProbeCallback(LinearProbeCallback):

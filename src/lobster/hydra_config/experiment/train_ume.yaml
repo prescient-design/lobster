@@ -2,12 +2,12 @@
 
 # To start training, run:
 # export TOKENIZERS_PARALLELISM=false
-# lobster_train experiment=train_ume 
+# lobster_train experiment=train_ume
 
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
-  - override /callbacks: [base, moleculeace_linear_probe_fast]
+  - override /callbacks: [base, moleculeace_linear_probe_fast, calm_linear_probe_fast]
 
 compile: true
 
@@ -19,7 +19,7 @@ data:
   tokenizer_max_length: ${model.max_length}
   pin_memory: true
   shuffle_buffer_size: 1000
-  num_workers: 4
+  num_workers: 1
   seed: 0
 
 paths:
@@ -55,6 +55,8 @@ model:
 
 callbacks:
   moleculeace_linear_probe:
+    max_length: ${model.max_length}
+  calm_linear_probe:
     max_length: ${model.max_length}
 
 logger:
