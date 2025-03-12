@@ -3,8 +3,6 @@ import re
 from typing import Dict, List
 
 import pytest
-from rdkit import Chem
-
 from lobster.transforms import (
     convert_aa_to_nt,
     convert_aa_to_selfies,
@@ -19,6 +17,7 @@ from lobster.transforms import (
     replace_unknown_symbols,
     uniform_sample,
 )
+from rdkit import Chem
 
 
 @pytest.fixture(scope="class")

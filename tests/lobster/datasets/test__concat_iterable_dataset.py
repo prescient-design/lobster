@@ -1,6 +1,7 @@
 import pytest
-from lobster.datasets import ConcatIterableDataset
 from torch.utils.data import IterableDataset
+
+from lobster.datasets import ConcatIterableDataset
 
 
 class IterableStringDataset(IterableDataset):
