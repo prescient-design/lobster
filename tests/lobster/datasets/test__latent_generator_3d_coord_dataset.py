@@ -1,7 +1,6 @@
 import unittest.mock
 
 from datasets import Dataset
-
 from lobster.datasets import LatentGeneratorPinderIterableDataset
 
 
@@ -12,10 +11,12 @@ class TestLatentGeneratorPinderIterableDataset:
             [
                 {
                     "__index_level_0__": "7u9z__G1_Q92736--7u9z__D1_P68106",
-                    "lg_token_string": [ "ft ec ec hp ek bt bt ek . da da ek da da ec da hx ec",
-                                        "ec ec ec da da da hp hp hp . bt da ig ig ig ig da gv hp",
-                                        "gj dp gj c gj ec hx cd cz cg . ec ec gj if da ft fe ft",
-                                        "fe l hx hx da da hx hx hx hx hx . hx hx da ec ec da ft"],
+                    "lg_token_string": [
+                        "ft ec ec hp ek bt bt ek . da da ek da da ec da hx ec",
+                        "ec ec ec da da da hp hp hp . bt da ig ig ig ig da gv hp",
+                        "gj dp gj c gj ec hx cd cz cg . ec ec gj if da ft fe ft",
+                        "fe l hx hx da da hx hx hx hx hx . hx hx da ec ec da ft",
+                    ],
                 }
             ]
         )
