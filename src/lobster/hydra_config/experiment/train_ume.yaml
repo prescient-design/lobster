@@ -1,23 +1,25 @@
 # @package _global_
 
-# lobster_train experiment=train_ume ++trainer.devices=auto 
+# To start training, run:
+# export TOKENIZERS_PARALLELISM=false
+# lobster_train experiment=train_ume 
 
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
-  - override /callbacks: [base, moleculeace_linear_probe_fast, throughput, tokens_per_second]
+  - override /callbacks: [base, moleculeace_linear_probe_fast]
 
 compile: true
 
 data:
   _target_: lobster.data.UmeLightningDataModule
   root: ${paths.root_dir}/data
-  datasets: ["M320M", "Calm", "AMPLIFY"]
+  datasets: ["M320M", "Calm", "AMPLIFY", "Pinder"]
   batch_size: 128
   tokenizer_max_length: ${model.max_length}
   pin_memory: true
   shuffle_buffer_size: 1000
-  num_workers: 8
+  num_workers: 4
   seed: 0
 
 paths:
@@ -31,12 +33,11 @@ trainer:
   accumulate_grad_batches: 8
   max_time: "00:24:00:00"
   limit_val_batches: 20_000
-  #limit_train_batches: 1000 # for debugging
-  #profiler: simple
+  devices: auto
 
 model:
-  model_name: UME_medium
-  vocab_size:  640
+  model_name: UME_mini
+  vocab_size:  889
   pad_token_id: 1
   cls_token_id: 0
   mask_token_id: 4
@@ -57,6 +58,6 @@ callbacks:
     max_length: ${model.max_length}
 
 logger:
-  name: ume_amplify_m320m_calm_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
+  name: ume_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
   project: lobster
   group: ume-dev-${now:%Y-%m-%d-%H-%M-%S}
