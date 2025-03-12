@@ -68,7 +68,7 @@ class LatentGeneratorPinderIterableDataset(HuggingFaceIterableDataset):
             Default is 'train'.
         """
         super().__init__(
-            dataset_name="Sidney-Lisanza/LG_tokens",
+            dataset_name="Sidney-Lisanza/LG_tokens_pinder",
             root=root,
             transform=transform,
             keys=["lg_token_string"],
