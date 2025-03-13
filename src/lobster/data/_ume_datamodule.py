@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, Type
+from typing import Any, Sequence, Type
 
 from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Dataset, IterableDataset
+from torchvision.transforms import Compose, Lambda
 
 from lobster.constants import Modality, Split
 from lobster.datasets import (
@@ -12,11 +13,18 @@ from lobster.datasets import (
     CalmIterableDataset,
     ConcatIterableDataset,
     HuggingFaceIterableDataset,
+    LatentGeneratorPinderIterableDataset,
     M320MIterableDataset,
     MultiplexedSamplingDataset,
 )
-from lobster.tokenization import AminoAcidTokenizerFast, NucleotideTokenizerFast, SmilesTokenizerFast
+from lobster.tokenization import (
+    AminoAcidTokenizerFast,
+    LatentGenerator3DCoordTokenizerFast,
+    NucleotideTokenizerFast,
+    SmilesTokenizerFast,
+)
 from lobster.transforms import TokenizerTransform
+from lobster.transforms.functional import sample_tokenized_input
 
 
 @dataclass
@@ -27,7 +35,7 @@ class DatasetInfo:
     supported_splits: set[Split]
     train_size: int  # Approximate size of the training set, used for sampling weights
     test_size: int | None = None  # Approximate size of the test set, used for sampling weights
-    kwargs: dict[str, any] = None
+    kwargs: dict[str, Any] | None = None
 
     def __post_init__(self):
         if not issubclass(self.dataset_class, HuggingFaceIterableDataset):
@@ -50,7 +58,7 @@ SUPPORTED_DATASETS_INFO = [
         modality=Modality.NUCLEOTIDE,
         supported_splits={Split.TRAIN},  # TODO: add splits
         train_size=8_780_000,
-        kwargs={"download": False, "keys": ["sequence"]},
+        kwargs={"keys": ["sequence"]},
     ),
     DatasetInfo(
         name="AMPLIFY",
@@ -59,7 +67,14 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.TEST},
         train_size=448_000_000,
         test_size=40_000,
-        kwargs={"download": False},
+    ),
+    DatasetInfo(
+        name="Pinder",
+        dataset_class=LatentGeneratorPinderIterableDataset,
+        modality=Modality.COORDINATES_3D,
+        supported_splits={Split.TRAIN, Split.TEST},
+        train_size=267_000,
+        test_size=2_000,
     ),
 ]
 
@@ -67,8 +82,8 @@ SUPPORTED_DATASETS_INFO = [
 class UmeLightningDataModule(LightningDataModule):
     def __init__(
         self,
-        *,
         tokenizer_max_length: int,
+        *,
         datasets: None | Sequence[str] = None,
         root: Path | str | None = None,
         seed: int = 0,
@@ -103,6 +118,7 @@ class UmeLightningDataModule(LightningDataModule):
             Modality.SMILES: SmilesTokenizerFast(),
             Modality.AMINO_ACID: AminoAcidTokenizerFast(),
             Modality.NUCLEOTIDE: NucleotideTokenizerFast(),
+            Modality.COORDINATES_3D: LatentGenerator3DCoordTokenizerFast(),
         }
 
         self._tokenizer_transforms = {
@@ -129,13 +145,17 @@ class UmeLightningDataModule(LightningDataModule):
         dataset_class = dataset_info.dataset_class
         transform = self._tokenizer_transforms[dataset_info.modality]
 
+        if dataset_info.modality == Modality.COORDINATES_3D:
+            # Sample 1 pose out of 4 for the latent generator datasets
+            transform = Compose([transform, Lambda(sample_tokenized_input)])
+
         return dataset_class(
             root=self._root,
             transform=transform,
             split=split.value,
             shuffle=(split == Split.TRAIN),
             shuffle_buffer_size=self._shuffle_buffer_size,
-            **dataset_info.kwargs,
+            **dataset_info.kwargs or {},
         )
 
     def setup(self, stage: str | None = None) -> None:

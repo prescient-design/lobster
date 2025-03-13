@@ -1,3 +1,4 @@
+import warnings
 from typing import Callable, Dict, Literal, Optional, Tuple
 
 import lightning as L
@@ -12,6 +13,12 @@ from torch.utils.data import DataLoader
 from torchmetrics import AUROC, Accuracy, F1Score, MeanSquaredError, R2Score, SpearmanCorrCoef
 
 TaskType = Literal["regression", "binary", "multiclass", "multilabel"]
+
+warnings.filterwarnings(
+    "ignore",
+    message="Metric `SpearmanCorrcoef` will save all targets and predictions in the buffer",
+    category=UserWarning,
+)
 
 
 class LinearProbeCallback(Callback):

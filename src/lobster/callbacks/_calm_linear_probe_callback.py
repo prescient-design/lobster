@@ -1,8 +1,11 @@
+import logging
+import warnings
 from collections import defaultdict
 from typing import Optional, Sequence, Tuple
 
 import lightning as L
 import numpy as np
+from sklearn.exceptions import ConvergenceWarning
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
@@ -12,6 +15,10 @@ from lobster.tokenization import NucleotideTokenizerFast
 from lobster.transforms import TokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+logger = logging.getLogger(__name__)
 
 
 class CalmLinearProbeCallback(LinearProbeCallback):
@@ -179,7 +186,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                 self.aggregate_metrics[metric_name].append(value)
 
         except Exception as e:
-            print(f"Error in _evaluate_task for {task_key}: {str(e)}")
+            logger.debug(f"Error in _evaluate_task for {task_key}: {str(e)}")
             raise
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
@@ -200,13 +207,13 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                         train_dataset, test_dataset = self._create_split_datasets(task, species)
                         self._evaluate_task(task_key, task, train_dataset, test_dataset, trainer, pl_module)
                     except Exception as e:
-                        print(f"Error processing {task_key}: {str(e)}")
+                        logger.debug(f"Error processing {task_key}: {str(e)}")
             else:
                 try:
                     train_dataset, test_dataset = self._create_split_datasets(task)
                     self._evaluate_task(task, task, train_dataset, test_dataset, trainer, pl_module)
                 except Exception as e:
-                    print(f"Error processing {task}: {str(e)}")
+                    logger.debug(f"Error processing {task}: {str(e)}")
 
         # Calculate and log aggregate metrics
         for metric_name, values in self.aggregate_metrics.items():
