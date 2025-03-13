@@ -6,7 +6,7 @@ def sample_tokenized_input(x: dict[str, Tensor]):
     """Samples a single tokenized input from a batch of tokenized inputs.
 
     Meant to be used with tokenized inputs from 3D coordinates latent generator
-    dataset (e.g. LatentGeneratorPinderIterableDataset) which containts 4 poses
+    dataset (e.g. LatentGeneratorPinderIterableDataset) which contains 4 poses
     for each input.
 
     Example
