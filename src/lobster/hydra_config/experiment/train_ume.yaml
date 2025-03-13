@@ -37,7 +37,7 @@ trainer:
 
 model:
   model_name: UME_mini
-  vocab_size:  889
+  vocab_size:  889 # TODO: to be updated
   pad_token_id: 1
   cls_token_id: 0
   mask_token_id: 4
