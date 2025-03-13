@@ -2,9 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence, Type
 
-import torch
 from lightning import LightningDataModule
-from torch import Generator, Tensor
+from torch import Generator
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torchvision.transforms import Compose, Lambda
 
@@ -25,6 +24,7 @@ from lobster.tokenization import (
     SmilesTokenizerFast,
 )
 from lobster.transforms import TokenizerTransform
+from lobster.transforms.functional import sample_tokenized_input
 
 
 @dataclass
@@ -146,11 +146,8 @@ class UmeLightningDataModule(LightningDataModule):
         transform = self._tokenizer_transforms[dataset_info.modality]
 
         if dataset_info.modality == Modality.COORDINATES_3D:
-            # TODO move to transforms
-            def mean_pool(x: dict[str, Tensor]):
-                return {key: value.float().mean(0).to(torch.int64).unsqueeze(0) for key, value in x.items()}
-
-            transform = Compose([transform, Lambda(mean_pool)])
+            # Sample 1 pose out of 4 for the latent generator datasets
+            transform = Compose([transform, Lambda(sample_tokenized_input)])
 
         return dataset_class(
             root=self._root,
