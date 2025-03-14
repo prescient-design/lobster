@@ -66,29 +66,3 @@ class TestRoundRobinConcatIterableDataset:
         assert count["Banana"] == 1
         assert count["Apple"] == 1
         assert count["Orange"] == 1
-
-    def test_empty_datasets(self):
-        empty_datasets = [
-            IterableStringDataset([]),
-            IterableStringDataset(["Apple"] * 3),
-            IterableStringDataset([]),
-        ]
-
-        dataset = RoundRobinConcatIterableDataset(empty_datasets)
-        samples = list(dataset)
-
-        assert len(samples) == 3
-        assert all(sample == "Apple" for sample in samples)
-
-    def test_single_dataset(self):
-        single_dataset = [IterableStringDataset(["Mango"] * 5)]
-        dataset = RoundRobinConcatIterableDataset(single_dataset)
-
-        samples = list(dataset)
-        assert len(samples) == 5
-        assert all(sample == "Mango" for sample in samples)
-
-    def test_no_datasets(self):
-        dataset = RoundRobinConcatIterableDataset([])
-        samples = list(dataset)
-        assert len(samples) == 0

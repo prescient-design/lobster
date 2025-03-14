@@ -91,7 +91,34 @@ class UmeLightningDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = True,
         shuffle_buffer_size: int = 10000,
+        stopping_condition: str = "min",
     ) -> None:
+        """Initialize a UmeLightningDataModule.
+
+        Parameters
+        ----------
+        tokenizer_max_length : int
+            Maximum length of the tokenized input. Should match the model's maximum input length.
+        datasets : None | Sequence[str], optional
+            List of dataset names to use. If None, all supported datasets will be used.
+            Example: ["M320M", "Calm", "AMPLIFY", "Pinder"]
+        root : Path | str | None, optional
+            Root directory where the datasets are stored. If None, the default directory will be used.
+        seed : int, optional
+            Random seed for reproducibility.
+        batch_size : int, optional
+            Batch size.
+        num_workers : int, optional
+            Number of workers for data loading.
+        pin_memory : bool, optional
+            Whether to pin memory for faster GPU transfer.
+        shuffle_buffer_size : int, optional
+            Size of the shuffle buffer for training datasets. Is for shuffling iterable datasets.
+        stopping_condition : str, optional
+            Stopping condition for the RoundRobinConcatIterableDataset. Can be "min" or "max".
+            If min, the dataset will stop when the smallest dataset is exhausted.
+            If max, the dataset will stop when the largest dataset is exhausted.
+        """
         super().__init__()
 
         supported_datasets = {info.name for info in SUPPORTED_DATASETS_INFO}
@@ -112,6 +139,7 @@ class UmeLightningDataModule(LightningDataModule):
         self._num_workers = num_workers
         self._pin_memory = pin_memory
         self._shuffle_buffer_size = shuffle_buffer_size
+        self._stopping_condition = stopping_condition
 
         # Initialize tokenizer transforms for each modality
         tokenizer_instances = {
@@ -183,9 +211,13 @@ class UmeLightningDataModule(LightningDataModule):
                 self._val_datasets.append(val_dataset)
                 self._val_sizes.append(dataset_info.test_size)
 
-        self.train_dataset = RoundRobinConcatIterableDataset(self._train_datasets)
+        self.train_dataset = RoundRobinConcatIterableDataset(
+            self._train_datasets,
+            stopping_condition=self._stopping_condition,
+        )
         self.val_dataset = RoundRobinConcatIterableDataset(
             self._val_datasets,
+            stopping_condition=self._stopping_condition,
         )
 
     def train_dataloader(self) -> DataLoader:
