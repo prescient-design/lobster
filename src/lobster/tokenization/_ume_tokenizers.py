@@ -40,7 +40,7 @@ from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
 
-from lobster.tokenization._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
+from ._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
 
 TOKENIZERS_PATH = importlib.resources.files("lobster") / "assets" / "ume_tokenizers"
 
@@ -58,13 +58,10 @@ PAD_TOKEN = "<pad>"
 SEP_TOKEN = "<sep>"
 MASK_TOKEN = "<mask>"
 
-# SMILES regex pattern for pre-tokenization
-SMILES_REGEX_PATTERN = (
-    r"""(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\|\/|:|~|@|\?|>>?|\*|\$|\%[0-9]{2}|[0-9])"""
-)
 
 # Order of tokenizers, important for vocabulary construction
-# DO NOT change the order of tokenizers without modifying `_add_reserved_tokens`
+# DO NOT change the order of tokenizers without making corresponding
+# changes to the `_add_reserved_tokens` func
 TOKENIZER_ORDER = [
     "special_tokens",
     AMINO_ACID_TOKENIZER,
@@ -91,15 +88,14 @@ def _load_vocabularies() -> Dict[str, List[str]]:
 
 def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
     """
-    Add reserved tokens to maintain index compatibility across tokenizers.
+    Add reserved tokens <reserved_special_token_i> to maintain index compatibility
+    across tokenizers.
 
     This function constructs the full vocabulary for each tokenizer by combining:
     - Special tokens (shared across all tokenizers)
     - Reserved/dummy tokens (to maintain index compatibility)
     - Domain-specific tokens for each tokenizer type
 
-    This ensures that token indices remain consistent across different tokenizers,
-    allowing for unified vocabulary spaces.
 
     Parameters
     ----------
@@ -122,10 +118,10 @@ def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
     # Start reserving from the next index
     next_reserved_index = highest_reserved_index + 1
 
-    # Amino acid tokenizer: special_tokens + amino_acid_tokenizer
+    # Amino acid tokenizer: special_tokens + amino acid vocab
     vocab_amino_acid = vocabs["special_tokens"] + vocabs["amino_acid_tokenizer"]
 
-    # SMILES tokenizer: special_tokens + [reserved for amino acid tokens] + smiles_tokenizer
+    # SMILES tokenizer: special_tokens + [reserved for amino acid tokens] + smiles vocab
     amino_acid_len = len(vocabs["amino_acid_tokenizer"])
     vocab_smiles = (
         vocabs["special_tokens"]
@@ -133,7 +129,7 @@ def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
         + vocabs["smiles_tokenizer"]
     )
 
-    # Nucleotide tokenizer: special_tokens + [reserved for amino acid] + [reserved for SMILES] + nucleotide_tokenizer
+    # Nucleotide tokenizer: special_tokens + [reserved for amino acid] + [reserved for SMILES] + nucleotide vocav
     smiles_len = len(vocabs["smiles_tokenizer"])
     vocab_nucleotide = (
         vocabs["special_tokens"]
@@ -146,7 +142,7 @@ def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
     )
 
     # Latent generator tokenizer: special_tokens + [reserved for amino acid] + [reserved for SMILES] +
-    # [reserved for nucleotide] + latent_generator_tokenizer
+    # [reserved for nucleotide] + latent generator 3D vocab
     nucleotide_len = len(vocabs["nucleotide_tokenizer"])
     vocab_latent = (
         vocabs["special_tokens"]
@@ -185,12 +181,11 @@ def _create_post_processor() -> TemplateProcessing:
     TemplateProcessing
         Configured template processor for token sequence formatting
     """
-    # MUST match the order of special tokens in its vocabulary txt file
     return TemplateProcessing(
         single=f"{CLS_TOKEN} $A {EOS_TOKEN}",
         pair=f"{CLS_TOKEN} $A {EOS_TOKEN} $B:1 {EOS_TOKEN}:1",
         special_tokens=[
-            (CLS_TOKEN, 0),
+            (CLS_TOKEN, 0),  # MUST match the order of special tokens in its vocabulary txt file
             (EOS_TOKEN, 2),
         ],
     )
@@ -432,19 +427,3 @@ class UmeLatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
             cls_token=CLS_TOKEN,
             mask_token=MASK_TOKEN,
         )
-
-
-if __name__ == "__main__":
-    # Create and save tokenizers
-    _make_ume_tokenizers()
-
-    # Compute the total vocabulary size
-    tokenizers = [
-        UmeAminoAcidTokenizerFast(),
-        UmeSmilesTokenizerFast(),
-        UmeNucleotideTokenizerFast(),
-        UmeLatentGenerator3DCoordTokenizerFast(),
-    ]
-    vocab = set(token for tokenizer in tokenizers for token in tokenizer.get_vocab().keys())
-    print(f"Total vocabulary size = {len(vocab)}")  # 1472
-    print(f"Vocab size % 64 = {len(vocab) % 64}")  # 0
