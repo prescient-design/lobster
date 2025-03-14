@@ -117,13 +117,15 @@ class UmeLightningDataModule(LightningDataModule):
         shuffle_buffer_size : int, optional
             Size of the shuffle buffer for training datasets. Is for shuffling iterable datasets.
         stopping_condition : str, optional
-            Stopping condition for the RoundRobinConcatIterableDataset. Can be "min" or "max".
+            Stopping condition for `RoundRobinConcatIterableDataset`. Can be "min" or "max".
             If min, the dataset will stop when the smallest dataset is exhausted.
             If max, the dataset will stop when the largest dataset is exhausted.
             Ignored if sample is True.
         sample : bool, optional
-            Whether to sample from the datasets with replacement with MultiplexedSamplingDataset.
-            If True, stopping_condition is ignored.
+            Whether to sample from the datasets with replacement with `MultiplexedSamplingDataset`.
+            If True, `MultiplexedSamplingDataset` is used (with optional `weights` parameter)
+            and `stopping_condition` is ignored.
+            If False, `RoundRobinConcatIterableDataset` is used.
         weights : Sequence[float | int] | None, optional
             Sampling weights for the datasets.
             If None, uses dataset sizes as weights to ensure sampling proportional to dataset size.
