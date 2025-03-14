@@ -11,17 +11,17 @@ from lobster.constants import Modality, Split
 from lobster.datasets import (
     AMPLIFYIterableDataset,
     CalmIterableDataset,
-    ConcatIterableDataset,
     HuggingFaceIterableDataset,
     LatentGeneratorPinderIterableDataset,
     M320MIterableDataset,
     MultiplexedSamplingDataset,
+    RoundRobinConcatIterableDataset,
 )
 from lobster.tokenization import (
-    AminoAcidTokenizerFast,
-    LatentGenerator3DCoordTokenizerFast,
-    NucleotideTokenizerFast,
-    SmilesTokenizerFast,
+    UmeAminoAcidTokenizerFast,
+    UmeLatentGenerator3DCoordTokenizerFast,
+    UmeNucleotideTokenizerFast,
+    UmeSmilesTokenizerFast,
 )
 from lobster.transforms import TokenizerTransform
 from lobster.transforms.functional import sample_tokenized_input
@@ -91,7 +91,48 @@ class UmeLightningDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = True,
         shuffle_buffer_size: int = 10000,
+        stopping_condition: str = "min",
+        sample: bool = False,
+        weights: Sequence[float | int] | None = None,
     ) -> None:
+        """Initialize a UmeLightningDataModule.
+
+        Parameters
+        ----------
+        tokenizer_max_length : int
+            Maximum length of the tokenized input. Should match the model's maximum input length.
+        datasets : None | Sequence[str], optional
+            List of dataset names to use. If None, all supported datasets will be used.
+            Example: ["M320M", "Calm", "AMPLIFY", "Pinder"]
+        root : Path | str | None, optional
+            Root directory where the datasets are stored. If None, the default directory will be used.
+        seed : int, optional
+            Random seed for reproducibility.
+        batch_size : int, optional
+            Batch size.
+        num_workers : int, optional
+            Number of workers for data loading.
+        pin_memory : bool, optional
+            Whether to pin memory for faster GPU transfer.
+        shuffle_buffer_size : int, optional
+            Size of the shuffle buffer for training datasets. Is for shuffling iterable datasets.
+        stopping_condition : str, optional
+            Stopping condition for `RoundRobinConcatIterableDataset`. Can be "min" or "max".
+            If min, the dataset will stop when the smallest dataset is exhausted.
+            If max, the dataset will stop when the largest dataset is exhausted.
+            Ignored if sample is True.
+        sample : bool, optional
+            Whether to sample from the datasets with replacement with `MultiplexedSamplingDataset`.
+            If True, `MultiplexedSamplingDataset` is used (with optional `weights` parameter)
+            and `stopping_condition` is ignored.
+            If False, `RoundRobinConcatIterableDataset` is used.
+        weights : Sequence[float | int] | None, optional
+            Sampling weights for the datasets.
+            If None, uses dataset sizes as weights to ensure sampling proportional to dataset size.
+            If you want to sample uniformly from all datasets, set all weights to 1.0.
+            Ignored if sample is False.
+
+        """
         super().__init__()
 
         supported_datasets = {info.name for info in SUPPORTED_DATASETS_INFO}
@@ -112,13 +153,16 @@ class UmeLightningDataModule(LightningDataModule):
         self._num_workers = num_workers
         self._pin_memory = pin_memory
         self._shuffle_buffer_size = shuffle_buffer_size
+        self._stopping_condition = stopping_condition
+        self._sample = sample
+        self._weights = weights
 
         # Initialize tokenizer transforms for each modality
         tokenizer_instances = {
-            Modality.SMILES: SmilesTokenizerFast(),
-            Modality.AMINO_ACID: AminoAcidTokenizerFast(),
-            Modality.NUCLEOTIDE: NucleotideTokenizerFast(),
-            Modality.COORDINATES_3D: LatentGenerator3DCoordTokenizerFast(),
+            Modality.SMILES: UmeSmilesTokenizerFast(),
+            Modality.AMINO_ACID: UmeAminoAcidTokenizerFast(),
+            Modality.NUCLEOTIDE: UmeNucleotideTokenizerFast(),
+            Modality.COORDINATES_3D: UmeLatentGenerator3DCoordTokenizerFast(),
         }
 
         self._tokenizer_transforms = {
@@ -136,8 +180,8 @@ class UmeLightningDataModule(LightningDataModule):
         self._val_sizes: list[int] = []
         self._test_sizes: list[int] = []
 
-        self.train_dataset: MultiplexedSamplingDataset | None = None
-        self.val_dataset: MultiplexedSamplingDataset | None = None
+        self.train_dataset: RoundRobinConcatIterableDataset | MultiplexedSamplingDataset | None = None
+        self.val_dataset: RoundRobinConcatIterableDataset | MultiplexedSamplingDataset | None = None
 
     def _get_dataset(self, dataset_info: DatasetInfo, split: Split) -> Dataset:
         """Get a dataset instance with appropriate tokenizer transform."""
@@ -157,6 +201,22 @@ class UmeLightningDataModule(LightningDataModule):
             shuffle_buffer_size=self._shuffle_buffer_size,
             **dataset_info.kwargs or {},
         )
+
+    def _get_aggregated_dataset(
+        self, datasets: list[IterableDataset], sizes: list[int]
+    ) -> MultiplexedSamplingDataset | RoundRobinConcatIterableDataset:
+        if self._sample:
+            weights = self._weights if self._weights is not None else sizes
+            return MultiplexedSamplingDataset(
+                datasets,
+                weights=weights,
+                seed=self._seed,
+            )
+        else:
+            return RoundRobinConcatIterableDataset(
+                datasets,
+                stopping_condition=self._stopping_condition,
+            )
 
     def setup(self, stage: str | None = None) -> None:
         self._train_datasets = []
@@ -183,10 +243,8 @@ class UmeLightningDataModule(LightningDataModule):
                 self._val_datasets.append(val_dataset)
                 self._val_sizes.append(dataset_info.test_size)
 
-        self.train_dataset = ConcatIterableDataset(self._train_datasets)
-        self.val_dataset = ConcatIterableDataset(
-            self._val_datasets,
-        )
+        self.train_dataset = self._get_aggregated_dataset(self._train_datasets, self._train_sizes)
+        self.val_dataset = self._get_aggregated_dataset(self._val_datasets, self._val_sizes)
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(

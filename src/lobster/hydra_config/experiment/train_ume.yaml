@@ -9,7 +9,7 @@ defaults:
   - override /data: ume
   - override /callbacks: [base, moleculeace_linear_probe_fast, calm_linear_probe_fast]
 
-compile: true
+compile: false
 
 data:
   _target_: lobster.data.UmeLightningDataModule
@@ -19,8 +19,11 @@ data:
   tokenizer_max_length: ${model.max_length}
   pin_memory: true
   shuffle_buffer_size: 1000
-  num_workers: 1
+  num_workers: 4
   seed: 0
+  sample: false # if false, uses RoundRobinConcatIterableDataset, else MultiplexedSamplingDataset
+  stopping_condition: min # min or max, used only if sample is false
+  weights: null # used only if sample is true, if null and sample is true, samples with weights based on dataset sizes
 
 paths:
   root_dir: ./runs
@@ -37,7 +40,7 @@ trainer:
 
 model:
   model_name: UME_mini
-  vocab_size:  889 # TODO: to be updated
+  vocab_size: 1472
   pad_token_id: 1
   cls_token_id: 0
   mask_token_id: 4
