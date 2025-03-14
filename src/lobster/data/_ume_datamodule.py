@@ -18,10 +18,10 @@ from lobster.datasets import (
     MultiplexedSamplingDataset,
 )
 from lobster.tokenization import (
-    AminoAcidTokenizerFast,
-    LatentGenerator3DCoordTokenizerFast,
-    NucleotideTokenizerFast,
-    SmilesTokenizerFast,
+    UmeAminoAcidTokenizerFast,
+    UmeLatentGenerator3DCoordTokenizerFast,
+    UmeNucleotideTokenizerFast,
+    UmeSmilesTokenizerFast,
 )
 from lobster.transforms import TokenizerTransform
 from lobster.transforms.functional import sample_tokenized_input
@@ -115,10 +115,10 @@ class UmeLightningDataModule(LightningDataModule):
 
         # Initialize tokenizer transforms for each modality
         tokenizer_instances = {
-            Modality.SMILES: SmilesTokenizerFast(),
-            Modality.AMINO_ACID: AminoAcidTokenizerFast(),
-            Modality.NUCLEOTIDE: NucleotideTokenizerFast(),
-            Modality.COORDINATES_3D: LatentGenerator3DCoordTokenizerFast(),
+            Modality.SMILES: UmeSmilesTokenizerFast(),
+            Modality.AMINO_ACID: UmeAminoAcidTokenizerFast(),
+            Modality.NUCLEOTIDE: UmeNucleotideTokenizerFast(),
+            Modality.COORDINATES_3D: UmeLatentGenerator3DCoordTokenizerFast(),
         }
 
         self._tokenizer_transforms = {
