@@ -11,11 +11,11 @@ from lobster.constants import Modality, Split
 from lobster.datasets import (
     AMPLIFYIterableDataset,
     CalmIterableDataset,
-    ConcatIterableDataset,
     HuggingFaceIterableDataset,
     LatentGeneratorPinderIterableDataset,
     M320MIterableDataset,
     MultiplexedSamplingDataset,
+    RoundRobinConcatIterableDataset,
 )
 from lobster.tokenization import (
     UmeAminoAcidTokenizerFast,
@@ -136,8 +136,8 @@ class UmeLightningDataModule(LightningDataModule):
         self._val_sizes: list[int] = []
         self._test_sizes: list[int] = []
 
-        self.train_dataset: MultiplexedSamplingDataset | None = None
-        self.val_dataset: MultiplexedSamplingDataset | None = None
+        self.train_dataset: RoundRobinConcatIterableDataset | MultiplexedSamplingDataset | None = None
+        self.val_dataset: RoundRobinConcatIterableDataset | MultiplexedSamplingDataset | None = None
 
     def _get_dataset(self, dataset_info: DatasetInfo, split: Split) -> Dataset:
         """Get a dataset instance with appropriate tokenizer transform."""
@@ -183,8 +183,8 @@ class UmeLightningDataModule(LightningDataModule):
                 self._val_datasets.append(val_dataset)
                 self._val_sizes.append(dataset_info.test_size)
 
-        self.train_dataset = ConcatIterableDataset(self._train_datasets)
-        self.val_dataset = ConcatIterableDataset(
+        self.train_dataset = RoundRobinConcatIterableDataset(self._train_datasets)
+        self.val_dataset = RoundRobinConcatIterableDataset(
             self._val_datasets,
         )
 

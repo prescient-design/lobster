@@ -20,8 +20,8 @@ def sample_tokenized_input(x: dict[str, Tensor]):
 
         # Output
         {
-            "input_ids": tensor of shape (1, 100),
-            "attention_mask": tensor of shape (1, 100),
+            "input_ids": tensor of shape (100,),
+            "attention_mask": tensor of shape (100,),
         }
 
     Parameters
@@ -32,6 +32,6 @@ def sample_tokenized_input(x: dict[str, Tensor]):
     Returns
     -------
     dict[str, Tensor]
-        Dictionary containing a single sampled tokenized input with shape (1, N).
+        Dictionary containing a single sampled tokenized input with shape (N,).
     """
-    return {key: value[torch.randint(0, value.size(0), (1,))].unsqueeze(0) for key, value in x.items()}
+    return {key: value[torch.randint(0, value.size(0), (1,))] for key, value in x.items()}

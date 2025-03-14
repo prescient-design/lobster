@@ -79,7 +79,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         run_every_n_epochs: Optional[int] = None,
         test_size: float = 0.2,
         max_samples: int = 3000,
-        seed: int = 42,
+        # seed: int = 42,
     ):
         tokenizer_transform = TokenizerTransform(
             tokenizer=NucleotideTokenizerFast(),
@@ -100,7 +100,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         self.test_size = test_size
         self.max_samples = max_samples
-        self.seed = seed
+        # NOTE zadorozk: see note below
+        # self.seed = seed
 
         self.dataset_splits = {}
         self.aggregate_metrics = defaultdict(list)
@@ -127,7 +128,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         if split_key in self.dataset_splits:
             return self.dataset_splits[split_key]
 
-        L.seed_everything(self.seed)
+        # NOTE zadorozk: this might override the seed set in the trainer
+        # commented out for now, assuming that this is set upstream
+        # L.seed_everything(self.seed)
 
         dataset = CalmPropertyDataset(task=task, species=species, transform_fn=self.transform_fn)
 
