@@ -92,6 +92,8 @@ class UmeLightningDataModule(LightningDataModule):
         pin_memory: bool = True,
         shuffle_buffer_size: int = 10000,
         stopping_condition: str = "min",
+        sample: bool = False,
+        weights: Sequence[float | int] | None = None,
     ) -> None:
         """Initialize a UmeLightningDataModule.
 
@@ -118,6 +120,16 @@ class UmeLightningDataModule(LightningDataModule):
             Stopping condition for the RoundRobinConcatIterableDataset. Can be "min" or "max".
             If min, the dataset will stop when the smallest dataset is exhausted.
             If max, the dataset will stop when the largest dataset is exhausted.
+            Ignored if sample is True.
+        sample : bool, optional
+            Whether to sample from the datasets with replacement with MultiplexedSamplingDataset.
+            If True, stopping_condition is ignored.
+        weights : Sequence[float | int] | None, optional
+            Sampling weights for the datasets.
+            If None, uses dataset sizes as weights to ensure sampling proportional to dataset size.
+            If you want to sample uniformly from all datasets, set all weights to 1.0.
+            Ignored if sample is False.
+
         """
         super().__init__()
 
@@ -140,6 +152,8 @@ class UmeLightningDataModule(LightningDataModule):
         self._pin_memory = pin_memory
         self._shuffle_buffer_size = shuffle_buffer_size
         self._stopping_condition = stopping_condition
+        self._sample = sample
+        self._weights = weights
 
         # Initialize tokenizer transforms for each modality
         tokenizer_instances = {
@@ -186,6 +200,23 @@ class UmeLightningDataModule(LightningDataModule):
             **dataset_info.kwargs or {},
         )
 
+    def _get_aggregated_dataset(
+        self, datasets: list[IterableDataset], sizes: list[int]
+    ) -> MultiplexedSamplingDataset | RoundRobinConcatIterableDataset:
+        if self._sample:
+            weights = self._weights if self._weights is not None else sizes
+            return MultiplexedSamplingDataset(
+                datasets,
+                sizes=sizes,
+                weights=weights,
+                generator=self._generator,
+            )
+        else:
+            return RoundRobinConcatIterableDataset(
+                datasets,
+                stopping_condition=self._stopping_condition,
+            )
+
     def setup(self, stage: str | None = None) -> None:
         self._train_datasets = []
         self._val_datasets = []
@@ -211,14 +242,8 @@ class UmeLightningDataModule(LightningDataModule):
                 self._val_datasets.append(val_dataset)
                 self._val_sizes.append(dataset_info.test_size)
 
-        self.train_dataset = RoundRobinConcatIterableDataset(
-            self._train_datasets,
-            stopping_condition=self._stopping_condition,
-        )
-        self.val_dataset = RoundRobinConcatIterableDataset(
-            self._val_datasets,
-            stopping_condition=self._stopping_condition,
-        )
+        self.train_dataset = self._get_aggregated_dataset(self._train_datasets, self._train_sizes)
+        self.val_dataset = self._get_aggregated_dataset(self._val_datasets, self._val_sizes)
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
