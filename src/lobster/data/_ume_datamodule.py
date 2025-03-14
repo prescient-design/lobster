@@ -207,9 +207,8 @@ class UmeLightningDataModule(LightningDataModule):
             weights = self._weights if self._weights is not None else sizes
             return MultiplexedSamplingDataset(
                 datasets,
-                sizes=sizes,
                 weights=weights,
-                generator=self._generator,
+                seed=self._seed,
             )
         else:
             return RoundRobinConcatIterableDataset(
