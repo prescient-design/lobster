@@ -1,45 +1,43 @@
-from collections import defaultdict
-from typing import Optional, Sequence, Dict, Tuple, Union, Callable
 import logging
+from collections import defaultdict
+from typing import Dict, Optional, Sequence, Tuple, Union
 
 import lightning as L
 import torch
-from torch import Tensor
-import numpy as np
-from torch.utils.data import DataLoader
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
+from torch import Tensor
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from lobster.constants import PEER_TASKS, PEER_TASK_CATEGORIES, PEER_TASK_SPLITS, PEERTask, PEERTaskCategory
+from lobster.constants import PEER_TASK_CATEGORIES, PEER_TASK_SPLITS, PEER_TASKS, PEERTask, PEERTaskCategory
 from lobster.datasets import PEERDataset
-from lobster.tokenization import NucleotideTokenizerFast
+from lobster.tokenization import UmeAminoAcidTokenizerFast
 from lobster.transforms import TokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
-
 logger = logging.getLogger(__name__)
 
 
-class PEERLinearProbeCallback(LinearProbeCallback):
+class PEEREvaluationCallback(LinearProbeCallback):
     """Callback for evaluating embedding models on the PEER benchmark tasks.
-    
+
     This callback assesses model performance across diverse protein-related prediction tasks:
     - Function prediction (e.g., stability, fluorescence)
     - Localization prediction (subcellular localization)
     - Protein-protein interactions
     - Protein-ligand interactions
     - Structure prediction (fold classification, secondary structure, contact maps)
-    
+
     The callback handles various input types including:
     - Single sequence inputs
     - Paired sequence inputs (protein-protein, protein-ligand)
     - Per-residue tasks (secondary structure)
     - Contact map prediction
-    
+
     Reference:
-        Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for 
+        Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
         Protein Sequence Understanding"
         https://arxiv.org/abs/2206.02096
     """
@@ -64,9 +62,9 @@ class PEERLinearProbeCallback(LinearProbeCallback):
         run_every_n_epochs : Optional[int], default=None
             Run this callback every n epochs. If None, runs every validation epoch.
         """
-        # Create a tokenizer transform for nucleotide sequences
+        # Create a tokenizer transform for amino acid sequences
         tokenizer_transform = TokenizerTransform(
-            tokenizer=NucleotideTokenizerFast(), # TODO - reaplce with ProteinTokenizerFast
+            tokenizer=UmeAminoAcidTokenizerFast(),
             padding="max_length",
             truncation=True,
             max_length=max_length,
@@ -82,85 +80,71 @@ class PEERLinearProbeCallback(LinearProbeCallback):
 
         # Set up tasks based on input parameters
         self.selected_tasks = set()
-        
+
         # If specific tasks are provided, add them
         if tasks is not None:
             for task in tasks:
                 task_enum = PEERTask(task) if isinstance(task, str) else task
                 self.selected_tasks.add(task_enum)
-        
+
         # If no tasks specified, use all tasks
         if not self.selected_tasks:
             self.selected_tasks = set(PEER_TASKS.keys())
-        
+
         # Dictionary to store embedders for different modalities
         self.embedders = {}
-        
+
         # Cache for datasets
         self.datasets = {}
 
     def _get_task_test_splits(self, task: PEERTask) -> list[str]:
         """Get all appropriate test splits for a task.
-        
+
         For most tasks, this will be a single 'test' split.
         For tasks with multiple test splits, returns all of them.
         """
-        available_splits = PEER_TASK_SPLITS[task]
-        test_splits = []
-        # TODO - make match case here?
-        # Handle secondary structure special case
-        if task == PEERTask.SECONDARY_STRUCTURE:
-            # All of these are considered test sets for secondary structure
-            return [split for split in ["casp12", "cb513", "ts115"] if split in available_splits]
-        
-        # Handle bindingdb special case (both random and holdout tests)
-        if task == PEERTask.BINDINGDB:
-            return [split for split in ["random_test", "holdout_test"] if split in available_splits]
-        
-        # Handle fold special case (all holdout tests)
-        if task == PEERTask.FOLD:
-            holdout_splits = [
-                split for split in available_splits 
-                if "test" in split and "holdout" in split
-            ]
-            return holdout_splits if holdout_splits else ["test"]
-        
-        # Handle PPI special case (include cross-species tests)
-        if task in {PEERTask.HUMANPPI, PEERTask.YEASTPPI}:
-            return [split for split in ["test", "cross_species_test"] if split in available_splits]
-        
-        # Default case: just use 'test' if available
-        if "test" in available_splits:
-            return ["test"]
-        
-        # Fallback to the last split if no explicit test split
-        return [available_splits[-1]]
+        match task:
+            case PEERTask.SECONDARY_STRUCTURE:
+                return ["casp12", "cb513", "ts115"]
+
+            case PEERTask.BINDINGDB:
+                return ["random_test", "holdout_test"]
+
+            case PEERTask.FOLD:
+                return [split for split in PEER_TASK_SPLITS[task] if "test" in split and "holdout" in split]
+
+            case PEERTask.HUMANPPI | PEERTask.YEASTPPI:
+                return ["test", "cross_species_test"]
+
+            case _:
+                # Default case: return anything with test
+                return [split for split in PEER_TASK_SPLITS[task] if split not in ["train", "valid"]]
 
     def _get_task_datasets(self, task: PEERTask) -> Tuple[PEERDataset, Dict[str, PEERDataset]]:
         """Get or create train and test datasets for a given task.
-        
+
         Returns:
             Tuple containing (train_dataset, test_datasets_dict)
             where test_datasets_dict maps split names to datasets
         """
         cache_key = str(task)
-        
+
         if cache_key in self.datasets:
             return self.datasets[cache_key]
-        
+
         # Always use 'train' for training
         train_split = "train"
-        
+
         # Get all test splits for this task
         test_splits = self._get_task_test_splits(task)
-        
+
         # Create train dataset
         train_dataset = PEERDataset(
             task=task,
             split=train_split,
             transform_fn=self.transform_fn,
         )
-        
+
         # Create test datasets for each test split
         test_datasets = {}
         for split in test_splits:
@@ -169,10 +153,10 @@ class PEERLinearProbeCallback(LinearProbeCallback):
                 split=split,
                 transform_fn=self.transform_fn,
             )
-        
+
         # Cache datasets
         self.datasets[cache_key] = (train_dataset, test_datasets)
-        
+
         return train_dataset, test_datasets
 
     def _get_paired_embeddings(
@@ -182,47 +166,128 @@ class PEERLinearProbeCallback(LinearProbeCallback):
         task_type = PEER_TASKS[task][0]
         embeddings = []
         targets = []
-        
+
         pl_module.eval()
         with torch.no_grad():
             for batch in dataloader:
                 # Unpack batch
                 inputs, y = batch
-                
+
                 # For paired inputs, inputs will be a list of two items
                 if isinstance(inputs, list) and len(inputs) == 2:
                     seq1, seq2 = inputs
-                    
+
                     # Handle protein-protein interactions
                     if task in {PEERTask.HUMANPPI, PEERTask.YEASTPPI, PEERTask.PPIAFFINITY}:
                         # Get embeddings for each protein separately
                         embeddings1 = pl_module.get_embeddings([seq1], modality="protein", per_residue=False)
                         embeddings2 = pl_module.get_embeddings([seq2], modality="protein", per_residue=False)
-                        
+
                         # Concatenate the embeddings
                         batch_embeddings = torch.cat([embeddings1, embeddings2], dim=1)
-                        
+
                     # Handle protein-ligand interactions
                     elif task in {PEERTask.BINDINGDB, PEERTask.PDBBIND}:
                         # Get embeddings for protein and ligand
                         protein_embeddings = pl_module.get_embeddings([seq1], modality="protein", per_residue=False)
                         ligand_embeddings = pl_module.get_embeddings([seq2], modality="ligand", per_residue=False)
-                        
+
                         # Concatenate the embeddings
                         batch_embeddings = torch.cat([protein_embeddings, ligand_embeddings], dim=1)
                 else:
                     raise ValueError(f"Expected paired inputs for task {task}, but got: {type(inputs)}")
-                
+
                 # Convert targets to appropriate format
                 if task_type == "regression":
                     y = y.float()
                 else:
                     y = y.long()
-                
+
                 embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
-        
+
         return torch.cat(embeddings), torch.cat(targets)
+
+    def _flatten_and_filter_token_embeddings(
+        self,
+        batch_embeddings: Tensor,
+        targets: Tensor,
+        input_ids: Optional[Tensor] = None,
+        attention_mask: Optional[Tensor] = None,
+        ignore_target_value: int = -1,
+    ) -> Tuple[Tensor, Tensor]:
+        """Helper method to flatten embeddings and filter special tokens for token-level tasks.
+
+        Parameters
+        ----------
+        batch_embeddings : Tensor
+            Embeddings with shape [batch_size, seq_len, hidden_size]
+        targets : Tensor
+            Target labels with shape [batch_size, seq_len] or [batch_size*seq_len]
+        input_ids : Optional[Tensor], default=None
+            Token IDs from tokenizer, used to identify special tokens
+        attention_mask : Optional[Tensor], default=None
+            Attention mask from tokenizer
+        ignore_target_value : int, default=-1
+            Value in targets to ignore (usually padding)
+
+        Returns
+        -------
+        Tuple[Tensor, Tensor]
+            Filtered embeddings and targets
+        """
+        batch_size, _seq_len, hidden_size = batch_embeddings.shape
+
+        # Flatten embeddings to (batch_size*seq_len, hidden_size)
+        batch_embeddings_flat = batch_embeddings.reshape(-1, hidden_size)
+
+        # Flatten targets if not already flattened
+        if targets.dim() > 1:
+            targets_flat = targets.reshape(-1)
+        else:
+            targets_flat = targets
+
+        # If we have tokenized input, use it to filter special tokens
+        if input_ids is not None and attention_mask is not None:
+            # Get token IDs for special tokens to filter them out
+            tokenizer = self.transform_fn.tokenizer
+            special_token_ids = {
+                tokenizer.cls_token_id,
+                tokenizer.eos_token_id,
+                tokenizer.pad_token_id,
+                tokenizer.sep_token_id,
+                tokenizer.mask_token_id,
+                tokenizer.unk_token_id,
+            }
+
+            # Create a mask for real tokens (not special tokens and not padding)
+            valid_token_mask = torch.ones_like(input_ids, dtype=torch.bool)
+            for special_id in special_token_ids:
+                if special_id is not None:  # Safety check in case some IDs are None
+                    valid_token_mask &= input_ids != special_id
+            valid_token_mask &= attention_mask.bool()
+
+            # Flatten the mask
+            valid_token_mask_flat = valid_token_mask.reshape(-1)
+
+            # Filter embeddings based on token mask
+            filtered_embeddings = batch_embeddings_flat[valid_token_mask_flat]
+
+            # Create a mask for valid targets (not ignore_target_value)
+            valid_target_mask = targets_flat != ignore_target_value
+            filtered_targets = targets_flat[valid_target_mask]
+
+            # Make sure we have the same number of embeddings and targets
+            min_len = min(filtered_embeddings.size(0), filtered_targets.size(0))
+            filtered_embeddings = filtered_embeddings[:min_len]
+            filtered_targets = filtered_targets[:min_len]
+        else:
+            # Fallback to simply filtering based on target values
+            valid_indices = targets_flat != ignore_target_value
+            filtered_embeddings = batch_embeddings_flat[valid_indices]
+            filtered_targets = targets_flat[valid_indices]
+
+        return filtered_embeddings, filtered_targets
 
     def _get_structure_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask
@@ -230,120 +295,141 @@ class PEERLinearProbeCallback(LinearProbeCallback):
         """Extract embeddings for structure prediction tasks with special handling."""
         embeddings = []
         targets = []
-        
+
         pl_module.eval()
         with torch.no_grad():
             for batch in dataloader:
-                x, y = batch
-                
-                # Secondary structure prediction (per-residue)
-                if task == PEERTask.SECONDARY_STRUCTURE:
-                    # Get per-residue embeddings
-                    batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=True)
-                    # Flatten the embeddings to (n_residues, hidden_size)
-                    batch_size, seq_len, hidden_size = batch_embeddings.shape
-                    batch_embeddings = batch_embeddings.reshape(-1, hidden_size)
-                    
-                    # Flatten targets to match
-                    y = y.view(-1)
-                    
-                    valid_indices = y != -1  # Assume -1 is padding # TODO - get padding token
-                    batch_embeddings = batch_embeddings[valid_indices]
-                    y = y[valid_indices]
-                
-                # Contact map prediction
-                elif task == PEERTask.PROTEINNET:
-                    # For contact map prediction, we need to handle special target format
-                    # y is a tuple of (tertiary_coords, valid_mask)
-                    tertiary_coords, valid_mask = y
-                    
-                    # Get per-residue embeddings
-                    batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=True)
-                    
-                    # Process embeddings to create pairwise features
-                    # For simplicity, we'll use outer product of embeddings
-                    # In practice, you might want a more sophisticated approach
-                    batch_size, seq_len, hidden_size = batch_embeddings.shape
-                    
-                    # Extract valid embeddings and coords based on mask
-                    valid_embeddings = []
-                    valid_coords = []
-                    for i in range(batch_size):
-                        mask = valid_mask[i].bool()
-                        if mask.sum() > 0:
-                            valid_embeddings.append(batch_embeddings[i, mask])
-                            valid_coords.append(tertiary_coords[i, mask])
-                    
-                    # Skip if no valid embeddings
-                    if not valid_embeddings:
-                        continue
-                    
-                    # Create distance matrices as targets
-                    contact_targets = []
-                    contact_embeddings = []
-                    
-                    for emb, coords in zip(valid_embeddings, valid_coords):
-                        # Calculate pairwise distances
-                        n_residues = coords.shape[0]
-                        distances = torch.cdist(coords, coords)
-                        
-                        # Define contacts (e.g., residues closer than 8 Angstroms)
-                        contacts = (distances < 8.0).float()
-                        
-                        # Create embeddings for each residue pair
-                        for i in range(n_residues):
-                            for j in range(i + 4, n_residues):  # Skip local contacts
-                                contact_embeddings.append(torch.cat([emb[i], emb[j]]))
-                                contact_targets.append(contacts[i, j])
-                    
-                    if contact_embeddings:
-                        batch_embeddings = torch.stack(contact_embeddings)
-                        y = torch.tensor(contact_targets)
-                    else:
-                        continue
-                
-                # Standard fold classification
-                elif task == PEERTask.FOLD:
-                    batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=False)
-                
-                embeddings.append(batch_embeddings.cpu())
-                targets.append(y.cpu())
-        
+                # Unpack the batch - may contain tokenized sequences with attention masks
+                input_ids = None
+                attention_mask = None
+
+                if isinstance(batch[0], dict) and "input_ids" in batch[0] and "attention_mask" in batch[0]:
+                    x_dict = batch[0]
+                    y = batch[1]
+                    input_ids = x_dict["input_ids"]
+                    attention_mask = x_dict["attention_mask"]
+                    x = x_dict  # Keep x as the dictionary for get_embeddings
+                else:
+                    x, y = batch
+                    if isinstance(x, dict):
+                        input_ids = x.get("input_ids")
+                        attention_mask = x.get("attention_mask")
+
+                match task:
+                    case PEERTask.SECONDARY_STRUCTURE:
+                        # Get per-residue embeddings
+                        batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=True)
+
+                        # Use helper method to flatten and filter token-level embeddings
+                        filtered_embeddings, filtered_targets = self._flatten_and_filter_token_embeddings(
+                            batch_embeddings=batch_embeddings,
+                            targets=y,
+                            input_ids=input_ids,
+                            attention_mask=attention_mask,
+                            ignore_target_value=-1,  # Assuming -1 is the padding value for targets
+                        )
+
+                        embeddings.append(filtered_embeddings.cpu())
+                        targets.append(filtered_targets.cpu())
+
+                    case PEERTask.PROTEINNET:
+                        # Handle contact map prediction with tertiary structure coordinates
+                        tertiary_coords, valid_mask = y
+
+                        # Get per-residue embeddings
+                        batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=True)
+                        batch_size, _seq_len, hidden_size = batch_embeddings.shape
+
+                        # Extract valid embeddings and coords based on mask
+                        valid_embeddings = []
+                        valid_coords = []
+
+                        for i in range(batch_size):
+                            # Create combined mask using both valid_mask and token masks if available
+                            residue_mask = valid_mask[i].bool()
+
+                            if residue_mask.sum() > 0:
+                                valid_embeddings.append(batch_embeddings[i, residue_mask])
+                                valid_coords.append(tertiary_coords[i, residue_mask])
+
+                        # Skip if no valid embeddings
+                        if not valid_embeddings:
+                            continue
+
+                        # Create contact map representations
+                        contact_targets = []
+                        contact_embeddings = []
+
+                        # For each protein in the batch
+                        for emb, coords in zip(valid_embeddings, valid_coords):
+                            # Calculate pairwise distances between 3D coordinates
+                            n_residues = coords.shape[0]
+                            distances = torch.cdist(coords, coords)
+
+                            # Define contacts as residues closer than 8 Angstroms
+                            contacts = (distances < 8.0).float()
+
+                            # For each residue pair, concatenate their embeddings
+                            # This is not an outer product, but a simple concatenation
+                            for i in range(n_residues):
+                                for j in range(i + 4, n_residues):  # Skip local contacts (i to i+3)
+                                    contact_embeddings.append(torch.cat([emb[i], emb[j]]))
+                                    contact_targets.append(contacts[i, j])
+
+                        if contact_embeddings:
+                            batch_embeddings = torch.stack(contact_embeddings)
+                            batch_targets = torch.tensor(contact_targets)
+
+                            embeddings.append(batch_embeddings.cpu())
+                            targets.append(batch_targets.cpu())
+
+                    case PEERTask.FOLD:
+                        # Standard fold classification - sequence-level task
+                        batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=False)
+                        embeddings.append(batch_embeddings.cpu())
+                        targets.append(y.cpu())
+
+        # If we have no valid embeddings, return empty tensors
+        if not embeddings:
+            return torch.tensor([]), torch.tensor([])
+
         return torch.cat(embeddings), torch.cat(targets)
 
-    def _get_embeddings(self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None) -> Tuple[Tensor, Tensor]:
+    def _get_embeddings(
+        self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None
+    ) -> Tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader with task-specific handling."""
         # Use task-specific embedding extraction based on category
         if task is None:
             # Fall back to parent implementation if no task specified
             return super()._get_embeddings(pl_module, dataloader)
-        
+
         category = PEER_TASK_CATEGORIES[task]
-        
+
         # Protein-protein or protein-ligand interactions
         if category in {PEERTaskCategory.PROTEIN_PROTEIN_INTERACTION, PEERTaskCategory.PROTEIN_LIGAND_INTERACTION}:
             return self._get_paired_embeddings(pl_module, dataloader, task)
-        
+
         # Structure prediction tasks
         elif category == PEERTaskCategory.STRUCTURE_PREDICTION:
             return self._get_structure_embeddings(pl_module, dataloader, task)
-        
+
         # Standard single sequence tasks (function prediction, localization)
         else:
             embeddings = []
             targets = []
-            
+
             pl_module.eval()
             with torch.no_grad():
                 for batch in dataloader:
                     x, y = batch
-                    
+
                     # Get embeddings using model's get_embeddings method
                     batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=False)
-                    
+
                     embeddings.append(batch_embeddings.cpu())
                     targets.append(y.cpu())
-            
+
             return torch.cat(embeddings), torch.cat(targets)
 
     def _train_probe(self, embeddings: Tensor, targets: Tensor, task: PEERTask = None):
@@ -351,90 +437,94 @@ class PEERLinearProbeCallback(LinearProbeCallback):
         if task is None:
             # Fallback to parent implementation if no task specified
             return super()._train_probe(embeddings, targets)
-        
+
         task_type, num_classes = PEER_TASKS[task]
+
+        # Update task_type and num_classes based on the specific task
+        match task:
+            case PEERTask.SECONDARY_STRUCTURE:
+                # Secondary structure is a multiclass classification problem
+                task_type = "multiclass"
+                num_classes = 3  # 3 secondary structure classes (helix, sheet, coil)
+
+            case PEERTask.SUBCELLULAR_LOCALIZATION:
+                # Subcellular localization is a multiclass problem
+                task_type = "multiclass"
+                num_classes = 10  # TODO - verify number of localization classes
+
+            case PEERTask.FOLD:
+                # Fold classification is a multiclass problem
+                task_type = "multiclass"
+                num_classes = 1195  # TODO - verify number of fold classes
+
+            case PEERTask.PROTEINNET:
+                # Contact prediction is a binary classification problem
+                task_type = "binary"
+                num_classes = None
+
+        # Set metrics based on the task type and num_classes
         self._set_metrics(task_type, num_classes)
-        
-        # Update task_type for certain tasks
-        if task == PEERTask.SECONDARY_STRUCTURE:
-            # Secondary structure is a multiclass classification problem
-            task_type = "multiclass"
-            num_classes = 3  # 3 secondary structure classes
-            self._set_metrics(task_type, num_classes)
-        elif task == PEERTask.SUBCELLULAR_LOCALIZATION:
-            # Subcellular localization is a multiclass problem
-            task_type = "multiclass"
-            num_classes = 10  # 10 localization classes
-            self._set_metrics(task_type, num_classes)
-        elif task == PEERTask.FOLD:
-            # Fold classification is a multiclass problem
-            task_type = "multiclass"
-            num_classes = 1195  # 1195 fold classes in PEER
-            self._set_metrics(task_type, num_classes)
-        elif task == PEERTask.PROTEINNET:
-            # Contact prediction is a binary classification problem
-            task_type = "binary"
-            self._set_metrics(task_type)
-        
+
         # Train probe based on task type
         embeddings_np = embeddings.numpy()
         targets_np = targets.numpy()
-        
-        if task_type == "regression":
-            probe = LinearRegression()
-            probe.fit(embeddings_np, targets_np)
-        elif task_type == "multilabel":
-            base_classifier = LogisticRegression(random_state=42)
-            probe = MultiOutputClassifier(base_classifier)
-            probe.fit(embeddings_np, targets_np)
-        else:  # binary or multiclass
-            probe = LogisticRegression(
-                multi_class="ovr" if task_type == "binary" else "multinomial",
-                random_state=42,
-                max_iter=1000,  # Increase for convergence
-            )
-            probe.fit(embeddings_np, targets_np.ravel())
-        
+
+        match task_type:
+            case "regression":
+                probe = LinearRegression()
+                probe.fit(embeddings_np, targets_np)
+
+            case "multilabel":
+                base_classifier = LogisticRegression(random_state=42)
+                probe = MultiOutputClassifier(base_classifier)
+                probe.fit(embeddings_np, targets_np)
+
+            case "binary" | "multiclass":
+                probe = LogisticRegression(
+                    multi_class="ovr" if task_type == "binary" else "multinomial",
+                    random_state=42,
+                    max_iter=1000,  # Increase for convergence
+                )
+                probe.fit(embeddings_np, targets_np.ravel())
+
         return probe
 
-    def _evaluate_task(self, task: PEERTask, trainer: L.Trainer, pl_module: L.LightningModule) -> Dict[str, Dict[str, float]]:
+    def _evaluate_task(
+        self, task: PEERTask, trainer: L.Trainer, pl_module: L.LightningModule
+    ) -> Dict[str, Dict[str, float]]:
         """Evaluate a single PEER task across all its test splits.
-        
+
         Returns:
             Dict mapping split names to dictionaries of metrics
         """
         try:
             # Get datasets for this task
             train_dataset, test_datasets = self._get_task_datasets(task)
-            
+
             # Create train loader
-            train_loader = DataLoader(
-                train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4
-            )
-            
+            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
+
             # Extract train embeddings
             train_embeddings, train_targets = self._get_embeddings(pl_module, train_loader, task)
-            
+
             # Train probe
             probe = self._train_probe(train_embeddings, train_targets, task)
             self.probes[str(task)] = probe
-            
+
             # Evaluate on each test split
             split_metrics = {}
             for split_name, test_dataset in test_datasets.items():
-                test_loader = DataLoader(
-                    test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4
-                )
-                
+                test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
+
                 # Extract test embeddings
                 test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader, task)
-                
+
                 # Evaluate probe
                 metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
                 split_metrics[split_name] = metrics
-            
+
             return split_metrics
-            
+
         except Exception as e:
             logger.exception(f"Error evaluating task {task}: {str(e)}")
             return {}
@@ -448,30 +538,30 @@ class PEERLinearProbeCallback(LinearProbeCallback):
         category_metrics = defaultdict(lambda: defaultdict(list))
         all_metrics = defaultdict(list)
         split_count = 0  # Track total number of splits evaluated
-        
+
         # Evaluate each selected task
         for task in tqdm(self.selected_tasks, desc=f"{self.__class__.__name__}"):
             task_category = PEER_TASK_CATEGORIES[task]
             split_metrics = self._evaluate_task(task, trainer, pl_module)
-            
+
             # Process metrics for each split
             for split_name, metrics in split_metrics.items():
                 # Log split-specific metrics
                 for metric_name, value in metrics.items():
                     metric_key = f"peer_linear_probe/{task}/{split_name}/{metric_name}"
                     trainer.logger.log_metrics({metric_key: value}, step=trainer.current_epoch)
-                    
+
                     # Also log a task-level average if there are multiple splits
                     if len(split_metrics) > 1:
                         # Add to task-level averages for this metric
                         category_metrics[task_category][f"{metric_name}_by_split"].append(value)
-                
+
                 # For computing global averages, we count each split as a separate evaluation
                 for metric_name, value in metrics.items():
                     all_metrics[metric_name].append(value)
-                
+
                 split_count += 1
-            
+
             # Calculate and log task averages across splits if there are multiple splits
             if len(split_metrics) > 1:
                 for metric_name in next(iter(split_metrics.values()), {}):
@@ -481,28 +571,25 @@ class PEERLinearProbeCallback(LinearProbeCallback):
                         avg_value = sum(values) / len(values)
                         task_avg_key = f"peer_linear_probe/{task}/average/{metric_name}"
                         trainer.logger.log_metrics({task_avg_key: avg_value}, step=trainer.current_epoch)
-        
+
         # Log category averages
         for category, metrics_dict in category_metrics.items():
             for metric_name, values in metrics_dict.items():
                 if values:
                     avg_value = sum(values) / len(values)
                     trainer.logger.log_metrics(
-                        {f"peer_linear_probe/category/{category}/{metric_name}": avg_value},
-                        step=trainer.current_epoch
+                        {f"peer_linear_probe/category/{category}/{metric_name}": avg_value}, step=trainer.current_epoch
                     )
-        
+
         # Log overall averages
         for metric_name, values in all_metrics.items():
             if values:
                 avg_value = sum(values) / len(values)
                 trainer.logger.log_metrics(
-                    {f"peer_linear_probe/mean/{metric_name}": avg_value},
-                    step=trainer.current_epoch
+                    {f"peer_linear_probe/mean/{metric_name}": avg_value}, step=trainer.current_epoch
                 )
-        
+
         # Log total number of splits evaluated
         trainer.logger.log_metrics(
-            {f"peer_linear_probe/total_splits_evaluated": split_count},
-            step=trainer.current_epoch
+            {"peer_linear_probe/total_splits_evaluated": split_count}, step=trainer.current_epoch
         )
