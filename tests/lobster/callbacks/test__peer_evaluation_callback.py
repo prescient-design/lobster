@@ -244,14 +244,14 @@ class TestPEEREvaluationCallback:
             targets=targets,
             input_ids=input_ids,
             attention_mask=attention_mask,
-            ignore_target_value=-1,
         )
 
         assert filtered_embeddings.shape == (7, 10)
         assert filtered_targets.shape == (7,)
 
         filtered_embeddings2, filtered_targets2 = callback._flatten_and_filter_token_embeddings(
-            batch_embeddings=batch_embeddings, targets=targets, ignore_target_value=-1
+            batch_embeddings=batch_embeddings,
+            targets=targets,
         )
 
         assert filtered_embeddings2.shape[0] == filtered_targets2.shape[0]

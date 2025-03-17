@@ -21,20 +21,41 @@ logger = logging.getLogger(__name__)
 
 
 class PEEREvaluationCallback(LinearProbeCallback):
-    """Callback for evaluating embedding models on the PEER benchmark tasks.
-
-    This callback assesses model performance across diverse protein-related prediction tasks:
-    - Function prediction (e.g., stability, fluorescence)
-    - Localization prediction (subcellular localization)
-    - Protein-protein interactions
-    - Protein-ligand interactions
-    - Structure prediction (fold classification, secondary structure, contact maps)
+    """Callback for evaluating model embeddings on PEER benchmark tasks:
 
     The callback handles various input types including:
     - Single sequence inputs
     - Paired sequence inputs (protein-protein, protein-ligand)
     - Per-residue tasks (secondary structure)
     - Contact map prediction
+
+    Available tasks:
+    - Function prediction tasks:
+        - "aav": AAV variant fitness
+        - "betalactamase": Beta-lactamase stability
+        - "fluorescence": Protein fluorescence
+        - "gb1": GB1 protein stability
+        - "solubility": Protein solubility
+        - "stability": Protein stability
+        - "thermostability": Protein thermostability
+
+    - Localization prediction tasks:
+        - "binarylocalization": Binary subcellular localization
+        - "subcellularlocalization": Multi-class subcellular localization
+
+    - Protein-ligand interaction tasks:
+        - "bindingdb": Protein-ligand binding affinity (BindingDB)
+        - "pdbbind": Protein-ligand binding affinity (PDBbind)
+
+    - Protein-protein interaction tasks:
+        - "humanppi": Human protein-protein interactions
+        - "ppiaffinity": Protein-protein binding affinity
+        - "yeastppi": Yeast protein-protein interactions
+
+    - Structure prediction tasks:
+        - "fold": Protein fold classification
+        - "proteinnet": Contact map prediction
+        - "secondarystructure": Secondary structure prediction
 
     Reference:
         Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
@@ -62,7 +83,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
         run_every_n_epochs : Optional[int], default=None
             Run this callback every n epochs. If None, runs every validation epoch.
         """
-        # Create a tokenizer transform for amino acid sequences
         tokenizer_transform = TokenizerTransform(
             tokenizer=UmeAminoAcidTokenizerFast(),
             padding="max_length",
@@ -78,10 +98,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
             run_every_n_epochs=run_every_n_epochs,
         )
 
-        # Set up tasks based on input parameters
         self.selected_tasks = set()
 
-        # If specific tasks are provided, add them
         if tasks is not None:
             for task in tasks:
                 task_enum = PEERTask(task) if isinstance(task, str) else task
@@ -91,7 +109,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         if not self.selected_tasks:
             self.selected_tasks = set(PEER_TASKS.keys())
 
-        # Dictionary to store embedders for different modalities
+        # Store embedders for different modalities (AA, SMILES)
         self.embedders = {}
 
         # Cache for datasets
@@ -132,7 +150,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
         if cache_key in self.datasets:
             return self.datasets[cache_key]
 
-        # Always use 'train' for training
         train_split = "train"
 
         # Get all test splits for this task
@@ -170,7 +187,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
         pl_module.eval()
         with torch.no_grad():
             for batch in dataloader:
-                # Unpack batch
                 inputs, y = batch
 
                 # For paired inputs, inputs will be a list of two items
@@ -183,7 +199,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         embeddings1 = pl_module.get_embeddings([seq1], modality="protein", per_residue=False)
                         embeddings2 = pl_module.get_embeddings([seq2], modality="protein", per_residue=False)
 
-                        # Concatenate the embeddings
+                        # Concatenate the embeddings. TODO - update later w/ cross-attention head
                         batch_embeddings = torch.cat([embeddings1, embeddings2], dim=1)
 
                     # Handle protein-ligand interactions
@@ -197,7 +213,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 else:
                     raise ValueError(f"Expected paired inputs for task {task}, but got: {type(inputs)}")
 
-                # Convert targets to appropriate format
+                # Make sure targets cast correctly
                 if task_type == "regression":
                     y = y.float()
                 else:
@@ -214,7 +230,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
         targets: Tensor,
         input_ids: Optional[Tensor] = None,
         attention_mask: Optional[Tensor] = None,
-        ignore_target_value: int = -1,
     ) -> Tuple[Tensor, Tensor]:
         """Helper method to flatten embeddings and filter special tokens for token-level tasks.
 
@@ -228,15 +243,13 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Token IDs from tokenizer, used to identify special tokens
         attention_mask : Optional[Tensor], default=None
             Attention mask from tokenizer
-        ignore_target_value : int, default=-1
-            Value in targets to ignore (usually padding)
 
         Returns
         -------
         Tuple[Tensor, Tensor]
             Filtered embeddings and targets
         """
-        batch_size, _seq_len, hidden_size = batch_embeddings.shape
+        _batch_size, _seq_len, hidden_size = batch_embeddings.shape
 
         # Flatten embeddings to (batch_size*seq_len, hidden_size)
         batch_embeddings_flat = batch_embeddings.reshape(-1, hidden_size)
@@ -249,7 +262,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         # If we have tokenized input, use it to filter special tokens
         if input_ids is not None and attention_mask is not None:
-            # Get token IDs for special tokens to filter them out
             tokenizer = self.transform_fn.tokenizer
             special_token_ids = {
                 tokenizer.cls_token_id,
@@ -263,29 +275,27 @@ class PEEREvaluationCallback(LinearProbeCallback):
             # Create a mask for real tokens (not special tokens and not padding)
             valid_token_mask = torch.ones_like(input_ids, dtype=torch.bool)
             for special_id in special_token_ids:
-                if special_id is not None:  # Safety check in case some IDs are None
+                if special_id is not None:  # In case some IDs are None
                     valid_token_mask &= input_ids != special_id
             valid_token_mask &= attention_mask.bool()
 
-            # Flatten the mask
+            # Flatten mask & filter embeddings based on token mask
             valid_token_mask_flat = valid_token_mask.reshape(-1)
-
-            # Filter embeddings based on token mask
             filtered_embeddings = batch_embeddings_flat[valid_token_mask_flat]
 
-            # Create a mask for valid targets (not ignore_target_value)
-            valid_target_mask = targets_flat != ignore_target_value
-            filtered_targets = targets_flat[valid_target_mask]
+            # Make sure the number of embeddings matches the number of targets
+            min_len = min(filtered_embeddings.size(0), targets_flat.size(0))
+            filtered_embeddings = filtered_embeddings[:min_len]
+            filtered_targets = targets_flat[:min_len]
+        else:
+            # If no tokenizer info provided, use all embeddings and targets as is
+            filtered_embeddings = batch_embeddings_flat
+            filtered_targets = targets_flat
 
-            # Make sure we have the same number of embeddings and targets
+            # Make sure lengths match
             min_len = min(filtered_embeddings.size(0), filtered_targets.size(0))
             filtered_embeddings = filtered_embeddings[:min_len]
             filtered_targets = filtered_targets[:min_len]
-        else:
-            # Fallback to simply filtering based on target values
-            valid_indices = targets_flat != ignore_target_value
-            filtered_embeddings = batch_embeddings_flat[valid_indices]
-            filtered_targets = targets_flat[valid_indices]
 
         return filtered_embeddings, filtered_targets
 
@@ -299,21 +309,14 @@ class PEEREvaluationCallback(LinearProbeCallback):
         pl_module.eval()
         with torch.no_grad():
             for batch in dataloader:
-                # Unpack the batch - may contain tokenized sequences with attention masks
-                input_ids = None
-                attention_mask = None
-
-                if isinstance(batch[0], dict) and "input_ids" in batch[0] and "attention_mask" in batch[0]:
-                    x_dict = batch[0]
-                    y = batch[1]
-                    input_ids = x_dict["input_ids"]
-                    attention_mask = x_dict["attention_mask"]
-                    x = x_dict  # Keep x as the dictionary for get_embeddings
-                else:
+                # Unpack the batch - all batches will have input_ids and attention_mask
+                if isinstance(batch, tuple) and len(batch) == 2:
                     x, y = batch
-                    if isinstance(x, dict):
-                        input_ids = x.get("input_ids")
-                        attention_mask = x.get("attention_mask")
+                    # x should be a dictionary with tokenizer outputs
+                    input_ids = x["input_ids"]
+                    attention_mask = x["attention_mask"]
+                else:
+                    raise ValueError(f"Expected batch to be a tuple of (inputs, targets), got {type(batch)}")
 
                 match task:
                     case PEERTask.SECONDARY_STRUCTURE:
@@ -352,7 +355,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
                                 valid_embeddings.append(batch_embeddings[i, residue_mask])
                                 valid_coords.append(tertiary_coords[i, residue_mask])
 
-                        # Skip if no valid embeddings
                         if not valid_embeddings:
                             continue
 
@@ -360,7 +362,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         contact_targets = []
                         contact_embeddings = []
 
-                        # For each protein in the batch
                         for emb, coords in zip(valid_embeddings, valid_coords):
                             # Calculate pairwise distances between 3D coordinates
                             n_residues = coords.shape[0]
@@ -369,8 +370,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                             # Define contacts as residues closer than 8 Angstroms
                             contacts = (distances < 8.0).float()
 
-                            # For each residue pair, concatenate their embeddings
-                            # This is not an outer product, but a simple concatenation
+                            # For each residue pair, concatenate their embeddings # TODO - consider updated w/ outer product
                             for i in range(n_residues):
                                 for j in range(i + 4, n_residues):  # Skip local contacts (i to i+3)
                                     contact_embeddings.append(torch.cat([emb[i], emb[j]]))
@@ -399,7 +399,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None
     ) -> Tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader with task-specific handling."""
-        # Use task-specific embedding extraction based on category
         if task is None:
             # Fall back to parent implementation if no task specified
             return super()._get_embeddings(pl_module, dataloader)
@@ -424,7 +423,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 for batch in dataloader:
                     x, y = batch
 
-                    # Get embeddings using model's get_embeddings method
                     batch_embeddings = pl_module.get_embeddings([x], modality="protein", per_residue=False)
 
                     embeddings.append(batch_embeddings.cpu())
@@ -450,7 +448,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             case PEERTask.SUBCELLULAR_LOCALIZATION:
                 # Subcellular localization is a multiclass problem
                 task_type = "multiclass"
-                num_classes = 10  # TODO - verify number of localization classes
+                num_classes = 10
 
             case PEERTask.FOLD:
                 # Fold classification is a multiclass problem
@@ -498,16 +496,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Dict mapping split names to dictionaries of metrics
         """
         try:
-            # Get datasets for this task
             train_dataset, test_datasets = self._get_task_datasets(task)
 
-            # Create train loader
+            # Get train embeddings and probe
             train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
-
-            # Extract train embeddings
             train_embeddings, train_targets = self._get_embeddings(pl_module, train_loader, task)
-
-            # Train probe
             probe = self._train_probe(train_embeddings, train_targets, task)
             self.probes[str(task)] = probe
 
@@ -516,7 +509,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
             for split_name, test_dataset in test_datasets.items():
                 test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
 
-                # Extract test embeddings
                 test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader, task)
 
                 # Evaluate probe
@@ -556,7 +548,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         # Add to task-level averages for this metric
                         category_metrics[task_category][f"{metric_name}_by_split"].append(value)
 
-                # For computing global averages, we count each split as a separate evaluation
+                # For computing global averages, count each split as a separate evaluation
                 for metric_name, value in metrics.items():
                     all_metrics[metric_name].append(value)
 
