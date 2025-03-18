@@ -45,8 +45,6 @@ class PEERDataset(Dataset):
         - humanppi/yeastppi: 'train', 'valid', 'test', 'cross_species_test'
         - fold: 'train', 'valid', 'test_family_holdout', 'test_fold_holdout', 'test_superfamily_holdout'
         - secondarystructure: 'train', 'valid', 'casp12', 'cb513', 'ts115'
-    download : bool, default=True
-        Whether to download data if not available locally.
     transform_fn : Optional[Callable], default=None
         Transformation to apply to input sequences.
     target_transform_fn : Optional[Callable], default=None
@@ -54,8 +52,6 @@ class PEERDataset(Dataset):
     columns : Optional[Sequence[str]], default=None
         Specific columns to use from the dataset. If None, appropriate columns are
         selected based on the task.
-    force_download : bool, default=False
-        If True, forces re-download from Hugging Face even if local cache exists.
     """
 
     def __init__(
@@ -64,11 +60,9 @@ class PEERDataset(Dataset):
         root: Optional[Union[str, Path]] = None,
         *,
         split: str = "train",
-        download: bool = True,
         transform_fn: Optional[Callable] = None,
         target_transform_fn: Optional[Callable] = None,
         columns: Optional[Sequence[str]] = None,
-        force_download: bool = False,
     ):
         super().__init__()
 
@@ -88,7 +82,6 @@ class PEERDataset(Dataset):
         self.task_type, self.num_classes = PEER_TASKS[task]
         self.task_category = PEER_TASK_CATEGORIES[task]
 
-        # Set up the root directory for data storage
         if root is None:
             root = pooch.os_cache("lbster")
         if isinstance(root, str):
@@ -96,53 +89,36 @@ class PEERDataset(Dataset):
         self.root = root.resolve()
 
         # Configure paths and load data
-        self.hf_data_file, self.cache_path = self._configure_paths()
-        self._load_data("taylor-joren/peer", download, force_download)
+        self.hf_data_file = self._configure_hf_path()
+        self._load_data()
         self._set_columns(columns)
 
-    def _configure_paths(self) -> Tuple[str, Path]:
-        """Configure file paths based on task and split."""
+    def _configure_hf_path(self) -> str:
+        """Configure Hugging Face data path based on task and split."""
         task_category = self.task_category.value
         task = self.task.value
         split = self.split
 
-        # Paths for both Hugging Face repo and local cache
-        filename = f"{split}.parquet"
-        hf_data_file = f"{task_category}/{task}/{filename}"
-        cache_path = self.root / self.__class__.__name__ / task_category / task / filename
+        # Path for Hugging Face repo
+        return f"{task_category}/{task}/{split}.parquet"
 
-        return hf_data_file, cache_path
-
-    def _load_data(self, huggingface_repo: str, download: bool, force_download: bool) -> None:
-        """Load data from Hugging Face or local cache."""
-        need_download = force_download or not self.cache_path.exists()
-
-        if need_download and download:
-            # Download from Hugging Face and save locally
-            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            dataset = load_dataset(huggingface_repo, data_files=self.hf_data_file, split="train")
-            df = dataset.to_pandas()
-            df.to_parquet(self.cache_path, index=False)
-            self.data = df
-
-        elif self.cache_path.exists():
-            # Load from local cache
-            self.data = pd.read_parquet(self.cache_path)
-
-        else:
-            raise FileNotFoundError(f"Dataset file {self.cache_path} not found locally and download=False")
+    def _load_data(self) -> None:
+        """Load data from Hugging Face."""
+        try:
+            dataset = load_dataset("taylor-joren/peer", data_files=self.hf_data_file, split="train")
+            self.data = dataset.to_pandas()
+        except Exception as e:
+            raise RuntimeError(f"Failed to load dataset from Hugging Face: {e}")
 
     def _set_columns(self, columns=None):
-        """Set the columns to use based on the task or user specification."""
+        """Set the columns to use based on the task"""
         if columns is None:
-            # Use predefined column mappings if no specific columns provided
             if self.task not in PEER_TASK_COLUMNS:
                 raise ValueError(f"No column mapping defined for task '{self.task}'")
 
             input_cols, target_cols = PEER_TASK_COLUMNS[self.task]
             columns = input_cols + target_cols
 
-            # Verify all expected columns exist in the dataset
             for col in columns:
                 if col not in self.data.columns:
                     raise ValueError(
@@ -215,9 +191,7 @@ class PEERDataset(Dataset):
         # Handle target data with special cases for specific tasks
         if self.task == PEERTask.PROTEINNET:
             # Special handling for contact map prediction
-            tertiary_data = PEERDataset.string_to_tensor(
-                item["tertiary"]
-            )  # TODO - using static method for now, consider moving to a utils module
+            tertiary_data = PEERDataset.string_to_tensor(item["tertiary"])
             valid_mask = PEERDataset.string_to_tensor(item["valid_mask"])
             y = (tertiary_data, valid_mask)
 
