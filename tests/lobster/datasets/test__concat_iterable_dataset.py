@@ -1,8 +1,9 @@
 from collections import Counter
 
 import pytest
-from lobster.datasets import RoundRobinConcatIterableDataset
 from torch.utils.data import IterableDataset
+
+from lobster.datasets import RoundRobinConcatIterableDataset
 
 
 class IterableStringDataset(IterableDataset):
