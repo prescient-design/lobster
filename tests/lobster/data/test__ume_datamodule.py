@@ -1,11 +1,12 @@
 from pathlib import Path
 
 import pytest
-from lobster.data import UmeLightningDataModule
-from lobster.datasets import MultiplexedSamplingDataset
 from torch import Tensor
 from torch.utils.data import DataLoader
 from transformers import BatchEncoding
+
+from lobster.data import UmeLightningDataModule
+from lobster.datasets import MultiplexedSamplingDataset
 
 
 @pytest.fixture
