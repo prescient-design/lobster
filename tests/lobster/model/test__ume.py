@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
+from lobster.constants import Modality
 from lobster.model._ume import Ume
 
 
@@ -66,7 +67,45 @@ class TestUme:
     @patch("lobster.model._ume.UmeSmilesTokenizerFast")
     @patch("lobster.model._ume.UmeAminoAcidTokenizerFast")
     @patch("lobster.model._ume.UmeNucleotideTokenizerFast")
-    def test_get_tokenizer(self, mock_nucleotide, mock_amino, mock_smiles, mock_load_checkpoint):
+    @patch("lobster.model._ume.UmeLatentGenerator3DCoordTokenizerFast")
+    def test_tokenizer_initialization(self, mock_coord, mock_nucleotide, mock_amino, mock_smiles, mock_load_checkpoint):
+        """Test that tokenizers are initialized during __init__"""
+        # Set up model mock
+        mock_model = MagicMock()
+        mock_load_checkpoint.return_value = mock_model
+
+        # Setup tokenizer mocks
+        mock_smiles_instance = MagicMock()
+        mock_amino_instance = MagicMock()
+        mock_nucleotide_instance = MagicMock()
+        mock_coord_instance = MagicMock()
+
+        mock_smiles.return_value = mock_smiles_instance
+        mock_amino.return_value = mock_amino_instance
+        mock_nucleotide.return_value = mock_nucleotide_instance
+        mock_coord.return_value = mock_coord_instance
+
+        # Create Ume instance
+        ume = Ume("dummy_checkpoint.ckpt")
+
+        # Verify each tokenizer was instantiated exactly once
+        mock_smiles.assert_called_once()
+        mock_amino.assert_called_once()
+        mock_nucleotide.assert_called_once()
+        mock_coord.assert_called_once()
+
+        # Verify tokenizers were stored in the dictionary
+        assert ume.tokenizers[Modality.SMILES] == mock_smiles_instance
+        assert ume.tokenizers[Modality.AMINO_ACID] == mock_amino_instance
+        assert ume.tokenizers[Modality.NUCLEOTIDE] == mock_nucleotide_instance
+        assert ume.tokenizers[Modality.COORDINATES_3D] == mock_coord_instance
+
+    @patch("lobster.model._ume.FlexBERT.load_from_checkpoint")
+    @patch("lobster.model._ume.UmeSmilesTokenizerFast")
+    @patch("lobster.model._ume.UmeAminoAcidTokenizerFast")
+    @patch("lobster.model._ume.UmeNucleotideTokenizerFast")
+    @patch("lobster.model._ume.UmeLatentGenerator3DCoordTokenizerFast")
+    def test_get_tokenizer(self, mock_coord, mock_nucleotide, mock_amino, mock_smiles, mock_load_checkpoint):
         """Test getting tokenizers for different modalities"""
         # Set up model mock
         mock_model = MagicMock()
@@ -76,33 +115,40 @@ class TestUme:
         mock_smiles_instance = MagicMock()
         mock_amino_instance = MagicMock()
         mock_nucleotide_instance = MagicMock()
+        mock_coord_instance = MagicMock()
 
         mock_smiles.return_value = mock_smiles_instance
         mock_amino.return_value = mock_amino_instance
         mock_nucleotide.return_value = mock_nucleotide_instance
+        mock_coord.return_value = mock_coord_instance
 
         # Create Ume instance
         ume = Ume("dummy_checkpoint.ckpt")
 
         # Test each modality
-        tokenizer_map = {
-            "SMILES": (mock_smiles, mock_smiles_instance),
-            "amino_acid": (mock_amino, mock_amino_instance),
-            "nucleotide": (mock_nucleotide, mock_nucleotide_instance),
+        modality_map = {
+            "SMILES": mock_smiles_instance,
+            "amino_acid": mock_amino_instance,
+            "nucleotide": mock_nucleotide_instance,
+            "3d_coordinates": mock_coord_instance,
         }
 
-        for modality, (mock_cls, mock_instance) in tokenizer_map.items():
-            # Get tokenizer
+        for modality, mock_instance in modality_map.items():
+            # Get tokenizer - this should now return the pre-instantiated tokenizer
             tokenizer = ume.get_tokenizer(["test"], modality)
-
-            # Verify correct tokenizer class was instantiated
-            mock_cls.assert_called_once()
 
             # Verify the returned tokenizer is our mock instance
             assert tokenizer == mock_instance
 
-            # Reset mock for next test
-            mock_cls.reset_mock()
+            # Verify that no new tokenizer is instantiated (count should remain at 1)
+            if modality == "SMILES":
+                assert mock_smiles.call_count == 1
+            elif modality == "amino_acid":
+                assert mock_amino.call_count == 1
+            elif modality == "nucleotide":
+                assert mock_nucleotide.call_count == 1
+            elif modality == "3d_coordinates":
+                assert mock_coord.call_count == 1
 
     @patch("lobster.model._ume.FlexBERT.load_from_checkpoint")
     def test_get_embeddings_basic(self, mock_load_checkpoint, smiles_examples, protein_examples, dna_examples):

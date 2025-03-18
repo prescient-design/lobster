@@ -52,6 +52,14 @@ class Ume(L.LightningModule):
             for param in self.model.model.parameters():
                 param.requires_grad = False
 
+        # Initialize tokenizers for all modalities
+        self.tokenizers = {
+            Modality.AMINO_ACID: UmeAminoAcidTokenizerFast(),
+            Modality.NUCLEOTIDE: UmeNucleotideTokenizerFast(),
+            Modality.SMILES: UmeSmilesTokenizerFast(),
+            Modality.COORDINATES_3D: UmeLatentGenerator3DCoordTokenizerFast(),
+        }
+
     def get_tokenizer(self, inputs: list[str], modality: ModalityType) -> Callable:
         """Get the appropriate tokenizer for the given modality.
 
@@ -74,21 +82,8 @@ class Ume(L.LightningModule):
         >>> tokenizer = encoder.get_tokenizer(sequences, "amino_acid")
         >>> tokens = tokenizer(sequences, return_tensors="pt")
         """
-        mod_enum = Modality(modality)
-
-        if mod_enum == Modality.AMINO_ACID:
-            tokenizer_class = UmeAminoAcidTokenizerFast
-
-        elif mod_enum == Modality.NUCLEOTIDE:
-            tokenizer_class = UmeNucleotideTokenizerFast
-
-        elif mod_enum == Modality.SMILES:
-            tokenizer_class = UmeSmilesTokenizerFast
-
-        elif mod_enum == Modality.COORDINATES_3D:
-            tokenizer_class = UmeLatentGenerator3DCoordTokenizerFast
-
-        return tokenizer_class()
+        modality_enum = Modality(modality)
+        return self.tokenizers[modality_enum]
 
     def get_embeddings(self, inputs: list[str], modality: ModalityType, aggregate: bool = True) -> Tensor:
         """Get embeddings for the provided inputs using the specified modality.
