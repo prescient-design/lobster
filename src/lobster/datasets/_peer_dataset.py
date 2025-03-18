@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Callable, Optional, Sequence, Tuple, Union
 
 import numpy as np
-import pandas as pd
 import pooch
 import torch
 from datasets import load_dataset
@@ -104,11 +103,8 @@ class PEERDataset(Dataset):
 
     def _load_data(self) -> None:
         """Load data from Hugging Face."""
-        try:
-            dataset = load_dataset("taylor-joren/peer", data_files=self.hf_data_file, split="train")
-            self.data = dataset.to_pandas()
-        except Exception as e:
-            raise RuntimeError(f"Failed to load dataset from Hugging Face: {e}")
+        dataset = load_dataset("taylor-joren/peer", data_files=self.hf_data_file, split="train")
+        self.data = dataset.to_pandas()
 
     def _set_columns(self, columns=None):
         """Set the columns to use based on the task"""
