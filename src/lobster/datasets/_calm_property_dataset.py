@@ -9,10 +9,10 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from lobster.constants import (
+    CALM_TASK_SPECIES,
     CALM_TASKS,
-    TASK_SPECIES,
-    Species,
-    Task,
+    CALMSpecies,
+    CALMTask,
 )
 from lobster.transforms import Transform
 
@@ -64,10 +64,10 @@ class CalmPropertyDataset(Dataset):
 
     def __init__(
         self,
-        task: Task | str,
+        task: CALMTask | str,
         root: str | Path | None = None,
         *,
-        species: Optional[Species | str] = None,
+        species: Optional[CALMSpecies | str] = None,
         split: Optional[Literal["train", "validation", "test"]] = None,
         download: bool = True,
         transform_fn: Optional[Callable | Transform] = None,
@@ -78,9 +78,9 @@ class CalmPropertyDataset(Dataset):
         super().__init__()
 
         if isinstance(task, str):
-            task = Task(task)
+            task = CALMTask(task)
         if isinstance(species, str):
-            species = Species(species)
+            species = CALMSpecies(species)
 
         self.task = task
         self.species = species
@@ -116,19 +116,19 @@ class CalmPropertyDataset(Dataset):
         species = self.species
 
         # Get the appropriate file path in the HF repo
-        if task in [Task.FUNCTION_BP, Task.FUNCTION_CC, Task.FUNCTION_MF]:
+        if task in [CALMTask.FUNCTION_BP, CALMTask.FUNCTION_CC, CALMTask.FUNCTION_MF]:
             function_type = task.value.split("_")[1].lower()
             filename = f"calm_GO_{function_type}_middle_normal.parquet"
             hf_data_file = f"{task.value}/{filename}"
 
-        elif task in [Task.MELTOME, Task.SOLUBILITY, Task.LOCALIZATION]:
+        elif task in [CALMTask.MELTOME, CALMTask.SOLUBILITY, CALMTask.LOCALIZATION]:
             filename = f"{task.value}.parquet"
             hf_data_file = f"{task.value}/{filename}"
 
-        elif task in [Task.PROTEIN_ABUNDANCE, Task.TRANSCRIPT_ABUNDANCE]:
+        elif task in [CALMTask.PROTEIN_ABUNDANCE, CALMTask.TRANSCRIPT_ABUNDANCE]:
             if species is None:
                 raise ValueError(f"Must specify species for {task.value} task")
-            if species not in TASK_SPECIES[task]:
+            if species not in CALM_TASK_SPECIES[task]:
                 raise ValueError(f"Species {species.value} not available for {task.value} task")
 
             filename = f"{task.value}_{species.value}.parquet"
@@ -184,13 +184,13 @@ class CalmPropertyDataset(Dataset):
         """Set the columns to use based on the task."""
         if columns is None:
             match self.task:
-                case Task.FUNCTION_BP:
+                case CALMTask.FUNCTION_BP:
                     columns = ["sequence", "GO:0051092", "GO:0016573", "GO:0031146", "GO:0071427", "GO:0006613"]
-                case Task.FUNCTION_CC:
+                case CALMTask.FUNCTION_CC:
                     columns = ["sequence", "GO:0022627", "GO:0000502", "GO:0034705", "GO:0030665", "GO:0005925"]
-                case Task.FUNCTION_MF:
+                case CALMTask.FUNCTION_MF:
                     columns = ["sequence", "GO:0004843", "GO:0004714", "GO:0003774", "GO:0008227", "GO:0004866"]
-                case Task.LOCALIZATION:
+                case CALMTask.LOCALIZATION:
                     columns = [
                         "Sequence",
                         "Cell membrane",
@@ -204,13 +204,13 @@ class CalmPropertyDataset(Dataset):
                         "Peroxisome",
                         "Plastid",
                     ]
-                case Task.MELTOME:
+                case CALMTask.MELTOME:
                     columns = ["sequence", "melting_temperature"]
-                case Task.SOLUBILITY:
+                case CALMTask.SOLUBILITY:
                     columns = ["cds", "solubility"]
-                case Task.PROTEIN_ABUNDANCE:
+                case CALMTask.PROTEIN_ABUNDANCE:
                     columns = ["cds", "abundance"]
-                case Task.TRANSCRIPT_ABUNDANCE:
+                case CALMTask.TRANSCRIPT_ABUNDANCE:
                     columns = ["cds", "logtpm"]
                 case _:
                     columns = list(self.data.columns)
