@@ -74,7 +74,7 @@ class PEERDataset(Dataset):
         self.transform_fn = transform_fn
         self.target_transform_fn = target_transform_fn
 
-        # Validate the requested split is available for this task
+        # Validate the split is available for this task
         if split not in PEER_TASK_SPLITS[task]:
             raise ValueError(f"Invalid split '{split}' for task '{task}'. Available splits: {PEER_TASK_SPLITS[task]}")
 
@@ -93,7 +93,7 @@ class PEERDataset(Dataset):
         self._set_columns(columns)
 
     def _configure_hf_path(self) -> str:
-        """Configure Hugging Face data path based on task and split."""
+        """Get Hugging Face data path based on task and split."""
         task_category = self.task_category.value
         task = self.task.value
         split = self.split
@@ -168,7 +168,7 @@ class PEERDataset(Dataset):
         """
         item = self.data.iloc[index]
 
-        # Extract input features based on task configuration
+        # Extract input features based on task
         if self.task in PEER_TASK_COLUMNS:
             input_cols, target_cols = PEER_TASK_COLUMNS[self.task]
             if len(input_cols) == 1:
@@ -184,7 +184,7 @@ class PEERDataset(Dataset):
             if self.transform_fn is not None:
                 x = self.transform_fn(x)
 
-        # Handle target data with special cases for specific tasks
+        # Handle target data
         if self.task == PEERTask.PROTEINNET:
             # Special handling for contact map prediction
             tertiary_data = PEERDataset.string_to_tensor(item["tertiary"])
