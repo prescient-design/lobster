@@ -1,0 +1,5 @@
+scheduler:
+  _target_: "transformers.optimization.get_wsd_schedule"
+  num_warmup_steps: ${model.num_warmup_steps}
+  num_training_steps: ${model.num_training_steps}
+  num_decay_steps: ${model.num_warmup_steps}

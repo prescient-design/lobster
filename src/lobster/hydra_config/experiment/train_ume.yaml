@@ -41,11 +41,11 @@ trainer:
 model:
   model_name: UME_mini
   vocab_size: 1472
-  pad_token_id: 1
   cls_token_id: 0
+  pad_token_id: 1
+  eos_token_id: 2
   mask_token_id: 4
   sep_token_id: 5
-  eos_token_id: 2
   lr: 4e-4
   beta1: 0.9
   beta2: 0.98
