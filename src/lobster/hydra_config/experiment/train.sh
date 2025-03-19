@@ -5,6 +5,7 @@
 #SBATCH --ntasks-per-node 2
 #SBATCH --gpus-per-node 2
 #SBATCH --cpus-per-task 16
+#SBATCH -oo %J.out
 # srun hostname
 
 nvidia-smi
