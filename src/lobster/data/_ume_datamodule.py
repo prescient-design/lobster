@@ -50,7 +50,7 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.TEST},
         train_size=19_400_000,
         test_size=1_000_000,
-        kwargs={"download": False, "keys": ["smiles"]},
+        kwargs={"keys": ["smiles"]},
     ),
     DatasetInfo(
         name="Calm",
@@ -85,6 +85,7 @@ class UmeLightningDataModule(LightningDataModule):
         tokenizer_max_length: int,
         *,
         datasets: None | Sequence[str] = None,
+        download: bool = False,
         root: Path | str | None = None,
         seed: int = 0,
         batch_size: int = 1,
@@ -156,6 +157,7 @@ class UmeLightningDataModule(LightningDataModule):
         self._stopping_condition = stopping_condition
         self._sample = sample
         self._weights = weights
+        self._download = download
 
         # Initialize tokenizer transforms for each modality
         tokenizer_instances = {
@@ -195,6 +197,7 @@ class UmeLightningDataModule(LightningDataModule):
 
         return dataset_class(
             root=self._root,
+            download=self._download,
             transform=transform,
             split=split.value,
             shuffle=(split == Split.TRAIN),
