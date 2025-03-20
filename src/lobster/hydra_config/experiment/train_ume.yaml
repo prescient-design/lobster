@@ -21,7 +21,7 @@ data:
   shuffle_buffer_size: 1000
   num_workers: 4
   seed: 0
-  download: true
+  download: false # run first time with true to download datasets
   sample: false # if false, uses RoundRobinConcatIterableDataset, else MultiplexedSamplingDataset
   stopping_condition: min # min or max, used only if sample is false
   weights: null # used only if sample is true, if null and sample is true, samples with weights based on dataset sizes
