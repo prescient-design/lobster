@@ -7,7 +7,7 @@
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
-  - override /callbacks: [base, moleculeace_linear_probe_fast, calm_linear_probe_fast]
+  - override /callbacks: [base]
 
 compile: false
 
@@ -21,7 +21,7 @@ data:
   shuffle_buffer_size: 1000
   num_workers: 4
   seed: 0
-  download: false # run first time with true to download datasets
+  download: true # run first time with true to download datasets
   sample: false # if false, uses RoundRobinConcatIterableDataset, else MultiplexedSamplingDataset
   stopping_condition: min # min or max, used only if sample is false
   weights: null # used only if sample is true, if null and sample is true, samples with weights based on dataset sizes
@@ -40,7 +40,7 @@ trainer:
   devices: auto
 
 model:
-  model_name: UME_mini
+  model_name: UME_small
   vocab_size: 1472
   pad_token_id: 1
   cls_token_id: 0
@@ -56,12 +56,6 @@ model:
   mask_percentage: 0.25
   max_length: 512
   unpad_embeddings: true
-
-callbacks:
-  moleculeace_linear_probe:
-    max_length: ${model.max_length}
-  calm_linear_probe:
-    max_length: ${model.max_length}
 
 logger:
   name: ume_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
