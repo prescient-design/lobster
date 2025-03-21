@@ -13,7 +13,7 @@ compile: false
 
 data:
   _target_: lobster.data.UmeLightningDataModule
-  root: ${paths.root_dir}/data
+  root: ${oc.env:LOBSTER_DATA_DIR} 
   datasets: ["M320M", "Calm", "AMPLIFY", "Pinder"]
   batch_size: 128
   tokenizer_max_length: ${model.max_length}
@@ -26,7 +26,7 @@ data:
   weights: null 
 
 paths:
-  root_dir: ${oc.env:LOBSTER_RUN_DIR} 
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR} 
   
 trainer:
   max_steps: 50_000
