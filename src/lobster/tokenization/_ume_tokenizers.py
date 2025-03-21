@@ -17,14 +17,19 @@ To create the tokenizers, run
     # Create and save tokenizers
     _make_ume_tokenizers()
 
-    # Compute the total vocabulary size
     tokenizers = [
-        UmeAminoAcidTokenizerFast(),
-        UmeSmilesTokenizerFast(),
-        UmeNucleotideTokenizerFast(),
-        UmeLatentGenerator3DCoordTokenizerFast(),
+            UmeAminoAcidTokenizerFast(),
+            UmeSmilesTokenizerFast(),
+            UmeNucleotideTokenizerFast(),
+            UmeLatentGenerator3DCoordTokenizerFast(),
     ]
-    vocab = set(token for tokenizer in tokenizers for token in tokenizer.get_vocab().keys())
+
+    # Compute the total vocabulary size
+    vocab = {
+        token_id: token for tokenizer in tokenizers
+        for token, token_id in tokenizer.get_vocab().items()
+        if "reserved" not in token
+    }
 
     print(f"Total vocabulary size = {len(vocab)}")  # 1472
     print(f"Vocab size % 64 = {len(vocab) % 64}")  # 0
@@ -111,7 +116,7 @@ def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
     # Find the highest reserved token index in the special tokens
     highest_reserved_index = -1
     for token in vocabs["special_tokens"]:
-        if token.startswith("<reserved_special_token_"):
+        if token.startswith("<extra_special_token_"):
             index = int(token.split("_")[-1][:-1])
             highest_reserved_index = max(highest_reserved_index, index)
 
@@ -125,7 +130,10 @@ def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
     amino_acid_len = len(vocabs["amino_acid_tokenizer"])
     vocab_smiles = (
         vocabs["special_tokens"]
-        + [f"<reserved_special_token_{i}>" for i in range(next_reserved_index, next_reserved_index + amino_acid_len)]
+        + [
+            f"<reserved_for_amino_acids_special_token_{i}>"
+            for i in range(next_reserved_index, next_reserved_index + amino_acid_len)
+        ]
         + vocabs["smiles_tokenizer"]
     )
 
@@ -133,9 +141,12 @@ def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
     smiles_len = len(vocabs["smiles_tokenizer"])
     vocab_nucleotide = (
         vocabs["special_tokens"]
-        + [f"<reserved_special_token_{i}>" for i in range(next_reserved_index, next_reserved_index + amino_acid_len)]
         + [
-            f"<reserved_special_token_{i}>"
+            f"<reserved_for_amino_acids_special_token_{i}>"
+            for i in range(next_reserved_index, next_reserved_index + amino_acid_len)
+        ]
+        + [
+            f"<reserved_for_smiles_special_token_{i}>"
             for i in range(next_reserved_index + amino_acid_len, next_reserved_index + amino_acid_len + smiles_len)
         ]
         + vocabs["nucleotide_tokenizer"]
@@ -146,13 +157,16 @@ def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
     nucleotide_len = len(vocabs["nucleotide_tokenizer"])
     vocab_latent = (
         vocabs["special_tokens"]
-        + [f"<reserved_special_token_{i}>" for i in range(next_reserved_index, next_reserved_index + amino_acid_len)]
         + [
-            f"<reserved_special_token_{i}>"
+            f"<reserved_for_amino_acids_special_token_{i}>"
+            for i in range(next_reserved_index, next_reserved_index + amino_acid_len)
+        ]
+        + [
+            f"<reserved_for_smiles_special_token_{i}>"
             for i in range(next_reserved_index + amino_acid_len, next_reserved_index + amino_acid_len + smiles_len)
         ]
         + [
-            f"<reserved_special_token_{i}>"
+            f"<reserved_for_nucleotides_special_token_{i}>"
             for i in range(
                 next_reserved_index + amino_acid_len + smiles_len,
                 next_reserved_index + amino_acid_len + smiles_len + nucleotide_len,
