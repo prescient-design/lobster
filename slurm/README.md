@@ -5,7 +5,7 @@ This guide explains how to run a `lobster` training job using SLURM on a GPU-ena
 # SLURM Job Script
 The provided example job script `scripts/train_ume.sh` is configured up for training the `Ume` model on a GPU-enabled SLURM cluster. 
 
-You will need to set specific environment variables in the script to run the job. These will be read by the `Ume` hydra configuration file, which is located at `src/lobster/hydra_config/experiment/train_ume.yaml`.
+You will need to set specific environment variables to run the job. These will be read by the `Ume` hydra configuration file, which is located at `src/lobster/hydra_config/experiment/train_ume.yaml`.
 
 Variables:
 
