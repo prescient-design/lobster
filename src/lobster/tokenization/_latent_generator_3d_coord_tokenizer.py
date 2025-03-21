@@ -1,4 +1,5 @@
 import importlib.resources
+from pathlib import Path
 
 from tokenizers import pre_tokenizers
 from tokenizers.models import WordLevel
@@ -15,7 +16,9 @@ vocab = load_vocab_file(VOCAB_PATH)
 LG_VOCAB = {v: k for k, v in enumerate(vocab)}
 
 
-def _make_latent_generator_3d_coord_tokenizer() -> PreTrainedTokenizerFast:
+def _make_latent_generator_3d_coord_tokenizer(
+    save_dirpath: str | Path | None = PRETRAINED_TOKENIZER_PATH,
+) -> PreTrainedTokenizerFast:
     """Create a `PreTrainedTokenizerFast` object for tokenization of protein structure 3d coordinate to tokens via Latent Generator.
 
     To create the tokenizer config stored under lobster/assets/latent_generator_tokenizer we run
@@ -44,6 +47,7 @@ def _make_latent_generator_3d_coord_tokenizer() -> PreTrainedTokenizerFast:
 
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
+        save_dirpath=save_dirpath,
         post_processor=post_processor,
         pre_tokenizer=pre_tokenizer,
         eos_token="<eos>",

@@ -4,6 +4,7 @@
 <unk>
 <mask>
 .
+-
 a
 b
 c
