@@ -7,7 +7,7 @@
 defaults:
   - override /model: modern_bert.yaml
   - override /data: ume
-  - override /callbacks: [base]
+  - override /callbacks: [base, moleculeace_linear_probe_fast, calm_linear_probe_fast]
 
 compile: false
 
@@ -55,6 +55,14 @@ model:
   mask_percentage: 0.25
   max_length: 512
   unpad_embeddings: true
+
+callbacks:
+  moleculeace_linear_probe:
+    max_length: ${model.max_length}
+    run_every_n_epochs: 1
+  calm_linear_probe:
+    max_length: ${model.max_length}
+    run_every_n_epochs: 1
 
 logger:
   name: ume_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
