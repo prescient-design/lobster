@@ -36,3 +36,5 @@ dev
 outputs
 wandb
 lightning_logs
+
+.env
