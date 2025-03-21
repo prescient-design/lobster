@@ -13,7 +13,7 @@ compile: false
 
 data:
   _target_: lobster.data.UmeLightningDataModule
-  root: ${paths.root_dir}/data
+  root: ${oc.env:LOBSTER_DATA_DIR} 
   datasets: ["M320M", "Calm", "AMPLIFY", "Pinder"]
   batch_size: 128
   tokenizer_max_length: ${model.max_length}
@@ -21,12 +21,12 @@ data:
   shuffle_buffer_size: 1000
   num_workers: 4
   seed: 0
-  sample: false # if false, uses RoundRobinConcatIterableDataset, else MultiplexedSamplingDataset
-  stopping_condition: min # min or max, used only if sample is false
-  weights: null # used only if sample is true, if null and sample is true, samples with weights based on dataset sizes
+  download: true 
+  sample: true 
+  weights: null 
 
 paths:
-  root_dir: ./runs
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR} 
   
 trainer:
   max_steps: 50_000
@@ -39,7 +39,7 @@ trainer:
   devices: auto
 
 model:
-  model_name: UME_mini
+  model_name: UME_small
   vocab_size: 1472
   pad_token_id: 1
   cls_token_id: 0
@@ -59,10 +59,13 @@ model:
 callbacks:
   moleculeace_linear_probe:
     max_length: ${model.max_length}
+    run_every_n_epochs: 1
   calm_linear_probe:
     max_length: ${model.max_length}
+    run_every_n_epochs: 1
 
 logger:
   name: ume_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
   project: lobster
   group: ume-dev-${now:%Y-%m-%d-%H-%M-%S}
+  entity: ${oc.env:LOBSTER_USER}
