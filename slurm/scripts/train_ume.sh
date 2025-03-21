@@ -17,10 +17,6 @@ export WANDB_INSECURE_DISABLE_SSL=true
 export HYDRA_FULL_ERROR=1
 export PYTHONUNBUFFERED=1
 
-export LOBSTER_RUN_DIR="/data/lobster/ume"
-export LOBSTER_USER=$(whoami)
-export WANDB_BASE_URL=https://genentech.wandb.io/
-
 export TOKENIZERS_PARALLELISM=true
 
 srun -u --cpus-per-task 8 --cpu-bind=cores,verbose \
