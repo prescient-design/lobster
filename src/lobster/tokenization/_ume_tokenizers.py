@@ -31,7 +31,7 @@ To create the tokenizers, run
         if "reserved" not in token
     }
 
-    print(f"Total vocabulary size = {len(vocab)}")  # 1472
+    print(f"Total vocabulary size = {len(vocab)}")  # 2752
     print(f"Vocab size % 64 = {len(vocab) % 64}")  # 0
 ```
 """
