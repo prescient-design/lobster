@@ -21,7 +21,7 @@ def test__make_smiles_tokenizer():
     assert tokenizer.mask_token == "<mask>"
 
     ids = tokenizer.encode("CCO")
-    assert ids == [0, 7, 7, 10, 2]
+    assert ids == [0, 8, 8, 12, 2]
     assert tokenizer.decode(ids) == "<cls> C C O <eos>"
     assert tokenizer.special_tokens_map == {
         "eos_token": "<eos>",
@@ -45,7 +45,7 @@ class TestSmilesTokenizerFast:
         assert tokenizer.mask_token == "<mask>"
 
         ids = tokenizer.encode("CCO")
-        assert ids == [0, 7, 7, 10, 2]
+        assert ids == [0, 8, 8, 12, 2]
         assert tokenizer.decode(ids) == "<cls> C C O <eos>"
         assert tokenizer.special_tokens_map == {
             "eos_token": "<eos>",
