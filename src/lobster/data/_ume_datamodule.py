@@ -105,6 +105,10 @@ class UmeLightningDataModule(LightningDataModule):
         datasets : None | Sequence[str], optional
             List of dataset names to use. If None, all supported datasets will be used.
             Example: ["M320M", "Calm", "AMPLIFY", "Pinder"]
+        download: bool, optional
+            If True, will download the datasets first and stream locally.
+            Otherwise, streams directly from Hugging Face.
+            Downloaded datasets are cached in the `root` directory.
         root : Path | str | None, optional
             Root directory where the datasets are stored. If None, the default directory will be used.
         seed : int, optional

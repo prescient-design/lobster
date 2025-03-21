@@ -21,13 +21,12 @@ data:
   shuffle_buffer_size: 1000
   num_workers: 4
   seed: 0
-  download: true # run first time with true to download datasets
-  sample: false # if false, uses RoundRobinConcatIterableDataset, else MultiplexedSamplingDataset
-  stopping_condition: min # min or max, used only if sample is false
-  weights: null # used only if sample is true, if null and sample is true, samples with weights based on dataset sizes
+  download: true 
+  sample: true 
+  weights: null 
 
 paths:
-  root_dir: /data/lobster/ume
+  root_dir: ${oc.env:LOBSTER_RUN_DIR} 
   
 trainer:
   max_steps: 50_000
@@ -61,3 +60,4 @@ logger:
   name: ume_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
   project: lobster
   group: ume-dev-${now:%Y-%m-%d-%H-%M-%S}
+  entity: ${oc.env:LOBSTER_USER}
