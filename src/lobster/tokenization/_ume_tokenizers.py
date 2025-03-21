@@ -38,14 +38,16 @@ To create the tokenizers, run
 
 import importlib.resources
 from pathlib import Path
-from typing import Dict, List, Union
 
 from tokenizers.models import BPE, WordLevel
 from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
 
+from ._latent_generator_3d_coord_tokenizer import VOCAB_PATH as LATENT_GENERATOR_VOCAB_PATH
+from ._load_vocab_file import load_vocab_file
 from ._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
+from ._smiles_tokenizer import VOCAB_PATH as SMILES_VOCAB_PATH
 
 TOKENIZERS_PATH = importlib.resources.files("lobster") / "assets" / "ume_tokenizers"
 
@@ -55,6 +57,9 @@ SMILES_TOKENIZER = "smiles_tokenizer"
 NUCLEOTIDE_TOKENIZER = "nucleotide_tokenizer"
 LATENT_GENERATOR_TOKENIZER = "latent_generator_tokenizer"
 
+AMINO_ACID_VOCAB_PATH = TOKENIZERS_PATH / AMINO_ACID_TOKENIZER / "vocab.txt"
+NUCLEOTIDE_VOCAB_PATH = TOKENIZERS_PATH / NUCLEOTIDE_TOKENIZER / "vocab.txt"
+
 # Special tokens
 CLS_TOKEN = "<cls>"
 EOS_TOKEN = "<eos>"
@@ -62,7 +67,7 @@ UNK_TOKEN = "<unk>"
 PAD_TOKEN = "<pad>"
 SEP_TOKEN = "<sep>"
 MASK_TOKEN = "<mask>"
-
+SPECIAL_TOKENS = {CLS_TOKEN, EOS_TOKEN, UNK_TOKEN, PAD_TOKEN, SEP_TOKEN, MASK_TOKEN}
 
 # Order of tokenizers, important for vocabulary construction
 # DO NOT change the order of tokenizers without making corresponding
@@ -76,22 +81,26 @@ TOKENIZER_ORDER = [
 ]
 
 
-def _load_file(filepath: Union[str, Path]) -> List[str]:
-    with open(filepath, "r") as f:
-        return f.read().splitlines()
+def _load_file(filepath: str | Path, remove_special_tokens: bool = False) -> list[str]:
+    vocab = load_vocab_file(filepath)
+
+    if remove_special_tokens:
+        return [token for token in vocab if token not in SPECIAL_TOKENS]
+
+    return vocab
 
 
-def _load_vocabularies() -> Dict[str, List[str]]:
+def _load_vocabularies() -> dict[str, list[str]]:
     return {
         "special_tokens": _load_file(TOKENIZERS_PATH / "special_tokens.txt"),
-        "amino_acid_tokenizer": _load_file(TOKENIZERS_PATH / AMINO_ACID_TOKENIZER / "vocab.txt"),
-        "smiles_tokenizer": _load_file(TOKENIZERS_PATH / SMILES_TOKENIZER / "vocab.txt"),
-        "nucleotide_tokenizer": _load_file(TOKENIZERS_PATH / NUCLEOTIDE_TOKENIZER / "vocab.txt"),
-        "latent_generator_tokenizer": _load_file(TOKENIZERS_PATH / LATENT_GENERATOR_TOKENIZER / "vocab.txt"),
+        "amino_acid_tokenizer": _load_file(AMINO_ACID_VOCAB_PATH, remove_special_tokens=True),
+        "smiles_tokenizer": _load_file(SMILES_VOCAB_PATH, remove_special_tokens=True),
+        "nucleotide_tokenizer": _load_file(NUCLEOTIDE_VOCAB_PATH, remove_special_tokens=True),
+        "latent_generator_tokenizer": _load_file(LATENT_GENERATOR_VOCAB_PATH, remove_special_tokens=True),
     }
 
 
-def _add_reserved_tokens(vocabs: Dict[str, List[str]]) -> Dict[str, List[str]]:
+def _add_reserved_tokens(vocabs: dict[str, list[str]]) -> dict[str, list[str]]:
     """
     Add reserved tokens <reserved_special_token_i> to maintain index compatibility
     across tokenizers.
@@ -205,7 +214,7 @@ def _create_post_processor() -> TemplateProcessing:
     )
 
 
-def _make_amino_acid_tokenizer_fast(vocab: List[str]) -> PreTrainedTokenizerFast:
+def _make_amino_acid_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     """
     Create a fast tokenizer for amino acid sequences.
 
@@ -238,7 +247,7 @@ def _make_amino_acid_tokenizer_fast(vocab: List[str]) -> PreTrainedTokenizerFast
     )
 
 
-def _make_smiles_tokenizer_fast(vocab: List[str]) -> PreTrainedTokenizerFast:
+def _make_smiles_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     """
     Create a fast tokenizer for SMILES chemical notations.
 
@@ -273,7 +282,7 @@ def _make_smiles_tokenizer_fast(vocab: List[str]) -> PreTrainedTokenizerFast:
     )
 
 
-def _make_nucleotide_tokenizer_fast(vocab: List[str]) -> PreTrainedTokenizerFast:
+def _make_nucleotide_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     """
     Create a fast tokenizer for nucleotide sequences.
 
@@ -306,7 +315,7 @@ def _make_nucleotide_tokenizer_fast(vocab: List[str]) -> PreTrainedTokenizerFast
     )
 
 
-def _make_latent_generator_3d_coord_tokenizer_fast(vocab: List[str]) -> PreTrainedTokenizerFast:
+def _make_latent_generator_3d_coord_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     """
     Create a fast tokenizer for 3D latent generator coordinates.
 
