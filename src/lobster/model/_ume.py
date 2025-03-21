@@ -1,4 +1,4 @@
-from typing import Callable, Literal
+from typing import Callable, Dict, List, Literal
 
 import lightning as L
 import torch
@@ -24,15 +24,24 @@ class Ume(L.LightningModule):
 
     Parameters
     ----------
-    checkpoint : str
-        Path to model checkpoint file.
     freeze : bool, default=True
         Whether to freeze the model parameters.
 
+    Attributes
+    ----------
+    freeze : bool
+        Indicates whether the model parameters are frozen.
+    model : FlexBERT or None
+        The underlying FlexBERT model for encoding.
+    tokenizers : Dict[Modality, Callable]
+        Dictionary mapping modality enums to their respective tokenizers.
+    modalities : List[str]
+        List of supported modalities.
+
     Examples
     --------
-    >>> # Initialize with checkpoint
-    >>> encoder = Ume("path/to/checkpoint.ckpt")
+    >>> # Initialize and load from a checkpoint
+    >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
     >>>
     >>> # Get embeddings for protein sequences
     >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
@@ -41,32 +50,89 @@ class Ume(L.LightningModule):
     torch.Size([1, 768])
     """
 
-    def __init__(self, checkpoint: str, freeze: bool = True) -> None:
+    def __init__(self) -> None:
+        """Initialize the Universal Molecular Encoder.
+
+        Examples
+        --------
+        >>> # Create an instance with default settings
+        >>> encoder = Ume()
+        >>> encoder.modalities
+        ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
+
+        >>> encoder.get_vocab()
+        {0: '<cls>', 1: '<pad>', 2: '<eos>', ...}
+        """
         super().__init__()
 
-        self.freeze = freeze
-        self.model = FlexBERT.load_from_checkpoint(checkpoint)
-
-        # Freeze the model parameters
-        if self.freeze:
-            for param in self.model.model.parameters():
-                param.requires_grad = False
+        self.model: FlexBERT | None = None
+        self.freeze: bool | None = None
 
         # Initialize tokenizers for all modalities
-        self.tokenizers = {
+        self.tokenizers: Dict[Modality, Callable] = {
             Modality.AMINO_ACID: UmeAminoAcidTokenizerFast(),
             Modality.NUCLEOTIDE: UmeNucleotideTokenizerFast(),
             Modality.SMILES: UmeSmilesTokenizerFast(),
             Modality.COORDINATES_3D: UmeLatentGenerator3DCoordTokenizerFast(),
         }
 
-    def get_tokenizer(self, inputs: list[str], modality: ModalityType) -> Callable:
+    @classmethod
+    def load_from_checkpoint(cls, checkpoint: str, freeze: bool = True) -> "Ume":
+        """Load the Ume model from a checkpoint.
+
+        Parameters
+        ----------
+        checkpoint : str
+            Path to the model checkpoint file.
+        freeze : bool, default=True
+            Whether to freeze the model parameters.
+
+        Returns
+        -------
+        Ume
+            An instance of the Ume class initialized with the checkpoint.
+
+        Examples
+        --------
+        >>> # Load with default frozen parameters
+        >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+        >>>
+        >>> # Load with unfrozen parameters for fine-tuning
+        >>> encoder_trainable = Ume.load_from_checkpoint("path/to/checkpoint.ckpt", freeze=False)
+        """
+        instance = cls()
+        instance.model = FlexBERT.load_from_checkpoint(checkpoint)
+        instance.freeze = freeze
+
+        # Apply freezing if requested
+        if freeze:
+            for param in instance.model.model.parameters():
+                param.requires_grad = False
+
+        return instance
+
+    @property
+    def modalities(self) -> List[str]:
+        """List of supported modalities.
+
+        Returns
+        -------
+        List[str]
+            The list of supported modality names as strings.
+
+        Examples
+        --------
+        >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+        >>> print(encoder.modalities)
+        ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
+        """
+        return [modality.value for modality in Modality]
+
+    def get_tokenizer(self, modality: ModalityType) -> Callable:
         """Get the appropriate tokenizer for the given modality.
 
         Parameters
         ----------
-        inputs : list[str]
-            List of input strings to encode.
         modality : Literal["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
             The modality to use for encoding.
 
@@ -77,20 +143,57 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume("path/to/checkpoint.ckpt")
+        >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+        >>> # Get tokenizer for amino acid sequences
+        >>> tokenizer = encoder.get_tokenizer("amino_acid")
         >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQL"]
-        >>> tokenizer = encoder.get_tokenizer(sequences, "amino_acid")
         >>> tokens = tokenizer(sequences, return_tensors="pt")
+        >>> print(tokens.keys())
+        dict_keys(['input_ids', 'attention_mask'])
+        >>>
+        >>> # Get tokenizer for nucleotide sequences
+        >>> dna_tokenizer = encoder.get_tokenizer("nucleotide")
+        >>> dna_sequences = ["ATGCATTGCA"]
+        >>> dna_tokens = dna_tokenizer(dna_sequences, return_tensors="pt")
         """
         modality_enum = Modality(modality)
+
         return self.tokenizers[modality_enum]
 
-    def get_embeddings(self, inputs: list[str], modality: ModalityType, aggregate: bool = True) -> Tensor:
+    def get_vocab(self) -> Dict[int, str]:
+        """Get a consolidated vocabulary from all tokenizers.
+
+        Returns
+        -------
+        Dict[int, str]
+            A dictionary mapping token IDs to token strings, sorted by token ID.
+            Reserved tokens are excluded.
+            Important! Tokens are not unique across modalities and may overlap.
+            If the vocabulary is reversed where token strings are keys,
+            information will be lost. Use with caution.
+
+        Examples
+        --------
+        >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+        >>> vocab = encoder.get_vocab()
+        >>> print(len(vocab))  # Size of vocabulary
+        1536  # Example size
+        """
+        vocab = {
+            token_id: token
+            for tokenizer in self.tokenizers.values()
+            for token, token_id in tokenizer.get_vocab().items()
+            if "reserved" not in token
+        }
+
+        return dict(sorted(vocab.items(), key=lambda item: item[0]))
+
+    def get_embeddings(self, inputs: List[str], modality: ModalityType, aggregate: bool = True) -> Tensor:
         """Get embeddings for the provided inputs using the specified modality.
 
         Parameters
         ----------
-        inputs : list[str]
+        inputs : List[str]
             List of input strings to encode.
         modality : Literal["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
             The modality to use for encoding.
@@ -103,22 +206,39 @@ class Ume(L.LightningModule):
             Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
             Otherwise, shape is (batch_size, seq_len, hidden_size).
 
+        Raises
+        ------
+        ValueError
+            If the model has not been initialized with a checkpoint.
+
         Examples
         --------
         >>> # Get protein embeddings
-        >>> encoder = Ume("path/to/checkpoint.ckpt")
+        >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
         >>> sequences = ["MKTVQRERL", "ACDEFGHIKL"]
         >>> embeddings = encoder.get_embeddings(sequences, "amino_acid")
         >>> print(embeddings.shape)
         torch.Size([2, 768])
-
+        >>>
         >>> # Get token-level embeddings for DNA sequences
         >>> dna_seqs = ["ATGCATGC", "GCTAGCTA"]
         >>> token_embeddings = encoder.get_embeddings(dna_seqs, "nucleotide", aggregate=False)
         >>> print(token_embeddings.shape)
-        torch.Size([2, 512, 768])
+        torch.Size([2, 8, 768])  # [batch_size, seq_len, hidden_dim]
+        >>>
+        >>> # Get SMILES embeddings
+        >>> smiles = ["CC(=O)OC1=CC=CC=C1C(=O)O", "CCO"]
+        >>> smiles_embeddings = encoder.get_embeddings(smiles, "SMILES")
+        >>> print(smiles_embeddings.shape)
+        torch.Size([2, 768])
         """
-        tokenizer = self.get_tokenizer(inputs, modality)
+        if self.model is None:
+            raise ValueError(
+                "Model has not been initialized. Load a model from a checkpoint. "
+                "Example: `Ume.load_from_checkpoint('path/to/checkpoint.ckpt')`"
+            )
+
+        tokenizer = self.get_tokenizer(modality)
 
         items = tokenizer(
             inputs, return_tensors="pt", padding="max_length", truncation=True, max_length=self.model.max_length

@@ -1,5 +1,5 @@
 import importlib.resources
-from typing import Optional
+from pathlib import Path
 
 from tokenizers import Regex
 from tokenizers.models import BPE
@@ -18,7 +18,7 @@ PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "s
 VOCAB_PATH = PRETRAINED_TOKENIZER_PATH / "vocab.txt"
 
 
-def _make_smiles_tokenizer(save_dirpath: Optional[str] = None) -> PreTrainedTokenizerFast:
+def _make_smiles_tokenizer(save_dirpath: str | Path | None = PRETRAINED_TOKENIZER_PATH) -> PreTrainedTokenizerFast:
     """Create PreTrainedTokenizerFast for SMILES Regex tokenization.
 
     Usage:

@@ -59,7 +59,7 @@
   "pad_token": "<pad>",
   "padding_side": "right",
   "sep_token": "<sep>",
-  "tokenizer_class": "PreTrainedTokenizer",
+  "tokenizer_class": "PreTrainedTokenizerFast",
   "truncation_side": "left",
   "unk_token": "<unk>"
 }

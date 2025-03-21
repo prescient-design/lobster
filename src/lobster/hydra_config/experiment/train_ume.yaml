@@ -40,7 +40,7 @@ trainer:
 
 model:
   model_name: UME_small
-  vocab_size: 1472
+  vocab_size: 1536
   pad_token_id: 1
   cls_token_id: 0
   mask_token_id: 4

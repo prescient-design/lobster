@@ -1,4 +1,5 @@
-from typing import Optional
+from collections.abc import Iterator
+from pathlib import Path
 
 from tokenizers import Tokenizer
 from tokenizers.models import Model
@@ -12,12 +13,12 @@ from transformers import PreTrainedTokenizerFast
 def make_pretrained_tokenizer_fast(
     *,
     tokenizer_model: Model,
-    save_dirpath: Optional[str] = None,
-    trainer: Optional[Trainer] = None,
-    data_iterator: Optional[iter] = None,
-    pre_tokenizer: Optional[PreTokenizer] = None,
-    post_processor: Optional[PostProcessor] = None,
-    normalizer: Optional[Normalizer] = None,
+    save_dirpath: str | Path | None = None,
+    trainer: Trainer | None = None,
+    data_iterator: Iterator | None = None,
+    pre_tokenizer: PreTokenizer | None = None,
+    post_processor: PostProcessor | None = None,
+    normalizer: Normalizer | None = None,
     padding_side: str = "right",
     truncation_side: str = "left",
     **kwargs,
