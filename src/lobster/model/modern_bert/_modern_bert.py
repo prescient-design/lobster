@@ -1,14 +1,12 @@
 from importlib.util import find_spec
-from typing import Literal, Sequence
+from typing import Literal
 
 import lightning.pytorch as pl
 import torch
-from torch import nn
-from omegaconf import DictConfig, OmegaConf
+from torch import Tensor, nn
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, get_scheduler
-import lightning.fabric.utilities.throughput
-from omegaconf import DictConfig, OmegaConf 
 
+from lobster.constants import Modality
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
 from ._modern_bert_configuration import FLEXBERT_CONFIG_ARGS
@@ -47,7 +45,6 @@ class FlexBERT(pl.LightningModule):
                            ] = "constant_with_warmup",
         model_kwargs: dict = None,
         scheduler_kwargs: dict = None,
-        **kwargs,
     ):
         """FlexBERT model for unsupervised pretraining.
 
@@ -90,8 +87,6 @@ class FlexBERT(pl.LightningModule):
             Additional keyword arguments to pass to the model.
         scheduler_kwargs: dict, optional
             Additional keyword arguments to pass to the scheduler.
-        kwargs
-            Additional keyword arguments.
         """
         
         super().__init__()
@@ -145,20 +140,37 @@ class FlexBERT(pl.LightningModule):
             self.mask_token_id = mask_token_id
             self.cls_token_id = cls_token_id
             self.eos_token_id = eos_token_id
+        
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: dict[str, Tensor | Modality], batch_idx: int) -> dict[str, Tensor]:
+        modality = batch.pop("modality", None)
+            
         loss = self._compute_loss(batch)
         ppl = torch.exp(loss)
+
         self.log("train_loss", loss, sync_dist=True)
         self.log("train_perplexity", ppl, sync_dist=True)
-        return {"loss": loss}
 
-    def validation_step(self, batch, batch_idx):
+        if modality is not None:
+            self.log(f"train_loss_{modality}", loss, sync_dist=True)
+            self.log(f"train_perplexity_{modality}", ppl, sync_dist=True)
+
+        return {"loss": loss, "perplexity": ppl}
+
+    def validation_step(self, batch: dict[str, Tensor | Modality], batch_idx: int) -> dict[str, Tensor]:
+        modality = batch.pop("modality", None)
+
         loss = self._compute_loss(batch)
         ppl = torch.exp(loss)
+
         self.log("val_loss", loss, sync_dist=True)
         self.log("val_perplexity", ppl, sync_dist=True)
-        return {"val_loss": loss}
+
+        if modality is not None:
+            self.log(f"val_loss_{modality}", loss, sync_dist=True)
+            self.log(f"val_perplexity_{modality}", ppl, sync_dist=True)
+
+        return {"val_loss": loss, "val_perplexity": ppl}
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

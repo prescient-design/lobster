@@ -1,12 +1,11 @@
 from pathlib import Path
 
 import pytest
-from torch import Tensor
-from torch.utils.data import DataLoader
-from transformers import BatchEncoding
-
+from lobster.constants import Modality
 from lobster.data import UmeLightningDataModule
 from lobster.datasets import MultiplexedSamplingDataset
+from torch import Tensor
+from torch.utils.data import DataLoader
 
 
 @pytest.fixture
@@ -29,8 +28,9 @@ class TestUmeLightningDataModule:
         assert dataloader.batch_size == 8
 
         batch = next(iter(dataloader))
-        assert isinstance(batch, BatchEncoding)
         assert isinstance(batch["input_ids"], Tensor)
+        assert isinstance(batch["attention_mask"], Tensor)
+        assert isinstance(batch["modality"], Modality)
 
     def test_train_dataloader_multiplex(self, tmp_path):
         dm = UmeLightningDataModule(
@@ -54,5 +54,7 @@ class TestUmeLightningDataModule:
         assert dataloader.batch_size == 8
 
         batch = next(iter(dataloader))
-        assert isinstance(batch, BatchEncoding)
+        assert isinstance(batch, dict)
         assert isinstance(batch["input_ids"], Tensor)
+        assert isinstance(batch["attention_mask"], Tensor)
+        assert isinstance(batch["modality"], Modality)

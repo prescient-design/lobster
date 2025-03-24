@@ -12,7 +12,6 @@ from ._dyab_data import (
 )
 from ._farthest_first_traversal import FarthestFirstTraversal, ranked_fft
 from ._fasta_datamodule import FastaLightningDataModule
-from ._m3_20m_datamodule import M320MLightningDataModule
 from ._minhasher import LobsterMinHasher
 from ._mmseqs import MMSeqsRunner
 from ._structure_datamodule import PDBDataModule

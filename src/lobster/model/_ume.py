@@ -6,12 +6,7 @@ from torch import Tensor
 
 from lobster.constants import Modality
 from lobster.model.modern_bert import FlexBERT
-from lobster.tokenization import (
-    UmeAminoAcidTokenizerFast,
-    UmeLatentGenerator3DCoordTokenizerFast,
-    UmeNucleotideTokenizerFast,
-    UmeSmilesTokenizerFast,
-)
+from lobster.tokenization import UmeTokenizerTransform
 
 ModalityType = Literal["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
 
@@ -69,11 +64,10 @@ class Ume(L.LightningModule):
         self.freeze: bool | None = None
 
         # Initialize tokenizers for all modalities
-        self.tokenizers: Dict[Modality, Callable] = {
-            Modality.AMINO_ACID: UmeAminoAcidTokenizerFast(),
-            Modality.NUCLEOTIDE: UmeNucleotideTokenizerFast(),
-            Modality.SMILES: UmeSmilesTokenizerFast(),
-            Modality.COORDINATES_3D: UmeLatentGenerator3DCoordTokenizerFast(),
+        # Model's tokenizers are only used for inference, during training, datamodule
+        # will handle tokenization
+        self.tokenizer_transforms = {
+            modality: UmeTokenizerTransform(modality, max_length=None, return_modality=True) for modality in Modality
         }
 
     @classmethod
@@ -109,6 +103,12 @@ class Ume(L.LightningModule):
             for param in instance.model.model.parameters():
                 param.requires_grad = False
 
+        # Update max_length for tokenizers
+        instance.tokenizer_transforms = {
+            modality: UmeTokenizerTransform(modality, max_length=instance.model.max_length, return_modality=True)
+            for modality in Modality
+        }
+
         return instance
 
     @property
@@ -127,6 +127,23 @@ class Ume(L.LightningModule):
         ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
         """
         return [modality.value for modality in Modality]
+
+    @property
+    def max_length(self) -> int:
+        """Get the maximum sequence length supported by the model.
+
+        Returns
+        -------
+        int
+            The maximum sequence length supported by the model.
+
+        Examples
+        --------
+        >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+        >>> print(encoder.max_length)
+        512
+        """
+        return self.model.max_length
 
     def get_tokenizer(self, modality: ModalityType) -> Callable:
         """Get the appropriate tokenizer for the given modality.
@@ -158,7 +175,7 @@ class Ume(L.LightningModule):
         """
         modality_enum = Modality(modality)
 
-        return self.tokenizers[modality_enum]
+        return self.tokenizer_transforms[modality_enum].tokenizer
 
     def get_vocab(self) -> Dict[int, str]:
         """Get a consolidated vocabulary from all tokenizers.
@@ -179,9 +196,11 @@ class Ume(L.LightningModule):
         >>> print(len(vocab))  # Size of vocabulary
         1536  # Example size
         """
+        tokenizers = [transform.tokenizer for transform in self.tokenizer_transforms.values()]
+
         vocab = {
             token_id: token
-            for tokenizer in self.tokenizers.values()
+            for tokenizer in tokenizers
             for token, token_id in tokenizer.get_vocab().items()
             if "reserved" not in token
         }
@@ -238,14 +257,13 @@ class Ume(L.LightningModule):
                 "Example: `Ume.load_from_checkpoint('path/to/checkpoint.ckpt')`"
             )
 
-        tokenizer = self.get_tokenizer(modality)
+        modality_enum = Modality(modality)
+        tokenizer_transform = self.tokenizer_transforms[modality_enum]
 
-        items = tokenizer(
-            inputs, return_tensors="pt", padding="max_length", truncation=True, max_length=self.model.max_length
-        )
+        tokenized_inputs = tokenizer_transform(inputs)
 
         with torch.no_grad():
-            x = {k: v.to(self.model.device) for k, v in items.items()}
+            x = {k: v.to(self.model.device) for k, v in tokenized_inputs.items() if isinstance(v, Tensor)}
 
             # Get token-level embeddings
             embeddings = self.model.tokens_to_latents(**x)
@@ -260,3 +278,6 @@ class Ume(L.LightningModule):
                 return embeddings.mean(dim=1)
             else:
                 return embeddings
+
+    def configure_optimizers(self) -> dict[str, object]:
+        return self.model.configure_optimizers()
