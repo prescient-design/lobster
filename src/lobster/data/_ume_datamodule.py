@@ -58,7 +58,7 @@ SUPPORTED_DATASETS_INFO = [
         dataset_class=CalmIterableDataset,
         modality=Modality.NUCLEOTIDE,
         supported_splits={Split.TRAIN},  # TODO: add splits
-        train_size=8_780_000,  # NOTE - this is an underestimate (whole genoems much longer)
+        train_size=8_780_000,  # NOTE - this is an underestimate (whole genomes much longer)
         kwargs={"keys": ["sequence"]},
     ),
     DatasetInfo(
