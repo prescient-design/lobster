@@ -13,11 +13,15 @@ nvidia-smi
 source .venv/bin/activate
 echo "SLURM_JOB_ID = ${SLURM_JOB_ID}"
 
+wandb login --host $WANDB_BASE_URL
+
 export WANDB_INSECURE_DISABLE_SSL=true
 export HYDRA_FULL_ERROR=1
 export PYTHONUNBUFFERED=1
 
 export TOKENIZERS_PARALLELISM=true
+
+umask g+w
 
 srun -u --cpus-per-task 8 --cpu-bind=cores,verbose \
 lobster_train experiment=train_ume \
