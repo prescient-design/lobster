@@ -19,9 +19,13 @@ export WANDB_INSECURE_DISABLE_SSL=true
 export HYDRA_FULL_ERROR=1
 export PYTHONUNBUFFERED=1
 
+# Tokenizer calls prior in Ume callbacks prior to training
+# cause issues. Disable if using callbacks, enable if not
 export TOKENIZERS_PARALLELISM=true
 
-umask g+w
+# Sets default permissions to allow group write 
+# access for newly created files. Remove if not needed
+umask g+w 
 
 srun -u --cpus-per-task 8 --cpu-bind=cores,verbose \
 lobster_train experiment=train_ume \
