@@ -45,6 +45,7 @@ class FlexBERT(pl.LightningModule):
                            ] = "constant_with_warmup",
         model_kwargs: dict = None,
         scheduler_kwargs: dict = None,
+        ckpt_path: str = None,
     ):
         """FlexBERT model for unsupervised pretraining.
 
@@ -87,6 +88,8 @@ class FlexBERT(pl.LightningModule):
             Additional keyword arguments to pass to the model.
         scheduler_kwargs: dict, optional
             Additional keyword arguments to pass to the scheduler.
+        ckpt_path: str, optional
+            Unused, for compatiblity with lobster_train
         """
         
         super().__init__()
