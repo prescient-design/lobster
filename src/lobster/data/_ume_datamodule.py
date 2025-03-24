@@ -15,6 +15,7 @@ from lobster.datasets import (
     LatentGeneratorPinderIterableDataset,
     M320MIterableDataset,
     MultiplexedSamplingDataset,
+    OpenGenome2IterableDataset,
     RoundRobinConcatIterableDataset,
 )
 from lobster.tokenization import (
@@ -57,7 +58,7 @@ SUPPORTED_DATASETS_INFO = [
         dataset_class=CalmIterableDataset,
         modality=Modality.NUCLEOTIDE,
         supported_splits={Split.TRAIN},  # TODO: add splits
-        train_size=8_780_000,
+        train_size=8_780_000,  # NOTE - this is an underestimate (whole genoems much longer)
         kwargs={"keys": ["sequence"]},
     ),
     DatasetInfo(
@@ -75,6 +76,15 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.TEST},
         train_size=267_000,
         test_size=2_000,
+    ),
+    DatasetInfo(
+        name="OpenGenome2",
+        dataset_class=OpenGenome2IterableDataset,
+        modality=Modality.NUCLEOTIDE,
+        supported_splits={Split.TRAIN, Split.VALIDATION, Split.TEST},
+        train_size=28_840_000_000,  # 8.84T nucleotides, computed relative to AMPLIFY's 138B tokens
+        test_size=100_000,  # Placeholder value for test/validation set
+        kwargs={"keys": ["text"]},
     ),
 ]
 
