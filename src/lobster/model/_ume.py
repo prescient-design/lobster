@@ -17,7 +17,8 @@ class Ume(L.LightningModule):
 
     Parameters
     ----------
-    model_name : Literal["UME_mini", "UME_small", "UME_medium", "UME_large"], default="UME_mini"
+    model_name : Literal["UME_mini", "UME_small", "UME_medium", "UME_large"],
+        default="UME_mini"
         Name of the model to initialize.
     max_length : int, default=512
         Maximum sequence length for tokenization.
@@ -49,7 +50,8 @@ class Ume(L.LightningModule):
     model : FlexBERT
         The underlying FlexBERT model for encoding.
     tokenizer_transforms : Dict[Modality, UmeTokenizerTransform]
-        Dictionary mapping modality enums to their respective tokenizer transforms.
+        Dictionary mapping modality enums to their respective
+        tokenizer transforms.
     embedding_dim : int
         Dimension of the output embeddings.
     frozen : bool
@@ -152,11 +154,18 @@ class Ume(L.LightningModule):
         >>> encoder = Ume(model_name="UME_mini")
         >>> print(encoder.modalities)
         ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
-
-        >>> # Load from checkpoint and check supported modalities
-        >>> encoder = Ume(ckpt_path="path/to/checkpoint.ckpt")
-        >>> print(encoder.modalities)
-        ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
+        >>>
+        >>> # Check if a specific modality is supported
+        >>> "amino_acid" in encoder.modalities
+        True
+        >>>
+        >>> # Iterate through supported modalities
+        >>> for modality in encoder.modalities:
+        ...     print(f"UME supports {modality} encoding")
+        UME supports SMILES encoding
+        UME supports amino_acid encoding
+        UME supports nucleotide encoding
+        UME supports 3d_coordinates encoding
         """
         return [modality.value for modality in Modality]
 
@@ -192,6 +201,13 @@ class Ume(L.LightningModule):
         >>> dna_tokens = dna_tokenizer(dna_sequences, return_tensors="pt")
         >>> print(dna_tokens["input_ids"].shape)
         torch.Size([1, 12])  # Including special tokens
+        >>>
+        >>> # Process SMILES strings with tokenizer
+        >>> tokenizer = encoder.get_tokenizer("SMILES")
+        >>> smiles = ["CC(=O)OC1=CC=CC=C1C(=O)O"]  # Aspirin
+        >>> tokens = tokenizer(smiles, return_tensors="pt")
+        >>> print(tokens["attention_mask"].sum())  # Number of non-padding tokens
+        tensor(23)
         """
         modality_enum = Modality(modality) if isinstance(modality, str) else modality
 
@@ -215,17 +231,6 @@ class Ume(L.LightningModule):
         >>> vocab = encoder.get_vocab()
         >>> print(len(vocab))  # Size of vocabulary
         1536  # Example size
-        >>>
-        >>> # Check some token mappings
-        >>> some_token_id = 42
-        >>> if some_token_id in vocab:
-        ...     print(f"Token ID {some_token_id} corresponds to: {vocab[some_token_id]}")
-        Token ID 42 corresponds to: C
-        >>>
-        >>> # Filter vocab by a specific pattern
-        >>> amino_acid_tokens = {id: token for id, token in vocab.items() if token in "ACDEFGHIKLMNPQRSTVWY"}
-        >>> print(f"Number of amino acid tokens: {len(amino_acid_tokens)}")
-        Number of amino acid tokens: 20
         """
         tokenizers = [transform.tokenizer for transform in self.tokenizer_transforms.values()]
 
@@ -253,15 +258,12 @@ class Ume(L.LightningModule):
         >>>
         >>> # Freeze the model
         >>> encoder.freeze()
-        >>> print(f"After freezing - Parameter grad enabled: {next(encoder.model.parameters()).requires_grad}")
-        After freezing - Parameter grad enabled: False
         >>> print(f"Model is frozen: {encoder.frozen}")
         Model is frozen: True
         >>>
         >>> # Now you can use it for inference without gradient computation
         >>> import torch
-        >>> with torch.no_grad():
-        ...     embeddings = encoder.get_embeddings(["ACDEFGHIK"], "amino_acid")
+        >>> embeddings = encoder.get_embeddings(["ACDEFGHIK"], "amino_acid")
         """
         for param in self.model.parameters():
             param.requires_grad = False
@@ -285,14 +287,6 @@ class Ume(L.LightningModule):
         >>>
         >>> # Now unfreeze it
         >>> encoder.unfreeze()
-        >>> print(f"After unfreezing - Parameter grad enabled: {next(encoder.model.parameters()).requires_grad}")
-        After unfreezing - Parameter grad enabled: True
-        >>> print(f"Model is frozen: {encoder.frozen}")
-        Model is frozen: False
-        >>>
-        >>> # Now you can continue training the model
-        >>> optimizer = torch.optim.Adam(encoder.parameters(), lr=1e-4)
-        >>> # ... train the model ...
         """
         for param in self.model.parameters():
             param.requires_grad = True
@@ -346,11 +340,22 @@ class Ume(L.LightningModule):
         >>> print(smiles_embeddings.shape)
         torch.Size([2, 768])
         >>>
-        >>> # Process 3D coordinates
-        >>> coords = ["0.0 0.0 0.0;1.0 0.0 0.0;0.0 1.0 0.0", "0.0 0.0 0.0;1.0 1.0 0.0"]
-        >>> coord_embeddings = encoder.get_embeddings(coords, "3d_coordinates")
-        >>> print(coord_embeddings.shape)
-        torch.Size([2, 768])
+        >>> # Use embeddings for similarity comparison
+        >>> import torch.nn.functional as F
+        >>> seq1 = ["MKTVQRERLKAAAAAA"]
+        >>> seq2 = ["MKTVQRERL"]
+        >>> emb1 = encoder.get_embeddings(seq1, "amino_acid")
+        >>> emb2 = encoder.get_embeddings(seq2, "amino_acid")
+        >>> # Compute cosine similarity
+        >>> similarity = F.cosine_similarity(emb1, emb2)
+        >>> print(f"Sequence similarity: {similarity.item():.4f}")
+        Sequence similarity: 0.9876  # Example output
+        >>>
+        >>> # Batch processing for efficiency
+        >>> large_batch = ["ACGT" * i for i in range(1, 101)]  # 100 sequences of varying length
+        >>> batch_embeddings = encoder.get_embeddings(large_batch, "nucleotide")
+        >>> print(batch_embeddings.shape)
+        torch.Size([100, 768])
         """
         if self.model is None:
             raise ValueError(
@@ -389,15 +394,6 @@ class Ume(L.LightningModule):
         -------
         dict[str, object]
             Dictionary containing optimizer and learning rate scheduler.
-
-        Examples
-        --------
-        >>> encoder = Ume(model_name="UME_mini", lr=5e-5, num_training_steps=10000)
-        >>> optimizers_config = encoder.configure_optimizers()
-        >>> print(type(optimizers_config["optimizer"]))
-        <class 'torch.optim.adam.Adam'>
-        >>> print(type(optimizers_config["lr_scheduler"]["scheduler"]))
-        <class 'transformers.optimization.get_constant_schedule_with_warmup.<locals>.ConstantLRWithWarmup'>
         """
         return self.model.configure_optimizers()
 
