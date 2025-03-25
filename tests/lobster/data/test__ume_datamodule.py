@@ -30,7 +30,8 @@ class TestUmeLightningDataModule:
         batch = next(iter(dataloader))
         assert isinstance(batch["input_ids"], Tensor)
         assert isinstance(batch["attention_mask"], Tensor)
-        assert isinstance(batch["modality"], Modality)
+        assert isinstance(batch["modality"], list)
+        assert isinstance(batch["modality"][0], Modality)
 
     def test_train_dataloader_multiplex(self, tmp_path):
         dm = UmeLightningDataModule(
@@ -57,4 +58,5 @@ class TestUmeLightningDataModule:
         assert isinstance(batch, dict)
         assert isinstance(batch["input_ids"], Tensor)
         assert isinstance(batch["attention_mask"], Tensor)
-        assert isinstance(batch["modality"], Modality)
+        assert isinstance(batch["modality"], list)
+        assert isinstance(batch["modality"][0], Modality)

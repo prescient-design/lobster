@@ -225,7 +225,6 @@ class FlexBERT(pl.LightningModule):
         labels[masked_tokens != self.mask_token_id] = -100  # Ignore loss on unmasked tokens
 
         # Cumulative sequence lengths.
-        # TODO: Probably we can/should throw away trailing <pad> tokens.
         cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
 
         assert (
@@ -244,12 +243,20 @@ class FlexBERT(pl.LightningModule):
         batch_loss = self.loss_fn(logits, labels)
 
         if return_per_sample_loss:
+            logits_reshaped = logits.view(B, length, self.vocab_size)
+            labels_reshaped = labels.view(B, length)
+            
+            # Compute loss without reduction
             per_token_loss = torch.nn.functional.cross_entropy(
-                logits.view(B, self.vocab_size, length), 
-                labels.view(B, length),
-                reduction="none"
+                logits_reshaped.transpose(1, 2), # (B, vocab_size, length)
+                labels_reshaped,
+                reduction="none",
             )
-            per_sample_loss = per_token_loss.mean(dim=-1)
+            
+            # Mean loss per sample, ignoring extra tokens
+            valid_tokens = (labels_reshaped != -100).float()
+            token_count = valid_tokens.sum(dim=1).clamp(min=1.0)  # Avoid division by zero
+            per_sample_loss = (per_token_loss * valid_tokens).sum(dim=1) / token_count
 
             return batch_loss, per_sample_loss
 

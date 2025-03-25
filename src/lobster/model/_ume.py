@@ -421,6 +421,7 @@ class Ume(L.LightningModule):
 
             self.log(f"{stage}_loss/{modality.value}", modality_loss, sync_dist=True)
             self.log(f"{stage}_perplexity/{modality.value}", modality_perplexity, sync_dist=True)
+            self.log(f"num_samples/{modality.value}", mask.sum().item(), sync_dist=True)
 
         return loss
 
