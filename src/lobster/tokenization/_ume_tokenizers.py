@@ -462,7 +462,7 @@ class UmeLatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
 class UmeTokenizerTransform(TokenizerTransform):
     def __init__(
         self,
-        modality: ModalityType | str,
+        modality: ModalityType | Modality,
         max_length: int | None,
         return_modality: bool = False,
     ):
@@ -470,9 +470,10 @@ class UmeTokenizerTransform(TokenizerTransform):
 
         Parameters
         ----------
-        modality : str | Modality
-            The modality of the tokenizer
-            Can be either one of {"SMILES", "amino_acid", "nucleotide", "3d_coordinates"}
+        modality : ModalityType | Modality
+            The modality of the tokenizer.
+            Can be either a string from lobster.constants.ModalityType:
+            Literal["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
             or a Modality enum object.
         return_modality : bool, optional
             If True, the modality of the tokenizer will be returned along with
