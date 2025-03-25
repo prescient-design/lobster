@@ -1,8 +1,11 @@
+import pytest
+from lobster.constants import Modality
 from lobster.tokenization._ume_tokenizers import (
     UmeAminoAcidTokenizerFast,
     UmeLatentGenerator3DCoordTokenizerFast,
     UmeNucleotideTokenizerFast,
     UmeSmilesTokenizerFast,
+    UmeTokenizerTransform,
     _add_reserved_tokens,
 )
 
@@ -101,3 +104,22 @@ def test_ume_latent_generator_tokenizer():
     tokenizer = UmeLatentGenerator3DCoordTokenizerFast()
     assert tokenizer.tokenize("gd fh ds") == ["gd", "fh", "ds"]
     assert tokenizer.encode("gd fh ds", padding="do_not_pad", add_special_tokens=True) == [0, 1465, 1443, 1402, 2]
+
+
+class TestUmeTokenizerTransform:
+    def test__init__(self):
+        with pytest.warns(UserWarning, match="UmeTokenizerTransform did not receive `max_length` parameter"):
+            transform = UmeTokenizerTransform(modality="SMILES", max_length=None, return_modality=False)
+
+        assert transform.modality == Modality.SMILES
+        assert transform._max_length is None
+        assert isinstance(transform.tokenizer, UmeSmilesTokenizerFast)
+
+    def test_forward(self):
+        transform = UmeTokenizerTransform(modality="SMILES", max_length=4, return_modality=True)
+
+        out = transform("C")
+
+        assert out["input_ids"].tolist()[0] == [0, 52, 2, 1]
+        assert out["attention_mask"].tolist()[0] == [1, 1, 1, 0]
+        assert out["modality"] == Modality.SMILES

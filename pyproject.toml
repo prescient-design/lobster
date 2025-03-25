@@ -4,7 +4,7 @@ readme = "README.md"
 description = "Language models for Biological Sequence Transformation and Evolutionary Representation."
 authors = [{name = "Nathan C. Frey", email = "frey.nathan.nf1@gene.com"}]
 dynamic = ["version"]
-requires-python = ">=3.10, <3.13"
+requires-python = ">=3.11, <3.13"
 dependencies = [
     "pooch",
     "torch",

@@ -3,10 +3,9 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 import torch
-from torch.utils.data import Dataset
-
 from lobster.callbacks import CalmLinearProbeCallback
 from lobster.constants._calm_tasks import CALM_TASKS
+from torch.utils.data import Dataset
 
 # Add a constant for the max_length parameter used in tests
 MAX_LENGTH = 1024
@@ -43,15 +42,22 @@ class MockDataset(Dataset):
         return self.sequences[idx], self.targets[idx]
 
 
+class MockModelWithEmbeddings(torch.nn.Module):
+    def __init__(self, hidden_size=32):
+        super().__init__()
+        self.hidden_size = hidden_size
+
+    def tokens_to_latents(self, input_ids, **kwargs):
+        batch_size = input_ids.size(0)
+        return torch.randn(batch_size, MAX_LENGTH, self.hidden_size)
+
+
 class MockLightningModule(torch.nn.Module):
     def __init__(self, hidden_size=32):
         super().__init__()
         self.hidden_size = hidden_size
         self.device = "cpu"
-
-    def tokens_to_latents(self, input_ids, **kwargs):
-        batch_size = input_ids.size(0)
-        return torch.randn(batch_size, MAX_LENGTH, self.hidden_size)
+        self.model = MockModelWithEmbeddings(hidden_size)
 
 
 @pytest.fixture
@@ -59,6 +65,7 @@ def mock_trainer():
     trainer = Mock()
     trainer.current_epoch = 0
     trainer.logger = Mock()
+    trainer.global_rank = 0  # Add this to prevent skipping validation
     return trainer
 
 

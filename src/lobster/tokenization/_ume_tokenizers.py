@@ -37,12 +37,19 @@ To create the tokenizers, run
 """
 
 import importlib.resources
+import warnings
 from pathlib import Path
+from typing import List, Union
 
 from tokenizers.models import BPE, WordLevel
 from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
+from torch import Tensor
 from transformers import PreTrainedTokenizerFast
+
+import lobster.transforms.functional
+from lobster.constants import Modality, ModalityType
+from lobster.transforms import TokenizerTransform
 
 from ._latent_generator_3d_coord_tokenizer import VOCAB_PATH as LATENT_GENERATOR_VOCAB_PATH
 from ._load_vocab_file import load_vocab_file
@@ -450,3 +457,73 @@ class UmeLatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
             cls_token=CLS_TOKEN,
             mask_token=MASK_TOKEN,
         )
+
+
+class UmeTokenizerTransform(TokenizerTransform):
+    def __init__(
+        self,
+        modality: ModalityType | Modality,
+        max_length: int | None,
+        return_modality: bool = False,
+    ):
+        """Tokenizer transform for Ume tokenizers with different modalities.
+
+        Parameters
+        ----------
+        modality : ModalityType | Modality
+            The modality of the tokenizer.
+            Can be either a string from lobster.constants.ModalityType:
+            Literal["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
+            or a Modality enum object.
+        return_modality : bool, optional
+            If True, the modality of the tokenizer will be returned along with
+            the tokenized output.
+            Example:
+                {
+                    "input_ids": [0, 1, 2, 3, 4],
+                    "attention_mask": [1, 1, 1, 1, 1],
+                    "modality": Modality.AMINO_ACID
+                }
+        """
+        modality = Modality(modality) if isinstance(modality, str) else modality
+
+        match modality:
+            case Modality.AMINO_ACID:
+                tokenizer = UmeAminoAcidTokenizerFast()
+            case Modality.SMILES:
+                tokenizer = UmeSmilesTokenizerFast()
+            case Modality.NUCLEOTIDE:
+                tokenizer = UmeNucleotideTokenizerFast()
+            case Modality.COORDINATES_3D:
+                tokenizer = UmeLatentGenerator3DCoordTokenizerFast()
+
+        if max_length is None:
+            warnings.warn(
+                "UmeTokenizerTransform did not receive `max_length` parameter. Padding and truncation will not be applied.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        super().__init__(
+            tokenizer=tokenizer,
+            max_length=max_length,
+            padding="max_length",
+            truncation=True,
+        )
+
+        self.modality = Modality(modality) if isinstance(modality, str) else modality
+        self.return_modality = return_modality
+
+    def forward(
+        self,
+        text: Union[str, List[str], List[int]],
+    ) -> dict[str, Tensor | Modality]:
+        x = super().forward(text)
+
+        if self.modality == Modality.COORDINATES_3D:
+            x = lobster.transforms.functional.sample_tokenized_input(x)
+
+        if self.return_modality:
+            return {**x, "modality": self.modality}
+        else:
+            return x

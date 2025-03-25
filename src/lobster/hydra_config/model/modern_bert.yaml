@@ -6,10 +6,8 @@ num_training_steps: ${trainer.max_steps}
 model_name: UME_mini
 num_warmup_steps: 10_000
 max_length: 512
-tokenizer_dir: pmlm_tokenizer
 mask_percentage: 0.25
 scheduler: "constant_with_warmup"
-ckpt_path: null
 
 # Model-specific configuration parameters
 model_kwargs:
@@ -22,3 +20,5 @@ scheduler_kwargs:
   # For example:
   # min_lr: 1e-7  # For cosine_with_min_lr scheduler
 
+
+ckpt_path: null # unused, for compatibility with lobster_train

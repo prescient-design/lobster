@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence, Type
 
+import torch.utils.data
 from lightning import LightningDataModule
-from torch import Generator
+from torch import Generator, Tensor
 from torch.utils.data import DataLoader, Dataset, IterableDataset
-from torchvision.transforms import Compose, Lambda
 
 from lobster.constants import Modality, Split
 from lobster.datasets import (
@@ -15,16 +15,10 @@ from lobster.datasets import (
     LatentGeneratorPinderIterableDataset,
     M320MIterableDataset,
     MultiplexedSamplingDataset,
+    OpenGenome2IterableDataset,
     RoundRobinConcatIterableDataset,
 )
-from lobster.tokenization import (
-    UmeAminoAcidTokenizerFast,
-    UmeLatentGenerator3DCoordTokenizerFast,
-    UmeNucleotideTokenizerFast,
-    UmeSmilesTokenizerFast,
-)
-from lobster.transforms import TokenizerTransform
-from lobster.transforms.functional import sample_tokenized_input
+from lobster.tokenization import UmeTokenizerTransform
 
 
 @dataclass
@@ -57,7 +51,7 @@ SUPPORTED_DATASETS_INFO = [
         dataset_class=CalmIterableDataset,
         modality=Modality.NUCLEOTIDE,
         supported_splits={Split.TRAIN},  # TODO: add splits
-        train_size=8_780_000,
+        train_size=8_780_000,  # NOTE - this is an underestimate (whole genomes much longer)
         kwargs={"keys": ["sequence"]},
     ),
     DatasetInfo(
@@ -75,6 +69,15 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.TEST},
         train_size=267_000,
         test_size=2_000,
+    ),
+    DatasetInfo(
+        name="OpenGenome2",
+        dataset_class=OpenGenome2IterableDataset,
+        modality=Modality.NUCLEOTIDE,
+        supported_splits={Split.TRAIN, Split.VALIDATION, Split.TEST},
+        train_size=28_840_000_000,  # 8.84T nucleotides, computed relative to AMPLIFY's 138B tokens
+        test_size=100_000,  # Placeholder value for test/validation set
+        kwargs={"keys": ["text"]},
     ),
 ]
 
@@ -164,18 +167,9 @@ class UmeLightningDataModule(LightningDataModule):
         self._download = download
 
         # Initialize tokenizer transforms for each modality
-        tokenizer_instances = {
-            Modality.SMILES: UmeSmilesTokenizerFast(),
-            Modality.AMINO_ACID: UmeAminoAcidTokenizerFast(),
-            Modality.NUCLEOTIDE: UmeNucleotideTokenizerFast(),
-            Modality.COORDINATES_3D: UmeLatentGenerator3DCoordTokenizerFast(),
-        }
-
         self._tokenizer_transforms = {
-            modality: TokenizerTransform(
-                tokenizer, padding="max_length", truncation=True, max_length=self._tokenizer_max_length
-            )
-            for modality, tokenizer in tokenizer_instances.items()
+            modality: UmeTokenizerTransform(modality, max_length=tokenizer_max_length, return_modality=True)
+            for modality in Modality
         }
 
         self._train_datasets: list[IterableDataset] = []
@@ -194,10 +188,6 @@ class UmeLightningDataModule(LightningDataModule):
 
         dataset_class = dataset_info.dataset_class
         transform = self._tokenizer_transforms[dataset_info.modality]
-
-        if dataset_info.modality == Modality.COORDINATES_3D:
-            # Sample 1 pose out of 4 for the latent generator datasets
-            transform = Compose([transform, Lambda(sample_tokenized_input)])
 
         return dataset_class(
             root=self._root,
@@ -254,19 +244,34 @@ class UmeLightningDataModule(LightningDataModule):
         self.val_dataset = self._get_aggregated_dataset(self._val_datasets, self._val_sizes)
 
     def train_dataloader(self) -> DataLoader:
+        if self.train_dataset is None:
+            raise ValueError("train_dataset is not initialized. Call setup() first.")
+
         return DataLoader(
             self.train_dataset,
             batch_size=self._batch_size,
             num_workers=self._num_workers,
             pin_memory=self._pin_memory,
             drop_last=True,
+            collate_fn=collate_with_modality,
         )
 
     def val_dataloader(self) -> DataLoader | None:
+        if self.val_dataset is None:
+            raise ValueError("val_dataset is not initialized. Call setup() first.")
+
         return DataLoader(
             self.val_dataset,
             batch_size=self._batch_size,
             num_workers=self._num_workers,
             pin_memory=self._pin_memory,
             drop_last=False,
+            collate_fn=collate_with_modality,
         )
+
+
+def collate_with_modality(batch: list[dict[str, Tensor | Modality]]) -> dict[str, Tensor | list[Modality]]:
+    modalities = [item.pop("modality") for item in batch]
+    batch = torch.utils.data.default_collate(batch)
+
+    return {**batch, "modality": modalities}

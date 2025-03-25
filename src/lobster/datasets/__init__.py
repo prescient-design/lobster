@@ -7,6 +7,7 @@ from ._latent_generator_3d_coordinates_dataset import LatentGeneratorPinderItera
 from ._m3_20m_dataset import M320MDataset, M320MIterableDataset
 from ._moleculeace_dataset import MoleculeACEDataset
 from ._multiplexed_sampling_dataset import MultiplexedSamplingDataset
+from ._open_genome_2 import OpenGenome2IterableDataset
 from ._peer_dataset import PEERDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
@@ -30,4 +31,5 @@ __all__ = [
     "RoundRobinConcatIterableDataset",
     "LatentGeneratorPinderIterableDataset",
     "ZINCIterableDataset",
+    "OpenGenome2IterableDataset",
 ]
