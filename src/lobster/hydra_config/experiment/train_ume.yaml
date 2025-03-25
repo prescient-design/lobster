@@ -40,6 +40,7 @@ trainer:
 
 model:
   model_name: UME_small
+  scheduler: warmup_stable_decay
 
 callbacks:
   moleculeace_linear_probe:
