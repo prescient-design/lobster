@@ -70,6 +70,7 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
         split: str = "train",
         data_dir: Literal["UniProt", "OAS", "SCOP"] | None = None,
         shuffle_buffer_size: int = 1000,
+        limit: int | None = None,
     ):
         """
         Initialize the AMPLIFYIterableDataset.
@@ -107,6 +108,7 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
             data_dir=data_dir,
             download=download,
             shuffle_buffer_size=shuffle_buffer_size,
+            limit=limit,
         )
 
     def _process_sample(self, sample: tuple[str]) -> str:

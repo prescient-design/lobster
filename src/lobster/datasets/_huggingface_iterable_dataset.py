@@ -37,6 +37,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         shuffle_buffer_size: int = 1000,
         seed: int = 0,
         download: bool = False,
+        limit: int | None = None,
         **kwargs,
     ):
         """
@@ -62,6 +63,8 @@ class HuggingFaceIterableDataset(IterableDataset):
             Random seed for reproducible shuffling.
         download : bool, optional
             If True, download the dataset instead of streaming.
+        limit : int or None, optional
+            Limit the number of samples to load.
         kwargs : dict
             Additional keyword arguments to pass to the `load_dataset` function.
         """
@@ -78,6 +81,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         self.seed = seed
         self.download = download
         self.root = root
+        self.limit = limit
         self.kwargs = kwargs
 
         self.keys = list(keys) if keys is not None else None
@@ -104,6 +108,18 @@ class HuggingFaceIterableDataset(IterableDataset):
         # Detect distributed environment
         self.distributed, self.rank, self.world_size = detect_distributed_environment()
 
+        # Get worker info
+        if (worker_info := get_worker_info()) is not None:
+            num_workers = worker_info.num_workers
+            worker_id = worker_info.id
+        else:
+            num_workers = 1
+            worker_id = 0
+
+        # Calculate global worker ID and total workers
+        global_worker_id = self.rank * num_workers + worker_id
+        total_workers = self.world_size * num_workers
+
         # Split the dataset across nodes if in distributed mode
         if self.distributed:
             try:
@@ -113,24 +129,41 @@ class HuggingFaceIterableDataset(IterableDataset):
                     f"Failed to set up distributed dataset: {e}. Falling back to non-distributed mode.", stacklevel=2
                 )
                 self.distributed = False
+                dataset = self.dataset
         else:
             dataset = self.dataset
 
         # Convert to an iterable dataset if not already
         if not isinstance(dataset, HFIterableDataset):
-            if (worker_info := get_worker_info()) is not None:
-                num_workers = worker_info.num_workers
-            else:
-                num_workers = 1
-
             dataset = dataset.to_iterable_dataset(num_shards=num_workers)
 
         # Shuffle the dataset
         if self.shuffle:
             dataset = dataset.shuffle(buffer_size=self.shuffle_buffer_size, seed=self.seed)
 
+        # Calculate per-worker limit
+        if self.limit is not None:
+            base_limit = self.limit // total_workers
+
+            # Distribute the remainder samples
+            # Workers with ID < extra get base_limit+1, others get base_limit
+            extra = self.limit % total_workers
+            worker_limit = base_limit + (1 if global_worker_id < extra else 0)
+
+            logger.info(
+                f"Worker {global_worker_id}/{total_workers} (rank={self.rank}, local_id={worker_id}) "
+                f"will process up to {worker_limit} samples (from limit={self.limit})"
+            )
+        else:
+            worker_limit = None
+
         # Process samples from the dataset
+        count = 0
         for sample in dataset:
+            # Check if we've reached this worker's limit
+            if worker_limit is not None and count >= worker_limit:
+                break
+
             if self.keys is not None:
                 sample = tuple(sample[k] for k in self.keys if k in sample)
             else:
@@ -147,4 +180,5 @@ class HuggingFaceIterableDataset(IterableDataset):
             if self.transform is not None:
                 sample = self.transform(sample)
 
+            count += 1
             yield sample
