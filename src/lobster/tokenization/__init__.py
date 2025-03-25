@@ -23,4 +23,5 @@ from ._ume_tokenizers import (
     UmeLatentGenerator3DCoordTokenizerFast,
     UmeNucleotideTokenizerFast,
     UmeSmilesTokenizerFast,
+    UmeTokenizerTransform,
 )
