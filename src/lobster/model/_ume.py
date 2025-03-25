@@ -283,7 +283,7 @@ class Ume(L.LightningModule):
     def _step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
         modalities = batch.pop("modality")
 
-        loss, per_sample_loss = self.model._compute_loss(batch, self.model, return_per_sample_loss=True)
+        loss, per_sample_loss = self.model._compute_loss(batch, return_per_sample_loss=True)
 
         perplexity = torch.exp(loss)
         per_sample_perplexity = torch.exp(per_sample_loss)
