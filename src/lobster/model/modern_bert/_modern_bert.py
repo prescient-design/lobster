@@ -249,7 +249,7 @@ class FlexBERT(pl.LightningModule):
                 labels.view(B, length),
                 reduction="none"
             )
-            per_sample_loss = per_token_loss.sum(dim=-1)
+            per_sample_loss = per_token_loss.mean(dim=-1)
 
             return batch_loss, per_sample_loss
 
