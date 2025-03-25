@@ -17,6 +17,7 @@ from lobster.datasets import (
     MultiplexedSamplingDataset,
     OpenGenome2IterableDataset,
     RoundRobinConcatIterableDataset,
+    ZINCIterableDataset,
 )
 from lobster.tokenization import UmeTokenizerTransform
 
@@ -33,7 +34,9 @@ class DatasetInfo:
 
     def __post_init__(self):
         if not issubclass(self.dataset_class, HuggingFaceIterableDataset):
-            raise NotImplementedError("Only HuggingFaceIterableDataset subclasses are currently supported.")
+            raise NotImplementedError(
+                f"Only HuggingFaceIterableDataset subclasses are currently supported." f"Got: {self.dataset_class}"
+            )
 
 
 SUPPORTED_DATASETS_INFO = [
@@ -77,7 +80,16 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.VALIDATION, Split.TEST},
         train_size=28_840_000_000,  # 8.84T nucleotides, computed relative to AMPLIFY's 138B tokens
         test_size=100_000,  # Placeholder value for test/validation set
-        kwargs={"keys": ["text"]},
+        kwargs={"limit": 500_000_000},
+    ),
+    DatasetInfo(
+        name="ZINC",
+        dataset_class=ZINCIterableDataset,
+        modality=Modality.SMILES,
+        supported_splits={Split.TRAIN, Split.TEST},
+        train_size=1_540_000_000,  # 1.54B
+        test_size=192_000,
+        kwargs={"limit": 500_000_000},
     ),
 ]
 

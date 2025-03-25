@@ -97,6 +97,10 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
             - "OAS": Antibody sequences from the OAS database
             - "SCOP": Protein structure sequences
             If None, uses all available sources.
+        shuffle_buffer_size : int, optional
+            Buffer size for shuffling streaming datasets. Default is 1000.
+        limit : int or None, optional
+            Limit the number of samples to load.
         """
         super().__init__(
             dataset_name="chandar-lab/UR100P",
