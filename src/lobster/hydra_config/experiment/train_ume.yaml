@@ -5,7 +5,7 @@
 # lobster_train experiment=train_ume
 
 defaults:
-  - override /model: modern_bert.yaml
+  - override /model: ume
   - override /data: ume
   - override /callbacks: [base, moleculeace_linear_probe_fast, calm_linear_probe_fast]
 
@@ -40,21 +40,6 @@ trainer:
 
 model:
   model_name: UME_small
-  vocab_size: 1536
-  pad_token_id: 1
-  cls_token_id: 0
-  mask_token_id: 4
-  eos_token_id: 2
-  lr: 4e-4
-  beta1: 0.9
-  beta2: 0.98
-  eps: 1e-12
-  num_training_steps: ${trainer.max_steps}
-  num_warmup_steps: 1_000
-  mask_percentage: 0.25
-  max_length: 512
-  model_kwargs: 
-    unpad_embeddings: true
 
 callbacks:
   moleculeace_linear_probe:
