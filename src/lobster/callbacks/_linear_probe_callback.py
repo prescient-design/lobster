@@ -95,7 +95,7 @@ class LinearProbeCallback(Callback):
                 x = {k: v.to(module.device) for k, v in x.items()}
 
                 # Get token-level embeddings
-                batch_embeddings = module.tokens_to_latents(**x)
+                batch_embeddings = module.model.tokens_to_latents(**x)
 
                 # Reshape to (batch_size, seq_len, hidden_size)
                 batch_size = len(y)
