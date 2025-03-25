@@ -10,3 +10,4 @@ mask_percentage: 0.25
 max_length: 512
 model_kwargs: 
   unpad_embeddings: true
+ckpt_path: null 

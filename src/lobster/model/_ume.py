@@ -85,25 +85,28 @@ class Ume(L.LightningModule):
         tokenizer = list(self.tokenizer_transforms.values())[0].tokenizer
 
         # Instantiate the model
-        self.model = FlexBERT(
-            model_name=model_name,
-            max_length=max_length,
-            vocab_size=len(self.get_vocab()),
-            lr=lr,
-            beta1=beta1,
-            beta2=beta2,
-            eps=eps,
-            num_training_steps=num_training_steps,
-            num_warmup_steps=num_warmup_steps,
-            mask_percentage=mask_percentage,
-            scheduler=scheduler,
-            model_kwargs=model_kwargs,
-            scheduler_kwargs=scheduler_kwargs,
-            pad_token_id=tokenizer.pad_token_id,
-            mask_token_id=tokenizer.mask_token_id,
-            cls_token_id=tokenizer.cls_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
+        if ckpt_path is not None:
+            self.model = FlexBERT.load_from_checkpoint(ckpt_path)
+        else:
+            self.model = FlexBERT(
+                model_name=model_name,
+                max_length=max_length,
+                vocab_size=len(self.get_vocab()),
+                lr=lr,
+                beta1=beta1,
+                beta2=beta2,
+                eps=eps,
+                num_training_steps=num_training_steps,
+                num_warmup_steps=num_warmup_steps,
+                mask_percentage=mask_percentage,
+                scheduler=scheduler,
+                model_kwargs=model_kwargs,
+                scheduler_kwargs=scheduler_kwargs,
+                pad_token_id=tokenizer.pad_token_id,
+                mask_token_id=tokenizer.mask_token_id,
+                cls_token_id=tokenizer.cls_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
 
         self.embedding_dim = max_length
         self.frozen = False
