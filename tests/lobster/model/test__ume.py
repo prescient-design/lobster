@@ -70,8 +70,9 @@ class TestUme:
     def test_modalities_property(self):
         """Test modalities property returns correct values"""
         # Mock dependencies to avoid actual initialization
-        with patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()), patch(
-            "lobster.model._ume.FlexBERT", MagicMock()
+        with (
+            patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),
+            patch("lobster.model._ume.FlexBERT", MagicMock()),
         ):
             ume = Ume()
             expected_modalities = sorted([modality.value for modality in Modality])
@@ -128,8 +129,9 @@ class TestUme:
         mock_model.tokens_to_latents = mock_tokens_to_latents
 
         # Mock dependencies to avoid actual initialization
-        with patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()), patch(
-            "lobster.model._ume.FlexBERT", MagicMock()
+        with (
+            patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),
+            patch("lobster.model._ume.FlexBERT", MagicMock()),
         ):
             ume = Ume()
             ume.model = mock_model
@@ -167,8 +169,9 @@ class TestUme:
     def test_get_vocab(self):
         """Test get_vocab method"""
         # Mock dependencies to avoid actual initialization
-        with patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()), patch(
-            "lobster.model._ume.FlexBERT", MagicMock()
+        with (
+            patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),
+            patch("lobster.model._ume.FlexBERT", MagicMock()),
         ):
             ume = Ume()
 
@@ -193,8 +196,9 @@ class TestUme:
     def test_get_embeddings_without_model(self):
         """Test error handling when get_embeddings is called without model"""
         # Mock dependencies to avoid actual initialization
-        with patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()), patch(
-            "lobster.model._ume.FlexBERT", MagicMock()
+        with (
+            patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),
+            patch("lobster.model._ume.FlexBERT", MagicMock()),
         ):
             ume = Ume()
             ume.model = None  # Explicitly set model to None
@@ -210,8 +214,9 @@ class TestUme:
         mock_model.parameters.return_value = mock_params
 
         # Mock dependencies to avoid actual initialization
-        with patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()), patch(
-            "lobster.model._ume.FlexBERT", MagicMock()
+        with (
+            patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),
+            patch("lobster.model._ume.FlexBERT", MagicMock()),
         ):
             ume = Ume()
             ume.model = mock_model
@@ -238,8 +243,9 @@ class TestUme:
         mock_model.configure_optimizers.return_value = expected_config
 
         # Mock dependencies to avoid actual initialization
-        with patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()), patch(
-            "lobster.model._ume.FlexBERT", MagicMock()
+        with (
+            patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),
+            patch("lobster.model._ume.FlexBERT", MagicMock()),
         ):
             ume = Ume()
             ume.model = mock_model
