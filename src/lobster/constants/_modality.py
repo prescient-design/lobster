@@ -1,8 +1,8 @@
-from enum import StrEnum
+from enum import Enum
 from typing import Literal
 
 
-class Modality(StrEnum):
+class Modality(Enum):
     SMILES = "SMILES"
     AMINO_ACID = "amino_acid"
     NUCLEOTIDE = "nucleotide"
