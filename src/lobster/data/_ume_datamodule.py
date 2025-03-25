@@ -4,7 +4,7 @@ from typing import Any, Sequence, Type
 
 import torch.utils.data
 from lightning import LightningDataModule
-from torch import Generator
+from torch import Generator, Tensor
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from lobster.constants import Modality, Split
@@ -260,16 +260,8 @@ class UmeLightningDataModule(LightningDataModule):
         )
 
 
-def collate_with_modality(batch: list[dict[str, Any]]) -> dict[str, Any]:
+def collate_with_modality(batch: list[dict[str, Tensor | Modality]]) -> dict[str, Tensor | list[Modality]]:
     modalities = [item.pop("modality") for item in batch]
-
-    if len(set(modalities)) != 1:
-        raise NotImplementedError("Currently only supports one modality per batch.")
-
-    modality = modalities[0]
     batch = torch.utils.data.default_collate(batch)
 
-    return {
-        **batch,
-        "modality": modality,
-    }
+    return {**batch, "modality": modalities}

@@ -40,9 +40,18 @@ class FlexBERT(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         mask_percentage: float = 0.25,
         max_length: int = 512,
-        scheduler: Literal["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup",
-                           "inverse_sqrt", "reduce_lr_on_plateau", "cosine_with_min_lr", "warmup_stable_decay",
-                           ] = "constant_with_warmup",
+        scheduler: Literal[
+            "linear",
+            "cosine",
+            "cosine_with_restarts",
+            "polynomial",
+            "constant",
+            "constant_with_warmup",
+            "inverse_sqrt",
+            "reduce_lr_on_plateau",
+            "cosine_with_min_lr",
+            "warmup_stable_decay",
+        ] = "constant_with_warmup",
         model_kwargs: dict = None,
         scheduler_kwargs: dict = None,
         ckpt_path: str = None,
@@ -91,7 +100,7 @@ class FlexBERT(pl.LightningModule):
         ckpt_path: str, optional
             Unused, for compatiblity with lobster_train
         """
-        
+
         super().__init__()
         self._model_name = model_name
         self._lr = lr
@@ -117,20 +126,19 @@ class FlexBERT(pl.LightningModule):
         self.model = FlexBertModel(self.config)
 
         self.decoder = nn.Sequential(
-            FlexBertPredictionHead(self.config),
-            nn.Linear(self.config.hidden_size, self.config.vocab_size)
+            FlexBertPredictionHead(self.config), nn.Linear(self.config.hidden_size, self.config.vocab_size)
         )
 
         assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
         self.loss_fn = CrossEntropyLoss()
         self.save_hyperparameters(logger=False)
-        
+
         # Check that either a tokenizer OR vocab_size and special token IDs are provided
         if tokenizer is None and any(
             arg is None for arg in (vocab_size, pad_token_id, mask_token_id, cls_token_id, eos_token_id)
         ):
             raise ValueError("Either a tokenizer OR vocab_size and special token IDs must be provided")
-        
+
         if tokenizer is not None:
             self.vocab_size = tokenizer.vocab_size
             self.pad_token_id = tokenizer.pad_token_id
@@ -143,37 +151,20 @@ class FlexBERT(pl.LightningModule):
             self.mask_token_id = mask_token_id
             self.cls_token_id = cls_token_id
             self.eos_token_id = eos_token_id
-        
 
-    def training_step(self, batch: dict[str, Tensor | Modality], batch_idx: int) -> dict[str, Tensor]:
-        modality = batch.pop("modality", None)
-            
+    def training_step(self, batch, batch_idx):
         loss = self._compute_loss(batch)
         ppl = torch.exp(loss)
-
         self.log("train_loss", loss, sync_dist=True)
         self.log("train_perplexity", ppl, sync_dist=True)
+        return {"loss": loss}
 
-        if modality is not None:
-            self.log(f"train_loss_{modality}", loss, sync_dist=True)
-            self.log(f"train_perplexity_{modality}", ppl, sync_dist=True)
-
-        return {"loss": loss, "perplexity": ppl}
-
-    def validation_step(self, batch: dict[str, Tensor | Modality], batch_idx: int) -> dict[str, Tensor]:
-        modality = batch.pop("modality", None)
-
+    def validation_step(self, batch, batch_idx):
         loss = self._compute_loss(batch)
         ppl = torch.exp(loss)
-
         self.log("val_loss", loss, sync_dist=True)
         self.log("val_perplexity", ppl, sync_dist=True)
-
-        if modality is not None:
-            self.log(f"val_loss_{modality}", loss, sync_dist=True)
-            self.log(f"val_perplexity_{modality}", ppl, sync_dist=True)
-
-        return {"val_loss": loss, "val_perplexity": ppl}
+        return {"val_loss": loss}
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
@@ -188,46 +179,38 @@ class FlexBERT(pl.LightningModule):
             "num_warmup_steps": self._num_warmup_steps,
             "num_training_steps": self._num_training_steps,
         }
-    
+
         # Add any additional scheduler kwargs from initialization
         scheduler_params.update(self.scheduler_kwargs)
 
-        scheduler = get_scheduler(
-            self.scheduler,
-            optimizer,
-            **scheduler_params
-        )
+        scheduler = get_scheduler(self.scheduler, optimizer, **scheduler_params)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
-    def tokens_to_latents(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:        
+    def tokens_to_latents(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         # Remove the middle dimension and flatten
         input_ids = input_ids.squeeze(1)
         attention_mask = attention_mask.squeeze(1)
-        
+
         batch_size, length = input_ids.shape  # Now shape is (batch_size, sequence_length)
         input_ids = input_ids.view(-1)  # Flatten to (batch_size * sequence_length)
         attention_mask = attention_mask.view(-1)
-        
+
         # Create cumulative sequence lengths tensor
-        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(batch_size)], 
-                                dtype=torch.int32,
-                                device=input_ids.device)
-        
+        cu_seqlens = torch.tensor(
+            [0] + [(i + 1) * length for i in range(batch_size)], dtype=torch.int32, device=input_ids.device
+        )
+
         with torch.inference_mode():
             hidden_states = self.model(
-                input_ids,
-                attention_mask=attention_mask,
-                cu_seqlens=cu_seqlens,
-                max_seqlen=self.max_length
+                input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
             )
-        
+
         return hidden_states
 
-    def _compute_loss(self, batch):
-
+    def _compute_loss(self, batch, return_per_sample_loss: bool = False):
         if isinstance(batch, tuple) and len(batch) == 2:
             batch, _targets = batch
 
@@ -245,18 +228,32 @@ class FlexBERT(pl.LightningModule):
         # TODO: Probably we can/should throw away trailing <pad> tokens.
         cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
 
-        assert masked_tokens.max() < self.config.vocab_size, f"Token ID {masked_tokens.max()} is out of vocabulary range {self.config.vocab_size}"
+        assert (
+            masked_tokens.max() < self.config.vocab_size
+        ), f"Token ID {masked_tokens.max()} is out of vocabulary range {self.config.vocab_size}"
 
         hidden_states = self.model(
-            masked_tokens,
-            attention_mask=attention_mask,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=self.max_length
+            masked_tokens, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
         )
 
         logits = self.decoder(hidden_states)
 
-        return self.loss_fn(logits.view(-1, self.vocab_size), labels.view(-1))
+        logits = logits.view(-1, self.vocab_size)
+        labels = labels.view(-1)
+
+        batch_loss = self.loss_fn(logits, labels)
+
+        if return_per_sample_loss:
+            per_token_loss = torch.nn.functional.cross_entropy(
+                logits.view(B, self.vocab_size, length), 
+                labels.view(B, length),
+                reduction="none"
+            )
+            per_sample_loss = per_token_loss.sum(dim=-1)
+
+            return batch_loss, per_sample_loss
+
+        return batch_loss
 
     def _mask_inputs(self, train_inputs: torch.Tensor):
         # create random array of floats with equal dimensions to input_ids tensor
