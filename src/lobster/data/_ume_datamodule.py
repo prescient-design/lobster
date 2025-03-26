@@ -80,7 +80,7 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.VALIDATION, Split.TEST},
         train_size=28_840_000_000,  # 8.84T nucleotides, computed relative to AMPLIFY's 138B tokens
         test_size=100_000,  # Placeholder value for test/validation set
-        kwargs={"limit": 500_000_000},
+        kwargs={"limit": 500_000_000},  # Limit to 0.5B samples out the full train_size
     ),
     DatasetInfo(
         name="ZINC",
@@ -89,7 +89,7 @@ SUPPORTED_DATASETS_INFO = [
         supported_splits={Split.TRAIN, Split.TEST},
         train_size=1_540_000_000,  # 1.54B
         test_size=192_000,
-        kwargs={"limit": 500_000_000},
+        kwargs={"limit": 500_000_000},  # Limit to 0.5B samples out the full train_size
     ),
 ]
 
@@ -227,6 +227,19 @@ class UmeLightningDataModule(LightningDataModule):
                 stopping_condition=self._stopping_condition,
             )
 
+    def _get_dataset_size(self, dataset_info: DatasetInfo, split: Split) -> int:
+        if split == Split.TRAIN:
+            if (limit := dataset_info.kwargs.get("limit")) is not None:
+                return limit
+            else:
+                return dataset_info.train_size
+
+        elif split == Split.TEST:
+            return dataset_info.test_size
+
+        else:
+            raise ValueError(f"Unsupported split: {split}")
+
     def setup(self, stage: str | None = None) -> None:
         self._train_datasets = []
         self._val_datasets = []
@@ -239,15 +252,17 @@ class UmeLightningDataModule(LightningDataModule):
 
             if Split.TRAIN in dataset_info.supported_splits:
                 train_dataset = self._get_dataset(dataset_info, split=Split.TRAIN)
+                size = self._get_dataset_size(dataset_info, split=Split.TRAIN)
 
                 self._train_datasets.append(train_dataset)
-                self._train_sizes.append(dataset_info.train_size)
+                self._train_sizes.append(size)
 
             # Uses test sets for validation
             # This assumes that we're going to test on completely different datasets
             # TODO: standardize train,val, test in dataset creation pipeline
             if Split.TEST in dataset_info.supported_splits:
                 val_dataset = self._get_dataset(dataset_info, split=Split.TEST)
+                size = self._get_dataset_size(dataset_info, split=Split.TEST)
 
                 self._val_datasets.append(val_dataset)
                 self._val_sizes.append(dataset_info.test_size)

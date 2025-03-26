@@ -8,13 +8,21 @@ from lobster.transforms import Transform
 class ZINCIterableDataset(HuggingFaceIterableDataset):
     """ZINC20 Molecular Dataset - a large-scale chemical compound database.
 
-    ZINC20 contains approximately 1.5 billion molecular compounds represented as SMILES strings,
-    with corresponding zinc_id identifiers and SELFIES (Self-Referencing Embedded Strings)
-    representations. SELFIES is an alternative representation to SMILES designed to be
-    100% syntactically valid.
+    Reference:
+        ZINC20—A Free Ultralarge-Scale Chemical Database for Ligand Discovery
+        John J. Irwin, Khanh G. Tang, Jennifer Young, Chinzorig Dandarchuluun,
+        Benjamin R. Wong, Munkhzul Khurelbaatar, Yurii S. Moroz, John Mayfield,
+        and Roger A. Sayle Journal of Chemical Information and Modeling 2020 60
+        (12), 6065-6073 DOI: 10.1021/acs.jcim.0c00675
+
+    Link:
+        https://zinc20.docking.org/
+
+    This version of ZINC hosted on HF by haydn-jones contains approximately
+    1.5 billion molecular compounds represented as SMILES strings, with corresponding
+    zinc_id identifiers and SELFIES representations.
 
     The dataset was shuffled and split into train/validation/test splits (80%/10%/10%).
-    Each compound includes data modalities for small molecule representation.
 
     Example:
     ```python
