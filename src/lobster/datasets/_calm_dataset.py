@@ -98,6 +98,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
         download: bool = False,
         shuffle: bool = False,
         shuffle_buffer_size: int = 1000,
+        limit: int | None = None,
     ):
         """
         Initialize the CalmIterableDataset.
@@ -112,6 +113,8 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
             List of keys to be used from the dataset.
         split : str, optional
             Which split of the dataset to use (only 'train' is available).
+        limit : int or None, optional
+            Limit the number of samples to load.
         """
         super().__init__(
             dataset_name="ncfrey/calm",
@@ -122,6 +125,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
             shuffle=shuffle,
             download=download,
             shuffle_buffer_size=shuffle_buffer_size,
+            limit=limit,
         )
 
     def _passes_type_check(self, sample: tuple[str]) -> bool:

@@ -63,6 +63,7 @@ class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
         shuffle: bool = True,
         split: str = "train",
         shuffle_buffer_size: int = 1000,
+        limit: int | None = None,
     ):
         """
         Initialize the OpenGenome2IterableDataset.
@@ -85,6 +86,8 @@ class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
             Default is 'train'.
         shuffle_buffer_size : int, optional
             Buffer size for shuffling streaming datasets. Default is 1000.
+        limit : int or None, optional
+            Limit the number of samples to load.
         """
         super().__init__(
             dataset_name="arcinstitute/opengenome2",
@@ -95,6 +98,7 @@ class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
             shuffle=shuffle,
             download=download,
             shuffle_buffer_size=shuffle_buffer_size,
+            limit=limit,
         )
 
     def _process_sample(self, sample: tuple[str]) -> str:

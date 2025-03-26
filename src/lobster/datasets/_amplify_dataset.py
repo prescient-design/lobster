@@ -70,6 +70,7 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
         split: str = "train",
         data_dir: Literal["UniProt", "OAS", "SCOP"] | None = None,
         shuffle_buffer_size: int = 1000,
+        limit: int | None = None,
     ):
         """
         Initialize the AMPLIFYIterableDataset.
@@ -96,6 +97,10 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
             - "OAS": Antibody sequences from the OAS database
             - "SCOP": Protein structure sequences
             If None, uses all available sources.
+        shuffle_buffer_size : int, optional
+            Buffer size for shuffling streaming datasets. Default is 1000.
+        limit : int or None, optional
+            Limit the number of samples to load.
         """
         super().__init__(
             dataset_name="chandar-lab/UR100P",
@@ -107,6 +112,7 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
             data_dir=data_dir,
             download=download,
             shuffle_buffer_size=shuffle_buffer_size,
+            limit=limit,
         )
 
     def _process_sample(self, sample: tuple[str]) -> str:
