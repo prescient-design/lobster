@@ -229,8 +229,8 @@ class UmeLightningDataModule(LightningDataModule):
 
     def _get_dataset_size(self, dataset_info: DatasetInfo, split: Split) -> int:
         if split == Split.TRAIN:
-            if (limit := dataset_info.kwargs.get("limit")) is not None:
-                return limit
+            if dataset_info.kwargs is not None and "limit" in dataset_info.kwargs:
+                return dataset_info.kwargs["limit"]
             else:
                 return dataset_info.train_size
 
