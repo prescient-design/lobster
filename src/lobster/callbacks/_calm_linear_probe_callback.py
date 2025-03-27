@@ -58,6 +58,15 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         Fraction of data to use for testing.
     max_samples : int, default=3000
         Maximum number of samples to use from each dataset.
+
+    Attributes
+    ----------
+    dataset_splits : dict
+        Cache of train/test splits for each task.
+    aggregate_metrics : defaultdict
+        Collection of metrics across all tasks for averaging.
+    probes : dict
+        Trained linear probes for each task.
     """
 
     def __init__(
