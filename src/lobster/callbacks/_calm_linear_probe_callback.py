@@ -151,7 +151,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         task: str,
         train_dataset,
         test_dataset,
-        model: L.LightningModule,
+        module: L.LightningModule,
         trainer: L.Trainer = None,
     ) -> Dict[str, float]:
         """Evaluate a single task.
@@ -166,7 +166,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             Training dataset
         test_dataset : Dataset
             Test dataset
-        model : Union[L.LightningModule, torch.nn.Module]
+        module : L.LightningModule
             Model to evaluate
         trainer : Optional[L.Trainer]
             Optional trainer for logging
@@ -184,8 +184,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
         try:
-            train_embeddings, train_targets = self._get_embeddings(model, train_loader)
-            test_embeddings, test_targets = self._get_embeddings(model, test_loader)
+            train_embeddings, train_targets = self._get_embeddings(module, train_loader)
+            test_embeddings, test_targets = self._get_embeddings(module, test_loader)
 
             probe = self._train_probe(train_embeddings, train_targets)
             self.probes[task_key] = probe
@@ -206,7 +206,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
     def evaluate(
         self,
-        model: L.LightningModule,
+        module: L.LightningModule,
         trainer: L.Trainer | None = None,
     ) -> Dict[str, Dict[str, float]]:
         """Evaluate the model on CALM datasets using linear probes.
@@ -216,7 +216,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         Parameters
         ----------
-        model : Union[L.LightningModule, torch.nn.Module]
+        model : L.LightningModule
             The model to evaluate
         trainer : Optional[L.Trainer]
             Optional trainer for logging metrics
@@ -226,10 +226,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         Dict[str, Dict[str, float]]
             Dictionary of task_name -> metric_name -> value
         """
-        # Make sure device is set
-        if hasattr(model, "device"):
-            self.device = model.device
-
         # Clear metrics for this run
         aggregate_metrics = defaultdict(list)
         all_task_metrics = {}
@@ -248,7 +244,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                             task,
                             train_dataset,
                             test_dataset,
-                            model,
+                            module,
                             trainer,
                         )
                         all_task_metrics[task_key] = metrics
@@ -266,7 +262,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                         task,
                         train_dataset,
                         test_dataset,
-                        model,
+                        module,
                         trainer,
                     )
                     all_task_metrics[task] = metrics

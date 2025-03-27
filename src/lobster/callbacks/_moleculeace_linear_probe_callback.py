@@ -54,7 +54,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
 
     def evaluate(
         self,
-        model: L.LightningModule,
+        module: L.LightningModule,
         trainer: L.Trainer | None = None,
     ) -> Dict[str, Dict[str, float]]:
         """Evaluate the model on MoleculeACE datasets using linear probes.
@@ -64,7 +64,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
 
         Parameters
         ----------
-        model : Union[L.LightningModule, torch.nn.Module]
+        module : L.LightningModule
             The model to evaluate
         trainer : Optional[L.Trainer]
             Optional trainer for logging metrics
@@ -74,10 +74,6 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         Dict[str, Dict[str, float]]
             Dictionary of task_name -> metric_name -> value
         """
-        # Make sure device is set
-        if hasattr(model, "device"):
-            self.device = model.device
-
         aggregate_metrics = defaultdict(list)
         all_task_metrics = {}
 
@@ -90,8 +86,8 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
 
             try:
                 # Get embeddings
-                train_embeddings, train_targets = self._get_embeddings(model, train_loader)
-                test_embeddings, test_targets = self._get_embeddings(model, test_loader)
+                train_embeddings, train_targets = self._get_embeddings(module, train_loader)
+                test_embeddings, test_targets = self._get_embeddings(module, test_loader)
 
                 # Train probe
                 probe = self._train_probe(train_embeddings, train_targets)

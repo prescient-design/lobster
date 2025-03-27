@@ -188,7 +188,7 @@ class LinearProbeCallback(Callback):
 
     def evaluate(
         self,
-        model: L.LightningModule,
+        module: L.LightningModule,
         trainer: L.Trainer | None = None,
     ) -> Dict[str, Dict[str, float]]:
         """Evaluate the model using linear probes.
@@ -198,7 +198,7 @@ class LinearProbeCallback(Callback):
 
         Parameters
         ----------
-        model : Union[L.LightningModule, torch.nn.Module]
+        module : L.LightningModule
             The model to evaluate
         trainer : Optional[L.Trainer]
             Optional trainer for logging metrics
