@@ -7,8 +7,7 @@ from tqdm import tqdm
 
 from lobster.constants import MOLECULEACE_TASKS
 from lobster.datasets import MoleculeACEDataset
-from lobster.tokenization import SmilesTokenizerFast
-from lobster.transforms import TokenizerTransform
+from lobster.tokenization import UmeTokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -16,6 +15,8 @@ from ._linear_probe_callback import LinearProbeCallback
 class MoleculeACELinearProbeCallback(LinearProbeCallback):
     """Callback for evaluating embedding models on the Molecule Activity Cliff
     Estimation (MoleculeACE) dataset from Tilborg et al. (2022).
+
+    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
 
     This callback assesses how well a molecular embedding model captures activity
     cliffs - pairs of molecules that are structurally similar but show large
@@ -36,10 +37,8 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
     ):
-        tokenizer_transform = TokenizerTransform(
-            tokenizer=SmilesTokenizerFast(),
-            padding="max_length",
-            truncation=True,
+        tokenizer_transform = UmeTokenizerTransform(
+            modality="SMILES",
             max_length=max_length,
         )
 

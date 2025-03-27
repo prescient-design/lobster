@@ -7,15 +7,15 @@
 defaults:
   - override /model: ume
   - override /data: ume
-  - override /callbacks: [base, moleculeace_linear_probe_fast, calm_linear_probe_fast]
+  - override /callbacks: [base]
 
 compile: false
 
 data:
   _target_: lobster.data.UmeLightningDataModule
   root: ${oc.env:LOBSTER_DATA_DIR} 
-  datasets: ["M320M", "Calm", "AMPLIFY", "Pinder"]
-  batch_size: 128
+  datasets: ["M320M", "ZINC"]
+  batch_size: 64
   tokenizer_max_length: ${model.max_length}
   pin_memory: true
   shuffle_buffer_size: 1000
@@ -50,7 +50,7 @@ callbacks:
     run_every_n_epochs: 1
 
 logger:
-  name: ume_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
+  name: ume_ZINC_M320M_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
   project: lobster
   group: ume-dev-${now:%Y-%m-%d-%H-%M-%S}
   entity: ${oc.env:LOBSTER_USER}

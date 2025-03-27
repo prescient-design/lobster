@@ -22,7 +22,13 @@ warnings.filterwarnings(
 
 
 class LinearProbeCallback(Callback):
-    """Callback for evaluating embedding models using scikit-learn linear probes."""
+    """Callback for evaluating embedding models using scikit-learn linear probes.
+
+    Assumes the underlying model is Ume as it accesses
+    `module.model.tokens_to_latents` to extract embeddings. To use with other
+    models, you may need to override `_get_embeddings`.
+
+    """
 
     def __init__(
         self,
