@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable, Dict, Literal, Optional, Tuple
+from typing import Callable, Dict, Literal, Optional, Tuple, Union
 
 import lightning as L
 import numpy as np
@@ -28,6 +28,8 @@ class LinearProbeCallback(Callback):
     `module.model.tokens_to_latents` to extract embeddings. To use with other
     models, you may need to override `_get_embeddings`.
 
+    Sublclasses must implement the `evaluate` method to evaluate the model on
+    specific tasks.
     """
 
     def __init__(
@@ -89,19 +91,35 @@ class LinearProbeCallback(Callback):
 
         return trainer.current_epoch % self.run_every_n_epochs != 0
 
-    def _get_embeddings(self, module: L.LightningModule, dataloader: DataLoader) -> Tuple[Tensor, Tensor]:
-        """Extract embeddings from the model for a given dataloader."""
+    def _get_embeddings(
+        self, model: Union[L.LightningModule, torch.nn.Module], dataloader: DataLoader
+    ) -> Tuple[Tensor, Tensor]:
+        """Extract embeddings from the model for a given dataloader.
+
+        Parameters
+        ----------
+        model : Union[L.LightningModule, torch.nn.Module]
+            The model to extract embeddings from
+        dataloader : DataLoader
+            DataLoader for the data to extract embeddings for
+
+        Returns
+        -------
+        Tuple[Tensor, Tensor]
+            Tuple of (embeddings, targets)
+        """
         embeddings = []
         targets = []
 
-        module.eval()
+        model.eval()
+
         with torch.no_grad():
             for batch in dataloader:
                 x, y = batch
-                x = {k: v.to(module.device) for k, v in x.items()}
+                x = {k: v.to(model.device) for k, v in x.items()}
 
                 # Get token-level embeddings
-                batch_embeddings = module.model.tokens_to_latents(**x)
+                batch_embeddings = model.model.tokens_to_latents(**x)
 
                 # Reshape to (batch_size, seq_len, hidden_size)
                 batch_size = len(y)
@@ -168,6 +186,34 @@ class LinearProbeCallback(Callback):
 
         return metrics
 
+    def evaluate(
+        self,
+        model: L.LightningModule,
+        trainer: L.Trainer | None = None,
+    ) -> Dict[str, Dict[str, float]]:
+        """Evaluate the model using linear probes.
+
+        This method can be used both during training (with a trainer) and
+        standalone (with just a model).
+
+        Parameters
+        ----------
+        model : Union[L.LightningModule, torch.nn.Module]
+            The model to evaluate
+        trainer : Optional[L.Trainer]
+            Optional trainer for logging metrics
+
+        Returns
+        -------
+        Dict[str, Dict[str, float]]
+            Dictionary of task_name -> metric_name -> value
+        """
+        raise NotImplementedError("Subclasses must implement evaluate")
+
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         """Train and evaluate linear probes, optionally at specified epochs."""
-        raise NotImplementedError("Subclasses must implement on_validation_epoch_end")
+        if self._skip(trainer):
+            return
+
+        self.device = pl_module.device
+        self.evaluate(pl_module, trainer)

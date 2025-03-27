@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 import lightning as L
 from torch.utils.data import DataLoader
@@ -52,12 +52,34 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         # Set tasks
         self.tasks = set(tasks) if tasks is not None else MOLECULEACE_TASKS
 
-    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        """Train and evaluate linear probes at specified epochs."""
-        if self._skip(trainer):
-            return
+    def evaluate(
+        self,
+        model: L.LightningModule,
+        trainer: L.Trainer | None = None,
+    ) -> Dict[str, Dict[str, float]]:
+        """Evaluate the model on MoleculeACE datasets using linear probes.
+
+        This method can be used both during training (with a trainer)
+        and standalone (with just a model).
+
+        Parameters
+        ----------
+        model : Union[L.LightningModule, torch.nn.Module]
+            The model to evaluate
+        trainer : Optional[L.Trainer]
+            Optional trainer for logging metrics
+
+        Returns
+        -------
+        Dict[str, Dict[str, float]]
+            Dictionary of task_name -> metric_name -> value
+        """
+        # Make sure device is set
+        if hasattr(model, "device"):
+            self.device = model.device
 
         aggregate_metrics = defaultdict(list)
+        all_task_metrics = {}
 
         for task in tqdm(self.tasks, desc=f"{self.__class__.__name__}"):
             # Create datasets
@@ -66,28 +88,48 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
             test_dataset = MoleculeACEDataset(task=task, transform_fn=self.transform_fn, train=False)
             test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
-            # Get embeddings
-            train_embeddings, train_targets = self._get_embeddings(pl_module, train_loader)
-            test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader)
+            try:
+                # Get embeddings
+                train_embeddings, train_targets = self._get_embeddings(model, train_loader)
+                test_embeddings, test_targets = self._get_embeddings(model, test_loader)
 
-            # Train probe
-            probe = self._train_probe(train_embeddings, train_targets)
-            self.probes[task] = probe
+                # Train probe
+                probe = self._train_probe(train_embeddings, train_targets)
+                self.probes[task] = probe
 
-            # Evaluate
-            metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
+                # Evaluate
+                metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
+                all_task_metrics[task] = metrics
 
-            # Log metrics and store for averaging
-            for metric_name, value in metrics.items():
-                trainer.logger.log_metrics(
-                    {f"moleculeace_linear_probe/{task}/{metric_name}": value}, step=trainer.current_epoch
-                )
+                # Log metrics if trainer is provided
+                if trainer is not None:
+                    for metric_name, value in metrics.items():
+                        trainer.logger.log_metrics(
+                            {f"moleculeace_linear_probe/{task}/{metric_name}": value},
+                        )
 
-                aggregate_metrics[metric_name].append(value)
+                # Store for aggregate metrics
+                for metric_name, value in metrics.items():
+                    aggregate_metrics[metric_name].append(value)
+
+            except Exception as e:
+                print(f"Error processing task {task}: {str(e)}")
+                continue
 
         # Calculate and log aggregate metrics
+        mean_metrics = {}
         for metric_name, values in aggregate_metrics.items():
-            avg_value = sum(values) / len(values)
-            trainer.logger.log_metrics(
-                {f"moleculeace_linear_probe/mean/{metric_name}": avg_value}, step=trainer.current_epoch
-            )
+            if values:  # Only process if we have values
+                avg_value = sum(values) / len(values)
+                mean_metrics[metric_name] = avg_value
+
+                # Log if trainer is provided
+                if trainer is not None:
+                    trainer.logger.log_metrics(
+                        {f"moleculeace_linear_probe/mean/{metric_name}": avg_value},
+                    )
+
+        # Add mean metrics to the result
+        all_task_metrics["mean"] = mean_metrics
+
+        return all_task_metrics
