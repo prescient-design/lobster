@@ -14,8 +14,8 @@ compile: false
 data:
   _target_: lobster.data.UmeLightningDataModule
   root: ${oc.env:LOBSTER_DATA_DIR} 
-  datasets: ["M320M", "ZINC"]
-  batch_size: 64
+  datasets: ["M320M", "Calm", "AMPLIFY", "ZINC", "OpenGenome2"]
+  batch_size: 128
   tokenizer_max_length: ${model.max_length}
   pin_memory: true
   shuffle_buffer_size: 1000
