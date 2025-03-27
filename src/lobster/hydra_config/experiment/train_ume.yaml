@@ -50,7 +50,7 @@ callbacks:
     run_every_n_epochs: 1
 
 logger:
-  name: ume_ZINC_M320M_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
+  name: ume_${model.model_name}_${now:%Y-%m-%d_%H-%M-%S}
   project: lobster
   group: ume-dev-${now:%Y-%m-%d-%H-%M-%S}
   entity: ${oc.env:LOBSTER_USER}
