@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, Mock, patch
 import lightning as L
 import pytest
 import torch
-
 from lobster.callbacks import PEEREvaluationCallback
 from lobster.constants import PEERTask
 
@@ -106,7 +105,7 @@ def mock_transform():
 @pytest.fixture
 def callback(monkeypatch, mock_transform):
     monkeypatch.setattr(
-        "lobster.callbacks._peer_evaluation_callback.TokenizerTransform", lambda **kwargs: mock_transform
+        "lobster.callbacks._peer_evaluation_callback.UmeTokenizerTransform", lambda **kwargs: mock_transform
     )
 
     return PEEREvaluationCallback(
