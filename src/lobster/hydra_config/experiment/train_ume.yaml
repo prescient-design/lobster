@@ -7,7 +7,7 @@
 defaults:
   - override /model: ume
   - override /data: ume
-  - override /callbacks: [base, moleculeace_linear_probe_fast, calm_linear_probe_fast]
+  - override /callbacks: [base]
 
 compile: false
 

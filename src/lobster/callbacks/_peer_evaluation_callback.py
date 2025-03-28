@@ -12,8 +12,7 @@ from tqdm import tqdm
 
 from lobster.constants import PEER_TASK_CATEGORIES, PEER_TASK_SPLITS, PEER_TASKS, PEERTask, PEERTaskCategory
 from lobster.datasets import PEERDataset
-from lobster.tokenization import UmeAminoAcidTokenizerFast
-from lobster.transforms import TokenizerTransform
+from lobster.tokenization import UmeTokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -61,6 +60,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
         Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
         Protein Sequence Understanding"
         https://arxiv.org/abs/2206.02096
+
+    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
     """
 
     def __init__(
@@ -83,10 +84,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
         run_every_n_epochs : Optional[int], default=None
             Run this callback every n epochs. If None, runs every validation epoch.
         """
-        tokenizer_transform = TokenizerTransform(
-            tokenizer=UmeAminoAcidTokenizerFast(),
-            padding="max_length",
-            truncation=True,
+        tokenizer_transform = UmeTokenizerTransform(
+            modality="amino_acid",
             max_length=max_length,
         )
 

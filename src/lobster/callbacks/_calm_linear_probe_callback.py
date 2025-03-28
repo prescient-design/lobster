@@ -1,7 +1,7 @@
 import logging
 import warnings
 from collections import defaultdict
-from typing import Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import lightning as L
 import numpy as np
@@ -11,8 +11,7 @@ from tqdm import tqdm
 
 from lobster.constants import CALM_TASKS
 from lobster.datasets import CalmPropertyDataset
-from lobster.tokenization import NucleotideTokenizerFast
-from lobster.transforms import TokenizerTransform
+from lobster.tokenization import UmeTokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -27,6 +26,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     prediction tasks from the CALM dataset collection. It creates train/test splits for each task,
     extracts embeddings from the model, trains linear probes on these embeddings, and evaluates
     their performance.
+
+    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
 
     Parameters
     ----------
@@ -57,8 +58,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         Fraction of data to use for testing.
     max_samples : int, default=3000
         Maximum number of samples to use from each dataset.
-    seed : int, default=42
-        Random seed for reproducibility in dataset splitting.
 
     Attributes
     ----------
@@ -79,12 +78,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         run_every_n_epochs: Optional[int] = None,
         test_size: float = 0.2,
         max_samples: int = 3000,
-        # seed: int = 42,
     ):
-        tokenizer_transform = TokenizerTransform(
-            tokenizer=NucleotideTokenizerFast(),
-            padding="max_length",
-            truncation=True,
+        tokenizer_transform = UmeTokenizerTransform(
+            modality="nucleotide",
             max_length=max_length,
         )
 
@@ -100,8 +96,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         self.test_size = test_size
         self.max_samples = max_samples
-        # NOTE zadorozk: see note below
-        # self.seed = seed
 
         self.dataset_splits = {}
         self.aggregate_metrics = defaultdict(list)
@@ -127,10 +121,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         split_key = f"{task}_{species}" if species else task
         if split_key in self.dataset_splits:
             return self.dataset_splits[split_key]
-
-        # NOTE zadorozk: this might override the seed set in the trainer
-        # commented out for now, assuming that this is set upstream
-        # L.seed_everything(self.seed)
 
         dataset = CalmPropertyDataset(task=task, species=species, transform_fn=self.transform_fn)
 
@@ -161,11 +151,31 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         task: str,
         train_dataset,
         test_dataset,
-        trainer: L.Trainer,
-        pl_module: L.LightningModule,
-    ):
-        """Evaluate a single task."""
+        module: L.LightningModule,
+        trainer: L.Trainer = None,
+    ) -> Dict[str, float]:
+        """Evaluate a single task.
 
+        Parameters
+        ----------
+        task_key : str
+            The task key for logging (task name or task_species)
+        task : str
+            The actual task name
+        train_dataset : Dataset
+            Training dataset
+        test_dataset : Dataset
+            Test dataset
+        module : L.LightningModule
+            Model to evaluate
+        trainer : Optional[L.Trainer]
+            Optional trainer for logging
+
+        Returns
+        -------
+        Dict[str, float]
+            Dictionary of metric_name -> value
+        """
         task_type, num_classes = CALM_TASKS[task]
 
         self._set_metrics(task_type, num_classes)
@@ -174,30 +184,51 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
         try:
-            train_embeddings, train_targets = self._get_embeddings(pl_module, train_loader)
-            test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader)
+            train_embeddings, train_targets = self._get_embeddings(module, train_loader)
+            test_embeddings, test_targets = self._get_embeddings(module, test_loader)
 
             probe = self._train_probe(train_embeddings, train_targets)
             self.probes[task_key] = probe
 
             metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
 
-            # Log metrics and store for averaging
-            for metric_name, value in metrics.items():
-                metric_key = f"calm_linear_probe/{task_key}/{metric_name}"
-                trainer.logger.log_metrics({metric_key: value}, step=trainer.current_epoch)
-                self.aggregate_metrics[metric_name].append(value)
+            # Log metrics if trainer is provided
+            if trainer is not None:
+                for metric_name, value in metrics.items():
+                    metric_key = f"calm_linear_probe/{task_key}/{metric_name}"
+                    trainer.logger.log_metrics({metric_key: value})
+
+            return metrics
 
         except Exception as e:
             logger.debug(f"Error in _evaluate_task for {task_key}: {str(e)}")
             raise
 
-    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        if self._skip(trainer):
-            return
+    def evaluate(
+        self,
+        module: L.LightningModule,
+        trainer: L.Trainer | None = None,
+    ) -> Dict[str, Dict[str, float]]:
+        """Evaluate the model on CALM datasets using linear probes.
 
-        self.device = pl_module.device
-        self.aggregate_metrics.clear()  # Reset aggregation for new epoch
+        This method can be used both during training (with a trainer)
+        and standalone (with just a model).
+
+        Parameters
+        ----------
+        model : L.LightningModule
+            The model to evaluate
+        trainer : Optional[L.Trainer]
+            Optional trainer for logging metrics
+
+        Returns
+        -------
+        Dict[str, Dict[str, float]]
+            Dictionary of task_name -> metric_name -> value
+        """
+        # Clear metrics for this run
+        aggregate_metrics = defaultdict(list)
+        all_task_metrics = {}
 
         for task in tqdm(self.tasks, desc=f"{self.__class__.__name__}"):
             # Handle species-specific tasks
@@ -208,20 +239,54 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                     task_key = f"{task}_{species}"
                     try:
                         train_dataset, test_dataset = self._create_split_datasets(task, species)
-                        self._evaluate_task(task_key, task, train_dataset, test_dataset, trainer, pl_module)
+                        metrics = self._evaluate_task(
+                            task_key,
+                            task,
+                            train_dataset,
+                            test_dataset,
+                            module,
+                            trainer,
+                        )
+                        all_task_metrics[task_key] = metrics
+
+                        # Store for aggregate metrics
+                        for metric_name, value in metrics.items():
+                            aggregate_metrics[metric_name].append(value)
                     except Exception as e:
                         logger.debug(f"Error processing {task_key}: {str(e)}")
             else:
                 try:
                     train_dataset, test_dataset = self._create_split_datasets(task)
-                    self._evaluate_task(task, task, train_dataset, test_dataset, trainer, pl_module)
+                    metrics = self._evaluate_task(
+                        task,
+                        task,
+                        train_dataset,
+                        test_dataset,
+                        module,
+                        trainer,
+                    )
+                    all_task_metrics[task] = metrics
+
+                    # Store for aggregate metrics
+                    for metric_name, value in metrics.items():
+                        aggregate_metrics[metric_name].append(value)
                 except Exception as e:
                     logger.debug(f"Error processing {task}: {str(e)}")
 
         # Calculate and log aggregate metrics
-        for metric_name, values in self.aggregate_metrics.items():
-            if values:  # Only log if we have values
+        mean_metrics = {}
+        for metric_name, values in aggregate_metrics.items():
+            if values:  # Only process if we have values
                 avg_value = sum(values) / len(values)
-                trainer.logger.log_metrics(
-                    {f"calm_linear_probe/mean/{metric_name}": avg_value}, step=trainer.current_epoch
-                )
+                mean_metrics[metric_name] = avg_value
+
+                # Log if trainer is provided
+                if trainer is not None:
+                    trainer.logger.log_metrics(
+                        {f"calm_linear_probe/mean/{metric_name}": avg_value},
+                    )
+
+        # Add mean metrics to the result
+        all_task_metrics["mean"] = mean_metrics
+
+        return all_task_metrics

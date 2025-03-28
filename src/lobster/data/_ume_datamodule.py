@@ -231,7 +231,6 @@ class UmeLightningDataModule(LightningDataModule):
         if split == Split.TRAIN:
             if dataset_info.kwargs is not None and "limit" in dataset_info.kwargs:
                 return dataset_info.kwargs["limit"]
-
             else:
                 return dataset_info.train_size
 
