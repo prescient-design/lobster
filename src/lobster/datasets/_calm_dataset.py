@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, ClassVar, Sequence, Tuple, Literal
+from typing import Callable, ClassVar, Literal, Sequence, Tuple
 
 import pandas as pd
 import pooch
@@ -110,7 +110,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
     ```
     """
 
-    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train",  "train_iid", "val_iid", "test_iid", "heldout"]
+    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "train_iid", "val_iid", "test_iid", "heldout"]
 
     def __init__(
         self,
@@ -118,7 +118,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
         *,
         transform: Callable | Transform | None = None,
         keys: Sequence[str] | None = None,
-        split: Literal["train",  "train_iid", "val_iid", "test_iid", "heldout"] = "train",
+        split: Literal["train", "train_iid", "val_iid", "test_iid", "heldout"] = "train",
         download: bool = False,
         shuffle: bool = False,
         shuffle_buffer_size: int = 1000,
@@ -147,7 +147,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
         """
         if split not in self.SUPPORTED_SPLITS:
             raise ValueError(f"Split '{split}' not supported. Choose from {self.SUPPORTED_SPLITS}.")
-            
+
         super().__init__(
             dataset_name="taylor-joren/calm",
             data_files=f"{split}/*.parquet",
