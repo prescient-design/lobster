@@ -19,8 +19,7 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
     hydra.utils.instantiate(cfg.setup)
 
     datamodule = hydra.utils.instantiate(cfg.data)
-    datamodule.prepare_data()
-    datamodule.setup(stage="fit")
+
     model = hydra.utils.instantiate(cfg.model, _recursive_=False)
 
     if cfg.compile:
