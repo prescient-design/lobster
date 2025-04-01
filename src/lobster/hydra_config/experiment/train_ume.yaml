@@ -55,3 +55,4 @@ logger:
   project: lobster
   group: ume-dev-${now:%Y-%m-%d-%H-%M-%S}
   entity: ${oc.env:LOBSTER_USER}
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}

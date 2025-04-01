@@ -117,6 +117,8 @@ def _add_reserved_tokens(vocabs: dict[str, list[str]]) -> dict[str, list[str]]:
     - Reserved/dummy tokens (to maintain index compatibility)
     - Domain-specific tokens for each tokenizer type
 
+    Ordering of tokenizers is important for reserved token construction! Corresponds
+    to the order in `TOKENIZER_ORDER`.
 
     Parameters
     ----------
