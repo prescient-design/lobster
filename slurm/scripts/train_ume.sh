@@ -6,6 +6,7 @@
 #SBATCH --gpus-per-node 2
 #SBATCH --cpus-per-task 8
 #SBATCH -o slurm/logs/%J.out
+#SBATCH -t 24:00:00
 # srun hostname
 
 nvidia-smi
@@ -28,7 +29,7 @@ export TOKENIZERS_PARALLELISM=true
 umask g+w 
 
 srun -u --cpus-per-task 8 --cpu-bind=cores,verbose \
-lobster_train experiment=train_ume \
+lobster_train experiment=train_ume ++data.datasets="['M320M', 'Calm', 'AMPLIFY', 'ZINC']"\
     logger.entity="$(whoami)" 
 
 
