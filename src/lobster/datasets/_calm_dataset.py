@@ -137,11 +137,11 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
             List of keys to be used from the dataset.
         split : str, optional
             Which split of the dataset to use. Options are:
-            - "train": Original training data
+            - "train": Original training data from paper
             - "train_iid": ~80% of training data (random split)
             - "val_iid": ~10% of training data (random split)
             - "test_iid": ~10% of training data (random split)
-            - "heldout": Heldout test data
+            - "heldout": Heldout test data from paper
         limit : int or None, optional
             Limit the number of samples to load.
         """
