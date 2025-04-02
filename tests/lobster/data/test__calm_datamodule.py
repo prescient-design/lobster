@@ -16,7 +16,6 @@ def dm(tmp_path):
         datamodule = CalmLightningDataModule(
             root=tmp_path,
             batch_size=8,
-            lengths=(0.8, 0.1, 0.1),
         )
         datamodule.prepare_data()
         datamodule.setup()
@@ -31,10 +30,6 @@ class TestCalmLightningDataModule:
         assert isinstance(dm._dataset, CalmDataset)
 
     def test_setup(self, dm: CalmLightningDataModule):
-        assert len(dm._train_dataset) == 8
-        assert len(dm._val_dataset) == 1
-        assert len(dm._test_dataset) == 1
-
         batch = next(iter(dm.train_dataloader()))
 
         assert batch["input_ids"].shape == Size([8, 1, 512])

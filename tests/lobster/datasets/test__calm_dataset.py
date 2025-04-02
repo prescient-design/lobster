@@ -28,7 +28,7 @@ class TestCalmDataset:
 
 class TestCalmIterableDataset:
     @unittest.mock.patch("lobster.datasets._huggingface_iterable_dataset.load_dataset")
-    def test__iter__(self, mock_load_dataset):
+    def test__iter__(self, mock_load_dataset, tmp_path):
         mock_load_dataset.return_value = Dataset.from_list(
             [
                 {
@@ -37,7 +37,9 @@ class TestCalmIterableDataset:
                 }
             ]
         )
-        dataset = CalmIterableDataset(keys=["sequence"], shuffle=False, download=False)
+        dataset = CalmIterableDataset(
+            keys=["sequence"], shuffle=False, download=False, root=tmp_path
+        )  # root for caching
         example = next(iter(dataset))
 
         assert isinstance(example, str)

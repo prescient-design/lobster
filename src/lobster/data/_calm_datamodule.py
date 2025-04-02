@@ -2,9 +2,8 @@ import random
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
-import torch.utils.data
+import torch
 from lightning import LightningDataModule
-from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
 from lobster.datasets._calm_dataset import CalmDataset
@@ -21,8 +20,6 @@ class CalmLightningDataModule(LightningDataModule):
         *,
         use_text_descriptions: bool = False,
         transform_fn: Union[Callable, Transform, None] = None,
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
-        generator: Optional[Generator] = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
@@ -44,14 +41,8 @@ class CalmLightningDataModule(LightningDataModule):
             Root directory of the dataset.
         use_text_descriptions : bool, optional
             Whether to use text descriptions, by default False.
-        download : bool, optional
-            Whether to download the dataset, by default False.
         transform_fn : Union[Callable, Transform, None], optional
             Function or transform to apply to the data, by default None.
-        lengths : Optional[Sequence[float]], optional
-            Sequence of lengths for splitting the dataset, by default (0.9, 0.05, 0.05).
-        generator : Optional[Generator], optional
-            Random generator for shuffling, by default None.
         seed : int, optional
             Seed for the random generator, by default 0xDEADBEEF.
         batch_size : int, optional
@@ -74,17 +65,10 @@ class CalmLightningDataModule(LightningDataModule):
             Whether to drop the last incomplete batch, by default False.
         train : bool, optional
             Whether the module is in training mode, by default True.
-
-
         """
         super().__init__()
 
-        if generator is None:
-            generator = Generator().manual_seed(seed)
-
         self._root = root
-        self._lengths = lengths
-        self._generator = generator
         self._seed = seed
         self._batch_size = batch_size
         self._max_length = max_length
@@ -95,7 +79,6 @@ class CalmLightningDataModule(LightningDataModule):
         self._collate_fn = collate_fn
         self._pin_memory = pin_memory
         self._drop_last = drop_last
-        self._dataset = None
         self._use_text_descriptions = use_text_descriptions
 
         if transform_fn is None and not use_text_descriptions:
@@ -109,34 +92,57 @@ class CalmLightningDataModule(LightningDataModule):
         self._transform_fn = transform_fn
 
     def prepare_data(self) -> None:
-        dataset = CalmDataset(
-            root=self._root,
-            transform=self._transform_fn,
-            columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
-        )
+        # Verify all required splits are available
+        columns = ["sequence", "description"] if self._use_text_descriptions else ["sequence"]
 
-        self._dataset = dataset
+        for split in CalmDataset.SUPPORTED_SPLITS:
+            dataset = CalmDataset(
+                root=self._root,
+                transform=None,
+                columns=columns,
+                split=split,
+            )
+
+            if split == "train":
+                self._dataset = dataset
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
         random.seed(self._seed)
         torch.manual_seed(self._seed)
 
-        if self._dataset is None:
-            self.prepare_data()
+        columns = ["sequence", "description"] if self._use_text_descriptions else ["sequence"]
 
         if stage == "fit" or stage == "test":
-            (
-                self._train_dataset,
-                self._val_dataset,
-                self._test_dataset,
-            ) = torch.utils.data.random_split(
-                self._dataset,
-                lengths=self._lengths,
-                generator=self._generator,
+            # Use pre-created IID splits
+            self._train_dataset = CalmDataset(
+                root=self._root,
+                split="train",
+                transform=self._transform_fn,
+                columns=columns,
+            )
+
+            self._val_dataset = CalmDataset(
+                root=self._root,
+                split="validation",
+                transform=self._transform_fn,
+                columns=columns,
+            )
+
+            self._test_dataset = CalmDataset(
+                root=self._root,
+                split="test",  # sampled iid from train_full, same as test and val sets
+                transform=self._transform_fn,
+                columns=columns,
             )
 
         if stage == "predict":
-            self._predict_dataset = self._dataset
+            predict_split = "heldout"  # pre-curated from paper
+            self._predict_dataset = CalmDataset(
+                root=self._root,
+                split=predict_split,
+                transform=self._transform_fn,
+                columns=columns,
+            )
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -144,9 +150,11 @@ class CalmLightningDataModule(LightningDataModule):
             batch_size=self._batch_size,
             shuffle=self._shuffle,
             sampler=self._sampler,
+            batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
+            drop_last=self._drop_last,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -155,6 +163,7 @@ class CalmLightningDataModule(LightningDataModule):
             batch_size=self._batch_size,
             shuffle=False,
             sampler=self._sampler,
+            batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
@@ -166,6 +175,7 @@ class CalmLightningDataModule(LightningDataModule):
             batch_size=self._batch_size,
             shuffle=False,
             sampler=self._sampler,
+            batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
@@ -177,6 +187,7 @@ class CalmLightningDataModule(LightningDataModule):
             batch_size=self._batch_size,
             shuffle=False,
             sampler=self._sampler,
+            batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,

@@ -35,7 +35,7 @@ class DatasetInfo:
     def __post_init__(self):
         if not issubclass(self.dataset_class, HuggingFaceIterableDataset):
             raise NotImplementedError(
-                f"Only HuggingFaceIterableDataset subclasses are currently supported." f"Got: {self.dataset_class}"
+                f"Only HuggingFaceIterableDataset subclasses are currently supported.Got: {self.dataset_class}"
             )
 
 
@@ -53,8 +53,9 @@ SUPPORTED_DATASETS_INFO = [
         name="Calm",
         dataset_class=CalmIterableDataset,
         modality=Modality.NUCLEOTIDE,
-        supported_splits={Split.TRAIN},  # TODO: add splits
-        train_size=8_780_000,  # NOTE - this is an underestimate (whole genomes much longer)
+        supported_splits={Split.TRAIN, Split.VALIDATION, Split.TEST, "heldout"},
+        train_size=7_902_000,  # NOTE - this is an underestimate (whole genomes much longer)
+        test_size=439_000,
         kwargs={"keys": ["sequence"]},
     ),
     DatasetInfo(
