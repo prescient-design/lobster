@@ -35,7 +35,7 @@ class DatasetInfo:
     def __post_init__(self):
         if not issubclass(self.dataset_class, HuggingFaceIterableDataset):
             raise NotImplementedError(
-                f"Only HuggingFaceIterableDataset subclasses are currently supported." f"Got: {self.dataset_class}"
+                f"Only HuggingFaceIterableDataset subclasses are currently supported.Got: {self.dataset_class}"
             )
 
 
