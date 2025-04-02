@@ -68,9 +68,8 @@ class CalmDataset(Dataset):
                 "taylor-joren/calm", data_files=f"{split}/*.parquet", split="train", cache_dir=str(root)
             )
 
-            df = data.to_pandas()
-            df.to_parquet(dataset_path)
-            self.data = df
+            data.to_parquet(dataset_path)
+            self.data = data
         else:
             # Load existing dataset from disk
             self.data = pd.read_parquet(dataset_path)
@@ -187,7 +186,6 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
             shuffle_buffer_size=shuffle_buffer_size,
             limit=limit,
             data_files=f"{split}/*.parquet",
-            cache_dir=str(root) if root else None,
         )
 
     def _passes_type_check(self, sample: tuple) -> bool:

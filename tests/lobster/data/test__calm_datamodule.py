@@ -14,9 +14,7 @@ def dm(tmp_path):
         mock_load_dataset.return_value = DataFrame({"sequence": 10 * ["ATG"], "description": 10 * ["dna"]})
 
         datamodule = CalmLightningDataModule(
-            root=tmp_path,
-            batch_size=8,
-            lengths=(0.8, 0.1, 0.1),
+            root=tmp_path, batch_size=8, lengths=(0.8, 0.1, 0.1), split_mode="random_split"
         )
         datamodule.prepare_data()
         datamodule.setup()

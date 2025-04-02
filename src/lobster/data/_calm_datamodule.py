@@ -125,7 +125,7 @@ class CalmLightningDataModule(LightningDataModule):
         # Download or verify the base dataset
         if self._split_mode == "random_split":
             # For random_split, use train_full
-            CalmDataset(
+            dataset = CalmDataset(
                 root=self._root,
                 split="train_full",
                 transform=None,  # No transform at this stage
@@ -134,12 +134,14 @@ class CalmLightningDataModule(LightningDataModule):
         else:  # pre_split mode
             # Ensure train_iid and val_iid are available
             for split in ["train_iid", "val_iid"]:
-                CalmDataset(
+                dataset = CalmDataset(
                     root=self._root,
                     split=split,
                     transform=None,
                     columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
                 )
+
+        self._dataset = dataset
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
         random.seed(self._seed)
