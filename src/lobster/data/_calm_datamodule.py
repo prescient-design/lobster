@@ -94,13 +94,17 @@ class CalmLightningDataModule(LightningDataModule):
     def prepare_data(self) -> None:
         # Verify all required splits are available
         columns = ["sequence", "description"] if self._use_text_descriptions else ["sequence"]
-        for split in ["train", "val", "test", "heldout"]:
-            CalmDataset(
+
+        for split in CalmDataset.SUPPORTED_SPLITS:
+            dataset = CalmDataset(
                 root=self._root,
-                split=split,
                 transform=None,
                 columns=columns,
+                split=split,
             )
+
+            if split == "train":
+                self._dataset = dataset
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
         random.seed(self._seed)

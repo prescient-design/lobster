@@ -182,7 +182,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
             root=root,
             transform=transform,
             keys=keys or ["sequence", "description"],
-            split=split,
+            split="train",
             shuffle=shuffle,
             download=download,
             shuffle_buffer_size=shuffle_buffer_size,
