@@ -1,10 +1,9 @@
 import random
 from pathlib import Path
-from typing import Any, Callable, Iterable, Literal, Optional, Sequence, TypeVar, Union
+from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
 
-import torch.utils.data
+import torch
 from lightning import LightningDataModule
-from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
 from lobster.datasets._calm_dataset import CalmDataset
@@ -21,9 +20,6 @@ class CalmLightningDataModule(LightningDataModule):
         *,
         use_text_descriptions: bool = False,
         transform_fn: Union[Callable, Transform, None] = None,
-        split_mode: Literal["pre_split", "random_split"] = "pre_split",
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
-        generator: Optional[Generator] = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
@@ -47,16 +43,6 @@ class CalmLightningDataModule(LightningDataModule):
             Whether to use text descriptions, by default False.
         transform_fn : Union[Callable, Transform, None], optional
             Function or transform to apply to the data, by default None.
-        split_mode : str, optional
-            Split mode to use. Options:
-            - "pre_split": Use pre-created IID splits (train_iid, val_iid) and heldout for test
-            - "random_split": Randomly split the train dataset into train, val, and test
-            Default is "pre_split".
-        lengths : Optional[Sequence[float]], optional
-            Sequence of lengths for splitting the dataset (only used if split_mode="random_split"),
-            by default (0.9, 0.05, 0.05) for train, val, and test.
-        generator : Optional[Generator], optional
-            Random generator for shuffling, by default None.
         seed : int, optional
             Seed for the random generator, by default 0xDEADBEEF.
         batch_size : int, optional
@@ -82,13 +68,7 @@ class CalmLightningDataModule(LightningDataModule):
         """
         super().__init__()
 
-        if generator is None:
-            generator = Generator().manual_seed(seed)
-
         self._root = root
-        self._split_mode = split_mode
-        self._lengths = lengths
-        self._generator = generator
         self._seed = seed
         self._batch_size = batch_size
         self._max_length = max_length
@@ -101,16 +81,6 @@ class CalmLightningDataModule(LightningDataModule):
         self._drop_last = drop_last
         self._use_text_descriptions = use_text_descriptions
 
-        # Validate split mode
-        if split_mode not in ["pre_split", "random_split"]:
-            raise ValueError(f"Invalid split_mode: {split_mode}. Choose from 'pre_split' or 'random_split'.")
-
-        # Validate lengths
-        if split_mode == "random_split" and len(lengths) != 3:
-            raise ValueError(
-                f"For random_split mode, lengths should have 3 values (train, val, test), but got {len(lengths)}"
-            )
-
         if transform_fn is None and not use_text_descriptions:
             transform_fn = TokenizerTransform(
                 tokenizer=NucleotideTokenizerFast(),
@@ -122,26 +92,15 @@ class CalmLightningDataModule(LightningDataModule):
         self._transform_fn = transform_fn
 
     def prepare_data(self) -> None:
-        # Download or verify the base dataset
-        if self._split_mode == "random_split":
-            # For random_split, use train_full
-            dataset = CalmDataset(
+        # Verify all required splits are available
+        columns = ["sequence", "description"] if self._use_text_descriptions else ["sequence"]
+        for split in ["train", "val", "test", "heldout"]:
+            CalmDataset(
                 root=self._root,
-                split="train_full",
-                transform=None,  # No transform at this stage
-                columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
+                split=split,
+                transform=None,
+                columns=columns,
             )
-        else:  # pre_split mode
-            # Ensure train_iid and val_iid are available
-            for split in ["train_iid", "val_iid"]:
-                dataset = CalmDataset(
-                    root=self._root,
-                    split=split,
-                    transform=None,
-                    columns=["sequence", "description"] if self._use_text_descriptions else ["sequence"],
-                )
-
-        self._dataset = dataset
 
     def setup(self, stage: str = "fit") -> None:  # noqa: ARG002
         random.seed(self._seed)
@@ -150,53 +109,30 @@ class CalmLightningDataModule(LightningDataModule):
         columns = ["sequence", "description"] if self._use_text_descriptions else ["sequence"]
 
         if stage == "fit" or stage == "test":
-            if self._split_mode == "pre_split":
-                # Use pre-created IID splits
-                self._train_dataset = CalmDataset(
-                    root=self._root,
-                    split="train_iid",
-                    transform=self._transform_fn,
-                    columns=columns,
-                )
+            # Use pre-created IID splits
+            self._train_dataset = CalmDataset(
+                root=self._root,
+                split="train",
+                transform=self._transform_fn,
+                columns=columns,
+            )
 
-                self._val_dataset = CalmDataset(
-                    root=self._root,
-                    split="val_iid",
-                    transform=self._transform_fn,
-                    columns=columns,
-                )
+            self._val_dataset = CalmDataset(
+                root=self._root,
+                split="validation",
+                transform=self._transform_fn,
+                columns=columns,
+            )
 
-                # For test_dataloader, use heldout set from paper
-                self._test_dataset = CalmDataset(
-                    root=self._root,
-                    split="heldout",
-                    transform=self._transform_fn,
-                    columns=columns,
-                )
-            else:  # random_split mode
-                # Load train dataset
-                dataset = CalmDataset(
-                    root=self._root,
-                    split="train_full",
-                    transform=self._transform_fn,
-                    columns=columns,
-                )
-
-                # Split into train, val, and test
-                total_size = len(dataset)
-                train_size = int(self._lengths[0] * total_size)
-                val_size = int(self._lengths[1] * total_size)
-                test_size = total_size - train_size - val_size
-
-                self._train_dataset, self._val_dataset, self._test_dataset = torch.utils.data.random_split(
-                    dataset,
-                    [train_size, val_size, test_size],
-                    generator=self._generator,
-                )
+            self._test_dataset = CalmDataset(
+                root=self._root,
+                split="test",  # sampled iid from train_full, same as test and val sets
+                transform=self._transform_fn,
+                columns=columns,
+            )
 
         if stage == "predict":
-            # For prediction, use the specified split
-            predict_split = "heldout"
+            predict_split = "heldout"  # pre-curated from paper
             self._predict_dataset = CalmDataset(
                 root=self._root,
                 split=predict_split,

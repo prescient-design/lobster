@@ -18,7 +18,7 @@ class CalmDataset(Dataset):
     Training data is originally from FASTA files containing coding DNA sequences.
     """
 
-    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train_full", "train_iid", "val_iid", "heldout"]
+    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train_full", "train", "validation", "test", "heldout"]
 
     def __init__(
         self,
@@ -26,7 +26,7 @@ class CalmDataset(Dataset):
         *,
         transform: Optional[Union[Callable, Transform]] = None,
         columns: Optional[Sequence[str]] = None,
-        split: Literal["train_full", "train_iid", "val_iid", "heldout"] = "train_full",
+        split: Literal["train_full", "train", "validation", "test", "heldout"] = "train",
     ):
         """
         Parameters
@@ -41,8 +41,9 @@ class CalmDataset(Dataset):
         split : str, optional
             Which split of the dataset to use. Options are:
             - "train_full": Full training data from paper
-            - "train_iid": ~95% of training data (random split)
-            - "val_iid": ~5% of training data (random split)
+            - "train": ~90% of training data (random split)
+            - "validation": ~5% of training data (random split)
+            - "test": ~5% of training data (random split)
             - "heldout": Heldout test data, from paper
         """
         super().__init__()
@@ -131,7 +132,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
     ```
     """
 
-    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train_full", "train_iid", "val_iid", "heldout"]
+    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train_full", "train", "validation", "test", "heldout"]
 
     def __init__(
         self,
@@ -139,7 +140,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
         *,
         transform: Optional[Union[Callable, Transform]] = None,
         keys: Optional[Sequence[str]] = None,
-        split: Literal["train_full", "train_iid", "val_iid", "heldout"] = "train_full",
+        split: Literal["train_full", "train", "validation", "test", "heldout"] = "train",
         download: bool = False,
         shuffle: bool = False,
         shuffle_buffer_size: int = 1000,
@@ -160,8 +161,9 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
         split : str, optional
             Which split of the dataset to use. Options are:
             - "train_full": Full training data from paper
-            - "train_iid": ~95% of training data (random split)
-            - "val_iid": ~5% of training data (random split)
+            - "train": ~90% of training data (random split)
+            - "validation": ~5% of training data (random split)
+            - "test": ~5% of training data (random split)
             - "heldout": Heldout test data from paper
         download : bool, optional
             Whether to download the dataset if not found locally.
