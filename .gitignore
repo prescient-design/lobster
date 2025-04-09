@@ -28,9 +28,11 @@ scripts/fastas/*.fasta
 scripts/combined_db*
 *_play.py
 src/lobster/hydra_config/experiment/*
+*.ipynb_checkpoints/
 
 notebooks/nathan/*
 notebooks/karina/*
+notebooks/amy/*
 
 dev
 outputs
