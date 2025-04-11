@@ -54,8 +54,8 @@ PEER_TASK_CATEGORIES = {
     PEERTask.BINDINGDB: PEERTaskCategory.PROTEIN_LIGAND_INTERACTION,
     PEERTask.PDBBIND: PEERTaskCategory.PROTEIN_LIGAND_INTERACTION,
     # Protein-protein interaction
-    PEERTask.HUMANPPI: PEERTaskCategory.PROTEIN_PROTEIN_INTERACTION,
     PEERTask.PPIAFFINITY: PEERTaskCategory.PROTEIN_PROTEIN_INTERACTION,
+    PEERTask.HUMANPPI: PEERTaskCategory.PROTEIN_PROTEIN_INTERACTION,
     PEERTask.YEASTPPI: PEERTaskCategory.PROTEIN_PROTEIN_INTERACTION,
     # Structure prediction
     PEERTask.FOLD: PEERTaskCategory.STRUCTURE_PREDICTION,
@@ -65,26 +65,32 @@ PEER_TASK_CATEGORIES = {
 
 
 # Define task types and num_classes for each task
+# Using more specific task types: "regression", "binary", "multiclass", "multilabel"
+# Based on the paper and error logs
 PEER_TASKS = {
-    # Function Prediction - All regression except Solubility which is classification
+    # Function Prediction - All regression except Solubility which is binary classification
     PEERTask.GB1: ("regression", None),  # Protein-wise Regression
     PEERTask.AAV: ("regression", None),  # Protein-wise Regression
     PEERTask.THERMOSTABILITY: ("regression", None),  # Protein-wise Regression
     PEERTask.FLUORESCENCE: ("regression", None),  # Protein-wise Regression
     PEERTask.STABILITY: ("regression", None),  # Protein-wise Regression
     PEERTask.BETALACTAMASE: ("regression", None),  # Protein-wise Regression
-    PEERTask.SOLUBILITY: ("classification", None),  # Protein-wise Classification
+    PEERTask.SOLUBILITY: ("binary", 2),  # Protein-wise Binary Classification (soluble or not)
+    
     # Localization Prediction - All classification tasks
-    PEERTask.SUBCELLULAR_LOCALIZATION: ("classification", None),  # Protein-wise Classification
-    PEERTask.BINARY_LOCALIZATION: ("classification", None),  # Protein-wise Classification
-    # Structure Prediction - All classification tasks
-    PEERTask.PROTEINNET: ("classification", None),  # Residue-pair Classification (Contact prediction)
-    PEERTask.FOLD: ("classification", None),  # Protein-wise Classification
-    PEERTask.SECONDARY_STRUCTURE: ("classification", None),  # Residue-wise Classification
+    PEERTask.SUBCELLULAR_LOCALIZATION: ("multiclass", 10),  # Protein-wise Multiclass (10 classes)
+    PEERTask.BINARY_LOCALIZATION: ("binary", 2),  # Protein-wise Binary Classification (membrane-bound or soluble)
+    
+    # Structure Prediction
+    PEERTask.PROTEINNET: ("binary", 2),  # Residue-pair Binary Classification (Contact prediction)
+    PEERTask.FOLD: ("multiclass", 1195),  # Protein-wise Multiclass Classification (1195 fold classes as per paper)
+    PEERTask.SECONDARY_STRUCTURE: ("multiclass", 3),  # Residue-wise Multiclass Classification (3 classes: coil, strand, helix)
+    
     # Protein-Protein Interaction
-    PEERTask.YEASTPPI: ("classification", None),  # Protein-pair Classification
-    PEERTask.HUMANPPI: ("classification", None),  # Protein-pair Classification
+    PEERTask.YEASTPPI: ("binary", 2),  # Protein-pair Binary Classification (interact or not)
+    PEERTask.HUMANPPI: ("binary", 2),  # Protein-pair Binary Classification (interact or not)
     PEERTask.PPIAFFINITY: ("regression", None),  # Protein-pair Regression
+    
     # Protein-Ligand Interaction
     PEERTask.PDBBIND: ("regression", None),  # Protein-ligand Regression
     PEERTask.BINDINGDB: ("regression", None),  # Protein-ligand Regression
