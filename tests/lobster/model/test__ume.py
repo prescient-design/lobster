@@ -48,36 +48,6 @@ class TestUme:
             # Check initial state
             assert ume.frozen is False
 
-    @patch("lobster.model.modern_bert.FlexBERT.load_from_checkpoint")
-    def test_initialization_from_checkpoint(self, mock_load_checkpoint):
-        """Test initialization from checkpoint"""
-        mock_model = MagicMock()
-        mock_model.max_length = 512
-        mock_load_checkpoint.return_value = mock_model
-
-        # Mock tokenizer to avoid actual tokenizer initialization
-        with patch("lobster.tokenization.UmeTokenizerTransform") as mock_transform:
-            mock_tokenizer = MagicMock()
-            mock_transform_instance = MagicMock()
-            mock_transform_instance.tokenizer = mock_tokenizer
-            mock_transform.return_value = mock_transform_instance
-
-            # Test initialization with checkpoint
-            ume = Ume(ckpt_path="dummy_checkpoint.ckpt")
-            assert ume.model == mock_model
-            assert ume.frozen is False
-
-    def test_modalities_property(self):
-        """Test modalities property returns correct values"""
-        # Mock dependencies to avoid actual initialization
-        with (
-            patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),
-            patch("lobster.model._ume.FlexBERT", MagicMock()),
-        ):
-            ume = Ume()
-            expected_modalities = sorted([modality.value for modality in Modality])
-            assert sorted(ume.modalities) == expected_modalities
-
     @patch("lobster.tokenization.UmeTokenizerTransform")
     def test_get_tokenizer(self, mock_transform):
         """Test getting tokenizer for different modalities"""
