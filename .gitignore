@@ -38,3 +38,4 @@ wandb
 lightning_logs
 
 .env
+dev
