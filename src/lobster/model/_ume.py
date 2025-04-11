@@ -114,28 +114,25 @@ class Ume(L.LightningModule):
         tokenizer = list(self.tokenizer_transforms.values())[0].tokenizer
 
         # Instantiate the model
-        if ckpt_path is not None:
-            self.model = FlexBERT.load_from_checkpoint(ckpt_path)
-        else:
-            self.model = FlexBERT(
-                model_name=model_name,
-                max_length=max_length,
-                vocab_size=len(self.get_vocab()),
-                lr=lr,
-                beta1=beta1,
-                beta2=beta2,
-                eps=eps,
-                num_training_steps=num_training_steps,
-                num_warmup_steps=num_warmup_steps,
-                mask_percentage=mask_percentage,
-                scheduler=scheduler,
-                model_kwargs=model_kwargs,
-                scheduler_kwargs=scheduler_kwargs,
-                pad_token_id=tokenizer.pad_token_id,
-                mask_token_id=tokenizer.mask_token_id,
-                cls_token_id=tokenizer.cls_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
+        self.model = FlexBERT(
+            model_name=model_name,
+            max_length=max_length,
+            vocab_size=len(self.get_vocab()),
+            lr=lr,
+            beta1=beta1,
+            beta2=beta2,
+            eps=eps,
+            num_training_steps=num_training_steps,
+            num_warmup_steps=num_warmup_steps,
+            mask_percentage=mask_percentage,
+            scheduler=scheduler,
+            model_kwargs=model_kwargs,
+            scheduler_kwargs=scheduler_kwargs,
+            pad_token_id=tokenizer.pad_token_id,
+            mask_token_id=tokenizer.mask_token_id,
+            cls_token_id=tokenizer.cls_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
 
         self.embedding_dim = max_length
         self.frozen = False
@@ -398,7 +395,12 @@ class Ume(L.LightningModule):
         return self.model.configure_optimizers()
 
     def _step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
-        modalities = batch.pop("modality")
+        if "metadata" in batch:
+            modalities = batch["metadata"]["modality"]
+        else:
+            modalities = batch["modality"]
+
+        modalities = [Modality(m) for m in modalities]
 
         loss, per_sample_loss = self.model._compute_loss(batch, return_per_sample_loss=True)
 
