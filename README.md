@@ -165,6 +165,8 @@ To train an MLM on a fasta file of sequences on an interactive GPU node, cd into
 lobster_train data.path_to_fasta="test_data/query.fasta" logger=csv paths.root_dir="."
 ```
 
+You can also set the experiment variable `LOBSTER_DATA_DIR` if using `hydra_config/experiments/train_ume.yaml`.
+
 ## Contributing <a name="contributing"></a>
 Contributions are welcome! We ask that all users and contributors remember that the LBSTER team are all full-time drug hunters, and our open-source efforts are a labor of love because we care deeply about open science and scientific progress.
 
