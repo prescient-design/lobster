@@ -19,11 +19,6 @@ export WANDB_INSECURE_DISABLE_SSL=true
 export HYDRA_FULL_ERROR=1
 export PYTHONUNBUFFERED=1
 
-export LOBSTER_DATA_DIR="/data/lobster/ume/data"
-export LOBSTER_RUNS_DIR="/data/lobster/ume/runs"
-export LOBSTER_USER=$(whoami) # CHANGE TO YOUR WANDB USERNAME IF NOT YOUR UNIXID
-export WANDB_BASE_URL=https://genentech.wandb.io
-
 # Tokenizer calls prior in Ume callbacks prior to training
 # cause issues. Disable if using callbacks, enable if not
 export TOKENIZERS_PARALLELISM=true
