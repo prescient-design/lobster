@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#SBATCH --partitsion gpu2
+#SBATCH --partition gpu2
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gpus-per-node 1
