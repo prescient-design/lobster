@@ -13,7 +13,12 @@ supported-markers = [
 ]
 
 [manifest]
-constraints = [{ name = "torch", specifier = "==2.5.1" }]
+constraints = [
+    { name = "flash-attn", marker = "python_full_version < '3.11' or python_full_version >= '3.13' or sys_platform != 'linux'", specifier = "==2.7.4.post1" },
+    { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl" },
+    { name = "torch", specifier = "==2.5.1" },
+]
 
 [[package]]
 name = "accelerate"
@@ -1073,7 +1078,7 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "edlib" },
     { name = "einops" },
-    { name = "flash-attn", marker = "(python_full_version < '3.11' and sys_platform == 'linux') or (python_full_version >= '3.13' and sys_platform == 'linux')", specifier = "==2.7.4" },
+    { name = "flash-attn", marker = "(python_full_version < '3.11' and sys_platform == 'linux') or (python_full_version >= '3.13' and sys_platform == 'linux')" },
     { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl" },
     { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl" },
     { name = "hydra-core" },
