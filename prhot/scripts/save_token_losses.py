@@ -1,6 +1,8 @@
-from tqdm import tqdm
+from typing import Dict, List, Any
 from pathlib import Path
 import os
+
+from tqdm import tqdm
 import pandas as pd
 import torch
 from torch.nn.functional import cross_entropy
@@ -8,7 +10,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lobster.data import FastaLightningDataModule
 
-# ds = load_dataset("bloyal/uniref100", streaming=False, cache_dir="/data/lux70/data/uniref100")
 
 class BuildParquetFile:
     """From a FASTA file and a CLM HuggingFace Model, get the
@@ -39,9 +40,11 @@ class BuildParquetFile:
 
         self.model.eval()
         self.model.to(self.device)
+        self.model.compile()
 
         self.cur_shard_num = cur_shard_num 
         self.cur_num_in_shard = cur_num_in_shard
+        self.results_tmp_list = []  # will store rows here before saving to parquet
 
         if os.path.exists(self.output_dir / "curshard.txt"):
             self._load_cur_spot_in_iter()
@@ -63,7 +66,7 @@ class BuildParquetFile:
         self.tokenizer = AutoTokenizer.from_pretrained("lightonai/RITA_xl")
         self.tokenizer.pad_token = "<PAD>"
         self.tokenizer.pad_token_id = self.tokenizer.vocab['<PAD>']
-
+        self.tokenizer.max_length = self.max_length
 
     def load_dataloader(self):
         """Load the dataset and dataloader."""
@@ -78,12 +81,13 @@ class BuildParquetFile:
         self.train_dl = self.dm.train_dataloader()
         self.val_dl = self.dm.val_dataloader()
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch) -> List[Dict[str, Any]]:
         sequences, headers = batch
         sequences = [s[:self.max_length] for s in sequences]
-        inputs = self.tokenizer(sequences, return_tensors="pt", padding=True, truncation=True)
-        input_ids = torch.tensor(inputs['input_ids']).to(self.device)
-        attn_mask = torch.tensor(inputs['attention_mask']).to(self.device)
+        inputs = self.tokenizer(sequences, return_tensors="pt", padding=True, truncation=False)
+        input_ids = inputs['input_ids'].to(self.device)
+        attn_mask = inputs['attention_mask'].to(self.device)
+        N, L = input_ids.shape[0], input_ids.shape[1] - 1   # remove EOS token
 
         with torch.no_grad():
             output = self.model(
@@ -95,50 +99,49 @@ class BuildParquetFile:
         logits = output['logits']
         logits = logits[:, :-1, :].reshape(-1, logits.shape[-1])
         per_token_loss = cross_entropy(logits, targets, reduction="none")
-        return sequences, headers, per_token_loss.cpu()
-   
-    def _save_to_parquet(self):
-        """Save the sequences and per-token loss to a Parquet file."""
-        result = {
-            'sequence': [],
-            'header': [],
-            'per_token_loss': []
-        }
+        per_token_loss = per_token_loss.reshape(-1, L).half()  # store as float16.
+        print(per_token_loss.shape, logits.shape, input_ids.shape)
 
-        def _save(result):
+        processed = []
+
+        for i in range(len(sequences)):
+            seqlen = min(len(sequences[i]), self.max_length)
+            row = {
+                "sequence": sequences[i],
+                "header": headers[i],
+                "per_token_loss": per_token_loss[i, :seqlen].cpu().tolist(),
+            }
+            processed.append(row)
+
+        return processed
+   
+    def save_to_parquet(self):
+        """Save the sequences and per-token loss to a Parquet file."""
+
+        def _save_and_reset(result: pd.DataFrame):
             output_file = f"{self.output_dir}/shard_{self.cur_shard_num:06}.parquet"
-            result = pd.DataFrame(result)
             result.to_parquet(output_file, engine='pyarrow', index=False)
             print("Save result to", output_file)
             self.cur_shard_num += 1
             self.cur_num_in_shard = 0
+            self.results_tmp_list = []
 
         # dataset should only have the 'train' split
-        for batch in tqdm(self.dm.train_dataloader()):
-            try:
-                if self.cur_num_in_shard <= self.max_num_per_shard:
-                    sequences, headers, per_token_loss = self.compute_loss(batch)
-                    result['sequence'].extend(sequences)
-                    result['header'].extend(headers)
-                    result['per_token_loss'].extend(per_token_loss.tolist())
-                    self.cur_num_in_shard += len(sequences)
-                else:
-                    _save(result)
-                
-            except Exception as e:
-                print(e)
-                self._save_cur_spot_in_iter()
-                _save(result)
-                break
-
-    
-    def save_to_parquet(self):
         try:
-            self._save_to_parquet()
+            for batch in tqdm(self.dm.train_dataloader()):
+                batch_results = self.compute_loss(batch)
+                self.results_tmp_list.extend(batch_results) 
+                if self.cur_num_in_shard <= self.max_num_per_shard:
+                    self.cur_num_in_shard += len(batch_results)
+                else:
+                    result = pd.DataFrame(self.results_tmp_list)
+                    _save_and_reset(result)
+
         except KeyboardInterrupt:
             print("KeyboardInterrupt: saving current shard")
             self._save_cur_spot_in_iter()
-            print("Saved current shard")
+            _save_and_reset(pd.DataFrame(self.results_tmp_list))
+            print(f"Saved current shard to {self.output_dir}/shard_{self.cur_shard_num:06}.parquet")
 
 
 if __name__ == "__main__":
