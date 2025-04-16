@@ -16,6 +16,7 @@ class FASTADataset(SizedSequenceDataset):
         *,
         transform: Optional[Callable] = None,
         use_text_descriptions: bool = True,
+        offset_file: Optional[Union[str, Path]] = None,
     ) -> None:
         if isinstance(root, str):
             root = Path(root)
@@ -31,7 +32,10 @@ class FASTADataset(SizedSequenceDataset):
 
         self.data = ThreadSafeFile(self.root, open)
 
-        offsets = Path(f"{self.root}.offsets.npy")
+        if not offset_file:
+            offsets = Path(f"{self.root}.offsets.npy")
+        else:
+            offsets = Path(offset_file)
 
         if offsets.exists():
             self.offsets, sizes = numpy.load(f"{offsets}")
