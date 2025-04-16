@@ -8,6 +8,7 @@ requires-python = ">=3.11, <3.13"
 dependencies = [
     "pooch",
     "torch",
+    "flash-attn==2.7.4; sys_platform == 'linux'",
     "tqdm",
     "lightning",
     "torchmetrics",
@@ -36,9 +37,9 @@ dependencies = [
     "onnx",
     "onnxscript",
     "einops",
-    "flash-attn; sys_platform == 'linux'",
     "beignet[datasets]",
     "deepspeed",
+    "dotenv>=0.9.9",
 ]
 
 [build-system]
@@ -115,12 +116,11 @@ ignore = [
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 constraint-dependencies = ["torch==2.5.1"]
 
+
 [tool.uv.sources]
 flash_attn = [
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp310-cp310-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.10'"},
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp311-cp311-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.11'"},
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.12'"},
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu12torch2.5cxx11abiFalse-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.13'"}
+  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.11'"},
+  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.12'"},
 ]
 beignet = { git = "https://github.com/Genentech/beignet" }
 
