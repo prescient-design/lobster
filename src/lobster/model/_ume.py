@@ -134,7 +134,8 @@ class Ume(L.LightningModule):
             eos_token_id=tokenizer.eos_token_id,
         )
 
-        self.embedding_dim = max_length
+        self.max_length = max_length
+        self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
 
     @property
