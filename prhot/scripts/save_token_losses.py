@@ -1,5 +1,6 @@
 from typing import Dict, List, Any
 from pathlib import Path
+from glob import glob
 import os
 
 from tqdm import tqdm
@@ -19,6 +20,9 @@ class BuildParquetFile:
         self,
         fasta_file: str,
         output_dir: str,
+        *,
+        fasta_offset_file: Optional[str] = None,
+        filename_prefix: str = "",  # for identifying multiple shards
         model_name: str = "lightonai/RITA_xl",
         batch_size: int = 128,
         max_length: int = 512,
@@ -28,6 +32,8 @@ class BuildParquetFile:
         cur_shard_num: int = 0, # for checkpointing
     ):
         self.fasta_file = fasta_file
+        self.fasta_offset_file = fasta_offset_file
+        self.filename_prefix = filename_prefix
         self.output_dir = Path(output_dir)
         self.model_name = model_name
         self.batch_size = batch_size
@@ -77,9 +83,9 @@ class BuildParquetFile:
             shuffle=False,
             batch_size=self.batch_size
         )
-        self.dm.setup("fit")
-        self.train_dl = self.dm.train_dataloader()
-        self.val_dl = self.dm.val_dataloader()
+
+        self.dm.setup("predict")
+        self.dataloader = self.dm.predict_dataloader()
 
     def compute_loss(self, batch) -> List[Dict[str, Any]]:
         sequences, headers = batch
@@ -128,7 +134,7 @@ class BuildParquetFile:
 
         # dataset should only have the 'train' split
         try:
-            for batch in tqdm(self.dm.train_dataloader()):
+            for batch in tqdm(self.dm.dataloader()):
                 batch_results = self.compute_loss(batch)
                 self.results_tmp_list.extend(batch_results) 
                 if self.cur_num_in_shard <= self.max_num_per_shard:
@@ -180,11 +186,6 @@ if __name__ == "__main__":
         default=100_000,
     )
     parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda",
-    )
-    parser.add_argument(
         "--cur_num_in_shard",
         type=int,
         default=0,
@@ -196,15 +197,44 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    build_cls = BuildParquetFile(
-        fasta_file=args.fasta_file,
-        output_dir=args.output_dir,
-        model_name=args.model_name,
-        batch_size=args.batch_size,
-        max_length=args.max_length,
-        max_num_per_shard=args.max_num_per_shard,
-        device=args.device,
-        cur_num_in_shard=args.cur_num_in_shard,
-        cur_shard_num=args.cur_shard_num,
-    )
-    build_cls.save_to_parquet()
+    if args.offset_file_grep_pattern is None:
+        build_cls = BuildParquetFile(
+            fasta_file=args.fasta_file,
+            output_dir=args.output_dir,
+            model_name=args.model_name,
+            batch_size=args.batch_size,
+            max_length=args.max_length,
+            max_num_per_shard=args.max_num_per_shard,
+            device=args.device,
+            cur_num_in_shard=args.cur_num_in_shard,
+            cur_shard_num=args.cur_shard_num,
+        )
+        build_cls.save_to_parquet()
+    
+    else:
+        offset_files_paths = glob.glob(args.offset_file_grep_pattern)
+        if len(offset_files_paths) == 0:
+            raise ValueError(f"No offset files found with pattern {args.offset_file_grep_pattern}")
+
+        offset_files_paths.sort()
+        builders = []
+
+        for i, offset_path in enumerate(offset_files_paths):
+            # adhoc, only for the uniref50.fasta.split_offsets_00.npy filename pattern
+            partition = int(offset_files_paths.split("/")[-1].split(".")[-2].split("_")[-1])
+            builder = BuildParquetFile(
+                fasta_file=args.fasta_file,
+                output_dir=args.output_dir,
+                fasta_offset_file=offset_path,
+                model_name=args.model_name,
+                batch_size=args.batch_size,
+                max_length=args.max_length,
+                max_num_per_shard=args.max_num_per_shard,
+                device=args.device,
+                cur_num_in_shard=args.cur_num_in_shard,
+                cur_shard_num=args.cur_shard_num,
+                filename_prefix=f"partition{partition:02}_",
+            )
+            builders.append(builder)
+
+
