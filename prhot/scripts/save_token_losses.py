@@ -1,164 +1,30 @@
 from typing import Dict, List, Any
-from pathlib import Path
-from glob import glob
 import os
+import argparse
 
-from tqdm import tqdm
+import numpy as np
 import pandas as pd
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
 from torch.nn.functional import cross_entropy
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from lobster.data import FastaLightningDataModule
+from lobster.datasets import FASTADataset 
 
 
-class BuildParquetFile:
-    """From a FASTA file and a CLM HuggingFace Model, get the
-    per-token loss and save it as Parquet shards."""
-
-    def __init__(
-        self,
-        fasta_file: str,
-        output_dir: str,
-        *,
-        fasta_offset_file: Optional[str] = None,
-        filename_prefix: str = "",  # for identifying multiple shards
-        model_name: str = "lightonai/RITA_xl",
-        batch_size: int = 128,
-        max_length: int = 512,
-        max_num_per_shard: int = 100_000,
-        device: str | torch.device = "cuda",
-        cur_num_in_shard: int = 0,  # for checkpointing
-        cur_shard_num: int = 0, # for checkpointing
-    ):
-        self.fasta_file = fasta_file
-        self.fasta_offset_file = fasta_offset_file
-        self.filename_prefix = filename_prefix
-        self.output_dir = Path(output_dir)
-        self.model_name = model_name
-        self.batch_size = batch_size
-        self.max_length = max_length
-        self.max_num_per_shard = max_num_per_shard
-        self.device = device
-
-        self.load_model()
-        self.load_dataloader()
-
-        self.model.eval()
-        self.model.to(self.device)
-        self.model.compile()
-
-        self.cur_shard_num = cur_shard_num 
-        self.cur_num_in_shard = cur_num_in_shard
-        self.results_tmp_list = []  # will store rows here before saving to parquet
-
-        if os.path.exists(self.output_dir / "curshard.txt"):
-            self._load_cur_spot_in_iter()
-        
-        if not self.output_dir.exists():
-            os.makedirs(self.output_dir)
-    
-    def _save_cur_spot_in_iter(self):
-        with open(self.output_dir / "curshard.txt","w") as f:
-            f.write(f"{self.cur_shard_num},{self.cur_num_in_shard}")
-
-    def _load_cur_spot_in_iter(self):
-        with open(self.output_dir / "curshard.txt","r") as f:
-            self.cur_shard_num, self.cur_num_in_shard = [int(x) for x in f.read().split(",")]
-
-    def load_model(self) -> None:
-        """Load the model and tokenizer."""
-        self.model = AutoModelForCausalLM.from_pretrained("lightonai/RITA_xl", trust_remote_code=True)
-        self.tokenizer = AutoTokenizer.from_pretrained("lightonai/RITA_xl")
-        self.tokenizer.pad_token = "<PAD>"
-        self.tokenizer.pad_token_id = self.tokenizer.vocab['<PAD>']
-        self.tokenizer.max_length = self.max_length
-
-    def load_dataloader(self):
-        """Load the dataset and dataloader."""
-        self.dm = FastaLightningDataModule(
-            path_to_fasta=self.fasta_file,
-            transform_fn=lambda x: x,
-            mlm=False,
-            shuffle=False,
-            batch_size=self.batch_size
-        )
-
-        self.dm.setup("predict")
-        self.dataloader = self.dm.predict_dataloader()
-
-    def compute_loss(self, batch) -> List[Dict[str, Any]]:
-        sequences, headers = batch
-        sequences = [s[:self.max_length] for s in sequences]
-        inputs = self.tokenizer(sequences, return_tensors="pt", padding=True, truncation=False)
-        input_ids = inputs['input_ids'].to(self.device)
-        attn_mask = inputs['attention_mask'].to(self.device)
-        N, L = input_ids.shape[0], input_ids.shape[1] - 1   # remove EOS token
-
-        with torch.no_grad():
-            output = self.model(
-                input_ids=input_ids,
-                attention_mask=attn_mask
-            )
-
-        targets = input_ids[:, 1:].reshape(-1)
-        logits = output['logits']
-        logits = logits[:, :-1, :].reshape(-1, logits.shape[-1])
-        per_token_loss = cross_entropy(logits, targets, reduction="none")
-        per_token_loss = per_token_loss.reshape(-1, L).half()  # store as float16.
-        print(per_token_loss.shape, logits.shape, input_ids.shape)
-
-        processed = []
-
-        for i in range(len(sequences)):
-            seqlen = min(len(sequences[i]), self.max_length)
-            row = {
-                "sequence": sequences[i],
-                "header": headers[i],
-                "per_token_loss": per_token_loss[i, :seqlen].cpu().tolist(),
-            }
-            processed.append(row)
-
-        return processed
-   
-    def save_to_parquet(self):
-        """Save the sequences and per-token loss to a Parquet file."""
-
-        def _save_and_reset(result: pd.DataFrame):
-            output_file = f"{self.output_dir}/shard_{self.cur_shard_num:06}.parquet"
-            result.to_parquet(output_file, engine='pyarrow', index=False)
-            print("Save result to", output_file)
-            self.cur_shard_num += 1
-            self.cur_num_in_shard = 0
-            self.results_tmp_list = []
-
-        # dataset should only have the 'train' split
-        try:
-            for batch in tqdm(self.dm.dataloader()):
-                batch_results = self.compute_loss(batch)
-                self.results_tmp_list.extend(batch_results) 
-                if self.cur_num_in_shard <= self.max_num_per_shard:
-                    self.cur_num_in_shard += len(batch_results)
-                else:
-                    result = pd.DataFrame(self.results_tmp_list)
-                    _save_and_reset(result)
-
-        except KeyboardInterrupt:
-            print("KeyboardInterrupt: saving current shard")
-            self._save_cur_spot_in_iter()
-            _save_and_reset(pd.DataFrame(self.results_tmp_list))
-            print(f"Saved current shard to {self.output_dir}/shard_{self.cur_shard_num:06}.parquet")
-
-
-if __name__ == "__main__":
-    import argparse
-
+def get_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--fasta_file",
         type=str,
         default="/data/lux70/data/uniref90/partial.fasta",
+    )
+    parser.add_argument(
+        "--offset_array_path",
+        type=str,
+        default="/data/lux70/data/uniref90/partial.fasta.offsets.npy",
     )
     parser.add_argument(
         "--output_dir",
@@ -168,7 +34,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_name",
         type=str,
-        default="lightonai/RITA_xl",
+        default="lightonai/RITA_s",
     )
     parser.add_argument(
         "--batch_size",
@@ -195,46 +61,124 @@ if __name__ == "__main__":
         type=int,
         default=0,
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    if args.offset_file_grep_pattern is None:
-        build_cls = BuildParquetFile(
-            fasta_file=args.fasta_file,
-            output_dir=args.output_dir,
-            model_name=args.model_name,
-            batch_size=args.batch_size,
-            max_length=args.max_length,
-            max_num_per_shard=args.max_num_per_shard,
-            device=args.device,
-            cur_num_in_shard=args.cur_num_in_shard,
-            cur_shard_num=args.cur_shard_num,
+
+def setup(rank, world_size):
+    # Initialize process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+
+def load_model(model_name: str = "lightonai/RITA_xl", max_length: int = 512) -> torch.nn.Module:
+    """Load the model and tokenizer."""
+    model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained("model_name")
+    tokenizer.pad_token = "<PAD>"
+    tokenizer.pad_token_id = tokenizer.vocab['<PAD>']
+    tokenizer.max_length = max_length
+
+    model = model.eval()
+    model = model.compile()
+    return model, tokenizer
+
+
+def get_model_device(model: torch.nn.Module) -> torch.device:
+    return next(model.parameters()).device
+
+
+def compute_loss(batch, model, tokenizer, max_length) -> List[Dict[str, Any]]:
+    sequences, headers = batch
+    device = get_model_device(model)
+
+    sequences = [s[:max_length] for s in sequences]
+    inputs = tokenizer(sequences, return_tensors="pt", padding=True, truncation=False)
+    input_ids = inputs['input_ids'].to(device)
+    attn_mask = inputs['attention_mask'].to(device)
+    N, L = input_ids.shape[0], input_ids.shape[1] - 1   # remove EOS token
+
+    with torch.no_grad():
+        output = model(
+            input_ids=input_ids,
+            attention_mask=attn_mask
         )
-        build_cls.save_to_parquet()
+
+    targets = input_ids[:, 1:].reshape(-1)
+    logits = output['logits']
+    logits = logits[:, :-1, :].reshape(-1, logits.shape[-1])
+    per_token_loss = cross_entropy(logits, targets, reduction="none")
+    per_token_loss = per_token_loss.reshape(-1, L).half()  # store as float16.
+
+    processed = [
+        {
+            "sequence": sequences[i],
+            "header": headers[i],
+            "per_token_loss": per_token_loss[i, :min(len(sequences[i], max_length))].cpu().tolist(),
+        }
+        for i in range(len(sequences))
+    ]
+    return processed
+
+
+def main(args, rank, world_size):
+    setup(rank, world_size)
+
+    offset_array = np.load(args.offset_array_path)
+    assert len(offset_array.shape) == 2
+    assert offset_array.shape[0] == 2
     
-    else:
-        offset_files_paths = glob.glob(args.offset_file_grep_pattern)
-        if len(offset_files_paths) == 0:
-            raise ValueError(f"No offset files found with pattern {args.offset_file_grep_pattern}")
+    # Partition data for this GPU
+    per_gpu_size = len(offset_array) // world_size
+    start_idx = rank * per_gpu_size
+    end_idx = start_idx + per_gpu_size if rank < world_size - 1 else len(offset_array)
+    local_offsets = offset_array[:, start_idx:end_idx]
+    
+    # Create dataset and dataloader for this GPU
+    dataset = FASTADataset(
+        root=args.fasta_file,
+        offset_file=local_offsets,
+        use_text_descriptions=True
+    )
 
-        offset_files_paths.sort()
-        builders = []
+    sampler = torch.utils.data.distributed.DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank
+    )
 
-        for i, offset_path in enumerate(offset_files_paths):
-            # adhoc, only for the uniref50.fasta.split_offsets_00.npy filename pattern
-            partition = int(offset_files_paths.split("/")[-1].split(".")[-2].split("_")[-1])
-            builder = BuildParquetFile(
-                fasta_file=args.fasta_file,
-                output_dir=args.output_dir,
-                fasta_offset_file=offset_path,
-                model_name=args.model_name,
-                batch_size=args.batch_size,
-                max_length=args.max_length,
-                max_num_per_shard=args.max_num_per_shard,
-                device=args.device,
-                cur_num_in_shard=args.cur_num_in_shard,
-                cur_shard_num=args.cur_shard_num,
-                filename_prefix=f"partition{partition:02}_",
-            )
-            builders.append(builder)
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=args.batch_size, sampler=sampler
+    )
+    
+    # Create model and wrap with DDP
+    model, tokenizer = load_model(args.model_name, args.max_length)
+    ddp_model = DistributedDataParallel(model, device_ids=[rank])
+    
+    # Inference loop
+    results_tmp_list = []
+    cur_shard_num = []
+    cur_num_in_shard = []
+    model_name = args.model_name.replace("/", "_")
+
+    for batch in dataloader:
+        with torch.no_grad():
+            outputs = compute_loss(batch, ddp_model, tokenizer, args.max_length)
+            results_tmp_list.extend(outputs)
+            cur_num_in_shard += len(outputs)
+
+            if cur_num_in_shard >= args.max_num_per_shard:
+                output_file = f"{args.output_dir}/{model_name}/rank_{rank:02}_shard_{cur_shard_num:06}.parquet"
+                pd.DataFrame(results_tmp_list).to_parquet(output_file, engine='pyarrow', index=False)
+                print(f"Saved shard {cur_shard_num} to {output_file}")
+
+                cur_shard_num += 1
+                cur_num_in_shard = 0
+                results_tmp_list = []
+            
+            else:
+                print(f"Processed {cur_num_in_shard} sequences in shard {cur_shard_num}")
 
 
+if __name__ == "__main__":
+    args = get_args()
+    world_size = torch.cuda.device_count()
+    rank = int(os.environ["LOCAL_RANK"])
+
+    main(args, rank, world_size)
