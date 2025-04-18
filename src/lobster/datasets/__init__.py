@@ -1,4 +1,5 @@
 from ._amplify_dataset import AMPLIFYIterableDataset
+from ._atomica_dataset import AtomicaDataset
 from ._calm_dataset import CalmDataset, CalmIterableDataset
 from ._calm_property_dataset import CalmPropertyDataset
 from ._fasta_dataset import FASTADataset
@@ -15,6 +16,7 @@ from ._zinc_dataset import ZINCIterableDataset
 
 __all__ = [
     "CalmDataset",
+    "AtomicaDataset",
     "CalmIterableDataset",
     "CalmPropertyDataset",
     "FASTADataset",
