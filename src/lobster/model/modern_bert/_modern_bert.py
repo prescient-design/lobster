@@ -174,16 +174,11 @@ class FlexBERT(pl.LightningModule):
             eps=self._eps,
         )
 
-        # Create base kwargs for the scheduler
-        scheduler_params = {
-            "num_warmup_steps": self._num_warmup_steps,
-            "num_training_steps": self._num_training_steps,
-        }
-
         scheduler = get_scheduler(
             self.scheduler, 
             optimizer, 
-            **scheduler_params, 
+            num_training_steps=self._num_training_steps,
+            num_warmup_steps=self._num_warmup_steps,
             scheduler_specific_kwargs=self.scheduler_kwargs
         )
 
