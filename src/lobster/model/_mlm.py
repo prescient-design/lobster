@@ -261,17 +261,13 @@ class LobsterPMLM(pl.LightningModule):
             betas=(self._beta1, self._beta2),
             eps=self._eps,
         )
-
-        # Create base kwargs for the scheduler
-        scheduler_params = {
-            "num_warmup_steps": self._num_warmup_steps,
-            "num_training_steps": self._num_training_steps,
-        }
-
-        # Add any additional scheduler kwargs from initialization
-        scheduler_params.update(self.scheduler_kwargs)
-
-        scheduler = get_scheduler(self.scheduler, optimizer, **scheduler_params)
+        scheduler = get_scheduler(
+            self.scheduler,
+            optimizer,
+            num_training_steps=self._num_training_steps,
+            num_warmup_steps=self._num_warmup_steps,
+            scheduler_specific_kwargs=self.scheduler_kwargs,
+        )
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
