@@ -145,7 +145,7 @@ class LobsterPCLM(pl.LightningModule):
         # Add any additional scheduler kwargs from initialization
         scheduler_params.update(self.scheduler_kwargs)
 
-        scheduler = get_scheduler(self.scheduler, optimizer, **scheduler_params)
+        scheduler = get_scheduler(self.scheduler, optimizer, scheduler_specific_kwargs=scheduler_params)
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 

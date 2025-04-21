@@ -34,4 +34,7 @@ def sample_tokenized_input(x: dict[str, Tensor]):
     dict[str, Tensor]
         Dictionary containing a single sampled tokenized input with shape (N,).
     """
-    return {key: value[torch.randint(0, value.size(0), (1,))] for key, value in x.items()}
+    return {
+        key: value[torch.randint(0, value.size(0), (1,))] if isinstance(value, Tensor) else value
+        for key, value in x.items()
+    }
