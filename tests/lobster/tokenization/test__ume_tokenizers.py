@@ -86,24 +86,28 @@ def test_ume_aminio_acid_tokenizer():
     tokenizer = UmeAminoAcidTokenizerFast()
     assert tokenizer.tokenize("VYF") == ["V", "Y", "F"]
     assert tokenizer.encode("VYF", padding="do_not_pad", add_special_tokens=True) == [0, 28, 40, 39, 2]
+    assert tokenizer.convert_tokens_to_ids("amino_acid__to__3d_coordinates") == 6
 
 
 def test_ume_smiles_tokenizer():
     tokenizer = UmeSmilesTokenizerFast()
     assert tokenizer.tokenize("CCO") == ["C", "C", "O"]
     assert tokenizer.encode("CCO", padding="do_not_pad", add_special_tokens=True) == [0, 52, 52, 56, 2]
+    assert tokenizer.convert_tokens_to_ids("amino_acid__to__3d_coordinates") == 6
 
 
 def test_ume_nucleotide_tokenizer():
     tokenizer = UmeNucleotideTokenizerFast()
     assert tokenizer.tokenize("ACGT") == ["A", "C", "G", "T"]
     assert tokenizer.encode("ACGT", padding="do_not_pad", add_special_tokens=True) == [0, 1272, 1273, 1274, 1275, 2]
+    assert tokenizer.convert_tokens_to_ids("amino_acid__to__3d_coordinates") == 6
 
 
 def test_ume_latent_generator_tokenizer():
     tokenizer = UmeLatentGenerator3DCoordTokenizerFast()
     assert tokenizer.tokenize("gd fh ds") == ["gd", "fh", "ds"]
     assert tokenizer.encode("gd fh ds", padding="do_not_pad", add_special_tokens=True) == [0, 1465, 1443, 1402, 2]
+    assert tokenizer.convert_tokens_to_ids("amino_acid__to__3d_coordinates") == 6
 
 
 class TestUmeTokenizerTransform:

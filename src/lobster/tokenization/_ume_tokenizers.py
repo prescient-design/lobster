@@ -5,6 +5,7 @@ no overlapping tokens between different modalities.
 
 Example structure:
 - Special tokens: ["<cls>", "<eos>", "<unk>", "<pad>"]
+- Conversion and interaction tokens: [<amino_acid__to__3d_coordinates>, ... <<amino_acid__and__SMILES>]
 - Amino acid tokenizer: [special_tokens] + ["A", "C", "D", ...]
 - SMILES tokenizer: [special_tokens] + [reserved_for_amino_acids] + ["C", "O", "N", ...]
 - Nucleotide tokenizer: [special_tokens] + [reserved_for_amino_acids] + [reserved_for_SMILES] + ["A", "C", "G", ...]
@@ -14,6 +15,13 @@ Example structure:
 To create the tokenizers, run
 
 ```python
+    from lobster.tokenization._ume_tokenizers import (
+        _make_ume_tokenizers,
+        UmeAminoAcidTokenizerFast,
+        UmeSmilesTokenizerFast,
+        UmeNucleotideTokenizerFast,
+        UmeLatentGenerator3DCoordTokenizerFast,
+    )
     # Create and save tokenizers
     _make_ume_tokenizers()
 
@@ -39,12 +47,14 @@ To create the tokenizers, run
 import importlib.resources
 import warnings
 from pathlib import Path
-from typing import List, Union
+from typing import List, Literal, Union
 
+import torch
 from tokenizers.models import BPE, WordLevel
 from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
 from torch import Tensor
+from torch.nn import Module
 from transformers import PreTrainedTokenizerFast
 
 import lobster.transforms.functional
@@ -75,17 +85,6 @@ PAD_TOKEN = "<pad>"
 SEP_TOKEN = "<sep>"
 MASK_TOKEN = "<mask>"
 SPECIAL_TOKENS = {CLS_TOKEN, EOS_TOKEN, UNK_TOKEN, PAD_TOKEN, SEP_TOKEN, MASK_TOKEN}
-
-# Order of tokenizers, important for vocabulary construction
-# DO NOT change the order of tokenizers without making corresponding
-# changes to the `_add_reserved_tokens` func
-TOKENIZER_ORDER = [
-    "special_tokens",
-    AMINO_ACID_TOKENIZER,
-    SMILES_TOKENIZER,
-    NUCLEOTIDE_TOKENIZER,
-    LATENT_GENERATOR_TOKENIZER,
-]
 
 
 def _load_file(filepath: str | Path, remove_special_tokens: bool = False) -> list[str]:
@@ -461,12 +460,30 @@ class UmeLatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
         )
 
 
+def _get_modality_tokenizer(modality: ModalityType | str) -> PreTrainedTokenizerFast:
+    modality = Modality(modality) if isinstance(modality, str) else modality
+
+    match modality:
+        case Modality.AMINO_ACID:
+            tokenizer = UmeAminoAcidTokenizerFast()
+        case Modality.SMILES:
+            tokenizer = UmeSmilesTokenizerFast()
+        case Modality.NUCLEOTIDE:
+            tokenizer = UmeNucleotideTokenizerFast()
+        case Modality.COORDINATES_3D:
+            tokenizer = UmeLatentGenerator3DCoordTokenizerFast()
+
+    return tokenizer
+
+
 class UmeTokenizerTransform(TokenizerTransform):
     def __init__(
         self,
         modality: ModalityType | Modality,
         max_length: int | None,
         return_modality: bool = False,
+        add_special_tokens: bool = True,
+        padding: str = "max_length",
     ):
         """Tokenizer transform for Ume tokenizers with different modalities.
 
@@ -486,19 +503,14 @@ class UmeTokenizerTransform(TokenizerTransform):
                     "attention_mask": [1, 1, 1, 1, 1],
                     "modality": Modality.AMINO_ACID
                 }
+        max_length : int, optional
+            The maximum length of the tokenized sequences.
+        add_special_tokens : bool, optional
+            If True, special tokens will be added to the tokenized sequences.
+        padding : str, optional
+            Padding strategy to use. Default is "max_length".
+            Can be "max_length", "longest", or "do_not_pad".
         """
-        modality = Modality(modality) if isinstance(modality, str) else modality
-
-        match modality:
-            case Modality.AMINO_ACID:
-                tokenizer = UmeAminoAcidTokenizerFast()
-            case Modality.SMILES:
-                tokenizer = UmeSmilesTokenizerFast()
-            case Modality.NUCLEOTIDE:
-                tokenizer = UmeNucleotideTokenizerFast()
-            case Modality.COORDINATES_3D:
-                tokenizer = UmeLatentGenerator3DCoordTokenizerFast()
-
         if max_length is None:
             warnings.warn(
                 "UmeTokenizerTransform did not receive `max_length` parameter. Padding and truncation will not be applied.",
@@ -507,10 +519,11 @@ class UmeTokenizerTransform(TokenizerTransform):
             )
 
         super().__init__(
-            tokenizer=tokenizer,
+            tokenizer=_get_modality_tokenizer(modality),
             max_length=max_length,
-            padding="max_length",
+            padding=padding,
             truncation=True,
+            add_special_tokens=add_special_tokens,
         )
 
         self.modality = Modality(modality) if isinstance(modality, str) else modality
@@ -529,3 +542,129 @@ class UmeTokenizerTransform(TokenizerTransform):
             return {**x, "modality": self.modality}
         else:
             return x
+
+
+class Ume2ModTokenizerTransform(Module):
+    """
+    Transform input pairs from two modalities for interaction or conversion tasks.
+
+    Combines inputs from two modalities with special tokens in the format:
+    [CLS] [input1] [SEP] <task_token> [input2] [SEP]
+
+    Parameters
+    ----------
+    modality1 : ModalityType or str
+        First input modality.
+    modality2 : ModalityType or str
+        Second input modality.
+    max_length : int
+        Maximum sequence length after token combination.
+    mode : {'interaction', 'conversion'}, optional
+        Task mode determining how inputs are interpreted. Default is 'interaction'.
+
+    Raises
+    ------
+    ValueError
+        If the `mode` is invalid or the special task token is missing in the tokenizer vocabulary.
+    """
+
+    def __init__(
+        self,
+        modality1: ModalityType | str,
+        modality2: ModalityType | str,
+        *,
+        max_length: int,
+        mode: Literal["interaction", "conversion"] = "interaction",
+    ) -> None:
+        super().__init__()
+
+        if mode not in {"interaction", "conversion"}:
+            raise ValueError("mode must be either 'interaction' or 'conversion'")
+
+        self.mode: Literal["interaction", "conversion"] = mode
+        self.max_length: int = max_length
+
+        self.modality1: ModalityType = Modality(modality1) if isinstance(modality1, str) else modality1
+        self.modality2: ModalityType = Modality(modality2) if isinstance(modality2, str) else modality2
+
+        self.tokenizer1 = _get_modality_tokenizer(modality1)
+        self.tokenizer2 = _get_modality_tokenizer(modality2)
+
+        self.cls_id: int = self.tokenizer1.cls_token_id
+        self.sep_id: int = self.tokenizer1.sep_token_id
+        self.pad_id: int = self.tokenizer1.pad_token_id
+
+        # Initialize special token and ID for task
+        self.special_task_token: str = f"<{self.mode}__{self.modality1}__{self.modality2}>"
+
+        if self.special_task_token not in self.tokenizer1.get_vocab():
+            raise ValueError(
+                f"Special task token {self.special_task_token} not found in tokenizer vocabulary."
+                f" Hint: this {self.mode} task is not supported"
+            )
+
+        self.special_task_token_id: int = self.tokenizer1.convert_tokens_to_ids(self.special_task_token)
+
+    def _encode_single_item(self, item: str | list[str], tokenizer, modality: Modality) -> dict:
+        """Encode a single item using the provided tokenizer without special tokens and no padding."""
+        encoded = tokenizer(item, padding="do_not_pad", truncation=False, add_special_tokens=False)
+
+        if modality == Modality.COORDINATES_3D:
+            encoded = self._process_3d_coordinates(encoded)
+
+        encoded["modality"] = modality
+
+        return encoded
+
+    def _process_3d_coordinates(self, encoded: dict) -> dict:
+        """Sample one of four 3D coordinate token sets"""
+        tensor_encoded = {k: torch.tensor(v) for k, v in encoded.items()}
+        sampled = lobster.transforms.functional.sample_tokenized_input(tensor_encoded)
+
+        return {k: v.flatten().tolist() for k, v in sampled.items()}
+
+    def _combine_and_pad(self, input_ids1: list[int], input_ids2: list[int]) -> list[int]:
+        """Combine token ID sequences and apply padding/truncation."""
+        combined_ids = [
+            self.cls_id,
+            *input_ids1,
+            self.sep_id,
+            self.special_task_token_id,
+            *input_ids2,
+            self.sep_id,
+        ]
+
+        if len(combined_ids) > self.max_length:
+            combined_ids = combined_ids[: self.max_length]
+        elif len(combined_ids) < self.max_length:
+            combined_ids.extend([self.pad_id] * (self.max_length - len(combined_ids)))
+
+        return combined_ids
+
+    def forward(self, items: tuple[str, str] | tuple[list[str], list[str]]) -> dict:
+        """
+        Tokenize and format a pair of modality inputs for model ingestion.
+
+        Parameters
+        ----------
+        items : tuple of (str or list of str, str or list of str)
+            Pair of inputs, one for each modality.
+
+        Returns
+        -------
+        dict
+            Dictionary with combined `input_ids`, `attention_mask`,
+            and metadata fields: `modality1`, `modality2`, and `mode`.
+        """
+        encoded1 = self._encode_single_item(items[0], self.tokenizer1, self.modality1)
+        encoded2 = self._encode_single_item(items[1], self.tokenizer2, self.modality2)
+
+        combined_ids = self._combine_and_pad(encoded1["input_ids"], encoded2["input_ids"])
+
+        return {
+            "input_ids": torch.tensor(combined_ids),
+            "attention_mask": torch.tensor([1 if token_id != self.pad_id else 0 for token_id in combined_ids]),
+            "modality1": self.modality1,
+            "modality2": self.modality2,
+            "mode": self.mode,
+        }
