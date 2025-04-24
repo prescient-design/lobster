@@ -488,32 +488,59 @@ class UmeTokenizerTransform(TokenizerTransform):
         add_special_tokens: bool = True,
         padding: str = "max_length",
     ):
-        """Tokenizer transform for Ume tokenizers with different modalities.
+        """
+        Transform input pairs from two modalities for interaction or conversion tasks.
+
+        Combines inputs from two modalities with special tokens in the format:
+        [CLS] [input1] [SEP] <task_token> [input2] [SEP]
 
         Parameters
         ----------
-        modality : ModalityType | Modality
-            The modality of the tokenizer.
-            Can be either a string from lobster.constants.ModalityType:
+        modality1 : ModalityType | str
+            First input modality. Can be either a string from lobster.constants.ModalityType:
             Literal["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
             or a Modality enum object.
-        return_modality : bool, optional
-            If True, the modality of the tokenizer will be returned along with
-            the tokenized output.
-            Example:
-                {
-                    "input_ids": [0, 1, 2, 3, 4],
-                    "attention_mask": [1, 1, 1, 1, 1],
-                    "modality": Modality.AMINO_ACID
-                }
-        max_length : int, optional
-            The maximum length of the tokenized sequences.
-        add_special_tokens : bool, optional
-            If True, special tokens will be added to the tokenized sequences.
-        padding : str, optional
-            Padding strategy to use. Default is "max_length".
-            Can be "max_length", "longest", or "do_not_pad".
+        modality2 : ModalityType | str
+            Second input modality. Can be either a string from lobster.constants.ModalityType:
+            Literal["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
+            or a Modality enum object.
+        max_length : int
+            Maximum sequence length after token combination.
+        mode : {'interact', 'convert'}, optional
+            Task mode determining how inputs are interpreted. Default is 'interact'.
+            - 'interact': For modeling interactions between two modalities
+            - 'convert': For conversion tasks from one modality to another
+
+        Raises
+        ------
+        ValueError
+            If the `mode` is invalid or the special task token is missing in the tokenizer vocabulary.
+
+        Examples
+        --------
+        >>> from lobster.tokenization._ume_tokenizers import Ume2ModTokenizerTransform
+        >>>
+        >>> # Initialize for interaction between amino acid and SMILES
+        >>> tokenizer = Ume2ModTokenizerTransform(
+        ...     modality1="amino_acid",
+        ...     modality2="SMILES",
+        ...     max_length=20,
+        ...     mode="interact"
+        ... )
+        >>>
+        >>> # Tokenize a pair of inputs
+        >>> output = tokenizer(("MYK", "CCO"))
+        >>>
+        >>> # Examine the output structure
+        >>> print(output.keys())
+        dict_keys(['input_ids', 'attention_mask', 'modality1', 'modality2', 'mode'])
+        >>>
+        >>> # Decode tokens back
+        >>> tokens1 = tokenizer.tokenizer1.convert_ids_to_tokens(output["input_ids"])
+        >>> print(tokens1[:10])  # First 10 tokens
+        ['[CLS]', 'M', 'Y', 'K', '[SEP]', '<interact>', 'C', 'C', 'O', '[SEP]']
         """
+
         if max_length is None:
             warnings.warn(
                 "UmeTokenizerTransform did not receive `max_length` parameter. Padding and truncation will not be applied.",
@@ -577,14 +604,15 @@ class Ume2ModTokenizerTransform(Module):
         modality2: ModalityType | str,
         *,
         max_length: int,
-        mode: Literal["interaction", "conversion"] = "interaction",
+        mode: Literal["interact", "convert"] = "interact",
     ) -> None:
         super().__init__()
 
-        if mode not in {"interaction", "conversion"}:
-            raise ValueError("mode must be either 'interaction' or 'conversion'")
+        if mode not in {"interact", "convert"}:
+            raise ValueError("mode must be either 'interact' or 'convert'")
 
-        self.mode: Literal["interaction", "conversion"] = mode
+        self.mode = mode
+        self.task_token = f"<{self.mode}>"
         self.max_length: int = max_length
 
         self.modality1: ModalityType = Modality(modality1) if isinstance(modality1, str) else modality1
@@ -597,16 +625,12 @@ class Ume2ModTokenizerTransform(Module):
         self.sep_id: int = self.tokenizer1.sep_token_id
         self.pad_id: int = self.tokenizer1.pad_token_id
 
-        # Initialize special token and ID for task
-        self.special_task_token: str = f"<{self.mode}__{self.modality1}__{self.modality2}>"
-
-        if self.special_task_token not in self.tokenizer1.get_vocab():
+        if self.task_token not in self.tokenizer1.get_vocab() or self.task_token not in self.tokenizer2.get_vocab():
             raise ValueError(
-                f"Special task token {self.special_task_token} not found in tokenizer vocabulary."
-                f" Hint: this {self.mode} task is not supported"
+                f"Task token '{self.task_token}' not found in tokenizer vocabularies. "
+                "Please ensure that the tokenizers are properly initialized."
             )
-
-        self.special_task_token_id: int = self.tokenizer1.convert_tokens_to_ids(self.special_task_token)
+        self.task_token_id: int = self.tokenizer1.convert_tokens_to_ids(self.task_token)
 
     def _encode_single_item(self, item: str | list[str], tokenizer, modality: Modality) -> dict:
         """Encode a single item using the provided tokenizer without special tokens and no padding."""
@@ -620,7 +644,7 @@ class Ume2ModTokenizerTransform(Module):
         return encoded
 
     def _process_3d_coordinates(self, encoded: dict) -> dict:
-        """Sample one of four 3D coordinate token sets"""
+        """Sample one of four tokens sets produced by the LG tokenizer"""
         tensor_encoded = {k: torch.tensor(v) for k, v in encoded.items()}
         sampled = lobster.transforms.functional.sample_tokenized_input(tensor_encoded)
 
@@ -632,7 +656,7 @@ class Ume2ModTokenizerTransform(Module):
             self.cls_id,
             *input_ids1,
             self.sep_id,
-            self.special_task_token_id,
+            self.task_token_id,
             *input_ids2,
             self.sep_id,
         ]
@@ -647,6 +671,9 @@ class Ume2ModTokenizerTransform(Module):
     def forward(self, items: tuple[str, str] | tuple[list[str], list[str]]) -> dict:
         """
         Tokenize and format a pair of modality inputs for model ingestion.
+
+        Encoded format:
+        [CLS] [input1] [SEP] <task_token> [input2] [SEP]
 
         Parameters
         ----------

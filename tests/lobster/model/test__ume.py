@@ -83,8 +83,8 @@ class TestUme:
                 tokenizer = ume.get_tokenizer(modality_enum)
                 assert tokenizer == mock_tokenizers[modality_enum]
 
-    def test_get_embeddings(self, sample_sequences):
-        """Test get_embeddings for different modalities"""
+    def test_embed(self, sample_sequences):
+        """Test embed for different modalities"""
         # Setup mock model
         mock_model = MagicMock()
         mock_model.device = torch.device("cpu")
@@ -163,8 +163,8 @@ class TestUme:
             expected_vocab = {1: "token1", 2: "token2", 4: "token3", 5: "token4"}
             assert vocab == expected_vocab
 
-    def test_get_embeddings_without_model(self):
-        """Test error handling when get_embeddings is called without model"""
+    def test_embed_without_model(self):
+        """Test error handling when embed is called without model"""
         # Mock dependencies to avoid actual initialization
         with (
             patch("lobster.tokenization.UmeTokenizerTransform", MagicMock()),

@@ -1,6 +1,8 @@
 import pytest
+import torch
 from lobster.constants import Modality
 from lobster.tokenization._ume_tokenizers import (
+    Ume2ModTokenizerTransform,
     UmeAminoAcidTokenizerFast,
     UmeLatentGenerator3DCoordTokenizerFast,
     UmeNucleotideTokenizerFast,
@@ -131,3 +133,96 @@ class TestUmeTokenizerTransform:
         assert out["input_ids"].tolist()[0] == [0, 52, 2, 1]
         assert out["attention_mask"].tolist()[0] == [1, 1, 1, 0]
         assert out["modality"] == Modality.SMILES
+
+
+class TestUme2ModTokenizerTransform:
+    def test__init__(self):
+        """Test initialization of the Ume2ModTokenizerTransform."""
+        # Test normal initialization
+        tokenizer = Ume2ModTokenizerTransform(
+            modality1="amino_acid", modality2="SMILES", max_length=20, mode="interact"
+        )
+
+        assert tokenizer.modality1 == Modality.AMINO_ACID
+        assert tokenizer.modality2 == Modality.SMILES
+        assert tokenizer.max_length == 20
+        assert tokenizer.mode == "interact"
+        assert tokenizer.task_token == "<interact>"
+
+        # Test with invalid mode
+        with pytest.raises(ValueError, match="mode must be either 'interact' or 'convert'"):
+            Ume2ModTokenizerTransform(modality1="amino_acid", modality2="SMILES", max_length=20, mode="invalid_mode")
+
+    def test_forward(self):
+        """Test forward method with amino acid and SMILES inputs."""
+        tokenizer = Ume2ModTokenizerTransform(
+            modality1="amino_acid", modality2="SMILES", max_length=20, mode="interact"
+        )
+
+        # Test with the example input
+        output = tokenizer(("MYK", "CCO"))
+
+        # Check output structure
+        assert "input_ids" in output
+        assert "attention_mask" in output
+        assert "modality1" in output
+        assert "modality2" in output
+        assert "mode" in output
+
+        # Check types
+        assert isinstance(output["input_ids"], torch.Tensor)
+        assert isinstance(output["attention_mask"], torch.Tensor)
+        assert output["modality1"] == Modality.AMINO_ACID
+        assert output["modality2"] == Modality.SMILES
+        assert output["mode"] == "interact"
+
+        # Check tensor shapes
+        assert output["input_ids"].shape == (20,)
+        assert output["attention_mask"].shape == (20,)
+
+        # Check the token sequence structure
+        input_ids = output["input_ids"].tolist()
+        attention_mask = output["attention_mask"].tolist()
+
+        # Should start with CLS token
+        assert input_ids[0] == tokenizer.cls_id
+
+        # Check that padding works correctly (attention mask)
+        assert 0 in attention_mask  # Should have padding
+
+        # Check that the sequence contains the task token
+        assert tokenizer.task_token_id in input_ids
+
+        # Verify tokens can be decoded
+        tokens1 = tokenizer.tokenizer1.convert_ids_to_tokens(input_ids)
+        tokens2 = tokenizer.tokenizer2.convert_ids_to_tokens(input_ids)
+
+        # Basic check that decoding works without errors
+        assert isinstance(tokens1, list)
+        assert isinstance(tokens2, list)
+        assert len(tokens1) == 20
+        assert len(tokens2) == 20
+
+    @pytest.mark.parametrize(
+        "modality1,modality2,input_pair,mode",
+        [
+            pytest.param("amino_acid", "SMILES", ("MYK", "CCO"), "interact", id="amino_acid_SMILES_interact"),
+            pytest.param("amino_acid", "nucleotide", ("MYK", "ATCG"), "convert", id="amino_acid_nucleotide_convert"),
+        ],
+    )
+    def test_forward_different_modalities(self, modality1, modality2, input_pair, mode):
+        """Test forward method with different modality combinations."""
+        tokenizer = Ume2ModTokenizerTransform(modality1=modality1, modality2=modality2, max_length=30, mode=mode)
+
+        output = tokenizer(input_pair)
+
+        # Check output structure and types
+        assert isinstance(output["input_ids"], torch.Tensor)
+        assert isinstance(output["attention_mask"], torch.Tensor)
+        assert output["modality1"] == Modality(modality1)
+        assert output["modality2"] == Modality(modality2)
+        assert output["mode"] == mode
+
+        # Check shapes
+        assert output["input_ids"].shape == (30,)
+        assert output["attention_mask"].shape == (30,)
