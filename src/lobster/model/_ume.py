@@ -67,7 +67,7 @@ class Ume(L.LightningModule):
     >>>
     >>> # Get embeddings for protein sequences
     >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
-    >>> embeddings = encoder.get_embeddings(sequences, "amino_acid")
+    >>> embeddings = encoder.embed_sequences(sequences, "amino_acid")
     >>> print(embeddings.shape)
     torch.Size([1, 768])
     """
@@ -261,7 +261,7 @@ class Ume(L.LightningModule):
         >>>
         >>> # Now you can use it for inference without gradient computation
         >>> import torch
-        >>> embeddings = encoder.get_embeddings(["ACDEFGHIK"], "amino_acid")
+        >>> embeddings = encoder.embed_sequences(["ACDEFGHIK"], "amino_acid")
         """
         for param in self.model.parameters():
             param.requires_grad = False
@@ -292,11 +292,26 @@ class Ume(L.LightningModule):
         self.model.train()
         self.frozen = False
 
-    def embed_input_ids(self, input_ids: Tensor, aggregate: bool = True) -> Tensor:
-        x = {
-            "input_ids": input_ids,
-        }
-        x = {k: v.to(self.model.device) for k, v in x.items() if isinstance(v, Tensor)}
+    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True) -> Tensor:
+        """Get embeddings for encoded inputs.
+
+        Parameters
+        ----------
+        inputs : dict[str, Tensor]
+            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
+        aggregate : bool, default=True
+            Whether to average pool over the sequence length dimension.
+
+        Returns
+        -------
+        Tensor
+            Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
+            Otherwise, shape is (batch_size, seq_len, hidden_size).
+        """
+        if not (k not in inputs for k in {"input_ids", "attention_mask"}):
+            raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
+
+        x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
 
         if self.frozen:
             with torch.no_grad():
@@ -315,7 +330,7 @@ class Ume(L.LightningModule):
         else:
             return embeddings
 
-    def get_embeddings(
+    def embed_sequences(
         self, sequences: Sequence[str], modality: ModalityType | Modality, aggregate: bool = True
     ) -> Tensor:
         """Get embeddings for the provided inputs using the specified modality.
@@ -346,20 +361,20 @@ class Ume(L.LightningModule):
         >>> # Get protein embeddings
         >>> encoder = Ume(model_name="UME_mini")
         >>> sequences = ["MKTVQRERL", "ACDEFGHIKL"]
-        >>> embeddings = encoder.get_embeddings(sequences, "amino_acid")
+        >>> embeddings = encoder.embed_sequences(sequences, "amino_acid")
         >>> print(embeddings.shape)
         torch.Size([2, 768])
         >>>
         >>> # Get token-level embeddings for DNA sequences
         >>> dna_seqs = ["ATGCATGC", "GCTAGCTA"]
-        >>> token_embeddings = encoder.get_embeddings(dna_seqs, "nucleotide", aggregate=False)
+        >>> token_embeddings = encoder.embed_sequences(dna_seqs, "nucleotide", aggregate=False)
         >>> print(token_embeddings.shape)
         torch.Size([2, 10, 768])  # [batch_size, seq_len, hidden_dim] (includes special tokens)
         >>>
         >>> # Get SMILES embeddings using Modality enum
         >>> from lobster.constants import Modality
         >>> smiles = ["CC(=O)OC1=CC=CC=C1C(=O)O", "CCO"]
-        >>> smiles_embeddings = encoder.get_embeddings(smiles, Modality.SMILES)
+        >>> smiles_embeddings = encoder.embed_sequences(smiles, Modality.SMILES)
         >>> print(smiles_embeddings.shape)
         torch.Size([2, 768])
         >>>
@@ -367,8 +382,8 @@ class Ume(L.LightningModule):
         >>> import torch.nn.functional as F
         >>> seq1 = ["MKTVQRERLKAAAAAA"]
         >>> seq2 = ["MKTVQRERL"]
-        >>> emb1 = encoder.get_embeddings(seq1, "amino_acid")
-        >>> emb2 = encoder.get_embeddings(seq2, "amino_acid")
+        >>> emb1 = encoder.embed_sequences(seq1, "amino_acid")
+        >>> emb2 = encoder.embed_sequences(seq2, "amino_acid")
         >>> # Compute cosine similarity
         >>> similarity = F.cosine_similarity(emb1, emb2)
         >>> print(f"Sequence similarity: {similarity.item():.4f}")
@@ -376,7 +391,7 @@ class Ume(L.LightningModule):
         >>>
         >>> # Batch processing for efficiency
         >>> large_batch = ["ACGT" * i for i in range(1, 101)]  # 100 sequences of varying length
-        >>> batch_embeddings = encoder.get_embeddings(large_batch, "nucleotide")
+        >>> batch_embeddings = encoder.embed_sequences(large_batch, "nucleotide")
         >>> print(batch_embeddings.shape)
         torch.Size([100, 768])
         """
@@ -389,9 +404,9 @@ class Ume(L.LightningModule):
         modality_enum = Modality(modality) if isinstance(modality, str) else modality
         tokenizer_transform = self.tokenizer_transforms[modality_enum]
 
-        tokenized_inputs = tokenizer_transform(list(sequences))
+        encoded = tokenizer_transform(list(sequences))
 
-        return self.embed_input_ids(tokenized_inputs["input_ids"], aggregate=aggregate)
+        return self.embed(encoded, aggregate=aggregate)
 
     def configure_optimizers(self) -> dict[str, object]:
         """Configure optimizers and learning rate schedulers.

@@ -125,15 +125,15 @@ class TestUme:
                 ume.tokenizer_transforms[modality_enum] = mock_transform
 
                 # Test aggregated embeddings
-                embeddings = ume.get_embeddings(inputs, modality)
+                embeddings = ume.embed_sequences(inputs, modality)
                 assert embeddings.shape == (batch_size, 768)
 
                 # Test token-level embeddings
-                token_embeddings = ume.get_embeddings(inputs, modality, aggregate=False)
+                token_embeddings = ume.embed_sequences(inputs, modality, aggregate=False)
                 assert token_embeddings.shape == (batch_size, seq_len, 768)
 
                 # Test using Modality enum directly
-                embeddings_enum = ume.get_embeddings(inputs, modality_enum)
+                embeddings_enum = ume.embed_sequences(inputs, modality_enum)
                 assert embeddings_enum.shape == (batch_size, 768)
 
     def test_get_vocab(self):
@@ -174,7 +174,7 @@ class TestUme:
             ume.model = None  # Explicitly set model to None
 
             with pytest.raises(ValueError):
-                ume.get_embeddings(["test"], "SMILES")
+                ume.embed_sequences(["test"], "SMILES")
 
     def test_freeze_unfreeze(self):
         """Test freezing and unfreezing model parameters"""
