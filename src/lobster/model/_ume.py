@@ -315,7 +315,9 @@ class Ume(L.LightningModule):
         else:
             return embeddings
 
-    def embed(self, sequences: Sequence[str], modality: ModalityType | Modality, aggregate: bool = True) -> Tensor:
+    def get_embeddings(
+        self, sequences: Sequence[str], modality: ModalityType | Modality, aggregate: bool = True
+    ) -> Tensor:
         """Get embeddings for the provided inputs using the specified modality.
 
         Parameters
