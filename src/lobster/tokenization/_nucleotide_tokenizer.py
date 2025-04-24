@@ -2,6 +2,7 @@ import importlib.resources
 from typing import Optional
 
 from tokenizers.models import BPE
+from tokenizers.normalizers import Lowercase
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
 
@@ -14,12 +15,12 @@ NT_VOCAB = {
     "<unk>": 3,
     "<mask>": 4,
     "<sep>": 5,
-    "A": 6,
-    "C": 7,
-    "G": 8,
-    "T": 9,
-    "N": 10,
-    "U": 11,
+    "a": 6,
+    "c": 7,
+    "g": 8,
+    "t": 9,
+    "n": 10,
+    "u": 11,
 }
 
 PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "nucleotide_tokenizer"
@@ -48,6 +49,7 @@ def _make_nucleotide_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZE
         tokenizer_model=tokenizer_model,
         save_dirpath=save_dirpath,
         post_processor=post_processor,
+        normalizer=Lowercase(),
         cls_token=cls_token,
         pad_token=pad_token,
         eos_token=eos_token,

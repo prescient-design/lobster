@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Literal
+from typing import Callable, Dict, List, Literal, Sequence
 
 import lightning as L
 import torch
@@ -292,12 +292,35 @@ class Ume(L.LightningModule):
         self.model.train()
         self.frozen = False
 
-    def get_embeddings(self, inputs: List[str], modality: ModalityType | Modality, aggregate: bool = True) -> Tensor:
+    def embed_input_ids(self, input_ids: Tensor, aggregate: bool = True) -> Tensor:
+        x = {
+            "input_ids": input_ids,
+        }
+        x = {k: v.to(self.model.device) for k, v in x.items() if isinstance(v, Tensor)}
+
+        if self.frozen:
+            with torch.no_grad():
+                embeddings = self.model.tokens_to_latents(**x)
+        else:
+            embeddings = self.model.tokens_to_latents(**x)
+
+        # Reshape to (batch_size, seq_len, hidden_size)
+        batch_size = x["input_ids"].size(0)
+        seq_len = x["input_ids"].size(-1)
+        embeddings = embeddings.view(batch_size, seq_len, -1)
+
+        if aggregate:
+            # Simple mean pooling over sequence length dimension
+            return embeddings.mean(dim=1)
+        else:
+            return embeddings
+
+    def embed(self, sequences: Sequence[str], modality: ModalityType | Modality, aggregate: bool = True) -> Tensor:
         """Get embeddings for the provided inputs using the specified modality.
 
         Parameters
         ----------
-        inputs : List[str]
+        sequences : Sequence[str]
             List of input strings to encode.
         modality : str | Modality
             The modality to use for encoding. Can be a string ("SMILES", "amino_acid",
@@ -364,26 +387,9 @@ class Ume(L.LightningModule):
         modality_enum = Modality(modality) if isinstance(modality, str) else modality
         tokenizer_transform = self.tokenizer_transforms[modality_enum]
 
-        tokenized_inputs = tokenizer_transform(inputs)
+        tokenized_inputs = tokenizer_transform(list(sequences))
 
-        x = {k: v.to(self.model.device) for k, v in tokenized_inputs.items() if isinstance(v, Tensor)}
-
-        if self.frozen:
-            with torch.no_grad():
-                embeddings = self.model.tokens_to_latents(**x)
-        else:
-            embeddings = self.model.tokens_to_latents(**x)
-
-        # Reshape to (batch_size, seq_len, hidden_size)
-        batch_size = x["input_ids"].size(0)
-        seq_len = x["input_ids"].size(-1)
-        embeddings = embeddings.view(batch_size, seq_len, -1)
-
-        if aggregate:
-            # Simple mean pooling over sequence length dimension
-            return embeddings.mean(dim=1)
-        else:
-            return embeddings
+        return self.embed_input_ids(tokenized_inputs["input_ids"], aggregate=aggregate)
 
     def configure_optimizers(self) -> dict[str, object]:
         """Configure optimizers and learning rate schedulers.

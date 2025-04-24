@@ -3,9 +3,10 @@
 Creates tokenizers with shared special tokens and reserved tokens to make sure there are
 no overlapping tokens between different modalities.
 
-Example structure:
+Vocabulary structure:
 - Special tokens: ["<cls>", "<eos>", "<unk>", "<pad>"]
-- Conversion and interaction tokens: [<amino_acid__to__3d_coordinates>, ... <<amino_acid__and__SMILES>]
+- Conversion and interaction tokens: ["<convert>", "<interact>"]
+- Extra special tokens to get % 64 == 0: ["<extra_special_token_2>", "<extra_special_token_3>", ...]
 - Amino acid tokenizer: [special_tokens] + ["A", "C", "D", ...]
 - SMILES tokenizer: [special_tokens] + [reserved_for_amino_acids] + ["C", "O", "N", ...]
 - Nucleotide tokenizer: [special_tokens] + [reserved_for_amino_acids] + [reserved_for_SMILES] + ["A", "C", "G", ...]
@@ -51,6 +52,7 @@ from typing import List, Literal, Union
 
 import torch
 from tokenizers.models import BPE, WordLevel
+from tokenizers.normalizers import Lowercase
 from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
 from torch import Tensor
@@ -311,6 +313,7 @@ def _make_nucleotide_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast
 
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
+        normalizer=Lowercase(),
         post_processor=post_processor,
         save_dirpath=str(TOKENIZERS_PATH / NUCLEOTIDE_TOKENIZER),
         cls_token=CLS_TOKEN,
@@ -549,7 +552,7 @@ class Ume2ModTokenizerTransform(Module):
     Transform input pairs from two modalities for interaction or conversion tasks.
 
     Combines inputs from two modalities with special tokens in the format:
-    [CLS] [input1] [SEP] <task_token> [input2] [SEP]
+    [CLS] <task_token> [input1] [SEP] [input2] [SEP]
 
     Parameters
     ----------
