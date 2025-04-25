@@ -491,39 +491,36 @@ class UmeTokenizerTransform(Module):
         Combines inputs as: [CLS] [input1] [SEP] <task_token> [input2] [SEP]
         where task_token is either <interact> or <convert>.
 
-    Examples:
-    ```
-    tokenizer = UmeTokenizerTransform(
-        modality="amino_acid",
-        max_length=12,
-        mode="interact",
-        return_modality=True,
-    )
-    out = tokenizer("MYK")
-    print(out)
-    # Output:
-    # {'input_ids': tensor([[ 0, 41, 40, 36, 2, 1, 1, 1, 1, 1, 1, 1]]),
-    #  'attention_mask': tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]]),
-    #  'modality': <Modality.AMINO_ACID: 'amino_acid'>}
+    Examples
+    --------
+    >>> # Single modality tokenization
+    >>> tokenizer = UmeTokenizerTransform(
+    ...     modality="amino_acid",
+    ...     max_length=12,
+    ...     mode="interact",
+    ...     return_modality=True,
+    ... )
+    >>> out = tokenizer("MYK")
+    >>> out
+    {'input_ids': tensor([[ 0, 41, 40, 36, 2, 1, 1, 1, 1, 1, 1, 1]]),
+    'attention_mask': tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]]),
+    'modality': <Modality.AMINO_ACID: 'amino_acid'>}
 
-    # Tokenize interaction between modalities
-    # Corresponds to: <cls> [input1] [sep] <task_token> [input2] [sep]
-    tokenizer = UmeTokenizerTransform(
-        modality=("amino_acid", "SMILES"),
-        max_length=16,
-        mode="interact",
-        return_modality=True,
-    )
-    out = tokenizer(("MYK", "CCO"))
-    print(out)
-    # Output:
-    # {'input_ids': tensor([ 0, 41, 40, 36, 5, 7, 52, 52, 56, 5, 1, 1, 1, 1, 1, 1]),
-    #  'attention_mask': tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]),
-    #  'modality1': <Modality.AMINO_ACID: 'amino_acid'>,
-    #  'modality2': <Modality.SMILES: 'SMILES'>,
-    #  'mode': 'interact'}
-
-    ```
+    >>> # Dual modality tokenization
+    >>> # Corresponds to: <cls> [input1] [sep] <task_token> [input2] [sep]
+    >>> tokenizer = UmeTokenizerTransform(
+    ...     modality=("amino_acid", "SMILES"),
+    ...     max_length=16,
+    ...     mode="interact",
+    ...     return_modality=True,
+    ... )
+    >>> out = tokenizer(("MYK", "CCO"))
+    >>> out
+    {'input_ids': tensor([ 0, 41, 40, 36, 5, 7, 52, 52, 56, 5, 1, 1, 1, 1, 1, 1]),
+    'attention_mask': tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]),
+    'modality1': <Modality.AMINO_ACID: 'amino_acid'>,
+    'modality2': <Modality.SMILES: 'SMILES'>,
+    'mode': 'interact'}
 
     Parameters
     ----------
