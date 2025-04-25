@@ -1,6 +1,6 @@
 import importlib.resources
 
-from tokenizers.models import BPE
+from tokenizers.models import WordLevel
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
 
@@ -60,7 +60,7 @@ def _make_amino_acid_tokenizer() -> PreTrainedTokenizerFast:
     """
 
     # BPE with no merges => just use input vocab
-    tokenizer_model = BPE(AA_VOCAB, merges=[], unk_token="<unk>", ignore_merges=True)
+    tokenizer_model = WordLevel(vocab=AA_VOCAB, unk_token="<unk>")
 
     # bert style post processing
     post_processor = TemplateProcessing(

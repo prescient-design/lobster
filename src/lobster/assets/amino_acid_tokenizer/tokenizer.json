@@ -128,14 +128,7 @@
   },
   "decoder": null,
   "model": {
-    "type": "BPE",
-    "dropout": null,
-    "unk_token": "<unk>",
-    "continuing_subword_prefix": null,
-    "end_of_word_suffix": null,
-    "fuse_unk": false,
-    "byte_fallback": false,
-    "ignore_merges": true,
+    "type": "WordLevel",
     "vocab": {
       "<cls>": 0,
       "<pad>": 1,
@@ -171,6 +164,6 @@
       "<null_1>": 31,
       "<mask>": 32
     },
-    "merges": []
+    "unk_token": "<unk>"
   }
 }

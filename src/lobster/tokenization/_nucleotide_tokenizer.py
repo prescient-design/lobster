@@ -1,7 +1,7 @@
 import importlib.resources
 from typing import Optional
 
-from tokenizers.models import BPE
+from tokenizers.models import WordLevel
 from tokenizers.normalizers import Lowercase
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
@@ -27,7 +27,7 @@ PRETRAINED_TOKENIZER_PATH = importlib.resources.files("lobster") / "assets" / "n
 
 
 def _make_nucleotide_tokenizer(save_dirpath: Optional[str] = PRETRAINED_TOKENIZER_PATH) -> PreTrainedTokenizerFast:
-    tokenizer_model = BPE(NT_VOCAB, merges=[], unk_token="<unk>", ignore_merges=True)
+    tokenizer_model = WordLevel(vocab=NT_VOCAB, unk_token="<unk>")
 
     cls_token = "<cls>"
     pad_token = "<pad>"
