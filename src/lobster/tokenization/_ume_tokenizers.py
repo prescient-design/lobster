@@ -271,7 +271,7 @@ def _make_smiles_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     PreTrainedTokenizerFast
         Configured fast tokenizer for SMILES chemical notations
     """
-    tokenizer_model = WordLevel(vocab=vocab, unk_token=UNK_TOKEN)
+    tokenizer_model = WordLevel(vocab={token: i for i, token in enumerate(vocab)}, unk_token=UNK_TOKEN)
     pre_tokenizer = PreTokenizerSequence([WhitespaceSplit()])
     post_processor = _create_post_processor()
 
@@ -601,7 +601,7 @@ class UmeTokenizerTransform(Module):
 
         def _validate_single_pose(pose: list[str]) -> None:
             if not (isinstance(pose, list) and len(pose) == 4 and all(isinstance(i, str) for i in pose)):
-                raise ValueError(f"For 3D coordinates, input must be a list of 4 strings. " f"Got: {pose} instead.")
+                raise ValueError(f"For 3D coordinates, input must be a list of 4 strings. Got: {pose} instead.")
 
         # Handle nested lists (batch input)
         if isinstance(item, list) and all(isinstance(i, list) for i in item):
