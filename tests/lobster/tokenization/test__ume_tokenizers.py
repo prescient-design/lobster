@@ -2,7 +2,6 @@ import pytest
 import torch
 from lobster.constants import Modality
 from lobster.tokenization._ume_tokenizers import (
-    Ume2ModTokenizerTransform,
     UmeAminoAcidTokenizerFast,
     UmeLatentGenerator3DCoordTokenizerFast,
     UmeNucleotideTokenizerFast,
@@ -122,107 +121,135 @@ class TestUmeTokenizerTransform:
             transform = UmeTokenizerTransform(modality="SMILES", max_length=None, return_modality=False)
 
         assert transform.modality == Modality.SMILES
-        assert transform._max_length is None
+        assert transform.max_length is None
         assert isinstance(transform.tokenizer, UmeSmilesTokenizerFast)
 
-    def test_forward(self):
-        transform = UmeTokenizerTransform(modality="SMILES", max_length=4, return_modality=True)
-
-        out = transform("C")
-
-        assert out["input_ids"].tolist()[0] == [0, 52, 2, 1]
-        assert out["attention_mask"].tolist()[0] == [1, 1, 1, 0]
-        assert out["modality"] == Modality.SMILES
-
-
-class TestUme2ModTokenizerTransform:
-    def test__init__(self):
-        """Test initialization of the Ume2ModTokenizerTransform."""
-        # Test normal initialization
-        tokenizer = Ume2ModTokenizerTransform(
-            modality1="amino_acid", modality2="SMILES", max_length=20, mode="interact"
-        )
-
-        assert tokenizer.modality1 == Modality.AMINO_ACID
-        assert tokenizer.modality2 == Modality.SMILES
-        assert tokenizer.max_length == 20
-        assert tokenizer.mode == "interact"
-        assert tokenizer.task_token == "<interact>"
-
-        # Test with invalid mode
-        with pytest.raises(ValueError, match="mode must be either 'interact' or 'convert'"):
-            Ume2ModTokenizerTransform(modality1="amino_acid", modality2="SMILES", max_length=20, mode="invalid_mode")
-
-    def test_forward(self):
-        """Test forward method with amino acid and SMILES inputs."""
-        tokenizer = Ume2ModTokenizerTransform(
-            modality1="amino_acid", modality2="SMILES", max_length=20, mode="interact"
-        )
-
-        # Test with the example input
-        output = tokenizer(("MYK", "CCO"))
-
-        # Check output structure
-        assert "input_ids" in output
-        assert "attention_mask" in output
-        assert "modality1" in output
-        assert "modality2" in output
-        assert "mode" in output
-
-        # Check types
-        assert isinstance(output["input_ids"], torch.Tensor)
-        assert isinstance(output["attention_mask"], torch.Tensor)
-        assert output["modality1"] == Modality.AMINO_ACID
-        assert output["modality2"] == Modality.SMILES
-        assert output["mode"] == "interact"
-
-        # Check tensor shapes
-        assert output["input_ids"].shape == (20,)
-        assert output["attention_mask"].shape == (20,)
-
-        # Check the token sequence structure
-        input_ids = output["input_ids"].tolist()
-        attention_mask = output["attention_mask"].tolist()
-
-        # Should start with CLS token
-        assert input_ids[0] == tokenizer.cls_id
-
-        # Check that padding works correctly (attention mask)
-        assert 0 in attention_mask  # Should have padding
-
-        # Check that the sequence contains the task token
-        assert tokenizer.task_token_id in input_ids
-
-        # Verify tokens can be decoded
-        tokens1 = tokenizer.tokenizer1.convert_ids_to_tokens(input_ids)
-        tokens2 = tokenizer.tokenizer2.convert_ids_to_tokens(input_ids)
-
-        # Basic check that decoding works without errors
-        assert isinstance(tokens1, list)
-        assert isinstance(tokens2, list)
-        assert len(tokens1) == 20
-        assert len(tokens2) == 20
-
     @pytest.mark.parametrize(
-        "modality1,modality2,input_pair,mode",
+        "modality,input_text,max_length,expected_input_ids,expected_attention_mask,expected_modality",
         [
-            pytest.param("amino_acid", "SMILES", ("MYK", "CCO"), "interact", id="amino_acid_SMILES_interact"),
-            pytest.param("amino_acid", "nucleotide", ("MYK", "ATCG"), "convert", id="amino_acid_nucleotide_convert"),
+            pytest.param("SMILES", "C", 6, [0, 52, 2, 1, 1, 1], [1, 1, 1, 0, 0, 0], Modality.SMILES, id="smiles"),
+            pytest.param(
+                "amino_acid", "V", 6, [0, 28, 2, 1, 1, 1], [1, 1, 1, 0, 0, 0], Modality.AMINO_ACID, id="amino_acid"
+            ),
+            pytest.param(
+                "nucleotide",
+                "acT",
+                6,
+                [0, 1272, 1273, 1275, 2, 1],
+                [1, 1, 1, 1, 1, 0],
+                Modality.NUCLEOTIDE,
+                id="nucleotide",
+            ),
+            pytest.param(
+                "3d_coordinates",
+                ["gd ad", "gd ad", "gd ad", "gd ad"],
+                6,
+                [0, 1465, 1309, 2, 1, 1],
+                [1, 1, 1, 1, 0, 0],
+                Modality.COORDINATES_3D,
+                id="3d_coordinates_list",
+            ),
         ],
     )
-    def test_forward_different_modalities(self, modality1, modality2, input_pair, mode):
-        """Test forward method with different modality combinations."""
-        tokenizer = Ume2ModTokenizerTransform(modality1=modality1, modality2=modality2, max_length=30, mode=mode)
+    def test_single_modalities(
+        self, modality, input_text, max_length, expected_input_ids, expected_attention_mask, expected_modality
+    ):
+        transform = UmeTokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
+        out = transform(input_text)
 
-        output = tokenizer(input_pair)
+        assert out["input_ids"].tolist()[0] == expected_input_ids
+        assert out["attention_mask"].tolist()[0] == expected_attention_mask
+        assert out["modality"] == expected_modality
 
-        # Check output structure and types
-        assert isinstance(output["input_ids"], torch.Tensor)
-        assert isinstance(output["attention_mask"], torch.Tensor)
-        assert output["modality1"] == Modality(modality1)
-        assert output["modality2"] == Modality(modality2)
-        assert output["mode"] == mode
+    @pytest.mark.parametrize(
+        "modality,input_batch,max_length,expected_input_ids",
+        [
+            pytest.param(
+                "SMILES", ["C", "CCO"], 6, torch.tensor([[0, 52, 2, 1, 1, 1], [0, 52, 52, 56, 2, 1]]), id="smiles_batch"
+            ),
+            pytest.param(
+                "amino_acid",
+                ["AR", "VYK"],
+                6,
+                torch.tensor([[0, 26, 31, 2, 1, 1], [0, 28, 40, 36, 2, 1]]),
+                id="amino_acid_batch",
+            ),
+            pytest.param(
+                "nucleotide",
+                ["at", "Cg"],
+                6,
+                torch.tensor([[0, 1272, 1275, 2, 1, 1], [0, 1273, 1274, 2, 1, 1]]),
+                id="nucleotide_batch",
+            ),
+        ],
+    )
+    def test_single_modalities_batch_input(self, modality, input_batch, max_length, expected_input_ids):
+        transform = UmeTokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
+        out = transform(input_batch)
+        assert torch.equal(out["input_ids"], expected_input_ids)
 
-        # Check shapes
-        assert output["input_ids"].shape == (30,)
-        assert output["attention_mask"].shape == (30,)
+    @pytest.mark.parametrize(
+        "modalities,max_length,mode,input_data,expected_input_ids,expected_decoded_tokens1,expected_decoded_tokens2",
+        [
+            pytest.param(
+                ("amino_acid", "SMILES"),
+                10,
+                "interact",
+                ("AWY", "C"),
+                torch.tensor([[0, 26, 43, 40, 5, 7, 52, 5, 1, 1]]),
+                ["<cls>", "A", "W", "Y", "<sep>", "<interact>", None, "<sep>", "<pad>", "<pad>"],
+                [
+                    "<cls>",
+                    "<reserved_for_amino_acids_special_token_20>",
+                    "<reserved_for_amino_acids_special_token_37>",
+                    "<reserved_for_amino_acids_special_token_34>",
+                    "<sep>",
+                    "<interact>",
+                    "C",
+                    "<sep>",
+                    "<pad>",
+                    "<pad>",
+                ],
+                id="amino_acid_smiles_interact",
+            ),
+            pytest.param(
+                ("nucleotide", "3d_coordinates"),
+                8,
+                "convert",
+                ("a", ["cz ge", "cz ge", "cz ge", "cz ge"]),
+                torch.tensor([[0, 1272, 5, 6, 1383, 1466, 5, 1]]),
+                ["<cls>", "a", "<sep>", "<convert>", None, None, "<sep>", "<pad>"],
+                [
+                    "<cls>",
+                    "<reserved_for_nucleotides_special_token_1266>",
+                    "<sep>",
+                    "<convert>",
+                    "cz",
+                    "ge",
+                    "<sep>",
+                    "<pad>",
+                ],
+                id="nucleotide_3d_coordinates_convert",
+            ),
+        ],
+    )
+    def test_dual_modalities(
+        self,
+        modalities,
+        max_length,
+        mode,
+        input_data,
+        expected_input_ids,
+        expected_decoded_tokens1,
+        expected_decoded_tokens2,
+    ):
+        transform = UmeTokenizerTransform(modality=modalities, max_length=max_length, return_modality=True, mode=mode)
+        out = transform(input_data)
+
+        assert torch.equal(out["input_ids"], expected_input_ids)
+
+        decoded_tokens1 = transform.tokenizer1.convert_ids_to_tokens(out["input_ids"][0])
+        decoded_tokens2 = transform.tokenizer2.convert_ids_to_tokens(out["input_ids"][0])
+
+        assert decoded_tokens1 == expected_decoded_tokens1
+        assert decoded_tokens2 == expected_decoded_tokens2
