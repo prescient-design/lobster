@@ -308,7 +308,7 @@ class Ume(L.LightningModule):
             Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
             Otherwise, shape is (batch_size, seq_len, hidden_size).
         """
-        if not all(k not in inputs for k in {"input_ids", "attention_mask"}):
+        if not all(k in inputs for k in {"input_ids", "attention_mask"}):
             raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
 
         x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
@@ -331,14 +331,14 @@ class Ume(L.LightningModule):
             return embeddings
 
     def embed_sequences(
-        self, sequences: Sequence[str], modality: ModalityType | Modality, aggregate: bool = True
+        self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
     ) -> Tensor:
         """Get embeddings for the provided inputs using the specified modality.
 
         Parameters
         ----------
-        sequences : Sequence[str]
-            List of input strings to encode.
+        sequences : Sequence[str] | str
+            List of input strings to encode or a single string.
         modality : str | Modality
             The modality to use for encoding. Can be a string ("SMILES", "amino_acid",
             "nucleotide", "3d_coordinates") or a Modality enum.
@@ -370,36 +370,9 @@ class Ume(L.LightningModule):
         >>> token_embeddings = encoder.embed_sequences(dna_seqs, "nucleotide", aggregate=False)
         >>> print(token_embeddings.shape)
         torch.Size([2, 10, 768])  # [batch_size, seq_len, hidden_dim] (includes special tokens)
-        >>>
-        >>> # Get SMILES embeddings using Modality enum
-        >>> from lobster.constants import Modality
-        >>> smiles = ["CC(=O)OC1=CC=CC=C1C(=O)O", "CCO"]
-        >>> smiles_embeddings = encoder.embed_sequences(smiles, Modality.SMILES)
-        >>> print(smiles_embeddings.shape)
-        torch.Size([2, 768])
-        >>>
-        >>> # Use embeddings for similarity comparison
-        >>> import torch.nn.functional as F
-        >>> seq1 = ["MKTVQRERLKAAAAAA"]
-        >>> seq2 = ["MKTVQRERL"]
-        >>> emb1 = encoder.embed_sequences(seq1, "amino_acid")
-        >>> emb2 = encoder.embed_sequences(seq2, "amino_acid")
-        >>> # Compute cosine similarity
-        >>> similarity = F.cosine_similarity(emb1, emb2)
-        >>> print(f"Sequence similarity: {similarity.item():.4f}")
-        Sequence similarity: 0.9876  # Example output
-        >>>
-        >>> # Batch processing for efficiency
-        >>> large_batch = ["ACGT" * i for i in range(1, 101)]  # 100 sequences of varying length
-        >>> batch_embeddings = encoder.embed_sequences(large_batch, "nucleotide")
-        >>> print(batch_embeddings.shape)
-        torch.Size([100, 768])
         """
-        if self.model is None:
-            raise ValueError(
-                "Model has not been initialized. Load a model from a checkpoint. "
-                "Example: `Ume.load_from_checkpoint('path/to/checkpoint.ckpt')`"
-            )
+        if isinstance(sequences, str):
+            sequences = [sequences]
 
         modality_enum = Modality(modality) if isinstance(modality, str) else modality
         tokenizer_transform = self.tokenizer_transforms[modality_enum]

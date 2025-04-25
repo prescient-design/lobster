@@ -593,25 +593,39 @@ class UmeTokenizerTransform(Module):
 
             self.pad_id = self.tokenizer1.pad_token_id
 
-    def _check_3d_coordinates(self, item: list[str]):
-        "Latent generator returns four sets of tokens: Eg. ['ge be', 'fh ds', 'gh ge', 'ds be']"
-        if not isinstance(item, list) or len(item) != 4 or not all(isinstance(i, str) for i in item):
-            raise ValueError(
-                f"For 3D coordinates, input must be a list of 4 strings. "
-                "Hint: batch encoding is not supported for this modality "
-                f"Got: {item} instead."
-            )
+    def _check_and_sample_3d_coordinates(self, item: list[str] | list[list[str]]) -> None:
+        """Validate 3D coordinate input structure.
 
-    def _sample_3d_coordinates(self, item: list[str]) -> str | list[str]:
-        """Sample one of four token sets for Latent Generator 3D coordinates."""
-        return lobster.transforms.functional.sample_item(item, seed=self.seed)
+        3D Coordinates should be either:
+        - A list of 4 tokenized canonical poses: ['ge be', 'fh ds', 'gh ge', 'ds be']
+        - A list of such lists: [['ge be', 'fh ds', 'gh ge', 'ds be'], [...]]
+        """
+
+        def _validate_single_pose(pose: list[str]) -> None:
+            if not (isinstance(pose, list) and len(pose) == 4 and all(isinstance(i, str) for i in pose)):
+                raise ValueError(f"For 3D coordinates, input must be a list of 4 strings. " f"Got: {pose} instead.")
+
+        # Handle nested lists (batch input)
+        if isinstance(item, list) and all(isinstance(i, list) for i in item):
+            items = []
+
+            for pose in item:
+                _validate_single_pose(pose)
+                sampled_pose = lobster.transforms.functional.sample_item(pose, seed=self.seed)
+                items.append(sampled_pose)
+
+            return items
+        else:
+            # Handle single list (non-batch input)
+            _validate_single_pose(item)
+            return lobster.transforms.functional.sample_item(item, seed=self.seed)
 
     def _encode(self, item: str | list[str]) -> dict[str, Tensor]:
         """Tokenize and encode single modality input."""
 
         if self.modality == Modality.COORDINATES_3D:
-            self._check_3d_coordinates(item)
-            item = self._sample_3d_coordinates(item)
+            item = self._check_and_sample_3d_coordinates(item)
+            print(f"item after sampling: {item}")
 
         return self.tokenizer(
             item,
@@ -627,8 +641,7 @@ class UmeTokenizerTransform(Module):
     ) -> dict[str, list[int]]:
         """Encode an item for dual modality without padding or special tokens."""
         if modality == Modality.COORDINATES_3D:
-            self._check_3d_coordinates(item)
-            item = self._sample_3d_coordinates(item)
+            item = self._check_and_sample_3d_coordinates(item)
 
         return tokenizer(item, padding="do_not_pad", truncation=False, add_special_tokens=False)
 
@@ -693,7 +706,7 @@ class UmeTokenizerTransform(Module):
             return output
 
         # Dual modality
-
+        # Doesn't support batch processing for now
         if not isinstance(item, tuple) and len(item) != 2:
             raise NotImplementedError(
                 f"Dual modality doesn't support batch processing and only accepts a tuple of two items. "
