@@ -308,7 +308,7 @@ class Ume(L.LightningModule):
             Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
             Otherwise, shape is (batch_size, seq_len, hidden_size).
         """
-        if not (k not in inputs for k in {"input_ids", "attention_mask"}):
+        if not all(k not in inputs for k in {"input_ids", "attention_mask"}):
             raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
 
         x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
