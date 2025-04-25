@@ -271,9 +271,7 @@ def _make_smiles_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     PreTrainedTokenizerFast
         Configured fast tokenizer for SMILES chemical notations
     """
-    tokenizer_model = BPE(
-        {token: i for i, token in enumerate(vocab)}, merges=[], unk_token=UNK_TOKEN, ignore_merges=True
-    )
+    tokenizer_model = WordLevel(vocab=vocab, unk_token=UNK_TOKEN)
     pre_tokenizer = PreTokenizerSequence([WhitespaceSplit()])
     post_processor = _create_post_processor()
 

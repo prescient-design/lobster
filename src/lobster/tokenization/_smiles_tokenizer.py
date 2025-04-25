@@ -2,7 +2,7 @@ import importlib.resources
 from pathlib import Path
 
 from tokenizers import Regex
-from tokenizers.models import BPE
+from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Split
 from tokenizers.processors import TemplateProcessing
 from transformers import PreTrainedTokenizerFast
@@ -38,9 +38,7 @@ def _make_smiles_tokenizer(save_dirpath: str | Path | None = PRETRAINED_TOKENIZE
     vocab = load_vocab_file(VOCAB_PATH)
     vocab = {v: k for k, v in enumerate(vocab)}
 
-    print(vocab)
-
-    tokenizer_model = BPE(vocab, merges=[], unk_token="<unk>", ignore_merges=True)
+    tokenizer_model = WordLevel(vocab=vocab, unk_token=unk_token)
 
     pre_tokenizer = Split(pattern=Regex(SMILES_REGEX_PATTERN), behavior="isolated")
 

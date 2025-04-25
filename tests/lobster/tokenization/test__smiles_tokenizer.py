@@ -55,3 +55,17 @@ class TestSmilesTokenizerFast:
             "cls_token": "<cls>",
             "mask_token": "<mask>",
         }
+
+    def test_complex_smiles(self, tokenizer):
+        smiles = "COC(=)[C@@H]"
+        tokens = tokenizer.tokenize(smiles)
+
+        # [C@@H] should be tokenized as a single token
+        expected_tokens = ["C", "O", "C", "(", "=", ")", "[C@@H]"]
+        assert tokens == expected_tokens
+
+        # Encode and decode should preserve the structure
+        encoded = tokenizer.encode(smiles)
+        decoded_tokens = tokenizer.convert_ids_to_tokens(encoded)
+        assert "[C@@H]" in decoded_tokens
+        assert "<unk>" not in decoded_tokens[1:-1]  # Exclude special tokens
