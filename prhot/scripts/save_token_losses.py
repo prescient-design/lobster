@@ -1,14 +1,17 @@
 from typing import Dict, List, Any
 import os
 import argparse
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel
 from torch.nn.functional import cross_entropy
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lobster.datasets import FASTADataset 
 
@@ -69,6 +72,10 @@ def setup(rank, world_size):
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
 
+def cleanup():
+    dist.destroy_process_group()
+
+
 def load_model(model_name: str = "lightonai/RITA_xl", max_length: int = 512) -> torch.nn.Module:
     """Load the model and tokenizer."""
     model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
@@ -76,9 +83,7 @@ def load_model(model_name: str = "lightonai/RITA_xl", max_length: int = 512) -> 
     tokenizer.pad_token = "<PAD>"
     tokenizer.pad_token_id = tokenizer.vocab['<PAD>']
     tokenizer.max_length = max_length
-
-    model = model.eval()
-    model = model.compile()
+    model.eval()
     return model, tokenizer
 
 
@@ -86,9 +91,10 @@ def get_model_device(model: torch.nn.Module) -> torch.device:
     return next(model.parameters()).device
 
 
-def compute_loss(batch, model, tokenizer, max_length) -> List[Dict[str, Any]]:
+def compute_loss(batch, model, tokenizer, max_length, device=None) -> List[Dict[str, Any]]:
     sequences, headers = batch
-    device = get_model_device(model)
+    if device is not None:
+        device = get_model_device(model)
 
     sequences = [s[:max_length] for s in sequences]
     inputs = tokenizer(sequences, return_tensors="pt", padding=True, truncation=False)
@@ -112,26 +118,36 @@ def compute_loss(batch, model, tokenizer, max_length) -> List[Dict[str, Any]]:
         {
             "sequence": sequences[i],
             "header": headers[i],
-            "per_token_loss": per_token_loss[i, :min(len(sequences[i], max_length))].cpu().tolist(),
+            "per_token_loss": per_token_loss[i, :min(len(sequences[i]), max_length)].cpu().tolist(),
         }
         for i in range(len(sequences))
     ]
     return processed
 
 
-def main(args, rank, world_size):
+def main(rank, args, world_size):
     setup(rank, world_size)
+    output_dir = Path(args.output_dir)
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
 
+
+    # the fasta loader relies on offsets to do file.seek operations
+    # we can paralellize this by splitting up the offset array into subsections for each GPU
     offset_array = np.load(args.offset_array_path)
+    print("Original offset array shape:", offset_array.shape)
     assert len(offset_array.shape) == 2
     assert offset_array.shape[0] == 2
     
     # Partition data for this GPU
-    per_gpu_size = len(offset_array) // world_size
+    per_gpu_size = offset_array.shape[1] // world_size
     start_idx = rank * per_gpu_size
-    end_idx = start_idx + per_gpu_size if rank < world_size - 1 else len(offset_array)
+    end_idx = start_idx + per_gpu_size if rank < world_size - 1 else offset_array.shape[1]
+
     local_offsets = offset_array[:, start_idx:end_idx]
-    
+    print(f"Rank {rank} processing offsets from {start_idx} to {end_idx}")
+    print(f"Rank {rank} processing {local_offsets.shape[1]} sequences from {args.fasta_file}")
+
     # Create dataset and dataloader for this GPU
     dataset = FASTADataset(
         root=args.fasta_file,
@@ -147,19 +163,25 @@ def main(args, rank, world_size):
         dataset, batch_size=args.batch_size, sampler=sampler
     )
     
-    # Create model and wrap with DDP
+    # Create model
     model, tokenizer = load_model(args.model_name, args.max_length)
-    ddp_model = DistributedDataParallel(model, device_ids=[rank])
+    device = torch.device("cuda", rank)
+    model.to(device)
+
+    # wrap in DDP and compile
+    ddp_model = DistributedDataParallel(model, device_ids=[rank], output_device=rank)
+    ddp_model = torch.compile(ddp_model)
     
     # Inference loop
     results_tmp_list = []
-    cur_shard_num = []
-    cur_num_in_shard = []
+    cur_shard_num = 0 
+    cur_num_in_shard = 0 
     model_name = args.model_name.replace("/", "_")
 
     for batch in dataloader:
         with torch.no_grad():
-            outputs = compute_loss(batch, ddp_model, tokenizer, args.max_length)
+            outputs = compute_loss(batch, ddp_model, tokenizer, args.max_length, device)
+            print(len(outputs))
             results_tmp_list.extend(outputs)
             cur_num_in_shard += len(outputs)
 
@@ -175,10 +197,17 @@ def main(args, rank, world_size):
             else:
                 print(f"Processed {cur_num_in_shard} sequences in shard {cur_shard_num}")
 
+    cleanup()
+
 
 if __name__ == "__main__":
     args = get_args()
     world_size = torch.cuda.device_count()
     rank = int(os.environ["LOCAL_RANK"])
 
-    main(args, rank, world_size)
+    try:
+        mp.spawn(main, (args, world_size), world_size, join=True)
+    except Exception as e:
+        print(f"Error in process {rank}: {e}")
+    finally:
+        cleanup()
