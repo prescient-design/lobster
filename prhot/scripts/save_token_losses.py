@@ -34,7 +34,7 @@ def get_args():
     parser.add_argument(
         "--model_name",
         type=str,
-        default="lightonai/RITA_s",
+        default="lightonai/RITA_l",
     )
     parser.add_argument(
         "--batch_size",
@@ -72,7 +72,7 @@ def setup(rank, world_size):
 def load_model(model_name: str = "lightonai/RITA_xl", max_length: int = 512) -> torch.nn.Module:
     """Load the model and tokenizer."""
     model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
-    tokenizer = AutoTokenizer.from_pretrained("model_name")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = "<PAD>"
     tokenizer.pad_token_id = tokenizer.vocab['<PAD>']
     tokenizer.max_length = max_length
@@ -135,7 +135,7 @@ def main(args, rank, world_size):
     # Create dataset and dataloader for this GPU
     dataset = FASTADataset(
         root=args.fasta_file,
-        offset_file=local_offsets,
+        offsets_arr=local_offsets,
         use_text_descriptions=True
     )
 
