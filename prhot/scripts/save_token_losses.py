@@ -127,10 +127,9 @@ def compute_loss(batch, model, tokenizer, max_length, device=None) -> List[Dict[
 
 def main(rank, args, world_size):
     setup(rank, world_size)
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir) / args.model_name.replace("/", "_")
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
-
 
     # the fasta loader relies on offsets to do file.seek operations
     # we can paralellize this by splitting up the offset array into subsections for each GPU
@@ -186,7 +185,7 @@ def main(rank, args, world_size):
             cur_num_in_shard += len(outputs)
 
             if cur_num_in_shard >= args.max_num_per_shard:
-                output_file = f"{args.output_dir}/{model_name}/rank_{rank:02}_shard_{cur_shard_num:06}.parquet"
+                output_file = output_dir / "rank_{rank:02}_shard_{cur_shard_num:06}.parquet"
                 pd.DataFrame(results_tmp_list).to_parquet(output_file, engine='pyarrow', index=False)
                 print(f"Saved shard {cur_shard_num} to {output_file}")
 
