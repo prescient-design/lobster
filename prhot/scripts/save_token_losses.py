@@ -185,7 +185,7 @@ def main(rank, args, world_size):
             cur_num_in_shard += len(outputs)
 
             if cur_num_in_shard >= args.max_num_per_shard:
-                output_file = output_dir / "rank_{rank:02}_shard_{cur_shard_num:06}.parquet"
+                output_file = output_dir / f"rank_{rank:02}_shard_{cur_shard_num:06}.parquet"
                 pd.DataFrame(results_tmp_list).to_parquet(output_file, engine='pyarrow', index=False)
                 print(f"Saved shard {cur_shard_num} to {output_file}")
 

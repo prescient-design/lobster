@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 
-#SBATCH --job-name infer
+#SBATCH --job-name token_loss
 #SBATCH --nodes 1 
-#SBATCH --gpus-per-node 4 
+#SBATCH --gpus-per-node 2 
 #SBATCH --partition gpu2
 #SBATCH --cpus-per-gpu 4 
-#SBATCH --mem 100G
-#SBATCH --time=15-00:00:00
+#SBATCH --mem 90G
+#SBATCH --time=1-00:00:00
 
-
+# make sure that this is already set!
 cd $LOBSTER_PROJECT_DIR
-source .venv/bin/activate  # use uv
+
+# use uv, which should already be set up
+source .venv/bin/activate 
 
 echo "SLURM_JOB_NODELIST = ${SLURM_JOB_NODELIST}"
 echo "SLURM_JOB_ID = ${SLURM_JOB_ID}"
@@ -20,4 +22,4 @@ echo "SLURM_JOB_NUM_NODES = ${SLURM_JOB_NUM_NODES}"
 nvidia-smi
 
 # see save_token_losses.py for the default parser arguments
-srun torchrun save_token_losses.py
+srun torchrun prhot/scripts/save_token_losses.py
