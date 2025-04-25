@@ -2,10 +2,9 @@ from unittest.mock import Mock
 
 import pytest
 import torch
+from lobster.transforms import TokenizerTransform
 from transformers import PreTrainedTokenizerFast
 from transformers.tokenization_utils_base import BatchEncoding
-
-from lobster.transforms import TokenizerTransform
 
 
 @pytest.fixture
@@ -44,6 +43,7 @@ def test_tokenizer_transform_forward(mock_tokenizer):
         return_special_tokens_mask=False,
         return_offsets_mapping=False,
         return_length=False,
+        add_special_tokens=True,
         verbose=True,
     )
 
