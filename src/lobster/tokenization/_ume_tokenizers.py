@@ -609,7 +609,7 @@ class UmeTokenizerTransform(Module):
         """Sample one of four token sets for Latent Generator 3D coordinates."""
         return lobster.transforms.functional.sample_item(item, seed=self.seed)
 
-    def _encode(self, item: str | list[str] | list[int]) -> dict[str, Tensor]:
+    def _encode(self, item: str | list[str]) -> dict[str, Tensor]:
         """Tokenize and encode single modality input."""
 
         if self.modality == Modality.COORDINATES_3D:
