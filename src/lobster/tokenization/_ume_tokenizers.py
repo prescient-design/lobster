@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Literal
 
 import torch
-from tokenizers.models import WordLevel
+from tokenizers.models import BPE, WordLevel
 from tokenizers.normalizers import Lowercase
 from tokenizers.pre_tokenizers import Sequence as PreTokenizerSequence
 from tokenizers.pre_tokenizers import WhitespaceSplit
@@ -238,8 +238,9 @@ def _make_amino_acid_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast
     PreTrainedTokenizerFast
         Configured fast tokenizer for amino acid sequences
     """
-    vocab = {v: k for k, v in enumerate(vocab)}
-    tokenizer_model = WordLevel(vocab=vocab, unk_token=UNK_TOKEN)
+    tokenizer_model = BPE(
+        {token: i for i, token in enumerate(vocab)}, merges=[], unk_token=UNK_TOKEN, ignore_merges=True
+    )
     post_processor = _create_post_processor()
 
     return make_pretrained_tokenizer_fast(
@@ -270,7 +271,6 @@ def _make_smiles_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     PreTrainedTokenizerFast
         Configured fast tokenizer for SMILES chemical notations
     """
-    vocab = {v: k for k, v in enumerate(vocab)}
     tokenizer_model = WordLevel(vocab=vocab, unk_token=UNK_TOKEN)
     pre_tokenizer = PreTokenizerSequence([WhitespaceSplit()])
     post_processor = _create_post_processor()
@@ -304,8 +304,9 @@ def _make_nucleotide_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast
     PreTrainedTokenizerFast
         Configured fast tokenizer for nucleotide sequences
     """
-    vocab = {v: k for k, v in enumerate(vocab)}
-    tokenizer_model = WordLevel(vocab=vocab, unk_token=UNK_TOKEN)
+    tokenizer_model = BPE(
+        {token: i for i, token in enumerate(vocab)}, merges=[], unk_token=UNK_TOKEN, ignore_merges=True
+    )
     post_processor = _create_post_processor()
 
     return make_pretrained_tokenizer_fast(
