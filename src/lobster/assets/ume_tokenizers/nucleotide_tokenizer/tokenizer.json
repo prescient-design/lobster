@@ -58,7 +58,9 @@
       "special": true
     }
   ],
-  "normalizer": null,
+  "normalizer": {
+    "type": "Lowercase"
+  },
   "pre_tokenizer": null,
   "post_processor": {
     "type": "TemplateProcessing",
@@ -152,8 +154,8 @@
       "<unk>": 3,
       "<mask>": 4,
       "<sep>": 5,
-      "<extra_special_token_0>": 6,
-      "<extra_special_token_1>": 7,
+      "<convert>": 6,
+      "<interact>": 7,
       "<extra_special_token_2>": 8,
       "<extra_special_token_3>": 9,
       "<extra_special_token_4>": 10,
@@ -1418,12 +1420,12 @@
       "<reserved_for_smiles_special_token_1263>": 1269,
       ".": 1270,
       "-": 1271,
-      "A": 1272,
-      "C": 1273,
-      "G": 1274,
-      "T": 1275,
-      "N": 1276,
-      "U": 1277
+      "a": 1272,
+      "c": 1273,
+      "g": 1274,
+      "t": 1275,
+      "n": 1276,
+      "u": 1277
     },
     "merges": []
   }

@@ -1,6 +1,5 @@
-from transformers import PreTrainedTokenizerFast
-
 from lobster.tokenization._nucleotide_tokenizer import NucleotideTokenizerFast, _make_nucleotide_tokenizer
+from transformers import PreTrainedTokenizerFast
 
 
 def test__make_nucleotide_tokenizer():
@@ -26,15 +25,9 @@ def test__make_nucleotide_tokenizer():
         "mask_token": "<mask>",
     }
 
-    tokenized_output = tokenizer("ATCG")
-
+    tokenized_output = tokenizer("ATcg")
     assert tokenized_output.input_ids == [0, 6, 9, 7, 8, 2]
-    assert tokenizer.decode(tokenized_output.input_ids) == "<cls> A T C G <eos>"
-
-    tokenized_output = tokenizer("atcg")
-
-    assert tokenized_output.input_ids == [0, 3, 3, 3, 3, 2]
-    assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> <unk> <unk> <unk> <eos>"
+    assert tokenizer.decode(tokenized_output.input_ids) == "<cls> a t c g <eos>"
 
 
 class TestNucleotideTokenizerFaset:
@@ -52,18 +45,13 @@ class TestNucleotideTokenizerFaset:
         assert tokenizer.sep_token == "<sep>"
         assert tokenizer.mask_token == "<mask>"
 
-        tokenized_output = tokenizer("ATCG")
-
+        tokenized_output = tokenizer("atCG")
         assert tokenized_output.input_ids == [0, 6, 9, 7, 8, 2]
-        assert tokenizer.decode(tokenized_output.input_ids) == "<cls> A T C G <eos>"
-
-        tokenized_output = tokenizer("atcg")
-        assert tokenized_output.input_ids == [0, 3, 3, 3, 3, 2]
-        assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> <unk> <unk> <unk> <eos>"
+        assert tokenizer.decode(tokenized_output.input_ids) == "<cls> a t c g <eos>"
 
         tokenized_output = tokenizer("RAW")
         assert tokenized_output.input_ids == [0, 3, 6, 3, 2]
-        assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> A <unk> <eos>"
+        assert tokenizer.decode(tokenized_output.input_ids) == "<cls> <unk> a <unk> <eos>"
 
         assert tokenizer.special_tokens_map == {
             "eos_token": "<eos>",

@@ -46,6 +46,7 @@ class LatentGeneratorPinderIterableDataset(HuggingFaceIterableDataset):
         shuffle: bool = False,
         split: str = "train",
         shuffle_buffer_size: int = 1000,
+        columns: list[str] | None = None,
     ):
         """
         Initialize the LatentGeneratorPinderIterableDataset.
@@ -66,12 +67,17 @@ class LatentGeneratorPinderIterableDataset(HuggingFaceIterableDataset):
         split : str, optional
             Which split of the dataset to use. Must be one of 'train' or 'test'.
             Default is 'train'.
+        shuffle_buffer_size : int, optional
+            Buffer size for shuffling the dataset. Default is 1000.
+        columns : list of str or None, optional
+            List of columns to load from the dataset. If None, loads all columns.
+            Default is None.
         """
         super().__init__(
             dataset_name="Sidney-Lisanza/LG_tokens_pinder",
             root=root,
             transform=transform,
-            keys=["lg_token_string"],
+            keys=["lg_token_string"] if columns is None else columns,
             split=split,
             shuffle=shuffle,
             download=download,
