@@ -1,8 +1,8 @@
 .
 -
-A
-C
-G
-T
-N
-U
+a
+c
+g
+t
+n
+u

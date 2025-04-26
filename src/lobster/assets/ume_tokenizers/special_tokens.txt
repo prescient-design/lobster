@@ -4,8 +4,8 @@
 <unk>
 <mask>
 <sep>
-<extra_special_token_0>
-<extra_special_token_1>
+<convert>
+<interact>
 <extra_special_token_2>
 <extra_special_token_3>
 <extra_special_token_4>

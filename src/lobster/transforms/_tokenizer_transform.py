@@ -18,6 +18,7 @@ class TokenizerTransform(Module):
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
         return_length: bool = False,
+        add_special_tokens: bool = True,
         verbose: bool = True,
     ):
         super().__init__()
@@ -33,6 +34,7 @@ class TokenizerTransform(Module):
         self._return_special_tokens_mask = return_special_tokens_mask
         self._return_offsets_mapping = return_offsets_mapping
         self._return_length = return_length
+        self._add_special_tokens = add_special_tokens
         self._verbose = verbose
 
     def forward(
@@ -51,5 +53,6 @@ class TokenizerTransform(Module):
             return_special_tokens_mask=self._return_special_tokens_mask,
             return_offsets_mapping=self._return_offsets_mapping,
             return_length=self._return_length,
+            add_special_tokens=self._add_special_tokens,
             verbose=self._verbose,
         )

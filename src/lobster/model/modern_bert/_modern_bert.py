@@ -36,7 +36,7 @@ class FlexBERT(pl.LightningModule):
         beta1: float = 0.9,
         beta2: float = 0.98,
         eps: float = 1e-12,
-        num_training_steps: int = 10_000,
+        num_training_steps: int | None = None,
         num_warmup_steps: int = 1_000,
         mask_percentage: float = 0.25,
         max_length: int = 8192,
