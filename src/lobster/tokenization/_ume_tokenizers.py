@@ -625,7 +625,6 @@ class UmeTokenizerTransform(Module):
 
         if self.modality == Modality.COORDINATES_3D:
             item = self._check_and_sample_3d_coordinates(item)
-            print(f"item after sampling: {item}")
 
         return self.tokenizer(
             item,
