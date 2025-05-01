@@ -60,12 +60,12 @@
   ],
   "normalizer": null,
   "pre_tokenizer": {
-    "type": "Sequence",
-    "pretokenizers": [
-      {
-        "type": "WhitespaceSplit"
-      }
-    ]
+    "type": "Split",
+    "pattern": {
+      "Regex": "(\\[[^\\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\\(|\\)|\\.|=|#|-|\\+|\\\\|\\/|:|~|@|\\?|>>?|\\*|\\$|\\%[0-9]{2}|[0-9])"
+    },
+    "behavior": "Isolated",
+    "invert": false
   },
   "post_processor": {
     "type": "TemplateProcessing",
@@ -144,14 +144,7 @@
   },
   "decoder": null,
   "model": {
-    "type": "BPE",
-    "dropout": null,
-    "unk_token": "<unk>",
-    "continuing_subword_prefix": null,
-    "end_of_word_suffix": null,
-    "fuse_unk": false,
-    "byte_fallback": false,
-    "ignore_merges": true,
+    "type": "WordLevel",
     "vocab": {
       "<cls>": 0,
       "<pad>": 1,
@@ -1424,6 +1417,6 @@
       "[2NH]": 1268,
       "[Cn]": 1269
     },
-    "merges": []
+    "unk_token": "<unk>"
   }
 }

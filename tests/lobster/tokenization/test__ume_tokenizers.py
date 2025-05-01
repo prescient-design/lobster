@@ -98,6 +98,8 @@ def test_ume_smiles_tokenizer():
     assert tokenizer.convert_tokens_to_ids("<convert>") == 6
     assert tokenizer.convert_tokens_to_ids("<interact>") == 7
 
+    assert tokenizer.tokenize("C[C@@H]") == ["C", "[C@@H]"]
+
 
 def test_ume_nucleotide_tokenizer():
     tokenizer = UmeNucleotideTokenizerFast()
@@ -127,7 +129,7 @@ class TestUmeTokenizerTransform:
     @pytest.mark.parametrize(
         "modality,input_text,max_length,expected_input_ids,expected_attention_mask,expected_modality",
         [
-            pytest.param("SMILES", "C", 6, [0, 52, 2, 1, 1, 1], [1, 1, 1, 0, 0, 0], Modality.SMILES, id="smiles"),
+            pytest.param("SMILES", "[C@@H]", 6, [0, 64, 2, 1, 1, 1], [1, 1, 1, 0, 0, 0], Modality.SMILES, id="smiles"),
             pytest.param(
                 "amino_acid", "V", 6, [0, 28, 2, 1, 1, 1], [1, 1, 1, 0, 0, 0], Modality.AMINO_ACID, id="amino_acid"
             ),
