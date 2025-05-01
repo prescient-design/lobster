@@ -206,11 +206,9 @@ class FlexBERT(pl.LightningModule):
             )
 
         return hidden_states
-
-    def _compute_loss(self, batch, return_per_sample_loss: bool = False):
-        if isinstance(batch, tuple) and len(batch) == 2:
-            batch, _targets = batch
-
+    
+    def get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
+        """Get logits and labels for the masked language modeling task."""
         tokens = batch["input_ids"].squeeze(1)
         B, length = tokens.shape
         tokens = tokens.view(-1)
@@ -237,27 +235,15 @@ class FlexBERT(pl.LightningModule):
         logits = logits.view(-1, self.vocab_size)
         labels = labels.view(-1)
 
-        batch_loss = self.loss_fn(logits, labels)
+        return logits, labels
+    
+    def _compute_loss(self, batch: dict[str, Tensor] | tuple[dict[str, Tensor], Tensor]):
+        if isinstance(batch, tuple) and len(batch) == 2:
+            batch, _targets = batch
 
-        if return_per_sample_loss:
-            logits_reshaped = logits.view(B, length, self.vocab_size)
-            labels_reshaped = labels.view(B, length)
-            
-            # Compute loss without reduction
-            per_token_loss = torch.nn.functional.cross_entropy(
-                logits_reshaped.transpose(1, 2), # (B, vocab_size, length)
-                labels_reshaped,
-                reduction="none",
-            )
-            
-            # Mean loss per sample, ignoring extra tokens
-            valid_tokens = (labels_reshaped != -100).float()
-            token_count = valid_tokens.sum(dim=1).clamp(min=1.0)  # Avoid division by zero
-            per_sample_loss = (per_token_loss * valid_tokens).sum(dim=1) / token_count
+        logits, labels = self._get_logits_and_labels(batch)
 
-            return batch_loss, per_sample_loss
-
-        return batch_loss
+        return self.loss_fn(logits, labels)
 
     def _mask_inputs(self, train_inputs: torch.Tensor):
         # create random array of floats with equal dimensions to input_ids tensor

@@ -3,6 +3,7 @@ from typing import Callable, Dict, List, Literal, Sequence
 import lightning as L
 import torch
 from torch import Tensor
+from torchmetrics import Perplexity
 
 from lobster.constants import Modality, ModalityType
 from lobster.model.modern_bert import FlexBERT
@@ -137,6 +138,12 @@ class Ume(L.LightningModule):
         self.max_length = max_length
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
+
+        self.metrics = {}
+
+        for modality in Modality:
+            self.metrics.update({f"train_perplexity/{modality.value}": Perplexity(ignore_index=-100)})
+            self.metrics.update({f"val_perplexity/{modality.value}": Perplexity(ignore_index=-100)})
 
     @property
     def modalities(self) -> List[str]:
@@ -397,28 +404,32 @@ class Ume(L.LightningModule):
         else:
             modalities = batch["modality"]
 
-        modalities = [Modality(m) for m in modalities]
+        # Get logits and labels
+        logits, labels = self.model._get_logits_and_labels(batch)
 
-        loss, per_sample_loss = self.model._compute_loss(batch, return_per_sample_loss=True)
+        # Compute loss
+        loss = self.model.loss_fn(logits, labels)
+        self.log(f"{stage}_loss", loss, sync_dist=True)
 
         perplexity = torch.exp(loss)
-        per_sample_perplexity = torch.exp(per_sample_loss)
-
-        self.log(f"{stage}_loss", loss, sync_dist=True)
         self.log(f"{stage}_perplexity", perplexity, sync_dist=True)
 
-        # Log loss and perplexity for each modality
+        # Log perplexity for each modality separately
+        tokens = batch["input_ids"].squeeze(1)
+        batch_size, length = tokens.shape
+
+        logits_reshaped = logits.view(batch_size, length, self.model.vocab_size)
+        labels_reshaped = labels.view(batch_size, length)
+
         for modality in set(modalities):
             mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
 
-            modality_loss = per_sample_loss[mask].mean()
-            modality_perplexity = per_sample_perplexity[mask].mean()
+            if not mask.any():
+                continue
 
-            self.log(f"{stage}_loss/{modality.value}", modality_loss, sync_dist=True)
-            self.log(f"{stage}_perplexity/{modality.value}", modality_perplexity, sync_dist=True)
-            self.log(f"num_samples/{modality.value}", mask.sum().item(), sync_dist=True)
-
-        return loss
+            metric_name = f"{stage}_perplexity/{modality}"
+            self.metrics[metric_name](logits_reshaped[mask], labels_reshaped[mask])
+            self.log(f"{stage}_perplexity/{modality}", self.metrics[metric_name], sync_dist=True, on_step=True)
 
     def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
         return self._step(batch, "train")
