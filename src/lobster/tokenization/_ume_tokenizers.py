@@ -51,10 +51,11 @@ from pathlib import Path
 from typing import Literal
 
 import torch
+from tokenizers import Regex
 from tokenizers.models import BPE, WordLevel
 from tokenizers.normalizers import Lowercase
 from tokenizers.pre_tokenizers import Sequence as PreTokenizerSequence
-from tokenizers.pre_tokenizers import WhitespaceSplit
+from tokenizers.pre_tokenizers import Split, WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
 from torch import Tensor
 from torch.nn import Module
@@ -66,6 +67,7 @@ from lobster.constants import Modality, ModalityType
 from ._latent_generator_3d_coord_tokenizer import VOCAB_PATH as LATENT_GENERATOR_VOCAB_PATH
 from ._load_vocab_file import load_vocab_file
 from ._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
+from ._smiles_tokenizer import SMILES_REGEX_PATTERN
 from ._smiles_tokenizer import VOCAB_PATH as SMILES_VOCAB_PATH
 
 TOKENIZERS_PATH = importlib.resources.files("lobster") / "assets" / "ume_tokenizers"
@@ -272,7 +274,7 @@ def _make_smiles_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
         Configured fast tokenizer for SMILES chemical notations
     """
     tokenizer_model = WordLevel(vocab={token: i for i, token in enumerate(vocab)}, unk_token=UNK_TOKEN)
-    pre_tokenizer = PreTokenizerSequence([WhitespaceSplit()])
+    pre_tokenizer = Split(pattern=Regex(SMILES_REGEX_PATTERN), behavior="isolated")
     post_processor = _create_post_processor()
 
     return make_pretrained_tokenizer_fast(
@@ -623,7 +625,6 @@ class UmeTokenizerTransform(Module):
 
         if self.modality == Modality.COORDINATES_3D:
             item = self._check_and_sample_3d_coordinates(item)
-            print(f"item after sampling: {item}")
 
         return self.tokenizer(
             item,
