@@ -131,31 +131,47 @@ class TestUme:
     def test_training_step(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
-            mock_model._compute_loss.return_value = (torch.tensor(1.0), torch.tensor([1.0, 2.0]))
+            logits = torch.randn(32768, 1536)
+            labels = torch.randint(0, 1536, (32768,), dtype=torch.int64)
+            mock_model.get_logits_and_labels.return_value = (logits, labels)
+            mock_model.loss_fn.return_value = torch.tensor(0.5)
+            mock_model.vocab_size = 1536
             mock_flex_bert.return_value = mock_model
 
             ume = Ume()
+            ume.log = MagicMock()
+
             batch = {
-                "input_ids": torch.randn(2, 10),
-                "attention_mask": torch.ones(2, 10),
-                "modality": ["SMILES", "SMILES"],
+                "input_ids": torch.randint(0, 1536, (4, 1, 8192), dtype=torch.int64),
+                "attention_mask": torch.ones(4, 1, 8192),
+                "modality": ["SMILES", "SMILES", "amino_acid", "nucleotide"],
             }
             loss = ume.training_step(batch, 0)
             assert isinstance(loss, torch.Tensor)
-            assert loss.item() == 1.0
+            assert loss.item() == 0.5
+
+            ume.log.assert_called()
 
     def test_validation_step(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
-            mock_model._compute_loss.return_value = (torch.tensor(1.5), torch.tensor([1.5, 1.5]))
+            logits = torch.randn(20, 1536)
+            labels = torch.randint(0, 1536, (20,), dtype=torch.int64)
+            mock_model.get_logits_and_labels.return_value = (logits, labels)
+            mock_model.loss_fn.return_value = torch.tensor(1.5)
+            mock_model.vocab_size = 1536
             mock_flex_bert.return_value = mock_model
 
             ume = Ume()
+            ume.log = MagicMock()
+
             batch = {
-                "metadata": {"modality": ["SMILES", "SMILES"]},
-                "input_ids": torch.randn(2, 10),
-                "attention_mask": torch.ones(2, 10),
+                "input_ids": torch.randint(0, 1536, (2, 1, 10), dtype=torch.int64),
+                "attention_mask": torch.ones(2, 1, 10),
+                "modality": ["SMILES", "SMILES"],
             }
+
             loss = ume.validation_step(batch, 0)
+
             assert isinstance(loss, torch.Tensor)
             assert loss.item() == 1.5

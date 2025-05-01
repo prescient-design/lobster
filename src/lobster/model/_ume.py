@@ -405,7 +405,7 @@ class Ume(L.LightningModule):
             modalities = batch["modality"]
 
         # Get logits and labels
-        logits, labels = self.model._get_logits_and_labels(batch)
+        logits, labels = self.model.get_logits_and_labels(batch)
 
         # Compute loss
         loss = self.model.loss_fn(logits, labels)
@@ -430,6 +430,8 @@ class Ume(L.LightningModule):
             metric_name = f"{stage}_perplexity/{modality}"
             self.metrics[metric_name](logits_reshaped[mask], labels_reshaped[mask])
             self.log(f"{stage}_perplexity/{modality}", self.metrics[metric_name], sync_dist=True, on_step=True)
+
+        return loss
 
     def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
         return self._step(batch, "train")

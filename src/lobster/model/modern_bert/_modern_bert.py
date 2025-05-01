@@ -241,7 +241,7 @@ class FlexBERT(pl.LightningModule):
         if isinstance(batch, tuple) and len(batch) == 2:
             batch, _targets = batch
 
-        logits, labels = self._get_logits_and_labels(batch)
+        logits, labels = self.get_logits_and_labels(batch)
 
         return self.loss_fn(logits, labels)
 
