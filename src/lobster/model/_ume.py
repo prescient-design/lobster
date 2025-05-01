@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Literal, Sequence
 import lightning as L
 import torch
 from torch import Tensor
-from torchmetrics import Perplexity
+from torchmetrics.text import Perplexity
 
 from lobster.constants import Modality, ModalityType
 from lobster.model.modern_bert import FlexBERT
