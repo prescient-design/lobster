@@ -421,6 +421,7 @@ class Ume(L.LightningModule):
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
+            # Do no specify on_step since Lightning will handle this automatically
             self.log(metric_name, metric, sync_dist=True)
 
         return loss
