@@ -417,10 +417,10 @@ class Ume(L.LightningModule):
                 continue
 
             metric_name = f"{stage}_perplexity/{modality}"
-            perplexity_metric = getattr(self, metric_name)
-            perplexity_metric(logits_reshaped[mask], labels_reshaped[mask])
+            metric = getattr(self, metric_name)
+            metric(logits_reshaped[mask], labels_reshaped[mask])
 
-            self.log(metric_name, perplexity_metric, sync_dist=True, on_step=True)
+            self.log(metric_name, metric, sync_dist=True)
 
         return loss
 
