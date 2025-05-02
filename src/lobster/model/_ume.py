@@ -143,8 +143,8 @@ class Ume(L.LightningModule):
         self.frozen = False
 
         for modality in Modality:
-            setattr(self, f"train_perplexity_{modality.value}", Perplexity(ignore_index=-100))
-            setattr(self, f"val_perplexity_{modality.value}", Perplexity(ignore_index=-100))
+            setattr(self, f"train_perplexity/{modality.value}", Perplexity(ignore_index=-100))
+            setattr(self, f"val_perplexity/{modality.value}", Perplexity(ignore_index=-100))
 
     @property
     def modalities(self) -> list[str]:
