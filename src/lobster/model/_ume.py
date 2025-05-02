@@ -421,8 +421,7 @@ class Ume(L.LightningModule):
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
-            # Do not reset the metric on each step, only on epoch end
-            self.log(metric_name, metric, sync_dist=True, step=False)
+            self.log(metric_name, metric, sync_dist=True)
 
         return loss
 
