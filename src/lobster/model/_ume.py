@@ -142,11 +142,9 @@ class Ume(L.LightningModule):
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
 
-        self.metrics = {}
-
         for modality in Modality:
-            self.metrics.update({f"train_perplexity/{modality.value}": Perplexity(ignore_index=-100)})
-            self.metrics.update({f"val_perplexity/{modality.value}": Perplexity(ignore_index=-100)})
+            setattr(self, f"train_perplexity_{modality.value}", Perplexity(ignore_index=-100))
+            setattr(self, f"val_perplexity_{modality.value}", Perplexity(ignore_index=-100))
 
     @property
     def modalities(self) -> list[str]:
@@ -419,8 +417,10 @@ class Ume(L.LightningModule):
                 continue
 
             metric_name = f"{stage}_perplexity/{modality}"
-            self.metrics[metric_name](logits_reshaped[mask], labels_reshaped[mask])
-            self.log(f"{stage}_perplexity/{modality}", self.metrics[metric_name], sync_dist=True, on_step=True)
+            perplexity_metric = getattr(self, metric_name)
+            perplexity_metric(logits_reshaped[mask], labels_reshaped[mask])
+
+            self.log(metric_name, perplexity_metric, sync_dist=True, on_step=True)
 
         return loss
 
