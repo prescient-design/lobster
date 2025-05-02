@@ -142,6 +142,7 @@ class Ume(L.LightningModule):
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
 
+        # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
             setattr(self, f"train_perplexity/{modality.value}", Perplexity(ignore_index=-100))
             setattr(self, f"val_perplexity/{modality.value}", Perplexity(ignore_index=-100))
@@ -420,7 +421,8 @@ class Ume(L.LightningModule):
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
-            self.log(metric_name, metric, sync_dist=True)
+            # Do not reset the metric on each step, only on epoch end
+            self.log(metric_name, metric, sync_dist=True, step=False)
 
         return loss
 
