@@ -1,4 +1,5 @@
-from typing import Callable, Dict, List, Literal, Sequence
+import warnings
+from typing import Callable, Literal, Sequence
 
 import lightning as L
 import torch
@@ -8,6 +9,8 @@ from torchmetrics.text import Perplexity
 from lobster.constants import Modality, ModalityType
 from lobster.model.modern_bert import FlexBERT
 from lobster.tokenization import UmeTokenizerTransform
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
 
 
 class Ume(L.LightningModule):
@@ -50,8 +53,8 @@ class Ume(L.LightningModule):
     ----------
     model : FlexBERT
         The underlying FlexBERT model for encoding.
-    tokenizer_transforms : Dict[Modality, UmeTokenizerTransform]
-        Dictionary mapping modality enums to their respective
+    tokenizer_transforms : dict[Modality, UmeTokenizerTransform]
+        dictionary mapping modality enums to their respective
         tokenizer transforms.
     embedding_dim : int
         Dimension of the output embeddings.
@@ -146,12 +149,12 @@ class Ume(L.LightningModule):
             self.metrics.update({f"val_perplexity/{modality.value}": Perplexity(ignore_index=-100)})
 
     @property
-    def modalities(self) -> List[str]:
-        """List of supported modalities.
+    def modalities(self) -> list[str]:
+        """list of supported modalities.
 
         Returns
         -------
-        List[str]
+        list[str]
             The list of supported modality names as strings.
 
         Examples
@@ -218,12 +221,12 @@ class Ume(L.LightningModule):
 
         return self.tokenizer_transforms[modality_enum].tokenizer
 
-    def get_vocab(self) -> Dict[int, str]:
+    def get_vocab(self) -> dict[int, str]:
         """Get a consolidated vocabulary from all tokenizers.
 
         Returns
         -------
-        Dict[int, str]
+        dict[int, str]
             A dictionary mapping token IDs to token strings, sorted by token ID.
             Reserved tokens are excluded.
             Important! Tokens are not unique across modalities and may overlap.
@@ -305,7 +308,7 @@ class Ume(L.LightningModule):
         Parameters
         ----------
         inputs : dict[str, Tensor]
-            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
+            dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
         aggregate : bool, default=True
             Whether to average pool over the sequence length dimension.
 
@@ -345,7 +348,7 @@ class Ume(L.LightningModule):
         Parameters
         ----------
         sequences : Sequence[str] | str
-            List of input strings to encode or a single string.
+            list of input strings to encode or a single string.
         modality : str | Modality
             The modality to use for encoding. Can be a string ("SMILES", "amino_acid",
             "nucleotide", "3d_coordinates") or a Modality enum.
@@ -394,7 +397,7 @@ class Ume(L.LightningModule):
         Returns
         -------
         dict[str, object]
-            Dictionary containing optimizer and learning rate scheduler.
+            dictionary containing optimizer and learning rate scheduler.
         """
         return self.model.configure_optimizers()
 
