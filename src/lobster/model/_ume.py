@@ -150,7 +150,7 @@ class Ume(L.LightningModule):
 
     @property
     def modalities(self) -> list[str]:
-        """list of supported modalities.
+        """List of supported modalities.
 
         Returns
         -------
