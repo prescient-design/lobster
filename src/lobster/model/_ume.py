@@ -1,12 +1,16 @@
-from typing import Callable, Dict, List, Literal, Sequence
+import warnings
+from typing import Callable, Literal, Sequence
 
 import lightning as L
 import torch
 from torch import Tensor
+from torchmetrics.text import Perplexity
 
 from lobster.constants import Modality, ModalityType
 from lobster.model.modern_bert import FlexBERT
 from lobster.tokenization import UmeTokenizerTransform
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
 
 
 class Ume(L.LightningModule):
@@ -49,7 +53,7 @@ class Ume(L.LightningModule):
     ----------
     model : FlexBERT
         The underlying FlexBERT model for encoding.
-    tokenizer_transforms : Dict[Modality, UmeTokenizerTransform]
+    tokenizer_transforms : dict[Modality, UmeTokenizerTransform]
         Dictionary mapping modality enums to their respective
         tokenizer transforms.
     embedding_dim : int
@@ -138,13 +142,19 @@ class Ume(L.LightningModule):
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
 
+        self.metrics = {}
+
+        for modality in Modality:
+            self.metrics.update({f"train_perplexity/{modality.value}": Perplexity(ignore_index=-100)})
+            self.metrics.update({f"val_perplexity/{modality.value}": Perplexity(ignore_index=-100)})
+
     @property
-    def modalities(self) -> List[str]:
+    def modalities(self) -> list[str]:
         """List of supported modalities.
 
         Returns
         -------
-        List[str]
+        list[str]
             The list of supported modality names as strings.
 
         Examples
@@ -152,18 +162,6 @@ class Ume(L.LightningModule):
         >>> encoder = Ume(model_name="UME_mini")
         >>> print(encoder.modalities)
         ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
-        >>>
-        >>> # Check if a specific modality is supported
-        >>> "amino_acid" in encoder.modalities
-        True
-        >>>
-        >>> # Iterate through supported modalities
-        >>> for modality in encoder.modalities:
-        ...     print(f"UME supports {modality} encoding")
-        UME supports SMILES encoding
-        UME supports amino_acid encoding
-        UME supports nucleotide encoding
-        UME supports 3d_coordinates encoding
         """
         return [modality.value for modality in Modality]
 
@@ -211,12 +209,12 @@ class Ume(L.LightningModule):
 
         return self.tokenizer_transforms[modality_enum].tokenizer
 
-    def get_vocab(self) -> Dict[int, str]:
+    def get_vocab(self) -> dict[int, str]:
         """Get a consolidated vocabulary from all tokenizers.
 
         Returns
         -------
-        Dict[int, str]
+        dict[int, str]
             A dictionary mapping token IDs to token strings, sorted by token ID.
             Reserved tokens are excluded.
             Important! Tokens are not unique across modalities and may overlap.
@@ -397,26 +395,32 @@ class Ume(L.LightningModule):
         else:
             modalities = batch["modality"]
 
-        modalities = [Modality(m) for m in modalities]
+        # Get logits and labels
+        logits, labels = self.model.get_logits_and_labels(batch)
 
-        loss, per_sample_loss = self.model._compute_loss(batch, return_per_sample_loss=True)
+        # Compute loss
+        loss = self.model.loss_fn(logits, labels)
+        self.log(f"{stage}_loss", loss, sync_dist=True)
 
         perplexity = torch.exp(loss)
-        per_sample_perplexity = torch.exp(per_sample_loss)
-
-        self.log(f"{stage}_loss", loss, sync_dist=True)
         self.log(f"{stage}_perplexity", perplexity, sync_dist=True)
 
-        # Log loss and perplexity for each modality
+        # Log perplexity for each modality separately
+        tokens = batch["input_ids"].squeeze(1)
+        batch_size, length = tokens.shape
+
+        logits_reshaped = logits.view(batch_size, length, self.model.vocab_size)
+        labels_reshaped = labels.view(batch_size, length)
+
         for modality in set(modalities):
             mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
 
-            modality_loss = per_sample_loss[mask].mean()
-            modality_perplexity = per_sample_perplexity[mask].mean()
+            if not mask.any():
+                continue
 
-            self.log(f"{stage}_loss/{modality.value}", modality_loss, sync_dist=True)
-            self.log(f"{stage}_perplexity/{modality.value}", modality_perplexity, sync_dist=True)
-            self.log(f"num_samples/{modality.value}", mask.sum().item(), sync_dist=True)
+            metric_name = f"{stage}_perplexity/{modality}"
+            self.metrics[metric_name](logits_reshaped[mask], labels_reshaped[mask])
+            self.log(f"{stage}_perplexity/{modality}", self.metrics[metric_name], sync_dist=True, on_step=True)
 
         return loss
 
