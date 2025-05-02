@@ -54,7 +54,7 @@ class Ume(L.LightningModule):
     model : FlexBERT
         The underlying FlexBERT model for encoding.
     tokenizer_transforms : dict[Modality, UmeTokenizerTransform]
-        dictionary mapping modality enums to their respective
+        Dictionary mapping modality enums to their respective
         tokenizer transforms.
     embedding_dim : int
         Dimension of the output embeddings.
@@ -162,18 +162,6 @@ class Ume(L.LightningModule):
         >>> encoder = Ume(model_name="UME_mini")
         >>> print(encoder.modalities)
         ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
-        >>>
-        >>> # Check if a specific modality is supported
-        >>> "amino_acid" in encoder.modalities
-        True
-        >>>
-        >>> # Iterate through supported modalities
-        >>> for modality in encoder.modalities:
-        ...     print(f"UME supports {modality} encoding")
-        UME supports SMILES encoding
-        UME supports amino_acid encoding
-        UME supports nucleotide encoding
-        UME supports 3d_coordinates encoding
         """
         return [modality.value for modality in Modality]
 
@@ -308,7 +296,7 @@ class Ume(L.LightningModule):
         Parameters
         ----------
         inputs : dict[str, Tensor]
-            dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
+            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
         aggregate : bool, default=True
             Whether to average pool over the sequence length dimension.
 
@@ -348,7 +336,7 @@ class Ume(L.LightningModule):
         Parameters
         ----------
         sequences : Sequence[str] | str
-            list of input strings to encode or a single string.
+            List of input strings to encode or a single string.
         modality : str | Modality
             The modality to use for encoding. Can be a string ("SMILES", "amino_acid",
             "nucleotide", "3d_coordinates") or a Modality enum.
@@ -397,7 +385,7 @@ class Ume(L.LightningModule):
         Returns
         -------
         dict[str, object]
-            dictionary containing optimizer and learning rate scheduler.
+            Dictionary containing optimizer and learning rate scheduler.
         """
         return self.model.configure_optimizers()
 
