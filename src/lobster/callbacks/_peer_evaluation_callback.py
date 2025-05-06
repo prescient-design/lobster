@@ -1,17 +1,17 @@
 import logging
+import tempfile
 from collections import defaultdict
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import lightning as L
-from lightning.pytorch.loggers import CSVLogger
 import torch
+from lightning.pytorch.loggers import CSVLogger
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
 from torch import Tensor
 from torch.utils.data import DataLoader
-from transformers.tokenization_utils_base import BatchEncoding
-import tempfile
 from tqdm import tqdm
+from transformers.tokenization_utils_base import BatchEncoding
 
 from lobster.constants import PEER_TASK_CATEGORIES, PEER_TASK_SPLITS, PEER_TASKS, PEERTask, PEERTaskCategory
 from lobster.datasets import PEERDataset
@@ -25,48 +25,48 @@ logger = logging.getLogger(__name__)
 class PEEREvaluationCallback(LinearProbeCallback):
     """Callback for evaluating model embeddings on PEER benchmark tasks:
 
-        The callback handles various input types including:
-        - Single sequence inputs
-        - Paired sequence inputs (protein-protein, protein-ligand)
-        - Per-residue tasks (secondary structure)
-        - Contact map prediction
+    The callback handles various input types including:
+    - Single sequence inputs
+    - Paired sequence inputs (protein-protein, protein-ligand)
+    - Per-residue tasks (secondary structure)
+    - Contact map prediction
 
-        Available tasks:
-        - Function prediction tasks (regression):
-            - "aav": AAV variant fitness
-            - "betalactamase": Beta-lactamase stability
-            - "fluorescence": Protein fluorescence
-            - "gb1": GB1 protein stability
-            - "stability": Protein stability
-            - "thermostability": Protein thermostability
-            
-        - Function prediction tasks (classification):
-            - "solubility": Protein solubility (binary, 2 classes)
+    Available tasks:
+    - Function prediction tasks (regression):
+        - "aav": AAV variant fitness
+        - "betalactamase": Beta-lactamase stability
+        - "fluorescence": Protein fluorescence
+        - "gb1": GB1 protein stability
+        - "stability": Protein stability
+        - "thermostability": Protein thermostability
 
-        - Localization prediction tasks:
-            - "binarylocalization": Binary subcellular localization (binary, 2 classes)
-            - "subcellularlocalization": Multi-class subcellular localization (multiclass, 10 classes)
+    - Function prediction tasks (classification):
+        - "solubility": Protein solubility (binary, 2 classes)
 
-        - Protein-ligand interaction tasks (regression):
-            - "bindingdb": Protein-ligand binding affinity (BindingDB)
-            - "pdbbind": Protein-ligand binding affinity (PDBbind)
+    - Localization prediction tasks:
+        - "binarylocalization": Binary subcellular localization (binary, 2 classes)
+        - "subcellularlocalization": Multi-class subcellular localization (multiclass, 10 classes)
 
-        - Protein-protein interaction tasks:
-            - "humanppi": Human protein-protein interactions (binary, 2 classes)
-            - "ppiaffinity": Protein-protein binding affinity (regression)
-            - "yeastppi": Yeast protein-protein interactions (binary, 2 classes)
+    - Protein-ligand interaction tasks (regression):
+        - "bindingdb": Protein-ligand binding affinity (BindingDB)
+        - "pdbbind": Protein-ligand binding affinity (PDBbind)
 
-        - Structure prediction tasks:
-            - "fold": Protein fold classification (multiclass, 1195 classes)
-            - "proteinnet": Contact map prediction (binary, 2 classes)
-            - "secondarystructure": Secondary structure prediction (multiclass, 3 classes - coil, strand, helix)
+    - Protein-protein interaction tasks:
+        - "humanppi": Human protein-protein interactions (binary, 2 classes)
+        - "ppiaffinity": Protein-protein binding affinity (regression)
+        - "yeastppi": Yeast protein-protein interactions (binary, 2 classes)
 
-        Reference:
-            Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
-            Protein Sequence Understanding"
-            https://arxiv.org/abs/2206.02096
+    - Structure prediction tasks:
+        - "fold": Protein fold classification (multiclass, 1195 classes)
+        - "proteinnet": Contact map prediction (binary, 2 classes)
+        - "secondarystructure": Secondary structure prediction (multiclass, 3 classes - coil, strand, helix)
 
-        Currently only supports Ume embeddings and uses UmeTokenizerTransform.
+    Reference:
+        Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
+        Protein Sequence Understanding"
+        https://arxiv.org/abs/2206.02096
+
+    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
     """
 
     def __init__(
@@ -119,59 +119,57 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Cache for datasets
         self.datasets = {}
 
-
     def _process_and_embed(
-        self, 
-        pl_module: L.LightningModule, 
-        inputs: Union[Dict[str, Tensor], List[str], str], 
-        modality: str = "amino_acid", 
-        aggregate: bool = True
+        self,
+        pl_module: L.LightningModule,
+        inputs: Union[Dict[str, Tensor], List[str], str],
+        modality: str = "amino_acid",
+        aggregate: bool = True,
     ) -> Tensor:
         """Process inputs (tokenize if needed) and extract embeddings.
-        
+
         Parameters
         ----------
         pl_module : L.LightningModule
             The lightning module with a model that can extract embeddings
         inputs : Union[Dict[str, Tensor], List[str], str]
-            Either tokenized inputs (dict with input_ids, attention_mask) 
+            Either tokenized inputs (dict with input_ids, attention_mask)
             or raw inputs (list of strings or single string)
         modality : str, default="amino_acid"
             The modality of the inputs
         aggregate : bool, default=True
             Whether to average pool over sequence length
-            
+
         Returns
         -------
         Tensor
             Embeddings tensor of shape (batch_size, hidden_size) if aggregate=True
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
-       # Check if inputs are already tokenized (either dict or BatchEncoding)
+        # Check if inputs are already tokenized (either dict or BatchEncoding)
         if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:
             tokenized_inputs = inputs
         else:
             # Tokenize the inputs
             tokenizer_transform = pl_module.tokenizer_transforms[modality]
             tokenized_inputs = tokenizer_transform(inputs)
-        
+
         # Move inputs to device
         x = {k: v.to(pl_module.device) for k, v in tokenized_inputs.items() if isinstance(v, Tensor)}
-        
+
         # Extract embeddings
         embeddings = pl_module.model.tokens_to_latents(**x)
-        
+
         # Reshape to (batch_size, seq_len, hidden_size)
         batch_size = x["input_ids"].size(0)
         seq_len = x["input_ids"].size(-1)
         embeddings = embeddings.view(batch_size, seq_len, -1)
-        
+
         if aggregate:
             # Simple mean pooling over sequence length dimension
             return embeddings.mean(dim=1)
         else:
             return embeddings
-    
 
     def _get_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None
@@ -200,18 +198,15 @@ class PEEREvaluationCallback(LinearProbeCallback):
             with torch.no_grad():
                 for batch in dataloader:
                     x, y = batch
-                    
+
                     # Get embeddings using our new method
-                    batch_embeddings = self._process_and_embed(
-                        pl_module, x, modality="amino_acid", aggregate=True
-                    )
+                    batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
 
                     embeddings.append(batch_embeddings.cpu())
                     targets.append(y.cpu())
 
             return torch.cat(embeddings), torch.cat(targets)
 
-        
     def _get_task_test_splits(self, task: PEERTask) -> list[str]:
         """Get all appropriate test splits for a task.
 
@@ -302,7 +297,9 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     # Handle protein-ligand interactions
                     elif task in {PEERTask.BINDINGDB, PEERTask.PDBBIND}:
                         # Get embeddings for protein and ligand
-                        protein_embeddings = self._process_and_embed(pl_module, seq1, modality="amino_acid", aggregate=True)
+                        protein_embeddings = self._process_and_embed(
+                            pl_module, seq1, modality="amino_acid", aggregate=True
+                        )
                         ligand_embeddings = self._process_and_embed(pl_module, seq2, modality="ligand", aggregate=True)
 
                         # Concatenate the embeddings
@@ -320,7 +317,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 targets.append(y.cpu())
 
         return torch.cat(embeddings), torch.cat(targets)
-
 
     def _flatten_and_filter_token_embeddings(
         self,
@@ -382,13 +378,13 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
             # Also filter based on target values to ignore
             target_mask = targets_flat != ignore_target_value
-            
+
             # Flatten mask & filter embeddings based on token mask
             valid_token_mask_flat = valid_token_mask.reshape(-1)
-            
+
             # Combine both masks
             combined_mask = valid_token_mask_flat & target_mask
-            
+
             filtered_embeddings = batch_embeddings_flat[combined_mask]
             filtered_targets = targets_flat[combined_mask]
         else:
@@ -412,7 +408,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 # Unpack the batch - all batches will have input_ids and attention_mask
                 if isinstance(batch, tuple) and len(batch) == 2:
                     x, y = batch
-                    
+
                     # x should be a dictionary with tokenizer outputs
                     input_ids = x.get("input_ids")
                     attention_mask = x.get("attention_mask")
@@ -495,7 +491,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
             return torch.tensor([]), torch.tensor([])
 
         return torch.cat(embeddings), torch.cat(targets)
-
 
     def _train_probe(self, embeddings: Tensor, targets: Tensor, task: PEERTask = None):
         """Train a probe on the given embeddings and targets with task-specific handling."""
@@ -588,7 +583,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
             logger.exception(f"Error evaluating task {task}: {str(e)}")
             return {}
 
-
     def _run_evaluation(
         self,
         pl_module: L.LightningModule,
@@ -596,7 +590,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         step: int = 0,
     ) -> Dict[str, Dict[str, float]]:
         """Core evaluation logic used by both on_validation_epoch_end and evaluate.
-        
+
         Parameters
         ----------
         pl_module : L.LightningModule
@@ -605,7 +599,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Trainer instance for logging metrics
         step : int, optional
             Step value for logging metrics, by default 0
-            
+
         Returns
         -------
         Dict[str, Dict[str, float]]
@@ -621,24 +615,24 @@ class PEEREvaluationCallback(LinearProbeCallback):
         for task in tqdm(self.selected_tasks, desc=f"{self.__class__.__name__}"):
             task_category = PEER_TASK_CATEGORIES[task]
             split_metrics = self._evaluate_task(task, trainer, pl_module)
-            
+
             # Store task metrics for return value
             all_task_metrics[str(task)] = split_metrics
-            
+
             # Process metrics for each split
             for split_name, metrics in split_metrics.items():
                 # Log split-specific metrics
                 for metric_name, value in metrics.items():
                     metric_key = f"peer_linear_probe/{task}/{split_name}/{metric_name}"
                     trainer.logger.log_metrics({metric_key: value}, step=step)
-                    
+
                     # Collect metrics for category averages
                     if len(split_metrics) > 1:
                         category_metrics[task_category][f"{metric_name}_by_split"].append(value)
-                    
+
                     # Collect metrics for global averages
                     all_metrics[metric_name].append(value)
-                
+
                 split_count += 1
 
             # Calculate and log task averages across splits if there are multiple splits
@@ -651,7 +645,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         task_avg_key = f"peer_linear_probe/{task}/average/{metric_name}"
                         trainer.logger.log_metrics({task_avg_key: avg_value}, step=step)
                         task_avg_metrics[metric_name] = avg_value
-                
+
                 if task_avg_metrics:
                     all_task_metrics[f"{task}/average"] = task_avg_metrics
 
@@ -665,7 +659,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     metric_key = f"peer_linear_probe/category/{category}/{metric_name}"
                     trainer.logger.log_metrics({metric_key: avg_value}, step=step)
                     category_metrics_dict[str(category)][metric_name] = avg_value
-        
+
         if category_metrics_dict:
             all_task_metrics["categories"] = category_metrics_dict
 
@@ -677,28 +671,24 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 metric_key = f"peer_linear_probe/mean/{metric_name}"
                 trainer.logger.log_metrics({metric_key: avg_value}, step=step)
                 mean_metrics[metric_name] = avg_value
-        
+
         # Add mean metrics to result
         all_task_metrics["mean"] = mean_metrics
-        
-        # Log total number of splits evaluated
-        trainer.logger.log_metrics(
-            {"peer_linear_probe/total_splits_evaluated": split_count}, step=step
-        )
-        
-        return all_task_metrics
 
+        # Log total number of splits evaluated
+        trainer.logger.log_metrics({"peer_linear_probe/total_splits_evaluated": split_count}, step=step)
+
+        return all_task_metrics
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         """Train and evaluate linear probes on PEER tasks at specified epochs.
-        
+
         This method is automatically called by Lightning during training.
         """
         if self._skip(trainer):
             return
-        
-        self._run_evaluation(pl_module, trainer, step=trainer.current_epoch)
 
+        self._run_evaluation(pl_module, trainer, step=trainer.current_epoch)
 
     def evaluate(
         self,
@@ -706,7 +696,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         trainer: L.Trainer = None,
     ) -> Dict[str, Dict[str, float]]:
         """Evaluate model on PEER benchmark tasks using linear probes.
-        
+
         This method can be called manually at any time to evaluate a model.
 
         Parameters
@@ -729,5 +719,5 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 devices=1,
                 enable_checkpoints=False,
             )
-        
+
         return self._run_evaluation(module, trainer, step=0)

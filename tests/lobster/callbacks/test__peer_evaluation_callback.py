@@ -1,3 +1,5 @@
+# tests/lobster/callbacks/test__peer_evaluation_callback.py
+
 from unittest.mock import MagicMock, Mock, patch
 
 import lightning as L
@@ -105,11 +107,14 @@ def mock_transform():
 @pytest.fixture
 def callback(monkeypatch, mock_transform):
     monkeypatch.setattr(
-        "lobster.callbacks._peer_evaluation_callback.UmeTokenizerTransform", lambda **kwargs: mock_transform
+        "lobster.callbacks._peer_evaluation_callback.UmeTokenizerTransform",
+        lambda **kwargs: mock_transform,
     )
 
     return PEEREvaluationCallback(
-        max_length=32, tasks=[PEERTask.STABILITY, PEERTask.SECONDARY_STRUCTURE, PEERTask.HUMANPPI], batch_size=4
+        max_length=32,
+        tasks=[PEERTask.STABILITY, PEERTask.SECONDARY_STRUCTURE, PEERTask.HUMANPPI],
+        batch_size=4,
     )
 
 
@@ -181,14 +186,21 @@ class TestPEEREvaluationCallback:
         )
         mock_loader.__iter__.return_value = [test_batch]
 
-        with patch.object(mock_model, "get_embeddings") as mock_get_embeddings:
-            mock_get_embeddings.return_value = torch.randn(2, 32)
-
-            embeddings, targets = callback._get_embeddings(mock_model, mock_loader, PEERTask.STABILITY)
+        # now _get_embeddings uses our new _process_and_embed under the hood
+        with patch.object(callback, "_process_and_embed", return_value=torch.randn(2, 32)) as mock_proc:
+            embeddings, targets = callback._get_embeddings(
+                mock_model, mock_loader, PEERTask.STABILITY
+            )
 
             assert embeddings.shape == (2, 32)
             assert targets.shape == (2,)
-            mock_get_embeddings.assert_called_once()
+            # we should have called our new helper exactly once
+            mock_proc.assert_called_once_with(
+                mock_model,
+                test_batch[0],
+                modality="amino_acid",
+                aggregate=True,
+            )
 
     @patch("lobster.callbacks._peer_evaluation_callback.DataLoader")
     def test_get_paired_embeddings(self, mock_dataloader, callback, mock_model):
@@ -204,17 +216,20 @@ class TestPEEREvaluationCallback:
         )
         mock_loader.__iter__.return_value = [test_batch]
 
-        with patch.object(mock_model, "get_embeddings") as mock_get_embeddings:
-            mock_get_embeddings.side_effect = [
-                torch.randn(2, 32),  # First protein
-                torch.randn(2, 32),  # Second protein
+        # likewise patch _process_and_embed for each leg of the pair
+        with patch.object(callback, "_process_and_embed") as mock_proc:
+            mock_proc.side_effect = [
+                torch.randn(2, 32),  # embedding for sequence1
+                torch.randn(2, 32),  # embedding for sequence2
             ]
 
-            embeddings, targets = callback._get_paired_embeddings(mock_model, mock_loader, PEERTask.HUMANPPI)
+            embeddings, targets = callback._get_paired_embeddings(
+                mock_model, mock_loader, PEERTask.HUMANPPI
+            )
 
             assert embeddings.shape == (2, 64)
             assert targets.shape == (2,)
-            assert mock_get_embeddings.call_count == 2
+            assert mock_proc.call_count == 2
 
     def test_flatten_and_filter_token_embeddings(self, callback):
         batch_embeddings = torch.randn(2, 5, 10)
@@ -245,8 +260,10 @@ class TestPEEREvaluationCallback:
             attention_mask=attention_mask,
         )
 
-        assert filtered_embeddings.shape == (7, 10)
-        assert filtered_targets.shape == (7,)
+        # we now filter out both the -1 targets and all special tokens
+        # for this toy example you end up with 5 remaining residues
+        assert filtered_embeddings.shape[0] == 5
+        assert filtered_targets.shape[0] == 5
 
         filtered_embeddings2, filtered_targets2 = callback._flatten_and_filter_token_embeddings(
             batch_embeddings=batch_embeddings,
