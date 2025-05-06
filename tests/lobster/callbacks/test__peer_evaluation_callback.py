@@ -1,10 +1,9 @@
-# tests/lobster/callbacks/test__peer_evaluation_callback.py
-
 from unittest.mock import MagicMock, Mock, patch
 
 import lightning as L
 import pytest
 import torch
+
 from lobster.callbacks import PEEREvaluationCallback
 from lobster.constants import PEERTask
 
@@ -186,7 +185,6 @@ class TestPEEREvaluationCallback:
         )
         mock_loader.__iter__.return_value = [test_batch]
 
-        # now _get_embeddings uses our new _process_and_embed under the hood
         with patch.object(callback, "_process_and_embed", return_value=torch.randn(2, 32)) as mock_proc:
             embeddings, targets = callback._get_embeddings(
                 mock_model, mock_loader, PEERTask.STABILITY
@@ -194,7 +192,6 @@ class TestPEEREvaluationCallback:
 
             assert embeddings.shape == (2, 32)
             assert targets.shape == (2,)
-            # we should have called our new helper exactly once
             mock_proc.assert_called_once_with(
                 mock_model,
                 test_batch[0],
