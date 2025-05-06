@@ -146,6 +146,7 @@ class Ume(L.LightningModule):
         for modality in Modality:
             setattr(self, f"train_perplexity/{modality.value}", Perplexity(ignore_index=-100))
             setattr(self, f"val_perplexity/{modality.value}", Perplexity(ignore_index=-100))
+            setattr(self, f"test_perplexity/{modality.value}", Perplexity(ignore_index=-100))
 
     @property
     def modalities(self) -> list[str]:
@@ -397,12 +398,16 @@ class Ume(L.LightningModule):
         # Get logits and labels
         logits, labels = self.model.get_logits_and_labels(batch)
 
+        metrics = {}
+
         # Compute loss
         loss = self.model.loss_fn(logits, labels)
         self.log(f"{stage}_loss", loss, sync_dist=True)
+        metrics["loss"] = loss
 
         perplexity = torch.exp(loss)
         self.log(f"{stage}_perplexity", perplexity, sync_dist=True)
+        metrics["perplexity"] = perplexity
 
         # Log perplexity for each modality separately
         tokens = batch["input_ids"].squeeze(1)
@@ -423,11 +428,18 @@ class Ume(L.LightningModule):
 
             # Do no specify on_step since Lightning will handle this automatically
             self.log(metric_name, metric, sync_dist=True)
+            metrics[metric_name] = metric
 
-        return loss
+        return metrics
 
     def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self._step(batch, "train")
+        return self._step(batch, "train")["loss"]
 
     def validation_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self._step(batch, "val")
+        return self._step(batch, "val")["loss"]
+
+    def test_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> dict[str, Tensor]:
+        return self._step(batch, "test")
+
+    def predict_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
+        return self.embed(batch, aggregate=True)
