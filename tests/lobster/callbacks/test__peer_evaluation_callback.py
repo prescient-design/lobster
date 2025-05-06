@@ -186,9 +186,7 @@ class TestPEEREvaluationCallback:
         mock_loader.__iter__.return_value = [test_batch]
 
         with patch.object(callback, "_process_and_embed", return_value=torch.randn(2, 32)) as mock_proc:
-            embeddings, targets = callback._get_embeddings(
-                mock_model, mock_loader, PEERTask.STABILITY
-            )
+            embeddings, targets = callback._get_embeddings(mock_model, mock_loader, PEERTask.STABILITY)
 
             assert embeddings.shape == (2, 32)
             assert targets.shape == (2,)
@@ -220,9 +218,7 @@ class TestPEEREvaluationCallback:
                 torch.randn(2, 32),  # embedding for sequence2
             ]
 
-            embeddings, targets = callback._get_paired_embeddings(
-                mock_model, mock_loader, PEERTask.HUMANPPI
-            )
+            embeddings, targets = callback._get_paired_embeddings(mock_model, mock_loader, PEERTask.HUMANPPI)
 
             assert embeddings.shape == (2, 64)
             assert targets.shape == (2,)
