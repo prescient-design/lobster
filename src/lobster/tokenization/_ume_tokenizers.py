@@ -99,7 +99,10 @@ NUM_EXTRA_SPECIAL_TOKENS = 11
 
 
 def _get_special_tokens() -> list[str]:
-    # Add extra special tokens to the next multiple of 64 (hard-coded)
+    # Add extra special tokens to the next multiple of 64
+    # NOTE: To figure out how much we need to add, run `_make_ume_tokenizers()` first, check the vocab size,
+    # update `NUM_EXTRA_SPECIAL_TOKENS` to the number of extra special tokens needed
+    # and run `_make_ume_tokenizers()` again.
     extra_special_tokens = [f"<extra_special_token_{i}>" for i in range(NUM_EXTRA_SPECIAL_TOKENS)]
 
     return [
