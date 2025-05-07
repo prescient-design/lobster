@@ -4,9 +4,9 @@ Creates tokenizers with shared special tokens and reserved tokens to make sure t
 no overlapping tokens between different modalities.
 
 Vocabulary structure:
-- Special tokens: ["<cls>", "<eos>", "<unk>", "<pad>"]
+- Special tokens: ["<cls>", "<eos>", "<unk>", "<pad>", ...]
 - Conversion and interaction tokens: ["<convert>", "<interact>"]
-- Extra special tokens to get % 64 == 0: ["<extra_special_token_2>", "<extra_special_token_3>", ...]
+- Extra special tokens to get % 64 == 0: ["<extra2>", "<extra3>", ...]
 - Amino acid tokenizer: [special_tokens] + ["A", "C", "D", ...]
 - SMILES tokenizer: [special_tokens] + [reserved_for_amino_acids] + ["C", "O", "N", ...]
 - Nucleotide tokenizer: [special_tokens] + [reserved_for_amino_acids] + [reserved_for_SMILES] + ["A", "C", "G", ...]
@@ -76,43 +76,72 @@ TOKENIZERS_PATH = importlib.resources.files("lobster") / "assets" / "ume_tokeniz
 AMINO_ACID_TOKENIZER = "amino_acid_tokenizer"
 SMILES_TOKENIZER = "smiles_tokenizer"
 NUCLEOTIDE_TOKENIZER = "nucleotide_tokenizer"
-LATENT_GENERATOR_TOKENIZER = "latent_generator_tokenizer"
+COORDINATES_3D_TOKENIZER = "coordinates_3d_tokenizer"
+SPECIAL_TOKENS_NAME = "special_tokens"
 
 AMINO_ACID_VOCAB_PATH = TOKENIZERS_PATH / AMINO_ACID_TOKENIZER / "vocab.txt"
 NUCLEOTIDE_VOCAB_PATH = TOKENIZERS_PATH / NUCLEOTIDE_TOKENIZER / "vocab.txt"
 
 # Special tokens
 CLS_TOKEN = "<cls>"
+CLS_TOKEN_AMINO_ACID = "<cls_amino_acid>"
+CLS_TOKEN_SMILES = "<cls_smiles>"
+CLS_TOKEN_NUCLEOTIDE = "<cls_nucleotide>"
+CLS_TOKEN_3D_COORDINATES = "<cls_3d_coordinates>"
 EOS_TOKEN = "<eos>"
 UNK_TOKEN = "<unk>"
 PAD_TOKEN = "<pad>"
 SEP_TOKEN = "<sep>"
 MASK_TOKEN = "<mask>"
-SPECIAL_TOKENS = {CLS_TOKEN, EOS_TOKEN, UNK_TOKEN, PAD_TOKEN, SEP_TOKEN, MASK_TOKEN}
+CONVERT_TOKEN = "<cls_convert>"
+INTERACT_TOKEN = "<cls_interact>"
+NUM_EXTRA_SPECIAL_TOKENS = 11
+
+
+def _get_special_tokens() -> list[str]:
+    # Add extra special tokens to the next multiple of 64 (hard-coded)
+    extra_special_tokens = [f"<extra_special_token_{i}>" for i in range(NUM_EXTRA_SPECIAL_TOKENS)]
+
+    return [
+        CLS_TOKEN,
+        CLS_TOKEN_AMINO_ACID,
+        CLS_TOKEN_SMILES,
+        CLS_TOKEN_NUCLEOTIDE,
+        CLS_TOKEN_3D_COORDINATES,
+        EOS_TOKEN,
+        UNK_TOKEN,
+        PAD_TOKEN,
+        SEP_TOKEN,
+        MASK_TOKEN,
+        CONVERT_TOKEN,
+        INTERACT_TOKEN,
+        *extra_special_tokens,
+    ]
 
 
 def _load_file(filepath: str | Path, remove_special_tokens: bool = False) -> list[str]:
     vocab = load_vocab_file(filepath)
 
     if remove_special_tokens:
-        return [token for token in vocab if token not in SPECIAL_TOKENS]
+        special_tokens = _get_special_tokens()
+        return [token for token in vocab if token not in set(special_tokens)]
 
     return vocab
 
 
 def _load_vocabularies() -> dict[str, list[str]]:
     return {
-        "special_tokens": _load_file(TOKENIZERS_PATH / "special_tokens.txt"),
-        "amino_acid_tokenizer": _load_file(AMINO_ACID_VOCAB_PATH, remove_special_tokens=True),
-        "smiles_tokenizer": _load_file(SMILES_VOCAB_PATH, remove_special_tokens=True),
-        "nucleotide_tokenizer": _load_file(NUCLEOTIDE_VOCAB_PATH, remove_special_tokens=True),
-        "latent_generator_tokenizer": _load_file(LATENT_GENERATOR_VOCAB_PATH, remove_special_tokens=True),
+        SPECIAL_TOKENS_NAME: _get_special_tokens(),
+        AMINO_ACID_TOKENIZER: _load_file(AMINO_ACID_VOCAB_PATH, remove_special_tokens=True),
+        SMILES_TOKENIZER: _load_file(SMILES_VOCAB_PATH, remove_special_tokens=True),
+        NUCLEOTIDE_TOKENIZER: _load_file(NUCLEOTIDE_VOCAB_PATH, remove_special_tokens=True),
+        COORDINATES_3D_TOKENIZER: _load_file(LATENT_GENERATOR_VOCAB_PATH, remove_special_tokens=True),
     }
 
 
 def _add_reserved_tokens(vocabs: dict[str, list[str]]) -> dict[str, list[str]]:
     """
-    Add reserved tokens <reserved_special_token_i> to maintain index compatibility
+    Add reserved tokens <reservedi> to maintain index compatibility
     across tokenizers.
 
     This function constructs the full vocabulary for each tokenizer by combining:
@@ -120,8 +149,7 @@ def _add_reserved_tokens(vocabs: dict[str, list[str]]) -> dict[str, list[str]]:
     - Reserved/dummy tokens (to maintain index compatibility)
     - Domain-specific tokens for each tokenizer type
 
-    Ordering of tokenizers is important for reserved token construction! Corresponds
-    to the order in `TOKENIZER_ORDER`.
+    Ordering of tokenizers is important for reserved token construction!
 
     Parameters
     ----------
@@ -134,77 +162,47 @@ def _add_reserved_tokens(vocabs: dict[str, list[str]]) -> dict[str, list[str]]:
         Dictionary mapping tokenizer names to their complete vocabularies
         with reserved tokens
     """
-    # Find the highest reserved token index in the special tokens
-    highest_reserved_index = -1
-    for token in vocabs["special_tokens"]:
-        if token.startswith("<extra_special_token_"):
-            index = int(token.split("_")[-1][:-1])
-            highest_reserved_index = max(highest_reserved_index, index)
-
-    # Start reserving from the next index
-    next_reserved_index = highest_reserved_index + 1
-
     # Amino acid tokenizer: special_tokens + amino acid vocab
-    vocab_amino_acid = vocabs["special_tokens"] + vocabs["amino_acid_tokenizer"]
+    vocab_size_amino_acid = len(vocabs[AMINO_ACID_TOKENIZER])
+    vocab_amino_acid = vocabs[SPECIAL_TOKENS_NAME] + vocabs[AMINO_ACID_TOKENIZER]
 
     # SMILES tokenizer: special_tokens + [reserved for amino acid tokens] + smiles vocab
-    amino_acid_len = len(vocabs["amino_acid_tokenizer"])
+    vocab_size_smiles = len(vocabs[SMILES_TOKENIZER])
     vocab_smiles = (
-        vocabs["special_tokens"]
-        + [
-            f"<reserved_for_amino_acids_special_token_{i}>"
-            for i in range(next_reserved_index, next_reserved_index + amino_acid_len)
-        ]
-        + vocabs["smiles_tokenizer"]
+        vocabs[SPECIAL_TOKENS_NAME]
+        + [f"<reserved_for_amino_acids_{i}>" for i in range(vocab_size_amino_acid)]
+        + vocabs[SMILES_TOKENIZER]
     )
 
-    # Nucleotide tokenizer: special_tokens + [reserved for amino acid] + [reserved for SMILES] + nucleotide vocav
-    smiles_len = len(vocabs["smiles_tokenizer"])
+    # Nucleotide tokenizer: special_tokens + [reserved for amino acid] + [reserved for SMILES] + nucleotide vocab
+    vocab_size_nucleotide = len(vocabs[NUCLEOTIDE_TOKENIZER])
     vocab_nucleotide = (
-        vocabs["special_tokens"]
-        + [
-            f"<reserved_for_amino_acids_special_token_{i}>"
-            for i in range(next_reserved_index, next_reserved_index + amino_acid_len)
-        ]
-        + [
-            f"<reserved_for_smiles_special_token_{i}>"
-            for i in range(next_reserved_index + amino_acid_len, next_reserved_index + amino_acid_len + smiles_len)
-        ]
-        + vocabs["nucleotide_tokenizer"]
+        vocabs[SPECIAL_TOKENS_NAME]
+        + [f"<reserved_for_amino_acids_{i}>" for i in range(vocab_size_amino_acid)]
+        + [f"<reserved_for_smiles_{i}>" for i in range(vocab_size_smiles)]
+        + vocabs[NUCLEOTIDE_TOKENIZER]
     )
 
     # Latent generator tokenizer: special_tokens + [reserved for amino acid] + [reserved for SMILES] +
     # [reserved for nucleotide] + latent generator 3D vocab
-    nucleotide_len = len(vocabs["nucleotide_tokenizer"])
-    vocab_latent = (
-        vocabs["special_tokens"]
-        + [
-            f"<reserved_for_amino_acids_special_token_{i}>"
-            for i in range(next_reserved_index, next_reserved_index + amino_acid_len)
-        ]
-        + [
-            f"<reserved_for_smiles_special_token_{i}>"
-            for i in range(next_reserved_index + amino_acid_len, next_reserved_index + amino_acid_len + smiles_len)
-        ]
-        + [
-            f"<reserved_for_nucleotides_special_token_{i}>"
-            for i in range(
-                next_reserved_index + amino_acid_len + smiles_len,
-                next_reserved_index + amino_acid_len + smiles_len + nucleotide_len,
-            )
-        ]
-        + vocabs["latent_generator_tokenizer"]
+    vocab_coordinates_3d = (
+        vocabs[SPECIAL_TOKENS_NAME]
+        + [f"<reserved_for_amino_acids_{i}>" for i in range(vocab_size_amino_acid)]
+        + [f"<reserved_for_smiles_{i}>" for i in range(vocab_size_smiles)]
+        + [f"<reserved_for_nucleotide_{i}>" for i in range(vocab_size_nucleotide)]
+        + vocabs[COORDINATES_3D_TOKENIZER]
     )
 
     return {
+        SPECIAL_TOKENS_NAME: vocabs[SPECIAL_TOKENS_NAME],
         AMINO_ACID_TOKENIZER: vocab_amino_acid,
         SMILES_TOKENIZER: vocab_smiles,
         NUCLEOTIDE_TOKENIZER: vocab_nucleotide,
-        LATENT_GENERATOR_TOKENIZER: vocab_latent,
+        COORDINATES_3D_TOKENIZER: vocab_coordinates_3d,
     }
 
 
-def _create_post_processor() -> TemplateProcessing:
+def _create_post_processor(cls_token: str) -> TemplateProcessing:
     """
     Create a template processor for tokenization.
 
@@ -216,12 +214,16 @@ def _create_post_processor() -> TemplateProcessing:
     TemplateProcessing
         Configured template processor for token sequence formatting
     """
+    special_tokens = _get_special_tokens()
+    cls_token_index = special_tokens.index(cls_token)
+    eos_token_index = special_tokens.index(EOS_TOKEN)
+
     return TemplateProcessing(
-        single=f"{CLS_TOKEN} $A {EOS_TOKEN}",
-        pair=f"{CLS_TOKEN} $A {EOS_TOKEN} $B:1 {EOS_TOKEN}:1",
+        single=f"{cls_token} $A {EOS_TOKEN}",
+        pair=f"{cls_token} $A {EOS_TOKEN} $B:1 {EOS_TOKEN}:1",
         special_tokens=[
-            (CLS_TOKEN, 0),  # MUST match the order of special tokens in its vocabulary txt file
-            (EOS_TOKEN, 2),
+            (cls_token, cls_token_index),
+            (EOS_TOKEN, eos_token_index),
         ],
     )
 
@@ -243,13 +245,13 @@ def _make_amino_acid_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast
     tokenizer_model = BPE(
         {token: i for i, token in enumerate(vocab)}, merges=[], unk_token=UNK_TOKEN, ignore_merges=True
     )
-    post_processor = _create_post_processor()
+    post_processor = _create_post_processor(cls_token=CLS_TOKEN_AMINO_ACID)
 
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
         post_processor=post_processor,
         save_dirpath=str(TOKENIZERS_PATH / AMINO_ACID_TOKENIZER),
-        cls_token=CLS_TOKEN,
+        cls_token=CLS_TOKEN_AMINO_ACID,
         eos_token=EOS_TOKEN,
         unk_token=UNK_TOKEN,
         sep_token=SEP_TOKEN,
@@ -275,14 +277,14 @@ def _make_smiles_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     """
     tokenizer_model = WordLevel(vocab={token: i for i, token in enumerate(vocab)}, unk_token=UNK_TOKEN)
     pre_tokenizer = Split(pattern=Regex(SMILES_REGEX_PATTERN), behavior="isolated")
-    post_processor = _create_post_processor()
+    post_processor = _create_post_processor(cls_token=CLS_TOKEN_SMILES)
 
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
         pre_tokenizer=pre_tokenizer,
         post_processor=post_processor,
         save_dirpath=str(TOKENIZERS_PATH / SMILES_TOKENIZER),
-        cls_token=CLS_TOKEN,
+        cls_token=CLS_TOKEN_SMILES,
         eos_token=EOS_TOKEN,
         unk_token=UNK_TOKEN,
         sep_token=SEP_TOKEN,
@@ -309,14 +311,14 @@ def _make_nucleotide_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast
     tokenizer_model = BPE(
         {token: i for i, token in enumerate(vocab)}, merges=[], unk_token=UNK_TOKEN, ignore_merges=True
     )
-    post_processor = _create_post_processor()
+    post_processor = _create_post_processor(cls_token=CLS_TOKEN_NUCLEOTIDE)
 
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
         normalizer=Lowercase(),
         post_processor=post_processor,
         save_dirpath=str(TOKENIZERS_PATH / NUCLEOTIDE_TOKENIZER),
-        cls_token=CLS_TOKEN,
+        cls_token=CLS_TOKEN_NUCLEOTIDE,
         eos_token=EOS_TOKEN,
         unk_token=UNK_TOKEN,
         sep_token=SEP_TOKEN,
@@ -326,7 +328,7 @@ def _make_nucleotide_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast
     )
 
 
-def _make_latent_generator_3d_coord_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
+def _make_3d_coordinates_tokenizer_fast(vocab: list[str]) -> PreTrainedTokenizerFast:
     """
     Create a fast tokenizer for 3D latent generator coordinates.
 
@@ -342,14 +344,14 @@ def _make_latent_generator_3d_coord_tokenizer_fast(vocab: list[str]) -> PreTrain
     """
     tokenizer_model = WordLevel({token: i for i, token in enumerate(vocab)}, unk_token=UNK_TOKEN)
     pre_tokenizer = PreTokenizerSequence([WhitespaceSplit()])
-    post_processor = _create_post_processor()
+    post_processor = _create_post_processor(cls_token=CLS_TOKEN_3D_COORDINATES)
 
     return make_pretrained_tokenizer_fast(
         tokenizer_model=tokenizer_model,
         pre_tokenizer=pre_tokenizer,
         post_processor=post_processor,
-        save_dirpath=str(TOKENIZERS_PATH / LATENT_GENERATOR_TOKENIZER),
-        cls_token=CLS_TOKEN,
+        save_dirpath=str(TOKENIZERS_PATH / COORDINATES_3D_TOKENIZER),
+        cls_token=CLS_TOKEN_3D_COORDINATES,
         eos_token=EOS_TOKEN,
         unk_token=UNK_TOKEN,
         sep_token=SEP_TOKEN,
@@ -388,7 +390,7 @@ def _make_ume_tokenizers() -> None:
     _make_amino_acid_tokenizer_fast(complete_vocabs[AMINO_ACID_TOKENIZER])
     _make_smiles_tokenizer_fast(complete_vocabs[SMILES_TOKENIZER])
     _make_nucleotide_tokenizer_fast(complete_vocabs[NUCLEOTIDE_TOKENIZER])
-    _make_latent_generator_3d_coord_tokenizer_fast(complete_vocabs[LATENT_GENERATOR_TOKENIZER])
+    _make_3d_coordinates_tokenizer_fast(complete_vocabs[COORDINATES_3D_TOKENIZER])
 
 
 class UmeAminoAcidTokenizerFast(PreTrainedTokenizerFast):
@@ -404,7 +406,7 @@ class UmeAminoAcidTokenizerFast(PreTrainedTokenizerFast):
             unk_token=UNK_TOKEN,
             sep_token=SEP_TOKEN,
             pad_token=PAD_TOKEN,
-            cls_token=CLS_TOKEN,
+            cls_token=CLS_TOKEN_AMINO_ACID,
             mask_token=MASK_TOKEN,
         )
 
@@ -422,7 +424,7 @@ class UmeSmilesTokenizerFast(PreTrainedTokenizerFast):
             unk_token=UNK_TOKEN,
             sep_token=SEP_TOKEN,
             pad_token=PAD_TOKEN,
-            cls_token=CLS_TOKEN,
+            cls_token=CLS_TOKEN_SMILES,
             mask_token=MASK_TOKEN,
         )
 
@@ -440,7 +442,7 @@ class UmeNucleotideTokenizerFast(PreTrainedTokenizerFast):
             unk_token=UNK_TOKEN,
             sep_token=SEP_TOKEN,
             pad_token=PAD_TOKEN,
-            cls_token=CLS_TOKEN,
+            cls_token=CLS_TOKEN_NUCLEOTIDE,
             mask_token=MASK_TOKEN,
         )
 
@@ -452,13 +454,13 @@ class UmeLatentGenerator3DCoordTokenizerFast(PreTrainedTokenizerFast):
 
     def __init__(self):
         super().__init__(
-            tokenizer_file=str(TOKENIZERS_PATH / LATENT_GENERATOR_TOKENIZER / "tokenizer.json"),
+            tokenizer_file=str(TOKENIZERS_PATH / COORDINATES_3D_TOKENIZER / "tokenizer.json"),
             bos_token=None,
             eos_token=EOS_TOKEN,
             unk_token=UNK_TOKEN,
             sep_token=SEP_TOKEN,
             pad_token=PAD_TOKEN,
-            cls_token=CLS_TOKEN,
+            cls_token=CLS_TOKEN_3D_COORDINATES,
             mask_token=MASK_TOKEN,
         )
 
@@ -585,13 +587,11 @@ class UmeTokenizerTransform(Module):
             self.tokenizer1 = _get_modality_tokenizer(self.modality1)
             self.tokenizer2 = _get_modality_tokenizer(self.modality2)
 
-            self.task_token = f"<{self.mode}>"
+            self.task_token = f"<cls_{self.mode}>"
             self.task_token_id = self.tokenizer1.convert_tokens_to_ids(self.task_token)
 
             if self.task_token not in self.tokenizer1.get_vocab() or self.task_token not in self.tokenizer2.get_vocab():
                 raise ValueError(f"Task token '{self.task_token}' not found in tokenizer vocabularies. ")
-
-            self.pad_id = self.tokenizer1.pad_token_id
 
     def _check_and_sample_3d_coordinates(self, item: list[str] | list[list[str]]) -> None:
         """Validate 3D coordinate input structure.
@@ -647,12 +647,13 @@ class UmeTokenizerTransform(Module):
     def _combine_and_pad(self, input_ids1: list[int], input_ids2: list[int]) -> list[int]:
         """Combine token ID sequences for multiple modalities and apply padding/truncation."""
 
-        # [CLS] [input1] [SEP] <task_token> [input2] [SEP]
+        # [CLS_interact or  CLS_convert] [CLS_modality1] [input1] [SEP] [CLS_modality2] [input2] [SEP]
         combined_ids = [
+            self.task_token_id,
             self.tokenizer1.cls_token_id,
             *input_ids1,
             self.tokenizer1.sep_token_id,
-            self.task_token_id,
+            self.tokenizer2.cls_token_id,
             *input_ids2,
             self.tokenizer1.sep_token_id,
         ]
@@ -664,7 +665,7 @@ class UmeTokenizerTransform(Module):
 
             # Pad
             elif len(combined_ids) < self.max_length:
-                combined_ids.extend([self.pad_id] * (self.max_length - len(combined_ids)))
+                combined_ids.extend([self.tokenizer1.pad_token_id] * (self.max_length - len(combined_ids)))
 
         return combined_ids
 
@@ -723,7 +724,7 @@ class UmeTokenizerTransform(Module):
 
         output = {
             "input_ids": input_ids,
-            "attention_mask": (input_ids != self.pad_id).long(),
+            "attention_mask": (input_ids != self.tokenizer1.pad_token_id).long(),
         }
 
         if self.return_modality:

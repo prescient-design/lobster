@@ -1,5 +1,5 @@
 {
-  "cls_token": "<cls>",
+  "cls_token": "<cls_amino_acid>",
   "eos_token": "<eos>",
   "mask_token": "<mask>",
   "pad_token": "<pad>",
