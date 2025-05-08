@@ -3,7 +3,7 @@ from typing import Callable, Literal, Sequence
 
 import lightning as L
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 from torchmetrics.text import Perplexity
 
 from lobster.constants import Modality, ModalityType
@@ -145,7 +145,9 @@ class Ume(L.LightningModule):
         self.frozen = False
 
         # Add modality-specific embeddings
-        self.embedding_layers = {modality: get_embedding_layer(self.model.config) for modality in Modality}
+        self.embedding_layers = nn.ModuleDict(
+            {modality.value: get_embedding_layer(self.model.config) for modality in Modality}
+        )
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
