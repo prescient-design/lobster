@@ -48,8 +48,11 @@ class Ume(L.LightningModule):
         Additional keyword arguments to pass to the FlexBERT model.
     scheduler_kwargs : dict | None, default=None
         Additional keyword arguments to pass to the learning rate scheduler.
+    modality_specific_embeddings : bool, default=False
+        If True, use modality-specific embedding layers before the encoder.
+        If False, use the same embedding layer for all modalities.
     ckpt_path : str | None, default=None
-        Path to a checkpoint file to load.
+        Path to a checkpoint file to load. Unused.
 
     Attributes
     ----------
@@ -103,6 +106,7 @@ class Ume(L.LightningModule):
         num_warmup_steps: int | None = 1_000,
         model_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
+        modality_specific_embeddings: bool = False,
         ckpt_path: str | None = None,
     ) -> None:
         """Initialize the Universal Molecular Encoder"""
@@ -145,9 +149,12 @@ class Ume(L.LightningModule):
         self.frozen = False
 
         # Add modality-specific embeddings
-        self.embedding_layers = nn.ModuleDict(
-            {modality.value: get_embedding_layer(self.model.config) for modality in Modality}
-        )
+        if modality_specific_embeddings:
+            self.embedding_layers = nn.ModuleDict(
+                {modality.value: get_embedding_layer(self.model.config) for modality in Modality}
+            )
+        else:
+            self.embedding_layers = None
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -397,49 +404,50 @@ class Ume(L.LightningModule):
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs with different modalities and get logits and labels for training."""
-        # shape: (batch_size, seq_len, hidden_size)
         batch_size, seq_len = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
 
-        # new shape: (batch_size * seq_len, hidden_size)
+        # New shape: (batch_size * seq_len, hidden_size)
         input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
 
-        masked_input_ids = self.model._mask_inputs(input_ids)
-        labels = self.model._get_labels(input_ids)
+        masked_input_ids, labels = self.model._mask_inputs(input_ids)
 
-        # temporarily reshape back to (batch_size, seq_len) so we can map modalities
-        masked_input_ids = masked_input_ids.view(batch_size, seq_len)
+        # Embed each modality first
+        if self.embedding_layers is None:
+            embeddings = None
 
-        # get embeddings with modality-specific embedding layers
-        embeddings = torch.zeros((batch_size * seq_len, self.model.config.hidden_size), device=self.device)
-        modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
+        else:
+            masked_input_ids = masked_input_ids.view(batch_size, seq_len)
 
-        for modality in set(modalities):
-            modality_mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
+            # Get embeddings with modality-specific embedding layers
+            embeddings = torch.zeros((batch_size * seq_len, self.model.config.hidden_size), device=self.device)
+            modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
 
-            if not modality_mask.any():
-                continue
+            for modality in set(modalities):
+                modality_mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
 
-            modality_input_ids = masked_input_ids[modality_mask]
-            modality_embeddings = self.embedding_layers[modality](modality_input_ids)
+                if not modality_mask.any():
+                    continue
 
-            # create a mask that matches the flattened dimensions batch_size * seq_len
-            flat_modality_mask = torch.repeat_interleave(modality_mask, seq_len)
+                modality_input_ids = masked_input_ids[modality_mask]
+                modality_embeddings = self.embedding_layers[modality](modality_input_ids)
 
-            embeddings[flat_modality_mask] = modality_embeddings.view(-1, self.model.config.hidden_size)
+                # Create a mask that matches the flattened dimensions batch_size * seq_len
+                flat_modality_mask = torch.repeat_interleave(modality_mask, seq_len)
 
-        # forward pass with the embeddings
+                embeddings[flat_modality_mask] = modality_embeddings.view(-1, self.model.config.hidden_size)
+
         hidden_states = self.model.model(
-            input_ids=None,
+            input_ids=masked_input_ids if self.embedding_layers is None else None,
             inputs_embeds=embeddings,
             attention_mask=attention_mask,
             cu_seqlens=cu_seqlens,
             max_seqlen=self.max_length,
         )
 
-        # get logits from decoder
+        # Get logits from decoder
         logits = self.model.decoder(hidden_states)
 
-        # reshape for loss calculation
+        # Reshape for loss calculation
         logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * sequence_length, vocab_size)
         labels = labels.view(-1)  # (batch_size * sequence_length)
 

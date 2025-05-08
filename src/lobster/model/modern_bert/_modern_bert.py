@@ -6,7 +6,6 @@ import torch
 from torch import Tensor, nn
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, get_scheduler
 
-from lobster.constants import Modality
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
 from ._modern_bert_configuration import FLEXBERT_CONFIG_ARGS
@@ -212,30 +211,28 @@ class FlexBERT(pl.LightningModule):
         
         return input_ids, attention_mask, cu_seqlens
 
-    def _mask_inputs(self, train_inputs: torch.Tensor) -> torch.Tensor:
+    def _mask_inputs(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Mask inpust with random masking."""
         # create random array of floats with equal dimensions to input_ids tensor
-        rand = torch.rand(train_inputs.shape, device=train_inputs.device)
+        rand = torch.rand(input_ids.shape, device=input_ids.device)
 
         # create mask array
         # TODO: update this for special cls tokens that might be introduced with the new tokenizer
         mask_arr = (
             (rand < self._mask_percentage)
-            * (train_inputs != self.cls_token_id)
-            * (train_inputs != self.pad_token_id)
-            * (train_inputs != self.eos_token_id)
+            * (input_ids != self.cls_token_id)
+            * (input_ids != self.pad_token_id)
+            * (input_ids != self.eos_token_id)
         )  # don't mask cls, pad, eos
 
-        masked_inputs = train_inputs.clone()
+        masked_inputs = input_ids.clone()
         masked_inputs[mask_arr] = self.mask_token_id
 
-        return masked_inputs
+        labels  = input_ids.clone()
+        labels[~mask_arr] = -100  # set unmasked tokens to -100 for loss calculation
 
-    def _get_labels(self, input_ids: torch.Tensor) -> torch.Tensor:
-        """Create labels which are original input_ids with -100 for unmasked tokens."""
-        labels = input_ids.clone()
-        labels[labels != self.mask_token_id] = -100
-        return labels
+        return masked_inputs, labels
+
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Get logits and labels for training."""
@@ -244,8 +241,7 @@ class FlexBERT(pl.LightningModule):
         )
         
         # Mask input tokens
-        masked_input_ids = self._mask_inputs(input_ids)
-        labels = self._get_labels(input_ids)
+        masked_input_ids, labels = self._mask_inputs(input_ids)
         
         hidden_states = self.model(
             masked_input_ids, 
