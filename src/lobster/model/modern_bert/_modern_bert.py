@@ -185,67 +185,35 @@ class FlexBERT(pl.LightningModule):
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
+    
+    def _prepare_inputs(self, input_ids: torch.Tensor, attention_mask: torch.Tensor
+                        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Prepare inputs for the model by reshaping and calculating cumulative sequence lengths.
+        Expects input_ids and attention_mask to be of shape (batch_size, 1, length).
+        Returns reshaped input_ids and attention_mask of shape (batch_size * sequence_length,)
+        and cumulative sequence lengths of shape (batch_size + 1,).
+        """
+        # Compute cumulative sequence lengths
+        # input_ids and attention_mask are expected to be of shape (batch_size, 1, length)
+        batch_size, length = input_ids.shape[0], input_ids.shape[2]
+        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(batch_size)], dtype=torch.int32).cuda()
 
-    def tokens_to_latents(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        # Remove the middle dimension and flatten
+        # remove the middle dimension
         input_ids = input_ids.squeeze(1)
         attention_mask = attention_mask.squeeze(1)
 
-        batch_size, length = input_ids.shape  # Now shape is (batch_size, sequence_length)
-        input_ids = input_ids.view(-1)  # Flatten to (batch_size * sequence_length)
+        # flatten to (batch_size * sequence_length)
+        input_ids = input_ids.view(-1)  
         attention_mask = attention_mask.view(-1)
 
-        # Create cumulative sequence lengths tensor
-        cu_seqlens = torch.tensor(
-            [0] + [(i + 1) * length for i in range(batch_size)], dtype=torch.int32, device=input_ids.device
-        )
-
-        with torch.inference_mode():
-            hidden_states = self.model(
-                input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
-            )
-
-        return hidden_states
-    
-    def get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        """Get logits and labels for the masked language modeling task."""
-        tokens = batch["input_ids"].squeeze(1)
-        B, length = tokens.shape
-        tokens = tokens.view(-1)
-        attention_mask = batch["attention_mask"].squeeze(1).view(-1)
-
-        labels = tokens.clone()
-
-        masked_tokens = self._mask_inputs(tokens)
-        labels[masked_tokens != self.mask_token_id] = -100  # Ignore loss on unmasked tokens
-
-        # Cumulative sequence lengths.
-        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(B)], dtype=torch.int32).cuda()
-
         assert (
-            masked_tokens.max() < self.config.vocab_size
-        ), f"Token ID {masked_tokens.max()} is out of vocabulary range {self.config.vocab_size}"
+            input_ids.max() < self.config.vocab_size
+        ), f"Token ID {input_ids.max()} is out of vocabulary range {self.config.vocab_size}"
+        
+        return input_ids, attention_mask, cu_seqlens
 
-        hidden_states = self.model(
-            masked_tokens, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
-        )
-
-        logits = self.decoder(hidden_states)
-
-        logits = logits.view(-1, self.vocab_size)
-        labels = labels.view(-1)
-
-        return logits, labels
-    
-    def _compute_loss(self, batch: dict[str, Tensor] | tuple[dict[str, Tensor], Tensor]):
-        if isinstance(batch, tuple) and len(batch) == 2:
-            batch, _targets = batch
-
-        logits, labels = self.get_logits_and_labels(batch)
-
-        return self.loss_fn(logits, labels)
-
-    def _mask_inputs(self, train_inputs: torch.Tensor):
+    def _mask_inputs(self, train_inputs: torch.Tensor) -> torch.Tensor:
+        """Mask inpust with random masking."""
         # create random array of floats with equal dimensions to input_ids tensor
         rand = torch.rand(train_inputs.shape, device=train_inputs.device)
 
@@ -262,3 +230,69 @@ class FlexBERT(pl.LightningModule):
         masked_inputs[mask_arr] = self.mask_token_id
 
         return masked_inputs
+
+    def _get_labels(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Create labels which are original input_ids with -100 for unmasked tokens."""
+        labels = input_ids.clone()
+        labels[labels != self.mask_token_id] = -100
+        return labels
+
+    def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
+        """Get logits and labels for training."""
+        input_ids, attention_mask, cu_seqlens = self._prepare_inputs(
+            batch["input_ids"], batch["attention_mask"]
+        )
+        
+        # Mask input tokens
+        masked_input_ids = self._mask_inputs(input_ids)
+        labels = self._get_labels(input_ids)
+        
+        hidden_states = self.model(
+            masked_input_ids, 
+            attention_mask=attention_mask, 
+            cu_seqlens=cu_seqlens, 
+            max_seqlen=self.max_length
+        )
+        
+        logits = self.decoder(hidden_states)
+        
+        logits = logits.view(-1, self.vocab_size) # (batch_size * sequence_length, vocab_size)
+        labels = labels.view(-1) # (batch_size * sequence_length)
+        
+        return logits, labels
+    
+    def _compute_loss(self, batch: dict[str, Tensor] | tuple[dict[str, Tensor], Tensor]):
+        """Compute the MLM loss for the given batch."""
+        if isinstance(batch, tuple) and len(batch) == 2:
+            batch, _ = batch
+
+        logits, labels = self._get_logits_and_labels(batch)
+
+        return self.loss_fn(logits, labels)
+
+
+    def tokens_to_latents(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """Convert input_ids to latents. This function is used for inference.
+        
+        Parameters
+        ----------
+        input_ids: torch.Tensor
+            Input IDs of shape (batch_size, 1, length).
+        attention_mask: torch.Tensor
+            Attention mask of shape (batch_size, 1, length).
+        
+        Returns
+        -------
+        torch.Tensor
+            Latents of shape (batch_size * sequence_length, hidden_size).
+        """
+        input_ids, attention_mask, cu_seqlens = self._prepare_inputs(input_ids, attention_mask)
+        
+        with torch.inference_mode():
+            return self.model(
+                input_ids, 
+                attention_mask=attention_mask, 
+                cu_seqlens=cu_seqlens, 
+                max_seqlen=self.max_length
+            )
+            
