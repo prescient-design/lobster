@@ -195,7 +195,7 @@ class FlexBERT(pl.LightningModule):
         # Compute cumulative sequence lengths
         # input_ids and attention_mask are expected to be of shape (batch_size, 1, length)
         batch_size, length = input_ids.shape[0], input_ids.shape[2]
-        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(batch_size)], dtype=torch.int32).cuda()
+        cu_seqlens = torch.tensor([0] + [(i + 1) * length for i in range(batch_size)], dtype=torch.int32, device=self.device)
 
         # remove the middle dimension
         input_ids = input_ids.squeeze(1)
