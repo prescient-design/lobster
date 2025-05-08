@@ -48,7 +48,7 @@ class Ume(L.LightningModule):
         Additional keyword arguments to pass to the FlexBERT model.
     scheduler_kwargs : dict | None, default=None
         Additional keyword arguments to pass to the learning rate scheduler.
-    modality_specific_embeddings : bool, default=False
+    use_modality_embeddings : bool, default=False
         If True, use modality-specific embedding layers before the encoder.
         If False, use the same embedding layer for all modalities.
     ckpt_path : str | None, default=None
@@ -106,7 +106,7 @@ class Ume(L.LightningModule):
         num_warmup_steps: int | None = 1_000,
         model_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
-        modality_specific_embeddings: bool = False,
+        use_modality_embeddings: bool = False,
         ckpt_path: str | None = None,
     ) -> None:
         """Initialize the Universal Molecular Encoder"""
@@ -149,7 +149,7 @@ class Ume(L.LightningModule):
         self.frozen = False
 
         # Add modality-specific embeddings
-        if modality_specific_embeddings:
+        if use_modality_embeddings:
             self.embedding_layers = nn.ModuleDict(
                 {modality.value: get_embedding_layer(self.model.config) for modality in Modality}
             )
