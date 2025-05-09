@@ -64,8 +64,6 @@ class RandomNeighborScore(Metric):
         self.register_buffer("biological_embeddings", biological_embeddings)
         self.register_buffer("random_embeddings", random_embeddings)
 
-        self._balance_reference_sets()
-
         self.add_state(
             "query_embeddings",
             default=[],
