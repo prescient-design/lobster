@@ -461,11 +461,11 @@ class Ume(L.LightningModule):
 
         # Compute loss
         loss = self.model.loss_fn(logits, labels)
-        self.log(f"{stage}_loss", loss, sync_dist=True)
+        self.log(f"{stage}_loss", loss, rank_zero_only=True)
 
         # Compute overall perplextiy
         perplexity = torch.exp(loss)
-        self.log(f"{stage}_perplexity", perplexity, sync_dist=True)
+        self.log(f"{stage}_perplexity", perplexity, rank_zero_only=True)
 
         # Compute perplexity for each modality separately
         modalities: list[Modality] = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
@@ -484,7 +484,7 @@ class Ume(L.LightningModule):
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
             # Do no specify on_step since Lightning will handle this automatically
-            self.log(metric_name, metric, sync_dist=True)
+            self.log(metric_name, metric, rank_zero_only=True)
 
         return loss
 
