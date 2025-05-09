@@ -57,6 +57,10 @@ class RandomNeighborScore(Metric):
         self.k = k
         self.distance_metric = distance_metric
 
+        biological_embeddings, random_embeddings = self._balance_reference_sets(
+            biological_embeddings, random_embeddings
+        )
+
         self.register_buffer("biological_embeddings", biological_embeddings)
         self.register_buffer("random_embeddings", random_embeddings)
 
@@ -71,21 +75,22 @@ class RandomNeighborScore(Metric):
         if k >= self.biological_embeddings.shape[0] + self.random_embeddings.shape[0]:
             raise ValueError("k must be smaller than the total number of reference embeddings.")
 
-    def _balance_reference_sets(self) -> None:
+    def _balance_reference_sets(self, embeddings1: Tensor, embeddings2: Tensor) -> tuple[Tensor, Tensor]:
         """
-        Balance biological and random reference sets to have equal sizes.
+        Balance reference sets to have equal sizes.
         """
-        n_bio = self.biological_embeddings.shape[0]
-        n_rand = self.random_embeddings.shape[0]
+        n1 = embeddings1.shape[0]
+        n2 = embeddings2.shape[0]
 
         # Sample from the larger set to match the smaller one
-        if n_bio > n_rand:
-            indices = torch.randperm(n_bio, device=self.biological_embeddings.device)[:n_rand]
-            self.biological_embeddings = self.biological_embeddings[indices]
+        if n1 > n2:
+            indices = torch.randperm(n1, device=embeddings1.device)[:n2]
+            embeddings1 = embeddings1[indices]
+        elif n2 > n1:
+            indices = torch.randperm(n2, device=embeddings2.device)[:n1]
+            embeddings2 = embeddings2[indices]
 
-        elif n_rand > n_bio:
-            indices = torch.randperm(n_rand, device=self.random_embeddings.device)[:n_bio]
-            self.random_embeddings = self.random_embeddings[indices]
+        return embeddings1, embeddings2
 
     def update(self, query_embeddings: Tensor) -> None:
         """
