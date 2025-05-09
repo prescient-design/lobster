@@ -43,6 +43,8 @@ class RandomNeighborScore(Metric):
     higher_is_better: bool = False  # Lower RNS values are better
     full_state_update: bool = False
 
+    # TODO @zadorozk: Add support for pre-built sets of sequences if embedding function
+    # provided
     def __init__(
         self,
         biological_embeddings: Tensor,
