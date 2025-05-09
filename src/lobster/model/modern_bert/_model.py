@@ -118,7 +118,6 @@ class FlexBertModel(torch.nn.Module):
 
         if self.final_norm is not None:
             encoder_outputs = self.final_norm(encoder_outputs)
-            
         return encoder_outputs
 
     def _init_weights(self, module: Optional[nn.Module] = None, reset_params: Optional[bool] = None):
