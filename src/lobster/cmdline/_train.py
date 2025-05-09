@@ -28,7 +28,7 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
     if cfg.compile:
         model.compile()
 
-    if not cfg.dryrun:
+    if not cfg.dryrun and rank_zero_only.rank == 0:
         logger = hydra.utils.instantiate(cfg.logger)
 
         if isinstance(logger, WandbLogger):
@@ -45,9 +45,7 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
         logger = None
 
     callbacks = instantiate_callbacks(cfg.get("callbacks"))
-    # plugins = instantiate_plugins(cfg.get("plugins"))
 
-    # trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger, plugins=plugins)
     trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
 
     if rank_zero_only.rank == 0 and isinstance(trainer.logger, WandbLogger):
@@ -59,6 +57,7 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
         if cfg.run_test:
             trainer.test(model, datamodule=datamodule, ckpt_path="best")
 
-    wandb.finish()
+    if rank_zero_only.rank == 0 and isinstance(trainer.logger, WandbLogger):
+        wandb.finish()
 
     return model, datamodule, callbacks
