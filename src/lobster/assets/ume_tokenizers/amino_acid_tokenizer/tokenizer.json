@@ -4,44 +4,8 @@
   "padding": null,
   "added_tokens": [
     {
-      "id": 0,
-      "content": "<cls>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
       "id": 1,
-      "content": "<pad>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
-      "id": 2,
-      "content": "<eos>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
-      "id": 3,
-      "content": "<unk>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
-      "id": 4,
-      "content": "<mask>",
+      "content": "<cls_amino_acid>",
       "single_word": false,
       "lstrip": false,
       "rstrip": false,
@@ -50,7 +14,43 @@
     },
     {
       "id": 5,
+      "content": "<eos>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 6,
+      "content": "<unk>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 7,
+      "content": "<pad>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 8,
       "content": "<sep>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 9,
+      "content": "<mask>",
       "single_word": false,
       "lstrip": false,
       "rstrip": false,
@@ -65,7 +65,7 @@
     "single": [
       {
         "SpecialToken": {
-          "id": "<cls>",
+          "id": "<cls_amino_acid>",
           "type_id": 0
         }
       },
@@ -85,7 +85,7 @@
     "pair": [
       {
         "SpecialToken": {
-          "id": "<cls>",
+          "id": "<cls_amino_acid>",
           "type_id": 0
         }
       },
@@ -115,19 +115,19 @@
       }
     ],
     "special_tokens": {
-      "<cls>": {
-        "id": "<cls>",
+      "<cls_amino_acid>": {
+        "id": "<cls_amino_acid>",
         "ids": [
-          0
+          1
         ],
         "tokens": [
-          "<cls>"
+          "<cls_amino_acid>"
         ]
       },
       "<eos>": {
         "id": "<eos>",
         "ids": [
-          2
+          5
         ],
         "tokens": [
           "<eos>"
@@ -147,28 +147,28 @@
     "ignore_merges": true,
     "vocab": {
       "<cls>": 0,
-      "<pad>": 1,
-      "<eos>": 2,
-      "<unk>": 3,
-      "<mask>": 4,
-      "<sep>": 5,
-      "<convert>": 6,
-      "<interact>": 7,
-      "<extra_special_token_2>": 8,
-      "<extra_special_token_3>": 9,
-      "<extra_special_token_4>": 10,
-      "<extra_special_token_5>": 11,
-      "<extra_special_token_6>": 12,
-      "<extra_special_token_7>": 13,
-      "<extra_special_token_8>": 14,
-      "<extra_special_token_9>": 15,
-      "<extra_special_token_10>": 16,
-      "<extra_special_token_11>": 17,
-      "<extra_special_token_12>": 18,
-      "<extra_special_token_13>": 19,
-      "<extra_special_token_14>": 20,
-      "<extra_special_token_15>": 21,
-      "<extra_special_token_16>": 22,
+      "<cls_amino_acid>": 1,
+      "<cls_smiles>": 2,
+      "<cls_nucleotide>": 3,
+      "<cls_3d_coordinates>": 4,
+      "<eos>": 5,
+      "<unk>": 6,
+      "<pad>": 7,
+      "<sep>": 8,
+      "<mask>": 9,
+      "<cls_convert>": 10,
+      "<cls_interact>": 11,
+      "<extra_special_token_0>": 12,
+      "<extra_special_token_1>": 13,
+      "<extra_special_token_2>": 14,
+      "<extra_special_token_3>": 15,
+      "<extra_special_token_4>": 16,
+      "<extra_special_token_5>": 17,
+      "<extra_special_token_6>": 18,
+      "<extra_special_token_7>": 19,
+      "<extra_special_token_8>": 20,
+      "<extra_special_token_9>": 21,
+      "<extra_special_token_10>": 22,
       ".": 23,
       "-": 24,
       "L": 25,
