@@ -144,7 +144,7 @@ def _load_vocabularies() -> dict[str, list[str]]:
 
 def _add_reserved_tokens(vocabs: dict[str, list[str]]) -> dict[str, list[str]]:
     """
-    Add reserved tokens <reservedi> to maintain index compatibility
+    Add reserved tokens <reserved_token_i> to maintain index compatibility
     across tokenizers.
 
     This function constructs the full vocabulary for each tokenizer by combining:
