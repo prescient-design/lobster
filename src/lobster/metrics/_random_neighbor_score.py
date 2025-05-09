@@ -10,21 +10,33 @@ class RandomNeighborScore(Metric):
     """
     Random Neighbor Score (RNS) Metric
 
-    RNS quantifies the fraction of non-biological (random) neighbors among the
-    k-nearest neighbors of an embedding.
-    A higher RNS value indicates greater uncertainty in the embedding's representation.
-    Lower is better.
+    RNS quantifies the fraction of non-biological (randomly shuffled) sequence
+    embeddings among the k-nearest neighbours of a protein embedding.
+    Higher RNS → greater representational uncertainty; lower is better.
 
     Parameters
     ----------
     biological_embeddings : Tensor
-        Reference embeddings from biological sequences.
+        Embeddings of the protein sequences being evaluated.
+        Shape: (n_bio, embedding_dim)
     random_embeddings : Tensor
-        Reference embeddings from randomly generated non-biological sequences.
+        Embeddings of residue-shuffled, non-biological sequences
+        Shape: (n_rand, embedding_dim)
+        If n_rand > n_bio, the random embeddings are randomly sampled
+        to match the size of the biological embeddings or vice versa.
     k : int, optional
-        Number of nearest neighbors to consider, by default 500.
+        Number of nearest neighbours to inspect. The study tested k=1-2000,
+        observed the strongest, most stable correlations for 200≤k≤1000,
+        and used k=500 in most analyses (for sets of 2k-15k sequences).
+        Default is 500.
     distance_metric : {'cosine', 'euclidean'}, optional
-        Distance metric to use for computing distances, by default 'cosine'.
+        Distance metric for neighbour search. The paper reported similar trends
+        for both cosine and Euclidean distances. Default is 'cosine'.
+
+    Reference
+    ---------
+    Prabakaran R, Bromberg Y. “Quantifying uncertainty in Protein Representations
+    Across Models and Task.” bioRxiv (2025) doi:10.1101/2025.04.30.651545
     """
 
     is_differentiable: bool = False
