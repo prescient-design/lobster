@@ -4,44 +4,8 @@
   "padding": null,
   "added_tokens": [
     {
-      "id": 0,
-      "content": "<cls>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
-      "id": 1,
-      "content": "<pad>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
       "id": 2,
-      "content": "<eos>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
-      "id": 3,
-      "content": "<unk>",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
-      "id": 4,
-      "content": "<mask>",
+      "content": "<cls_smiles>",
       "single_word": false,
       "lstrip": false,
       "rstrip": false,
@@ -50,7 +14,43 @@
     },
     {
       "id": 5,
+      "content": "<eos>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 6,
+      "content": "<unk>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 7,
+      "content": "<pad>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 8,
       "content": "<sep>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 9,
+      "content": "<mask>",
       "single_word": false,
       "lstrip": false,
       "rstrip": false,
@@ -72,7 +72,7 @@
     "single": [
       {
         "SpecialToken": {
-          "id": "<cls>",
+          "id": "<cls_smiles>",
           "type_id": 0
         }
       },
@@ -92,7 +92,7 @@
     "pair": [
       {
         "SpecialToken": {
-          "id": "<cls>",
+          "id": "<cls_smiles>",
           "type_id": 0
         }
       },
@@ -122,19 +122,19 @@
       }
     ],
     "special_tokens": {
-      "<cls>": {
-        "id": "<cls>",
+      "<cls_smiles>": {
+        "id": "<cls_smiles>",
         "ids": [
-          0
+          2
         ],
         "tokens": [
-          "<cls>"
+          "<cls_smiles>"
         ]
       },
       "<eos>": {
         "id": "<eos>",
         "ids": [
-          2
+          5
         ],
         "tokens": [
           "<eos>"
@@ -147,55 +147,55 @@
     "type": "WordLevel",
     "vocab": {
       "<cls>": 0,
-      "<pad>": 1,
-      "<eos>": 2,
-      "<unk>": 3,
-      "<mask>": 4,
-      "<sep>": 5,
-      "<convert>": 6,
-      "<interact>": 7,
-      "<extra_special_token_2>": 8,
-      "<extra_special_token_3>": 9,
-      "<extra_special_token_4>": 10,
-      "<extra_special_token_5>": 11,
-      "<extra_special_token_6>": 12,
-      "<extra_special_token_7>": 13,
-      "<extra_special_token_8>": 14,
-      "<extra_special_token_9>": 15,
-      "<extra_special_token_10>": 16,
-      "<extra_special_token_11>": 17,
-      "<extra_special_token_12>": 18,
-      "<extra_special_token_13>": 19,
-      "<extra_special_token_14>": 20,
-      "<extra_special_token_15>": 21,
-      "<extra_special_token_16>": 22,
-      "<reserved_for_amino_acids_special_token_17>": 23,
-      "<reserved_for_amino_acids_special_token_18>": 24,
-      "<reserved_for_amino_acids_special_token_19>": 25,
-      "<reserved_for_amino_acids_special_token_20>": 26,
-      "<reserved_for_amino_acids_special_token_21>": 27,
-      "<reserved_for_amino_acids_special_token_22>": 28,
-      "<reserved_for_amino_acids_special_token_23>": 29,
-      "<reserved_for_amino_acids_special_token_24>": 30,
-      "<reserved_for_amino_acids_special_token_25>": 31,
-      "<reserved_for_amino_acids_special_token_26>": 32,
-      "<reserved_for_amino_acids_special_token_27>": 33,
-      "<reserved_for_amino_acids_special_token_28>": 34,
-      "<reserved_for_amino_acids_special_token_29>": 35,
-      "<reserved_for_amino_acids_special_token_30>": 36,
-      "<reserved_for_amino_acids_special_token_31>": 37,
-      "<reserved_for_amino_acids_special_token_32>": 38,
-      "<reserved_for_amino_acids_special_token_33>": 39,
-      "<reserved_for_amino_acids_special_token_34>": 40,
-      "<reserved_for_amino_acids_special_token_35>": 41,
-      "<reserved_for_amino_acids_special_token_36>": 42,
-      "<reserved_for_amino_acids_special_token_37>": 43,
-      "<reserved_for_amino_acids_special_token_38>": 44,
-      "<reserved_for_amino_acids_special_token_39>": 45,
-      "<reserved_for_amino_acids_special_token_40>": 46,
-      "<reserved_for_amino_acids_special_token_41>": 47,
-      "<reserved_for_amino_acids_special_token_42>": 48,
-      "<reserved_for_amino_acids_special_token_43>": 49,
+      "<cls_amino_acid>": 1,
+      "<cls_smiles>": 2,
+      "<cls_nucleotide>": 3,
+      "<cls_3d_coordinates>": 4,
+      "<eos>": 5,
+      "<unk>": 6,
+      "<pad>": 7,
+      "<sep>": 8,
+      "<mask>": 9,
+      "<cls_convert>": 10,
+      "<cls_interact>": 11,
+      "<extra_special_token_0>": 12,
+      "<extra_special_token_1>": 13,
+      "<extra_special_token_2>": 14,
+      "<extra_special_token_3>": 15,
+      "<extra_special_token_4>": 16,
+      "<extra_special_token_5>": 17,
+      "<extra_special_token_6>": 18,
+      "<extra_special_token_7>": 19,
+      "<extra_special_token_8>": 20,
+      "<extra_special_token_9>": 21,
+      "<extra_special_token_10>": 22,
+      "<reserved_for_amino_acids_0>": 23,
+      "<reserved_for_amino_acids_1>": 24,
+      "<reserved_for_amino_acids_2>": 25,
+      "<reserved_for_amino_acids_3>": 26,
+      "<reserved_for_amino_acids_4>": 27,
+      "<reserved_for_amino_acids_5>": 28,
+      "<reserved_for_amino_acids_6>": 29,
+      "<reserved_for_amino_acids_7>": 30,
+      "<reserved_for_amino_acids_8>": 31,
+      "<reserved_for_amino_acids_9>": 32,
+      "<reserved_for_amino_acids_10>": 33,
+      "<reserved_for_amino_acids_11>": 34,
+      "<reserved_for_amino_acids_12>": 35,
+      "<reserved_for_amino_acids_13>": 36,
+      "<reserved_for_amino_acids_14>": 37,
+      "<reserved_for_amino_acids_15>": 38,
+      "<reserved_for_amino_acids_16>": 39,
+      "<reserved_for_amino_acids_17>": 40,
+      "<reserved_for_amino_acids_18>": 41,
+      "<reserved_for_amino_acids_19>": 42,
+      "<reserved_for_amino_acids_20>": 43,
+      "<reserved_for_amino_acids_21>": 44,
+      "<reserved_for_amino_acids_22>": 45,
+      "<reserved_for_amino_acids_23>": 46,
+      "<reserved_for_amino_acids_24>": 47,
+      "<reserved_for_amino_acids_25>": 48,
+      "<reserved_for_amino_acids_26>": 49,
       ">>": 50,
       "~": 51,
       "C": 52,

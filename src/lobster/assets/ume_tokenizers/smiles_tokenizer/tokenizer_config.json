@@ -1,39 +1,7 @@
 {
   "added_tokens_decoder": {
-    "0": {
-      "content": "<cls>",
-      "lstrip": false,
-      "normalized": false,
-      "rstrip": false,
-      "single_word": false,
-      "special": true
-    },
-    "1": {
-      "content": "<pad>",
-      "lstrip": false,
-      "normalized": false,
-      "rstrip": false,
-      "single_word": false,
-      "special": true
-    },
     "2": {
-      "content": "<eos>",
-      "lstrip": false,
-      "normalized": false,
-      "rstrip": false,
-      "single_word": false,
-      "special": true
-    },
-    "3": {
-      "content": "<unk>",
-      "lstrip": false,
-      "normalized": false,
-      "rstrip": false,
-      "single_word": false,
-      "special": true
-    },
-    "4": {
-      "content": "<mask>",
+      "content": "<cls_smiles>",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,
@@ -41,7 +9,39 @@
       "special": true
     },
     "5": {
+      "content": "<eos>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "6": {
+      "content": "<unk>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "7": {
+      "content": "<pad>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "8": {
       "content": "<sep>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "9": {
+      "content": "<mask>",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,
@@ -51,7 +51,7 @@
   },
   "bos_token": null,
   "clean_up_tokenization_spaces": false,
-  "cls_token": "<cls>",
+  "cls_token": "<cls_smiles>",
   "eos_token": "<eos>",
   "extra_special_tokens": {},
   "mask_token": "<mask>",
