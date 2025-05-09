@@ -421,10 +421,9 @@ class Ume(L.LightningModule):
             # Get embeddings with modality-specific embedding layers
             embeddings = torch.zeros((batch_size * seq_len, self.model.config.hidden_size), device=self.device)
             modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
-            modalities_tensor = torch.tensor(modalities, device=self.device)
 
             for modality in set(modalities):
-                modality_mask = modalities_tensor == modality
+                modality_mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
 
                 if not modality_mask.any():
                     continue
