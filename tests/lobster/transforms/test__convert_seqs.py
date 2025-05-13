@@ -1,16 +1,19 @@
 import importlib.resources
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional, Set, Type
 
 import pytest
 from lobster.transforms import (
     convert_aa_to_nt,
     convert_aa_to_selfies,
+    convert_aa_to_smiles,
     convert_nt_to_aa,
     convert_nt_to_selfies_via_aa,
+    convert_nt_to_smiles,
     convert_selfies_to_nt_via_aa,
     convert_selfies_to_smiles,
     convert_smiles_to_selfies,
+    convert_smiles_to_smiles,
     invert_residue_to_codon_mapping,
     json_load,
     replace_target_symbol,
@@ -18,6 +21,14 @@ from lobster.transforms import (
     uniform_sample,
 )
 from rdkit import Chem
+
+
+# Helper to get canonical SMILES using RDKit for test comparison
+def get_canonical_smiles(smiles: str) -> Optional[str]:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol:
+        return Chem.MolToSmiles(mol, doRandom=False)
+    return None
 
 
 @pytest.fixture(scope="class")
@@ -57,7 +68,6 @@ class TestConvertSeqs:
         # unknown character
         aa_seq = "EVQLVESGXGGLVQPGGSLRLS"
         nt_seq = convert_aa_to_nt(aa_seq, residue_to_codon_map, uniform_sample)
-        # TODO: change, now unk token -> do assert
         assert isinstance(nt_seq, str), f"Failed for AA seq {aa_seq}, nt seq should be a str"
         assert "<unk>" in nt_seq, f"Failed for AA seq {aa_seq}, nt seq should have <unk> token"
         assert len(nt_seq) == 71
@@ -74,7 +84,6 @@ class TestConvertSeqs:
         nt_seq = "GAGGTGCAACTAGTCGAGT"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert "<unk>" in aa_seq
-        # assert aa_seq is None, f"Failed for nt seq {nt_seq}, AA seq should be None"
 
         # unknown character (e.g U) in seq of 3n bases
         nt_seq = "GAGGTGCAACTAGUCGAGTCCGGAGGGGGGCTTGTA"
@@ -96,38 +105,220 @@ class TestConvertSeqs:
         nt_seq = "GAGGTGTAACAACTAGTCGAGTCCGGAGGGGGGCTTGTA"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert aa_seq == "EV"
-        # assert aa_seq is None, f"Failed for nt seq {nt_seq}, AA seq should be None due to early STOP codon"
 
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTTAGGTA"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert aa_seq == "EVQLVESGGGL"
-        # assert aa_seq is None, f"Failed for nt seq {nt_seq}, AA seq should be None due to early STOP codon"
 
         nt_seq = "TGAGAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTGATTGTA"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert aa_seq == "", f"Failed for nt seq {nt_seq}, AA seq should be None due to early STOP codon"
 
-    def test_convert_aa_to_smiles(self):
-        aa_seq = "EVQLV"
-        mol = Chem.MolFromSequence(aa_seq)
-        smi_seq = Chem.MolToSmiles(mol)
-        assert isinstance(smi_seq, str)
-        # print(smi_seq)
-        assert len(smi_seq) == 100, f"Failed for AA seq {aa_seq}, smiles seq does not have the expected length"
-        assert smi_seq == (
-            "CC(C)C[C@H](NC(=O)[C@H](CCC(N)=O)NC(=O)[C@@H](NC(=O)[C@@H](N)CCC(=O)O)C(C)C)C(=O)N[C@H](C(=O)O)C(C)C"
-        )
+    @pytest.mark.parametrize(
+        "aa_seq, allowed_aa, replace_unknown, randomize_smiles, expected_smiles_pattern, raises_error",
+        [
+            (
+                "EVQLV",
+                {"E", "V", "Q", "L"},
+                True,
+                False,
+                "CC(C)C[C@H](NC(=O)[C@H](CCC(N)=O)NC(=O)[C@@H](NC(=O)[C@@H](N)CCC(=O)O)C(C)C)C(=O)N[C@H](C(=O)O)C(C)C",
+                None,
+            ),
+            (
+                "EVQLV",
+                {"E", "V", "Q", "L"},
+                True,
+                True,
+                "CC(C)C[C@H](NC(=O)[C@H](CCC(N)=O)NC(=O)[C@@H](NC(=O)[C@@H](N)CCC(=O)O)C(C)C)C(=O)N[C@H](C(=O)O)C(C)C",
+                None,
+            ),
+            ("AXP", {"A", "P"}, True, False, "C[C@H](N)C(=O)N[C@@H](C)C(=O)N1CCC[C@H]1C(=O)O", None),
+            ("AXP", {"A", "P"}, False, False, None, None),
+            ("A", {"A"}, True, False, "C[C@H](N)C(=O)O", None),
+            ("", {"A"}, True, False, "", None),
+            ("EVQLV", None, True, False, None, ValueError),
+            (
+                "evqlv",
+                {"E", "V", "Q", "L"},
+                True,
+                False,
+                "CC(C)C[C@H](NC(=O)[C@H](CCC(N)=O)NC(=O)[C@@H](NC(=O)[C@@H](N)CCC(=O)O)C(C)C)C(=O)N[C@H](C(=O)O)C(C)C",
+                None,
+            ),
+            ("Z", {"A"}, True, False, "C[C@H](N)C(=O)O", None),
+            ("Z", {"A"}, False, False, None, None),
+            ("ACEG", None, False, False, "C[C@H](N)C(=O)N[C@@H](CS)C(=O)N[C@@H](CCC(=O)O)C(=O)NCC(=O)O", None),
+            ("ACEG", None, False, True, "C[C@H](N)C(=O)N[C@@H](CS)C(=O)N[C@@H](CCC(=O)O)C(=O)NCC(=O)O", None),
+            ("AXG", None, False, False, None, None),
+            ("<unk>CEG", None, False, False, None, None),
+            ("", None, False, False, "", None),
+        ],
+    )
+    def test_convert_aa_to_smiles_parameterized(
+        self,
+        aa_seq: str,
+        allowed_aa: Optional[Set[str]],
+        replace_unknown: bool,
+        randomize_smiles: bool,
+        expected_smiles_pattern: Optional[str],
+        raises_error: Optional[Type[BaseException]],
+    ):
+        if raises_error:
+            with pytest.raises(raises_error):
+                convert_aa_to_smiles(
+                    aa_seq, allowed_aa=allowed_aa, replace_unknown=replace_unknown, randomize_smiles=randomize_smiles
+                )
+        else:
+            result_smiles = convert_aa_to_smiles(
+                aa_seq, allowed_aa=allowed_aa, replace_unknown=replace_unknown, randomize_smiles=randomize_smiles
+            )
+            if randomize_smiles:
+                assert result_smiles is not None, f"Randomized SMILES should not be None for valid input {aa_seq}"
+                mol_from_random = Chem.MolFromSmiles(result_smiles)
+                assert (
+                    mol_from_random is not None
+                ), f"Randomized SMILES '{result_smiles}' is not valid for input {aa_seq}"
+                assert (
+                    expected_smiles_pattern is not None
+                ), "Canonical SMILES pattern must be provided for randomized tests"
+                assert get_canonical_smiles(result_smiles) == expected_smiles_pattern
+            elif expected_smiles_pattern is None:
+                assert result_smiles is None
+            else:
+                assert result_smiles == expected_smiles_pattern
+                if result_smiles:
+                    assert result_smiles == get_canonical_smiles(
+                        result_smiles
+                    ), f"SMILES {result_smiles} should be canonical"
 
-    def test_convert_smiles_to_aa(self):
-        """
-        smiles_seq = ("CC(C)C[C@H](NC(=O)[C@H](CCC(N)=O)NC(=O)[C@@H](NC(=O)[C@@H](N)CCC(=O)O)C(C)C)"
-        "C(=O)N[C@H](C(=O)O)C(C)C")
-        aa_seq = convert_smiles_to_aa(smiles_seq)
-        assert isinstance(aa_seq, str)
-        assert len(aa_seq) == 5
-        assert aa_seq == "EVQLV"
-        """
-        pass
+    @pytest.mark.parametrize(
+        "nt_seq, cap, randomize_smiles, expected_output, raises_error",
+        [
+            (
+                "ATGC",
+                None,
+                False,
+                "Cc1cn([C@H]2C[C@H](OP(=O)(O)OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3OP(=O)(O)OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3O)[C@@H](COP(=O)(O)O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3CO)O2)c(=O)[nH]c1=O",
+                None,
+            ),
+            (
+                "AUGC",
+                None,
+                False,
+                "Nc1ccn([C@@H]2O[C@H](COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3CO)[C@@H](O)[C@H]2O)c(=O)n1",
+                None,
+            ),
+            (
+                "atgc",
+                None,
+                False,
+                "Cc1cn([C@H]2C[C@H](OP(=O)(O)OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3OP(=O)(O)OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3O)[C@@H](COP(=O)(O)O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3CO)O2)c(=O)[nH]c1=O",
+                None,
+            ),
+            (
+                "augc",
+                None,
+                False,
+                "Nc1ccn([C@@H]2O[C@H](COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3CO)[C@@H](O)[C@H]2O)c(=O)n1",
+                None,
+            ),
+            (
+                "ATGC",
+                "5'",
+                False,
+                "Cc1cn([C@H]2C[C@H](OP(=O)(O)OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3OP(=O)(O)OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3O)[C@@H](COP(=O)(O)O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)(O)O)O2)c(=O)[nH]c1=O",
+                None,
+            ),
+            (
+                "AUGC",
+                "3'",
+                False,
+                "Nc1ccn([C@@H]2O[C@H](COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)(O)O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3CO)[C@@H](OP(=O)(O)O)[C@H]2O)c(=O)n1",
+                None,
+            ),
+            (
+                "ATGC",
+                "both",
+                False,
+                "Cc1cn([C@H]2C[C@H](OP(=O)(O)OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3OP(=O)(O)OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3OP(=O)(O)O)[C@@H](COP(=O)(O)O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)(O)O)O2)c(=O)[nH]c1=O",
+                None,
+            ),
+            (
+                "ATGC",
+                None,
+                True,
+                "Cc1cn([C@H]2C[C@H](OP(=O)(O)OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3OP(=O)(O)OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3O)[C@@H](COP(=O)(O)O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3CO)O2)c(=O)[nH]c1=O",
+                None,
+            ),
+            ("", None, False, "", None),
+            ("ATGX", None, False, None, None),  # Invalid char in sequence
+            ("AUGC", "invalid_cap", False, None, ValueError),
+        ],
+    )
+    def test_convert_nt_to_smiles_parameterized(
+        self,
+        nt_seq: str,
+        cap: Optional[str],
+        randomize_smiles: bool,
+        expected_output: Optional[str],
+        raises_error: Optional[Type[BaseException]],
+    ):
+        if raises_error:
+            with pytest.raises(raises_error):
+                convert_nt_to_smiles(nt_seq, cap=cap, randomize_smiles=randomize_smiles)  # type: ignore[arg-type]
+        else:
+            result_smiles = convert_nt_to_smiles(nt_seq, cap=cap, randomize_smiles=randomize_smiles)  # type: ignore[arg-type]
+
+            if randomize_smiles:
+                assert (
+                    result_smiles is not None
+                ), f"Randomized SMILES should not be None for valid input {nt_seq} with cap {cap}"
+                assert (
+                    Chem.MolFromSmiles(result_smiles) is not None
+                ), f"Randomized SMILES '{result_smiles}' is not valid"
+                # expected_output is the canonical SMILES of the non-randomized version (with the same cap)
+                assert expected_output is not None, "Canonical SMILES target must be provided for randomized tests"
+                assert get_canonical_smiles(result_smiles) == expected_output
+            elif expected_output is None:
+                assert result_smiles is None
+            else:  # Non-randomized, direct match
+                assert result_smiles == expected_output
+                if result_smiles:  # If not None, it should be canonical already
+                    assert result_smiles == get_canonical_smiles(
+                        result_smiles
+                    ), f"SMILES {result_smiles} should be canonical"
+
+    @pytest.mark.parametrize(
+        "input_smiles, randomize_smiles, expected_smiles_pattern",
+        [
+            ("CCO", False, "CCO"),
+            ("OCC", False, "CCO"),
+            ("c1ccccc1", False, "c1ccccc1"),
+            ("C1=CC=CC=C1", False, "c1ccccc1"),
+            ("CCO", True, "CCO"),
+            ("invalid_smiles_string", False, None),
+            ("CC(C)C[C@H](N)C(=O)O", False, "CC(C)C[C@H](N)C(=O)O"),
+            ("CC(C)C[C@H](N)C(=O)O", True, "CC(C)C[C@H](N)C(=O)O"),
+            ("", False, ""),
+        ],
+    )
+    def test_convert_smiles_to_smiles_parameterized(
+        self, input_smiles: str, randomize_smiles: bool, expected_smiles_pattern: Optional[str]
+    ):
+        result_smiles = convert_smiles_to_smiles(input_smiles, randomize_smiles=randomize_smiles)
+
+        if expected_smiles_pattern is None:
+            assert result_smiles is None
+        elif randomize_smiles:
+            assert result_smiles is not None, f"Randomized SMILES should not be None for valid input {input_smiles}"
+            mol_from_random = Chem.MolFromSmiles(result_smiles)
+            assert mol_from_random is not None, f"Randomized SMILES '{result_smiles}' is not valid"
+            assert get_canonical_smiles(result_smiles) == expected_smiles_pattern
+        else:
+            assert result_smiles == expected_smiles_pattern
+            if result_smiles:
+                assert result_smiles == get_canonical_smiles(result_smiles), "SMILES should be canonical"
 
     def test_replace_target_symbol(self):
         target_symbol = "<unk>"
@@ -153,7 +344,6 @@ class TestConvertSeqs:
         assert seq1 == replace_target_symbol(seq2, target_symbol, replacement_symbol)
 
     def test_replace_unknown_symbols(self):
-        # all residues in codon table
         allowed_set = {
             "T",
             "G",
@@ -212,9 +402,8 @@ class TestConvertSeqs:
         }
         seq1 = "EVQLV"
         seq2 = convert_aa_to_selfies(seq1, allowed_aa)
-        # print(seq2)
+        assert seq2 is not None, "convert_aa_to_selfies should return a string for valid inputs"
         symbols = split_by_two_characters(seq2, "[", "]")
-        # print(len(symbols))
 
         assert isinstance(seq2, str)
         assert len(symbols) == 72
@@ -255,6 +444,7 @@ class TestConvertSeqs:
         }
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGTA"
         sf_seq = convert_nt_to_selfies_via_aa(nt_seq, codon_to_residue_map, allowed_aa)
+        assert sf_seq is not None, "convert_nt_to_selfies_via_aa should return a string for valid inputs"
         exp_seq = (
             "[C][C][Branch1][C][C][C][C@H1][Branch2][=Branch2][Ring2][N][C][=Branch1][C][=O][C][N]"
             "[C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C@H1][Branch1][Ring1]"
@@ -271,18 +461,17 @@ class TestConvertSeqs:
         assert len(symbols) == 143
         assert sf_seq == exp_seq
 
-        # seq length not divisible by 3
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGT"
         sf_seq = convert_nt_to_selfies_via_aa(nt_seq, codon_to_residue_map, allowed_aa)
-        print(sf_seq)
+        assert sf_seq is not None
         assert (
             sf_seq
             == "[C][C][Branch1][C][C][C][C@H1][Branch2][=Branch2][Ring2][N][C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C@H1][Branch1][Ring1][C][O][N][C][=Branch1][C][=O][C@H1][Branch1][Branch2][C][C][C][=Branch1][C][=O][O][N][C][=Branch1][C][=O][C@@H1][Branch2][Branch1][O][N][C][=Branch1][C][=O][C@H1][Branch1][#Branch1][C][C][Branch1][C][C][C][N][C][=Branch1][C][=O][C@H1][Branch1][Branch2][C][C][C][Branch1][C][N][=O][N][C][=Branch1][C][=O][C@@H1][Branch1][P][N][C][=Branch1][C][=O][C@@H1][Branch1][C][N][C][C][C][=Branch1][C][=O][O][C][Branch1][C][C][C][C][Branch1][C][C][C][C][=Branch1][C][=O][N][C@@H1][Branch1][C][C][C][=Branch1][C][=O][N][C@@H1][Branch1][C][C][C][=Branch1][C][=O][N][C@@H1][Branch1][#Branch1][C][C][Branch1][C][N][=O][C][=Branch1][C][=O][N][C@@H1][Branch1][=Branch1][C][C][C][C][N][C][=Branch1][C][=O][N][C@@H1][Branch1][C][C][C][=Branch1][C][=O][O]"
         )
 
-        # seq length divisible by 3 but one unknown token (U) -> mapped to Ala
         nt_seq = "GAGGUGCAA"
         sf_seq = convert_nt_to_selfies_via_aa(nt_seq, codon_to_residue_map, allowed_aa)
+        assert sf_seq is not None
         exp_seq2 = (
             "[C][C@H1][Branch2][Ring1][#Branch2][N][C][=Branch1][C][=O][C@H1][Branch1][C][C][N][C]"
             "[=Branch1][C][=O][C@@H1][Branch1][C][N][C][C][C][=Branch1][C][=O][O][C][=Branch1][C][=O][N][C@@H1]"
@@ -292,19 +481,7 @@ class TestConvertSeqs:
         )
         assert sf_seq == exp_seq2
 
-        # TODO: add special cases
-
     def _test_convert_selfies_to_aa(self):
-        # sf_seq = (
-        #     "[C][C][Branch1][C][C][C][C@H1][Branch2][=Branch2][Ring2][N][C][=Branch1][C][=O][C][N]"
-        #     "[C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C@H1][Branch1][Ring1]"
-        #     "[C][O][N][C][=Branch1][C][=O][C@H1][Branch1][Branch2][C][C][C][=Branch1][C][=O][O][N][C][=Branch1]"
-        #     "[C][=O][C@@H1][Branch2][Branch1][O][N][C][=Branch1][C][=O][C@H1][Branch1][#Branch1][C][C][Branch1]"
-        #     "[C][C][C][N][C][=Branch1][C][=O][C@H1][Branch1][Branch2][C][C][C][Branch1][C][N][=O][N][C][=Branch1]"
-        #     "[C][=O][C@@H1][Branch1][P][N][C][=Branch1][C][=O][C@@H1][Branch1][C][N][C][C][C][=Branch1][C][=O][O]"
-        #     "[C][Branch1][C][C][C][C][Branch1][C][C][C][C][=Branch1][C][=O][N][C@H1][Branch1][=Branch1][C]"
-        #     "[=Branch1][C][=O][O][C][Branch1][C][C][C]"
-        # )
         pass
 
     def _test_convert_selfies_to_nt(
@@ -321,15 +498,9 @@ class TestConvertSeqs:
             "[C][Branch1][C][C][C][C][Branch1][C][C][C][C][=Branch1][C][=O][N][C@H1][Branch1][=Branch1][C]"
             "[=Branch1][C][=O][O][C][Branch1][C][C][C]"
         )
-        # print(len(sf_seq))
         nt_seq = convert_selfies_to_nt_via_aa(sf_seq, residue_to_codon_map, uniform_sample)
 
         assert isinstance(nt_seq, str)
-        # print(nt_seq)
-        # TODO: problem: conversion back from selfies not reversible
-        # -> commented lines below do not work yet
-        # assert len(nt_seq) == 36
-        # assert set(nt_seq) <= allowed_nt
 
     def test_convert_selfies_to_smiles(self):
         sf_seq = (

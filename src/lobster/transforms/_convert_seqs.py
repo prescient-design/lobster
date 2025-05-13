@@ -1,5 +1,5 @@
 from importlib.util import find_spec
-from typing import Callable, Dict, Literal, Optional
+from typing import Callable, Dict, List, Literal, Optional
 
 _SELFIES_AVAILABLE = False
 _RDKIT_AVAILABLE = False
@@ -40,7 +40,7 @@ def convert_nt_to_aa(
 
 def convert_aa_to_nt(
     aa_seq: str,
-    residue_to_codon: Dict[str, str],
+    residue_to_codon: Dict[str, List[str]],
     sample_fn: Callable,
 ) -> str:
     if not aa_seq.isupper():
@@ -82,6 +82,7 @@ def convert_aa_to_smiles(
     str | None
         The SMILES string, or None if conversion fails.
     """
+    assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
 
     if not aa_seq.isupper():
         aa_seq = aa_seq.upper()
@@ -171,7 +172,7 @@ def convert_nt_to_selfies_via_aa(nt_seq: str, codon_to_residue: Dict[str, str], 
 
 def convert_selfies_to_nt_via_aa(
     sf_seq: str,
-    residue_to_codon: Dict[str, str],
+    residue_to_codon: Dict[str, List[str]],
     sample_fn: Callable,
 ) -> Optional[str]:
     aa_seq = convert_selfies_to_aa(sf_seq)
@@ -208,7 +209,7 @@ def convert_nt_to_smiles(
     """
     assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
 
-    is_rna = "U" in nt_seq
+    is_rna = "U" in nt_seq or "u" in nt_seq
     match is_rna, cap:
         case True, None:
             flavor = 2
