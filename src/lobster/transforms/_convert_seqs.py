@@ -111,25 +111,29 @@ def convert_selfies_to_smiles(
     assert _SELFIES_AVAILABLE, "selfies not available. This dependency is part of the mgm extra"
     try:
         smiles_seq = sf.decoder(selfies_seq)
-        return smiles_seq
+        return smiles_seq  # type: ignore[no-any-return]
     except sf.DecoderError:
         return None
 
 
-def convert_aa_to_selfies(aa_seq: str, allowed_aa: set) -> str:
+def convert_aa_to_selfies(aa_seq: str, allowed_aa: set) -> Optional[str]:
     if not aa_seq.isupper():
         aa_seq = aa_seq.upper()
 
     smiles_seq = convert_aa_to_smiles(aa_seq, allowed_aa)
+    if smiles_seq is None:
+        return None
     sf_seq = convert_smiles_to_selfies(smiles_seq)
     return sf_seq
 
 
 def convert_selfies_to_aa(
     sf_seq: str,
-) -> str:
+) -> Optional[str]:
     # TODO: problem: SELFIES TO SMILES conversion is not reversible!
     smiles_seq = convert_selfies_to_smiles(sf_seq)
+    if smiles_seq is None:
+        return None
     aa_seq = convert_smiles_to_aa(smiles_seq)
     return aa_seq
 
@@ -144,8 +148,10 @@ def convert_selfies_to_nt(
     sf_seq: str,
     residue_to_codon: Dict[str, str],
     sample_fn: Callable,
-) -> str:
+) -> Optional[str]:
     aa_seq = convert_selfies_to_aa(sf_seq)
+    if aa_seq is None:
+        return None
     nt_seq = convert_aa_to_nt(aa_seq, residue_to_codon, sample_fn)
     return nt_seq
 
