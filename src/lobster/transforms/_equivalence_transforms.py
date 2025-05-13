@@ -102,7 +102,7 @@ class PeptideToSmilesPairTransform(Transform):
         tuple[str, str | None]
             A tuple containing the original peptide sequence and the converted SMILES string (or None if conversion failed).
         """
-        smiles_sequence = convert_aa_to_smiles(input, randomize_smiles=self._randomize_smiles)
+        smiles_sequence = convert_aa_to_smiles(input, replace_unknown=False, randomize_smiles=self._randomize_smiles)
         return input, smiles_sequence
 
 
