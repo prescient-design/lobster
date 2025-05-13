@@ -7,8 +7,8 @@ from lobster.transforms import (
     convert_aa_to_nt,
     convert_aa_to_selfies,
     convert_nt_to_aa,
-    convert_nt_to_selfies,
-    convert_selfies_to_nt,
+    convert_nt_to_selfies_via_aa,
+    convert_selfies_to_nt_via_aa,
     convert_selfies_to_smiles,
     convert_smiles_to_selfies,
     invert_residue_to_codon_mapping,
@@ -254,7 +254,7 @@ class TestConvertSeqs:
             "STOP",
         }
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGTA"
-        sf_seq = convert_nt_to_selfies(nt_seq, codon_to_residue_map, allowed_aa)
+        sf_seq = convert_nt_to_selfies_via_aa(nt_seq, codon_to_residue_map, allowed_aa)
         exp_seq = (
             "[C][C][Branch1][C][C][C][C@H1][Branch2][=Branch2][Ring2][N][C][=Branch1][C][=O][C][N]"
             "[C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C][N][C][=Branch1][C][=O][C@H1][Branch1][Ring1]"
@@ -273,7 +273,7 @@ class TestConvertSeqs:
 
         # seq length not divisible by 3
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGT"
-        sf_seq = convert_nt_to_selfies(nt_seq, codon_to_residue_map, allowed_aa)
+        sf_seq = convert_nt_to_selfies_via_aa(nt_seq, codon_to_residue_map, allowed_aa)
         print(sf_seq)
         assert (
             sf_seq
@@ -282,7 +282,7 @@ class TestConvertSeqs:
 
         # seq length divisible by 3 but one unknown token (U) -> mapped to Ala
         nt_seq = "GAGGUGCAA"
-        sf_seq = convert_nt_to_selfies(nt_seq, codon_to_residue_map, allowed_aa)
+        sf_seq = convert_nt_to_selfies_via_aa(nt_seq, codon_to_residue_map, allowed_aa)
         exp_seq2 = (
             "[C][C@H1][Branch2][Ring1][#Branch2][N][C][=Branch1][C][=O][C@H1][Branch1][C][C][N][C]"
             "[=Branch1][C][=O][C@@H1][Branch1][C][N][C][C][C][=Branch1][C][=O][O][C][=Branch1][C][=O][N][C@@H1]"
@@ -322,7 +322,7 @@ class TestConvertSeqs:
             "[=Branch1][C][=O][O][C][Branch1][C][C][C]"
         )
         # print(len(sf_seq))
-        nt_seq = convert_selfies_to_nt(sf_seq, residue_to_codon_map, uniform_sample)
+        nt_seq = convert_selfies_to_nt_via_aa(sf_seq, residue_to_codon_map, uniform_sample)
 
         assert isinstance(nt_seq, str)
         # print(nt_seq)
