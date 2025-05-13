@@ -52,9 +52,9 @@ class PeptideToSmilesPairTransform(Transform):
         return input, smiles_sequence
 
 
-class NucleotideToSmilesDirectPairTransform(Transform):
+class NucleotideToSmilesPairTransform(Transform):
     """
-    Transforms a nucleotide sequence string directly into a pair of (nucleotide_sequence, SMILES).
+    Transforms a nucleotide sequence string into a pair of (nucleotide_sequence, SMILES).
     If the conversion to SMILES fails, the SMILES string will be None.
     """
 
