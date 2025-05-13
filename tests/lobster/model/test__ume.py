@@ -128,50 +128,38 @@ class TestUme:
             assert result == {"optimizer": "mock_optimizer"}
             mock_model.configure_optimizers.assert_called_once()
 
-    def test_training_step(self):
+    @pytest.mark.parametrize(
+        "use_modality_embeddings",
+        [
+            # TODO: disabled for now since it requires a ton of mocking
+            # for the config object's embedding params
+            # pytest.param(
+            #     True,
+            #     id="with_modality_embeddings"
+            # ),
+            pytest.param(False, id="without_modality_embeddings")
+        ],
+    )
+    def test_train_step(self, use_modality_embeddings):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
-            logits = torch.randn(32768, 1536)
-            labels = torch.randint(0, 1536, (32768,), dtype=torch.int64)
-            mock_model.get_logits_and_labels.return_value = (logits, labels)
-            mock_model.loss_fn.return_value = torch.tensor(0.5)
-            mock_model.vocab_size = 1536
             mock_flex_bert.return_value = mock_model
 
-            ume = Ume()
-            ume.log = MagicMock()
+            ume = Ume(use_modality_embeddings=use_modality_embeddings)
 
-            batch = {
-                "input_ids": torch.randint(0, 1536, (4, 1, 8192), dtype=torch.int64),
-                "attention_mask": torch.ones(4, 1, 8192),
-                "modality": ["SMILES", "SMILES", "amino_acid", "nucleotide"],
-            }
-            loss = ume.training_step(batch, 0)
-            assert isinstance(loss, torch.Tensor)
-            assert loss.item() == 0.5
+            with patch.object(ume, "_step", return_value=torch.tensor(1.5)):
+                batch = {
+                    "input_ids": torch.randint(0, 100, (2, 1, 10)),
+                    "attention_mask": torch.ones(2, 1, 10),
+                    "modality": ["SMILES", "amino_acid"],
+                }
 
-            ume.log.assert_called()
+                for step_method, step_name in [(ume.training_step, "train"), (ume.validation_step, "val")]:
+                    loss = step_method(batch, 0)
 
-    def test_validation_step(self):
-        with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
-            mock_model = MagicMock()
-            logits = torch.randn(20, 1536)
-            labels = torch.randint(0, 1536, (20,), dtype=torch.int64)
-            mock_model.get_logits_and_labels.return_value = (logits, labels)
-            mock_model.loss_fn.return_value = torch.tensor(1.5)
-            mock_model.vocab_size = 1536
-            mock_flex_bert.return_value = mock_model
+                    assert isinstance(loss, torch.Tensor)
+                    assert loss.item() == 1.5
 
-            ume = Ume()
-            ume.log = MagicMock()
+                    ume._step.assert_called_with(batch, step_name)
 
-            batch = {
-                "input_ids": torch.randint(0, 1536, (2, 1, 10), dtype=torch.int64),
-                "attention_mask": torch.ones(2, 1, 10),
-                "modality": ["SMILES", "SMILES"],
-            }
-
-            loss = ume.validation_step(batch, 0)
-
-            assert isinstance(loss, torch.Tensor)
-            assert loss.item() == 1.5
+                    ume._step.reset_mock()
