@@ -1,3 +1,4 @@
+import random
 from typing import Any
 
 from lobster.transforms._convert_seqs import convert_aa_to_smiles, convert_nt_to_smiles
@@ -18,8 +19,10 @@ class PeptideToSmilesPairTransform(Transform):
             If True, the SMILES string will be randomized (non-canonical).
         """
         super().__init__()
+
         # This transform expects a single string input
         self._transformed_types = (str,)
+
         self._randomize_smiles = randomize_smiles
 
     def _check_inputs(self, inputs: list[Any]) -> None:
@@ -58,11 +61,23 @@ class NucleotideToSmilesPairTransform(Transform):
     If the conversion to SMILES fails, the SMILES string will be None.
     """
 
-    def __init__(self, randomize_smiles: bool = False) -> None:
+    def __init__(self, randomize_smiles: bool = False, randomize_cap: bool = False) -> None:
+        """
+        Parameters
+        ----------
+        randomize_smiles : bool
+            If True, the SMILES string will be randomized (non-canonical).
+        randomize_cap : bool
+            If True, the cap of the SMILES string will be randomized.
+            Randomization means that phosphate caps might be added to the 5' or 3' end.
+        """
         super().__init__()
+
         # This transform expects a single string input
         self._transformed_types = (str,)
+
         self._randomize_smiles = randomize_smiles
+        self._randomize_cap = randomize_cap
 
     def _check_inputs(self, inputs: list[Any]) -> None:
         if not inputs:
@@ -76,7 +91,7 @@ class NucleotideToSmilesPairTransform(Transform):
 
     def _transform(self, input: str, parameters: dict[str, Any]) -> tuple[str, str | None]:
         """
-        Converts a nucleotide sequence to a SMILES string directly.
+        Converts a nucleotide sequence to a SMILES string.
 
         Parameters
         ----------
@@ -90,7 +105,14 @@ class NucleotideToSmilesPairTransform(Transform):
         tuple[str, str | None]
             A tuple containing the original nucleotide sequence and the converted SMILES string (or None if conversion failed).
         """
-        smiles_sequence = convert_nt_to_smiles(
-            input.upper(), randomize_smiles=self._randomize_smiles
-        )  # Canonicalize to upper for RDKit
+        # Canonicalize to upper
+        input = input.upper()
+
+        # Randomize cap if requested
+        if self._randomize_cap:
+            cap = random.choice(["5'", "3'", "both", None])
+        else:
+            cap = None
+
+        smiles_sequence = convert_nt_to_smiles(input, cap=cap, randomize_smiles=self._randomize_smiles)
         return input, smiles_sequence

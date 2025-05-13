@@ -1,5 +1,5 @@
 from importlib.util import find_spec
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Literal, Optional
 
 _SELFIES_AVAILABLE = False
 _RDKIT_AVAILABLE = False
@@ -64,7 +64,24 @@ def convert_aa_to_nt(
 def convert_aa_to_smiles(
     aa_seq: str, allowed_aa: set | None = None, replace_unknown: bool = True, randomize_smiles: bool = False
 ) -> str | None:
-    assert _RDKIT_AVAILABLE, "rdkit not available. This dependency is part of the mgm extra"
+    """Convert an amino acid sequence to a SMILES string.
+
+    Parameters
+    ----------
+    aa_seq : str
+        The amino acid sequence to convert.
+    allowed_aa : set | None
+        The set of allowed amino acids.
+    replace_unknown : bool
+        Whether to replace unknown amino acids with Ala.
+    randomize_smiles : bool
+        Whether to randomize the SMILES string.
+
+    Returns
+    -------
+    str | None
+        The SMILES string.
+    """
 
     if not aa_seq.isupper():
         aa_seq = aa_seq.upper()
@@ -78,7 +95,7 @@ def convert_aa_to_smiles(
 
     try:
         mol = Chem.MolFromSequence(aa_seq)
-    except TypeError:
+    except SystemError:  # likely TypeError in RDKit
         return None
 
     if mol is None:
@@ -164,22 +181,63 @@ def convert_selfies_to_nt_via_aa(
     return nt_seq
 
 
-def convert_nt_to_smiles(nt_seq: str, randomize_smiles: bool = False) -> Optional[str]:
-    """Converts a nucleic acid sequence directly to a SMILES string."""
+def convert_nt_to_smiles(
+    nt_seq: str, cap: Literal["5'", "3'", "both"] | None = None, randomize_smiles: bool = False
+) -> str | None:
+    """Convert a nucleic acid sequence to a SMILES string.
+
+    DNA/RNA is recognized automatically by the presence of "U" in the sequence.
+    Defaults to DNA if "U" is not present (even if there is no "T").
+
+    Parameters
+    ----------
+    nt_seq : str
+        The nucleic acid sequence to convert.
+    cap : Literal["5'", "3'", "both"] | None
+        The type of phosphate cap to use.
+            - "5'": 5' cap
+            - "3'": 3' cap
+            - "both": both caps
+    randomize_smiles : bool
+        Whether to randomize the SMILES string (non-canonical).
+
+    Returns
+    -------
+    str | None
+        The SMILES string.
+    """
     assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
-    if not _RDKIT_AVAILABLE:  # Redundant due to assert, but good for type checker
-        return None
+
+    is_rna = "U" in nt_seq
+    match is_rna, cap:
+        case True, None:
+            flavor = 2
+        case True, "5'":
+            flavor = 3
+        case True, "3'":
+            flavor = 4
+        case True, "both":
+            flavor = 5
+        case False, None:
+            flavor = 6
+        case False, "5'":
+            flavor = 7
+        case False, "3'":
+            flavor = 8
+        case False, "both":
+            flavor = 9
+        case _:
+            raise ValueError(f"Invalid cap: {cap} for {'RNA' if is_rna else 'DNA'} sequence {nt_seq}")
+
     try:
-        # MolFromFASTA expects a named sequence, but works with plain sequences too.
-        # We specify flavor=2 to ensure it's interpreted as DNA.
-        # If RNA (containing 'U') is possible, this might need adjustment
-        # or pre-processing of nt_seq (e.g. U->T for DNA SMILES).
-        mol = Chem.MolFromFASTA(nt_seq, flavor=2)  # Specify DNA
-        if mol is None:
-            return None
-        return Chem.MolToSmiles(mol, doRandom=randomize_smiles)
-    except Exception:  # Broad exception for any RDKit issues
+        mol = Chem.MolFromSequence(nt_seq, flavor=flavor)
+    except SystemError:  # likely TypeError in RDKit
         return None
+
+    if mol is None:
+        return None
+
+    return Chem.MolToSmiles(mol, doRandom=randomize_smiles)
 
 
 def replace_target_symbol(seq: str, target_symbol: str, replacement_symbol: str) -> str:
