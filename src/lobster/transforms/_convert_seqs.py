@@ -80,7 +80,7 @@ def convert_aa_to_smiles(
     Returns
     -------
     str | None
-        The SMILES string.
+        The SMILES string, or None if conversion fails.
     """
 
     if not aa_seq.isupper():
@@ -204,7 +204,7 @@ def convert_nt_to_smiles(
     Returns
     -------
     str | None
-        The SMILES string.
+        The SMILES string, or None if conversion fails.
     """
     assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
 
@@ -231,6 +231,35 @@ def convert_nt_to_smiles(
 
     try:
         mol = Chem.MolFromSequence(nt_seq, flavor=flavor)
+    except SystemError:  # likely TypeError in RDKit
+        return None
+
+    if mol is None:
+        return None
+
+    return Chem.MolToSmiles(mol, doRandom=randomize_smiles)
+
+
+def convert_smiles_to_smiles(smiles_seq: str, randomize_smiles: bool = False) -> str | None:
+    """Convert a SMILES string to a canonical or randomized SMILES string.
+
+    Parameters
+    ----------
+    smiles_seq : str
+        The SMILES string to convert.
+    randomize_smiles : bool
+        Whether to randomize the SMILES string (non-canonical). If False,
+        the canonical SMILES string is returned.
+
+    Returns
+    -------
+    str | None
+        The canonical or randomized SMILES string, or None if conversion fails.
+    """
+    assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
+
+    try:
+        mol = Chem.MolFromSmiles(smiles_seq)
     except SystemError:  # likely TypeError in RDKit
         return None
 

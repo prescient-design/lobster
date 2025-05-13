@@ -1,8 +1,59 @@
 import random
 from typing import Any
 
-from lobster.transforms._convert_seqs import convert_aa_to_smiles, convert_nt_to_smiles
+from lobster.transforms._convert_seqs import convert_aa_to_smiles, convert_nt_to_smiles, convert_smiles_to_smiles
 from lobster.transforms._transform import Transform
+
+
+class SmilesToSmilesPairTransform(Transform):
+    """
+    Transforms a SMILES string to its canonical form or a randomized equivalent SMILES string.
+    If the conversion fails, the output SMILES string will be None.
+    """
+
+    def __init__(self, randomize_smiles: bool = False) -> None:
+        """
+        Parameters
+        ----------
+        randomize_smiles : bool
+            If True, the output SMILES string will be a randomized (non-canonical)
+            equivalent of the input. If False (default), the canonical SMILES string
+            will be returned.
+        """
+        super().__init__()
+
+        # This transform expects a single string input
+        self._transformed_types = (str,)
+
+        self._randomize_smiles = randomize_smiles
+
+    def _check_inputs(self, inputs: list[Any]) -> None:
+        if not inputs:
+            raise ValueError(f"{self.__class__.__name__} expects one string input, got none.")
+        if len(inputs) > 1:
+            raise ValueError(
+                f"{self.__class__.__name__} expects a single string input, but got {len(inputs)} transformable inputs."
+            )
+        if not isinstance(inputs[0], str):
+            raise TypeError(f"{self.__class__.__name__} expects a string input, but got type {type(inputs[0])}.")
+
+    def _transform(self, input: str, parameters: dict[str, Any]) -> tuple[str, str | None]:
+        """
+        Converts a SMILES string to its canonical or a randomized form.
+
+        Parameters
+        ----------
+        input : str
+            The SMILES string to convert.
+        parameters : dict[str, Any]
+             Not used in this transform but part of the interface.
+
+        Returns
+        -------
+        tuple[str, str | None]
+            A tuple containing the original SMILES string and the converted SMILES string (or None if conversion failed).
+        """
+        return input, convert_smiles_to_smiles(input, randomize_smiles=self._randomize_smiles)
 
 
 class PeptideToSmilesPairTransform(Transform):

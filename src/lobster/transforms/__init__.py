@@ -18,6 +18,7 @@ from ._convert_seqs import (
     convert_selfies_to_smiles,
     convert_smiles_to_aa,
     convert_smiles_to_selfies,
+    convert_smiles_to_smiles,
     replace_target_symbol,
     replace_unknown_symbols,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "convert_selfies_to_smiles",
     "convert_smiles_to_aa",
     "convert_smiles_to_selfies",
+    "convert_smiles_to_smiles",
     "replace_target_symbol",
     "replace_unknown_symbols",
     "Lambda",
