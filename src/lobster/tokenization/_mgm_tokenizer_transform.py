@@ -17,9 +17,9 @@ from lobster.transforms import (
     convert_aa_to_nt,
     convert_aa_to_selfies,
     convert_nt_to_aa,
-    convert_nt_to_selfies,
+    convert_nt_to_selfies_via_aa,
     convert_selfies_to_aa,
-    convert_selfies_to_nt,
+    convert_selfies_to_nt_via_aa,
     invert_residue_to_codon_mapping,
     json_load,
     random_boolean_choice,
@@ -374,49 +374,49 @@ class MgmTokenizerTransform(Transform):
             "nt": {
                 "aa": lambda text: [convert_nt_to_aa(text, self._codon_to_residue).upper()],
                 "nt": lambda text: [text.lower()],
-                "selfies": lambda text: [convert_nt_to_selfies(text, self._codon_to_residue, self._allowed_aa)],
+                "selfies": lambda text: [convert_nt_to_selfies_via_aa(text, self._codon_to_residue, self._allowed_aa)],
                 "aa_nt": lambda text: [convert_nt_to_aa(text, self._codon_to_residue).upper(), text.lower()],
                 "nt_aa": lambda text: [text.lower(), convert_nt_to_aa(text, self._codon_to_residue).upper()],
                 "aa_sf": lambda text: [
                     convert_nt_to_aa(text, self._codon_to_residue).upper(),
-                    convert_nt_to_selfies(text, self._codon_to_residue, self._allowed_aa),
+                    convert_nt_to_selfies_via_aa(text, self._codon_to_residue, self._allowed_aa),
                 ],
                 "sf_aa": lambda text: [
-                    convert_nt_to_selfies(text, self._codon_to_residue, self._allowed_aa),
+                    convert_nt_to_selfies_via_aa(text, self._codon_to_residue, self._allowed_aa),
                     convert_nt_to_aa(text, self._codon_to_residue).upper(),
                 ],
                 "nt_sf": lambda text: [
                     text.lower(),
-                    convert_nt_to_selfies(text, self._codon_to_residue, self._allowed_aa),
+                    convert_nt_to_selfies_via_aa(text, self._codon_to_residue, self._allowed_aa),
                 ],
                 "sf_nt": lambda text: [
-                    convert_nt_to_selfies(text, self._codon_to_residue, self._allowed_aa),
+                    convert_nt_to_selfies_via_aa(text, self._codon_to_residue, self._allowed_aa),
                     text.lower(),
                 ],
             },
             "sf": {
                 "aa": lambda text: [convert_selfies_to_aa(text)],
                 "nt": lambda text: [
-                    convert_selfies_to_nt(text, self._residue_to_codon, self._codon_sampling_strategy).lower()
+                    convert_selfies_to_nt_via_aa(text, self._residue_to_codon, self._codon_sampling_strategy).lower()
                 ],
                 "selfies": lambda text: [text],
                 "aa_nt": lambda text: [
                     convert_selfies_to_aa(text),
-                    convert_selfies_to_nt(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
+                    convert_selfies_to_nt_via_aa(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
                 ],
                 "nt_aa": lambda text: [
-                    convert_selfies_to_nt(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
+                    convert_selfies_to_nt_via_aa(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
                     convert_selfies_to_aa(text),
                 ],
                 "aa_sf": lambda text: [convert_selfies_to_aa(text), text],
                 "sf_aa": lambda text: [text, convert_selfies_to_aa(text)],
                 "nt_sf": lambda text: [
-                    convert_selfies_to_nt(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
+                    convert_selfies_to_nt_via_aa(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
                     text,
                 ],
                 "sf_nt": lambda text: [
                     text,
-                    convert_selfies_to_nt(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
+                    convert_selfies_to_nt_via_aa(text, self._residue_to_codon, self._codon_sampling_strategy).lower(),
                 ],
             },
         }
