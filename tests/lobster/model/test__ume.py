@@ -128,24 +128,12 @@ class TestUme:
             assert result == {"optimizer": "mock_optimizer"}
             mock_model.configure_optimizers.assert_called_once()
 
-    @pytest.mark.parametrize(
-        "use_modality_embeddings",
-        [
-            # TODO: disabled for now since it requires a ton of mocking
-            # for the config object's embedding params
-            # pytest.param(
-            #     True,
-            #     id="with_modality_embeddings"
-            # ),
-            pytest.param(False, id="without_modality_embeddings")
-        ],
-    )
-    def test_train_step(self, use_modality_embeddings):
+    def test_train_step(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
             mock_flex_bert.return_value = mock_model
 
-            ume = Ume(use_modality_embeddings=use_modality_embeddings)
+            ume = Ume()
 
             with patch.object(ume, "_step", return_value=torch.tensor(1.5)):
                 batch = {
