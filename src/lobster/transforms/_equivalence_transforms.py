@@ -62,12 +62,15 @@ class PeptideToSmilesPairTransform(Transform):
     If the conversion to SMILES fails, the SMILES string will be None.
     """
 
-    def __init__(self, randomize_smiles: bool = False) -> None:
+    def __init__(self, randomize_smiles: bool = False, max_input_length: int | None = None) -> None:
         """
         Parameters
         ----------
         randomize_smiles : bool
             If True, the SMILES string will be randomized (non-canonical).
+        max_input_length : int
+            The maximum length of the input peptide sequence.
+            Sequences longer than this will be truncated prior to conversion.
         """
         super().__init__()
 
@@ -75,6 +78,7 @@ class PeptideToSmilesPairTransform(Transform):
         self._transformed_types = (str,)
 
         self._randomize_smiles = randomize_smiles
+        self._max_input_length = max_input_length
 
     def _check_inputs(self, inputs: list[Any]) -> None:
         if not inputs:
@@ -102,7 +106,11 @@ class PeptideToSmilesPairTransform(Transform):
         tuple[str, str | None]
             A tuple containing the original peptide sequence and the converted SMILES string (or None if conversion failed).
         """
+        if self._max_input_length is not None:
+            input = input[: self._max_input_length]
+
         smiles_sequence = convert_aa_to_smiles(input, replace_unknown=False, randomize_smiles=self._randomize_smiles)
+
         return input, smiles_sequence
 
 
@@ -112,7 +120,9 @@ class NucleotideToSmilesPairTransform(Transform):
     If the conversion to SMILES fails, the SMILES string will be None.
     """
 
-    def __init__(self, randomize_smiles: bool = False, randomize_cap: bool = False) -> None:
+    def __init__(
+        self, randomize_smiles: bool = False, randomize_cap: bool = False, max_input_length: int | None = None
+    ) -> None:
         """
         Parameters
         ----------
@@ -121,6 +131,9 @@ class NucleotideToSmilesPairTransform(Transform):
         randomize_cap : bool
             If True, the cap of the SMILES string will be randomized.
             Randomization means that phosphate caps might be added to the 5' or 3' end.
+        max_input_length : int
+            The maximum length of the input nucleotide sequence.
+            Sequences longer than this will be truncated prior to conversion.
         """
         super().__init__()
 
@@ -129,6 +142,7 @@ class NucleotideToSmilesPairTransform(Transform):
 
         self._randomize_smiles = randomize_smiles
         self._randomize_cap = randomize_cap
+        self._max_input_length = max_input_length
 
     def _check_inputs(self, inputs: list[Any]) -> None:
         if not inputs:
@@ -165,5 +179,9 @@ class NucleotideToSmilesPairTransform(Transform):
         else:
             cap = None
 
+        if self._max_input_length is not None:
+            input = input[: self._max_input_length]
+
         smiles_sequence = convert_nt_to_smiles(input, cap=cap, randomize_smiles=self._randomize_smiles)
+
         return input, smiles_sequence
