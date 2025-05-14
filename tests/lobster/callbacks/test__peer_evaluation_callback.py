@@ -56,7 +56,7 @@ class MockPEERDataset:
             x = "MKALIVLGLVLLSVTVQGKVFERCELARTLKRLGM"
             if self.transform_fn:
                 x = self.transform_fn(x)
-            y = torch.tensor([0, 1, 2, 0, 1, 2, 0, 1, -1, -1])
+            y = torch.tensor([0, 1, 2, 0, 1, 2, 0, 1, -100, -100])
 
         elif self.task == PEERTask.PROTEINNET:
             x = "MKALIVLGLVLLSVTVQGKVFERCELARTLKRLGM"
@@ -228,8 +228,8 @@ class TestPEEREvaluationCallback:
         batch_embeddings = torch.randn(2, 5, 10)
         targets = torch.tensor(
             [
-                [0, 1, 2, -1, -1],
-                [2, 1, 0, 2, -1],
+                [0, 1, 2, -100, -100],
+                [2, 1, 0, 2, -100],
             ]
         )
         input_ids = torch.tensor(
@@ -253,7 +253,7 @@ class TestPEEREvaluationCallback:
             attention_mask=attention_mask,
         )
 
-        # we now filter out both the -1 targets and all special tokens
+        # we now filter out both the -100 targets and all special tokens
         # for this toy example you end up with 5 remaining residues
         assert filtered_embeddings.shape[0] == 5
         assert filtered_targets.shape[0] == 5
