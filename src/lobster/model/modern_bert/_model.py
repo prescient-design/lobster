@@ -104,6 +104,12 @@ class FlexBertModel(torch.nn.Module):
             assert input_ids is not None, "input_ids or inputs_embeds must be provided"
             if attention_mask is None:
                 attention_mask = torch.ones_like(input_ids)
+            import os
+            if position_ids is None and cu_seqlens is not None:
+                # Generate position ids fresh for every sequence by using cu_seqlens
+                assert cu_seqlens.dim() == 1, "cu_seqlens must be 1D tensor"
+                seqlens = cu_seqlens[1:] - cu_seqlens[:-1]
+                position_ids = torch.cat([torch.arange(seqlen, device=input_ids.device) for seqlen in seqlens])
             embeddings = self.embeddings(input_ids, position_ids)
         else:
             embeddings = inputs_embeds
