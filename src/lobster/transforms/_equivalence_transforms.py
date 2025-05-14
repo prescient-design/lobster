@@ -106,6 +106,7 @@ class PeptideToSmilesPairTransform(Transform):
         tuple[str, str | None]
             A tuple containing the original peptide sequence and the converted SMILES string (or None if conversion failed).
         """
+        # TODO: Optionally randomize where the peptide is cut
         if self._max_input_length is not None:
             input = input[: self._max_input_length]
 
@@ -179,6 +180,7 @@ class NucleotideToSmilesPairTransform(Transform):
         else:
             cap = None
 
+        # TODO: Optionally randomize where the nucleotide is cut
         if self._max_input_length is not None:
             input = input[: self._max_input_length]
 
