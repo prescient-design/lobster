@@ -328,6 +328,7 @@ class Ume(L.LightningModule):
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
         else:
+            # Copied from tokens_to_latents to remove the inference_mode decorator, allow training
             input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(x["input_ids"], x["attention_mask"])
             embeddings = self.model.model(
                 input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
