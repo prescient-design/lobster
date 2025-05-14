@@ -1,16 +1,17 @@
 import warnings
-from typing import Callable, Literal, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal
 
 import lightning as L
 import torch
-from torch import Tensor, nn
+from torch import Tensor
+import torch.nn as nn
 from torchmetrics.text import Perplexity
 
 from lobster.constants import Modality, ModalityType
 from lobster.tokenization import UmeTokenizerTransform
 
 from .modern_bert import FlexBERT
-from .modern_bert._embedding import get_embedding_layer
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
 
@@ -48,9 +49,6 @@ class Ume(L.LightningModule):
         Additional keyword arguments to pass to the FlexBERT model.
     scheduler_kwargs : dict | None, default=None
         Additional keyword arguments to pass to the learning rate scheduler.
-    use_modality_embeddings : bool, default=False
-        If True, use modality-specific embedding layers before the encoder.
-        If False, use the same embedding layer for all modalities.
     ckpt_path : str | None, default=None
         Path to a checkpoint file to load. Unused.
 
@@ -106,7 +104,6 @@ class Ume(L.LightningModule):
         num_warmup_steps: int | None = 1_000,
         model_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
-        use_modality_embeddings: bool = False,
         ckpt_path: str | None = None,
     ) -> None:
         """Initialize the Universal Molecular Encoder"""
@@ -147,14 +144,6 @@ class Ume(L.LightningModule):
         self.max_length = max_length
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
-
-        # Add modality-specific embeddings
-        if use_modality_embeddings:
-            self.embedding_layers = nn.ModuleDict(
-                {modality.value: get_embedding_layer(self.model.config) for modality in Modality}
-            )
-        else:
-            self.embedding_layers = None
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -408,41 +397,13 @@ class Ume(L.LightningModule):
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs with different modalities and get logits and labels for training."""
-        batch_size, seq_len = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
-
         # New shape: (batch_size * seq_len)
         input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
 
         masked_input_ids, labels = self.model._mask_inputs(input_ids)
 
-        # Embed each modality first
-        if self.embedding_layers is None:
-            embeddings = None
-
-        else:
-            masked_input_ids = masked_input_ids.view(batch_size, seq_len)
-
-            # Get embeddings with modality-specific embedding layers
-            embeddings = torch.zeros((batch_size * seq_len, self.model.config.hidden_size), device=self.device)
-            modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
-
-            for modality in set(modalities):
-                modality_mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
-
-                if not modality_mask.any():
-                    continue
-
-                modality_input_ids = masked_input_ids[modality_mask]
-                modality_embeddings = self.embedding_layers[modality](modality_input_ids)
-
-                # Create a mask that matches the flattened dimensions batch_size * seq_len
-                flat_modality_mask = torch.repeat_interleave(modality_mask, seq_len)
-
-                embeddings[flat_modality_mask] = modality_embeddings.view(-1, self.model.config.hidden_size)
-
         hidden_states = self.model.model(
-            input_ids=masked_input_ids if self.embedding_layers is None else None,
-            inputs_embeds=embeddings,
+            input_ids=masked_input_ids,
             attention_mask=attention_mask,
             cu_seqlens=cu_seqlens,
             max_seqlen=self.max_length,

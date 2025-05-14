@@ -20,6 +20,11 @@ def get_canonical_smiles(smiles: str) -> str | None:
 # --- Constants for expected SMILES strings ---
 SMILES_CCO_CANONICAL = "CCO"
 PEPTIDE_ACEG_CANONICAL_SMILES = "C[C@H](N)C(=O)N[C@@H](CS)C(=O)N[C@@H](CCC(=O)O)C(=O)NCC(=O)O"
+PEPTIDE_A_CANONICAL_SMILES = "C[C@H](N)C(=O)O"
+
+# Canonical SMILES for "AC" (Alanine-Cysteine)
+_mol_ac = Chem.MolFromSequence("AC")
+PEPTIDE_AC_CANONICAL_SMILES = Chem.MolToSmiles(_mol_ac, doRandom=False) if _mol_ac else "AC_FAILED_GENERATION"
 
 # Expected SMILES for NT sequences (dynamically generated for consistency)
 _mol_atgc_no_cap = Chem.MolFromSequence("ATGC", flavor=6)  # DNA, no cap
@@ -40,6 +45,24 @@ NT_ATGC_3_PRIME_SMILES = (
 _mol_atgc_both_cap = Chem.MolFromSequence("ATGC", flavor=9)  # DNA, both caps
 NT_ATGC_BOTH_CAP_SMILES = (
     Chem.MolToSmiles(_mol_atgc_both_cap, doRandom=False) if _mol_atgc_both_cap else "ATGC_BOTH_FAILED_GENERATION"
+)
+
+# Expected SMILES for truncated "AT" NT sequence with different caps
+_mol_at_no_cap = Chem.MolFromSequence("AT", flavor=6)  # DNA, no cap
+NT_AT_NO_CAP_SMILES = (
+    Chem.MolToSmiles(_mol_at_no_cap, doRandom=False) if _mol_at_no_cap else "AT_NO_CAP_FAILED_GENERATION"
+)
+_mol_at_5_prime = Chem.MolFromSequence("AT", flavor=7)  # DNA, 5' cap
+NT_AT_5_PRIME_SMILES = (
+    Chem.MolToSmiles(_mol_at_5_prime, doRandom=False) if _mol_at_5_prime else "AT_5_PRIME_FAILED_GENERATION"
+)
+_mol_at_3_prime = Chem.MolFromSequence("AT", flavor=8)  # DNA, 3' cap
+NT_AT_3_PRIME_SMILES = (
+    Chem.MolToSmiles(_mol_at_3_prime, doRandom=False) if _mol_at_3_prime else "AT_3_PRIME_FAILED_GENERATION"
+)
+_mol_at_both_cap = Chem.MolFromSequence("AT", flavor=9)  # DNA, both caps
+NT_AT_BOTH_CAP_SMILES = (
+    Chem.MolToSmiles(_mol_at_both_cap, doRandom=False) if _mol_at_both_cap else "AT_BOTH_FAILED_GENERATION"
 )
 
 
@@ -145,6 +168,63 @@ class TestPeptideToSmilesPairTransform:
         original_rand, result_rand = outputs_rand[0]
         assert original_rand == ""
         assert result_rand == ""
+
+    @pytest.mark.parametrize(
+        "input_peptide, randomize_smiles, expected_canonical_smiles",
+        [
+            ("A", False, PEPTIDE_A_CANONICAL_SMILES),
+            ("A", True, PEPTIDE_A_CANONICAL_SMILES),
+            ("ACEG", False, PEPTIDE_ACEG_CANONICAL_SMILES),
+            ("ACEG", True, PEPTIDE_ACEG_CANONICAL_SMILES),
+        ],
+    )
+    def test_transform_valid_peptide(self, input_peptide: str, randomize_smiles: bool, expected_canonical_smiles: str):
+        transform = PeptideToSmilesPairTransform(randomize_smiles=randomize_smiles)
+        outputs = transform([input_peptide])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == input_peptide
+        assert result is not None
+        assert get_canonical_smiles(result) == expected_canonical_smiles
+
+        if not randomize_smiles:
+            # For non-randomized, the result should be the canonical SMILES directly
+            # if the underlying convert_aa_to_smiles produces canonical by default when not randomizing
+            # Let's assume convert_aa_to_smiles is canonical when not randomizing for now
+            assert result == expected_canonical_smiles
+        # No easy check for randomization other than it not being None and canonicalizing correctly
+        # unless we know specific non-canonical forms are likely for specific inputs.
+
+    @pytest.mark.parametrize(
+        "input_peptide, max_len, expected_original, expected_smiles_target",
+        [
+            ("ACEG", 2, "AC", PEPTIDE_AC_CANONICAL_SMILES),
+            ("ACEG", 4, "ACEG", PEPTIDE_ACEG_CANONICAL_SMILES),  # No truncation
+            ("ACEG", 10, "ACEG", PEPTIDE_ACEG_CANONICAL_SMILES),  # No truncation, max_len > len
+            ("ACEG", 0, "", ""),  # Truncate to empty
+        ],
+    )
+    def test_transform_with_max_input_length(
+        self,
+        input_peptide: str,
+        max_len: int | None,
+        expected_original: str,
+        expected_smiles_target: str,
+    ):
+        transform = PeptideToSmilesPairTransform(max_input_length=max_len)
+        outputs = transform([input_peptide])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == expected_original
+        if expected_smiles_target == "":
+            assert result == ""
+        else:
+            assert result is not None
+            assert result == expected_smiles_target
 
 
 class TestNucleotideToSmilesPairTransform:
@@ -258,3 +338,35 @@ class TestNucleotideToSmilesPairTransform:
             with pytest.raises(ValueError, match="Invalid cap: invalid_cap_val"):
                 transform(["ATGC"])
             mocked_choice.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "input_nt, max_len, expected_original_nt, expected_smiles_target",
+        [
+            ("ATGC", 2, "AT", NT_AT_NO_CAP_SMILES),
+            ("atgc", 2, "AT", NT_AT_NO_CAP_SMILES),  # Test case insensitivity and truncation
+            ("ATGC", 2, "AT", NT_AT_NO_CAP_SMILES),  # Randomized, target is canonical
+            ("ATGC", 4, "ATGC", NT_ATGC_NO_CAP_SMILES),  # No truncation
+            ("ATGC", 10, "ATGC", NT_ATGC_NO_CAP_SMILES),  # No truncation, max_len > len
+            ("ATGC", 0, "", ""),  # Truncate to empty
+            ("", 5, "", ""),  # Empty input
+            ("AT", None, "AT", NT_AT_NO_CAP_SMILES),  # max_len is None
+        ],
+    )
+    def test_transform_with_max_input_length(
+        self,
+        input_nt: str,
+        max_len: int | None,
+        expected_original_nt: str,
+        expected_smiles_target: str,
+    ):
+        transform = NucleotideToSmilesPairTransform(randomize_cap=False, max_input_length=max_len)
+        outputs = transform([input_nt])
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == expected_original_nt  # Transform uppercases and truncates input
+        if expected_smiles_target == "":
+            assert result == ""
+        else:
+            assert result is not None
+            assert get_canonical_smiles(result) == expected_smiles_target
