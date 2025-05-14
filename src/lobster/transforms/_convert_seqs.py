@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from importlib.util import find_spec
-from typing import Callable, Dict, Literal, Optional
+from typing import Literal
 
 _SELFIES_AVAILABLE = False
 _RDKIT_AVAILABLE = False
@@ -17,7 +18,7 @@ if find_spec("rdkit"):
 
 def convert_nt_to_aa(
     nt_seq: str,
-    codon_to_residue: Dict[str, str],
+    codon_to_residue: dict[str, str],
 ) -> str:
     if not nt_seq.isupper():
         nt_seq = nt_seq.upper()
@@ -40,7 +41,7 @@ def convert_nt_to_aa(
 
 def convert_aa_to_nt(
     aa_seq: str,
-    residue_to_codon: Dict[str, str],
+    residue_to_codon: dict[str, list[str]],
     sample_fn: Callable,
 ) -> str:
     if not aa_seq.isupper():
@@ -80,8 +81,9 @@ def convert_aa_to_smiles(
     Returns
     -------
     str | None
-        The SMILES string.
+        The SMILES string, or None if conversion fails.
     """
+    assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
 
     if not aa_seq.isupper():
         aa_seq = aa_seq.upper()
@@ -106,7 +108,7 @@ def convert_aa_to_smiles(
 
 def convert_smiles_to_aa(
     smiles_seq: str,
-) -> Optional[str]:
+) -> str | None:
     assert _RDKIT_AVAILABLE, "rdkit not available. This dependency is part of the mgm extra"
 
     try:
@@ -120,7 +122,7 @@ def convert_smiles_to_aa(
 
 def convert_smiles_to_selfies(
     smiles_seq: str,
-) -> Optional[str]:
+) -> str | None:
     assert _SELFIES_AVAILABLE, "selfies not available. This dependency is part of the mgm extra"
     try:
         sf_seq = sf.encoder(smiles_seq)
@@ -131,7 +133,7 @@ def convert_smiles_to_selfies(
 
 def convert_selfies_to_smiles(
     selfies_seq: str,
-) -> Optional[str]:
+) -> str | None:
     # TODO: add conversion of unknown selfies tokens to Ala selfies
     assert _SELFIES_AVAILABLE, "selfies not available. This dependency is part of the mgm extra"
     try:
@@ -141,7 +143,7 @@ def convert_selfies_to_smiles(
         return None
 
 
-def convert_aa_to_selfies(aa_seq: str, allowed_aa: set) -> Optional[str]:
+def convert_aa_to_selfies(aa_seq: str, allowed_aa: set) -> str | None:
     if not aa_seq.isupper():
         aa_seq = aa_seq.upper()
 
@@ -154,7 +156,7 @@ def convert_aa_to_selfies(aa_seq: str, allowed_aa: set) -> Optional[str]:
 
 def convert_selfies_to_aa(
     sf_seq: str,
-) -> Optional[str]:
+) -> str | None:
     # TODO: problem: SELFIES TO SMILES conversion is not reversible!
     smiles_seq = convert_selfies_to_smiles(sf_seq)
     if smiles_seq is None:
@@ -163,7 +165,7 @@ def convert_selfies_to_aa(
     return aa_seq
 
 
-def convert_nt_to_selfies_via_aa(nt_seq: str, codon_to_residue: Dict[str, str], allowed_aa: set) -> Optional[str]:
+def convert_nt_to_selfies_via_aa(nt_seq: str, codon_to_residue: dict[str, str], allowed_aa: set) -> str | None:
     aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue)
     sf_seq = convert_aa_to_selfies(aa_seq, allowed_aa)
     return sf_seq
@@ -171,9 +173,9 @@ def convert_nt_to_selfies_via_aa(nt_seq: str, codon_to_residue: Dict[str, str], 
 
 def convert_selfies_to_nt_via_aa(
     sf_seq: str,
-    residue_to_codon: Dict[str, str],
+    residue_to_codon: dict[str, list[str]],
     sample_fn: Callable,
-) -> Optional[str]:
+) -> str | None:
     aa_seq = convert_selfies_to_aa(sf_seq)
     if aa_seq is None:
         return None
@@ -204,11 +206,11 @@ def convert_nt_to_smiles(
     Returns
     -------
     str | None
-        The SMILES string.
+        The SMILES string, or None if conversion fails.
     """
     assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
 
-    is_rna = "U" in nt_seq
+    is_rna = "U" in nt_seq or "u" in nt_seq
     match is_rna, cap:
         case True, None:
             flavor = 2
@@ -231,6 +233,35 @@ def convert_nt_to_smiles(
 
     try:
         mol = Chem.MolFromSequence(nt_seq, flavor=flavor)
+    except SystemError:  # likely TypeError in RDKit
+        return None
+
+    if mol is None:
+        return None
+
+    return Chem.MolToSmiles(mol, doRandom=randomize_smiles)
+
+
+def convert_smiles_to_smiles(smiles_seq: str, randomize_smiles: bool = False) -> str | None:
+    """Convert a SMILES string to a canonical or randomized SMILES string.
+
+    Parameters
+    ----------
+    smiles_seq : str
+        The SMILES string to convert.
+    randomize_smiles : bool
+        Whether to randomize the SMILES string (non-canonical). If False,
+        the canonical SMILES string is returned.
+
+    Returns
+    -------
+    str | None
+        The canonical or randomized SMILES string, or None if conversion fails.
+    """
+    assert _RDKIT_AVAILABLE, "RDKit not available. This dependency is part of the mgm extra"
+
+    try:
+        mol = Chem.MolFromSmiles(smiles_seq)
     except SystemError:  # likely TypeError in RDKit
         return None
 
