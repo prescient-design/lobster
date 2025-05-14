@@ -23,6 +23,11 @@ from ._convert_seqs import (
     replace_target_symbol,
     replace_unknown_symbols,
 )
+from ._equivalence_transforms import (
+    NucleotideToSmilesPairTransform,
+    PeptideToSmilesPairTransform,
+    SmilesToSmilesPairTransform,
+)
 from ._lambda import Lambda
 from ._structure_featurizer import StructureFeaturizer
 from ._tokenizer_transform import TokenizerTransform
@@ -52,6 +57,9 @@ __all__ = [
     "convert_smiles_to_smiles",
     "replace_target_symbol",
     "replace_unknown_symbols",
+    "NucleotideToSmilesPairTransform",
+    "PeptideToSmilesPairTransform",
+    "SmilesToSmilesPairTransform",
     "Lambda",
     "StructureFeaturizer",
     "TokenizerTransform",
