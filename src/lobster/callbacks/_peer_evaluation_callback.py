@@ -126,7 +126,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         modality: str = "amino_acid",
         aggregate: bool = True,
     ) -> Tensor:
-        """Process inputs (tokenize if needed) and extract embeddings.
+        """Process inputs (tokenize if needed) and extract embeddings using the model's embed method.
 
         Parameters
         ----------
@@ -154,22 +154,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
             tokenizer_transform = pl_module.tokenizer_transforms[modality]
             tokenized_inputs = tokenizer_transform(inputs)
 
-        # Move inputs to device
-        x = {k: v.to(pl_module.device) for k, v in tokenized_inputs.items() if isinstance(v, Tensor)}
-
-        # Extract embeddings
-        embeddings = pl_module.model.tokens_to_latents(**x)
-
-        # Reshape to (batch_size, seq_len, hidden_size)
-        batch_size = x["input_ids"].size(0)
-        seq_len = x["input_ids"].size(-1)
-        embeddings = embeddings.view(batch_size, seq_len, -1)
-
-        if aggregate:
-            # Simple mean pooling over sequence length dimension
-            return embeddings.mean(dim=1)
-        else:
-            return embeddings
+        # Use the embed method from the model
+        return pl_module.model.embed(tokenized_inputs, aggregate=aggregate)
 
     def _get_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None
@@ -324,7 +310,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         targets: Tensor,
         input_ids: Optional[Tensor] = None,
         attention_mask: Optional[Tensor] = None,
-        ignore_target_value: int = -1,
+        ignore_target_value: int = -100,
     ) -> Tuple[Tensor, Tensor]:
         """Helper method to flatten embeddings and filter special tokens for token-level tasks.
 
@@ -338,7 +324,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Token IDs from tokenizer, used to identify special tokens
         attention_mask : Optional[Tensor], default=None
             Attention mask from tokenizer
-        ignore_target_value : int, default=-1
+        ignore_target_value : int, default=-100
             Value in targets to ignore (typically padding value)
 
         Returns
@@ -426,7 +412,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                             targets=y,
                             input_ids=input_ids,
                             attention_mask=attention_mask,
-                            ignore_target_value=-1,  # Assuming -1 is the padding value for targets
+                            ignore_target_value=-100,  # Use -100 as the padding value for targets
                         )
 
                         embeddings.append(filtered_embeddings.cpu())
