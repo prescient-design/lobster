@@ -58,6 +58,12 @@ class TestUme:
             mock_model = MagicMock()
             mock_model.config.hidden_size = 768
             mock_model.tokens_to_latents.return_value = torch.randn(2, 10, 768)
+            mock_model._prepare_inputs.return_value = (
+                torch.randint(0, 100, (1, 20)),
+                torch.ones(1, 20),
+                torch.tensor([0, 10, 20]),
+            )
+            mock_model.model.return_value = torch.randn(20, 768)
             mock_model.device = "cpu"
             mock_flex_bert.return_value = mock_model
 
@@ -73,6 +79,12 @@ class TestUme:
             mock_model = MagicMock()
             mock_model.config.hidden_size = 768
             mock_model.tokens_to_latents.return_value = torch.randn(2, 10, 768)
+            mock_model._prepare_inputs.return_value = (
+                torch.randint(0, 100, (1, 20)),
+                torch.ones(1, 20),
+                torch.tensor([0, 10, 20]),
+            )
+            mock_model.model.return_value = torch.randn(20, 768)
             mock_model.device = "cpu"
             mock_flex_bert.return_value = mock_model
 
@@ -80,8 +92,8 @@ class TestUme:
 
             # Test embed with aggregation
             inputs = {
-                "input_ids": torch.randn(2, 10),
-                "attention_mask": torch.ones(2, 10),
+                "input_ids": torch.randn(2, 1, 10),
+                "attention_mask": torch.ones(2, 1, 10),
             }
             embeddings = ume.embed(inputs, aggregate=True)
             assert embeddings.shape == (2, 768)
@@ -140,14 +152,14 @@ class TestUme:
             pytest.param(False, id="without_modality_embeddings")
         ],
     )
-    def test_train_step(self, use_modality_embeddings):
+    def test_train_mlm_step(self, use_modality_embeddings):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
             mock_flex_bert.return_value = mock_model
 
             ume = Ume(use_modality_embeddings=use_modality_embeddings)
 
-            with patch.object(ume, "_step", return_value=torch.tensor(1.5)):
+            with patch.object(ume, "_mlm_step", return_value=torch.tensor(1.5)):
                 batch = {
                     "input_ids": torch.randint(0, 100, (2, 1, 10)),
                     "attention_mask": torch.ones(2, 1, 10),
@@ -160,6 +172,6 @@ class TestUme:
                     assert isinstance(loss, torch.Tensor)
                     assert loss.item() == 1.5
 
-                    ume._step.assert_called_with(batch, step_name)
+                    ume._mlm_step.assert_called_with(batch, step_name)
 
-                    ume._step.reset_mock()
+                    ume._mlm_step.reset_mock()
