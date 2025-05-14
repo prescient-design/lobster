@@ -128,9 +128,7 @@ class TestUme:
             assert result == {"optimizer": "mock_optimizer"}
             mock_model.configure_optimizers.assert_called_once()
 
-    def test_train_step(
-        self,
-    ):
+    def test_train_step(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
             mock_flex_bert.return_value = mock_model

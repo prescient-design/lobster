@@ -399,7 +399,6 @@ class Ume(L.LightningModule):
 
         hidden_states = self.model.model(
             input_ids=masked_input_ids,
-            inputs_embeds=None,
             attention_mask=attention_mask,
             cu_seqlens=cu_seqlens,
             max_seqlen=self.max_length,
