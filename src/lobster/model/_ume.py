@@ -5,6 +5,7 @@ from typing import Literal
 import lightning as L
 import torch
 from torch import Tensor
+import torch.nn as nn
 from torchmetrics.text import Perplexity
 
 from lobster.constants import Modality, ModalityType
@@ -316,7 +317,11 @@ class Ume(L.LightningModule):
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
         else:
-            embeddings = self.model.tokens_to_latents(**x)
+            # Copied from tokens_to_latents to remove the inference_mode decorator, allow training
+            input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(x["input_ids"], x["attention_mask"])
+            embeddings = self.model.model(
+                input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
+            )
 
         # Reshape to (batch_size, seq_len, hidden_size)
         batch_size = x["input_ids"].size(0)
@@ -413,7 +418,60 @@ class Ume(L.LightningModule):
 
         return logits, labels
 
-    def _step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
+    def split_combined_batch(self, combined_batch: dict[str, Tensor | list[Modality]]) -> tuple[Tensor, Tensor]:
+        input_ids_a = combined_batch["input_ids"][:, 0, :].unsqueeze(1).contiguous()
+        input_ids_b = combined_batch["input_ids"][:, 1, :].unsqueeze(1).contiguous()
+        attention_mask_a = combined_batch["attention_mask"][:, 0, :].unsqueeze(1).contiguous()
+        attention_mask_b = combined_batch["attention_mask"][:, 1, :].unsqueeze(1).contiguous()
+
+        modality_list = (
+            combined_batch["metadata"]["modality"] if "metadata" in combined_batch else combined_batch["modality"]
+        )
+        modality_a = [t[0] for t in modality_list]
+        modality_b = [t[1] for t in modality_list]
+
+        return (
+            {
+                "input_ids": input_ids_a,
+                "attention_mask": attention_mask_a,
+                "modality": modality_a,
+            },
+            {
+                "input_ids": input_ids_b,
+                "attention_mask": attention_mask_b,
+                "modality": modality_b,
+            },
+        )
+
+    def _infonce_step(
+        self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"], temperature: float = 0.07
+    ) -> Tensor:
+        batch_a, batch_b = self.split_combined_batch(batch)
+
+        # Embed both sides separately (could merge for more efficiency but I don't think it matters)
+        embeddings_a = self.embed(batch_a, aggregate=True)
+        embeddings_b = self.embed(batch_b, aggregate=True)
+        assert embeddings_a.shape == embeddings_b.shape
+        assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
+
+        # Normalize embeddings
+        embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
+        embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
+
+        # Compute similarity matrix
+        similarity_matrix = embeddings_a @ embeddings_b.T / temperature
+
+        # Get CE in both directions
+        labels = torch.arange(embeddings_a.shape[0], device=self.device)
+        loss_a = nn.CrossEntropyLoss()(similarity_matrix, labels)
+        loss_b = nn.CrossEntropyLoss()(similarity_matrix.T, labels)
+
+        # Return the average of both losses
+        loss = (loss_a + loss_b) / 2
+        self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
+        return loss
+
+    def _mlm_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
         batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
 
         logits, labels = self._get_logits_and_labels(batch)
@@ -447,8 +505,19 @@ class Ume(L.LightningModule):
 
         return loss
 
+    def delegate_step_by_batch_shape(
+        self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]
+    ) -> Tensor:
+        # Decide step based on second dimension
+        if batch["input_ids"].shape[1] == 1:
+            return self._mlm_step(batch, stage)
+        elif batch["input_ids"].shape[1] == 2:
+            return self._infonce_step(batch, stage)
+        else:
+            raise ValueError(f"Not sure what '{stage}' step to run with inputs of shape: {batch['input_ids'].shape}")
+
     def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self._step(batch, "train")
+        return self.delegate_step_by_batch_shape(batch, "train")
 
     def validation_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self._step(batch, "val")
+        return self.delegate_step_by_batch_shape(batch, "val")
