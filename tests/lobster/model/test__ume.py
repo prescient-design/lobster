@@ -163,3 +163,54 @@ class TestUme:
                     ume._mlm_step.assert_called_with(batch, step_name)
 
                     ume._mlm_step.reset_mock()
+
+    def test_contrastive_step_weight(self):
+        with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
+            mock_model = MagicMock()
+            mock_flex_bert.return_value = mock_model
+
+            # Initialize Ume with contrastive_loss_weight=0.5
+            ume = Ume(contrastive_loss_weight=0.5)
+
+            # Create mock objects for the methods
+            mlm_mock = MagicMock(return_value=torch.tensor(2.0))
+            infonce_mock = MagicMock(return_value=torch.tensor(4.0))
+            split_batch_mock = MagicMock(return_value=({"input_ids": None}, {"input_ids": None}))
+
+            # Replace the actual methods with mocks
+            ume._mlm_step = mlm_mock
+            ume._infonce_step = infonce_mock
+            ume._split_combined_batch = split_batch_mock
+
+            # Create a batch with two inputs (needed for contrastive learning)
+            batch = {
+                "input_ids": torch.randint(0, 100, (2, 2, 10)),  # 2 batch items, 2 inputs each
+                "attention_mask": torch.ones(2, 2, 10),
+                "modality": [["SMILES", "amino_acid"], ["amino_acid", "SMILES"]],
+            }
+
+            # Test training step
+            loss = ume.training_step(batch, 0)
+
+            # Expected combined loss: 0.5 * mlm_loss + 0.5 * contrastive_loss = 3.0
+            expected_loss = 3.0
+
+            assert isinstance(loss, torch.Tensor)
+            assert loss.item() == expected_loss
+
+            # Verify calls
+            split_batch_mock.assert_called_once()
+            mlm_mock.assert_called_once()
+            infonce_mock.assert_called_once()
+
+            # Test validation step
+            split_batch_mock.reset_mock()
+            mlm_mock.reset_mock()
+            infonce_mock.reset_mock()
+
+            loss = ume.validation_step(batch, 0)
+
+            assert loss.item() == expected_loss
+            split_batch_mock.assert_called_once()
+            mlm_mock.assert_called_once()
+            infonce_mock.assert_called_once()
