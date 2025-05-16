@@ -1,6 +1,7 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, Type
+from typing import Any
 
 import torch.utils.data
 from lightning import LightningDataModule
@@ -25,7 +26,7 @@ from lobster.tokenization import UmeTokenizerTransform
 @dataclass
 class DatasetInfo:
     name: str
-    dataset_class: Type
+    dataset_class: type
     modality: Modality
     supported_splits: set[Split]
     train_size: int  # Approximate size of the training set, used for sampling weights

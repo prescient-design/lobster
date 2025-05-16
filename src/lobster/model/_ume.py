@@ -4,8 +4,8 @@ from typing import Literal
 
 import lightning as L
 import torch
-from torch import Tensor
 import torch.nn as nn
+from torch import Tensor
 from torchmetrics.text import Perplexity
 
 from lobster.constants import Modality, ModalityType
@@ -39,6 +39,15 @@ class Ume(L.LightningModule):
         Epsilon parameter for Adam optimizer.
     mask_percentage : float, default=0.25
         Percentage of tokens to mask during training.
+    contrastive_loss_weight : float, default=0.0
+        Weight for the contrastive loss. Only relevant if the batch contains two inputs.
+        Is used to balance the MLM and InfoNCE losses:
+        (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * InfoNCE_loss
+        - If contrastive_loss_weight is 0, only MLM is used
+        - If contrastive_loss_weight is 1, only InfoNCE is used
+        - If 0 < contrastive_loss_weight < 1, both are used
+    contrastive_temperature : float, default=0.07
+        Temperature for the contrastive loss.
     scheduler : str, default="constant_with_warmup"
         Type of learning rate scheduler to use.
     num_training_steps : int | None, default=None
@@ -88,6 +97,8 @@ class Ume(L.LightningModule):
         beta2: float = 0.98,
         eps: float = 1e-12,
         mask_percentage: float = 0.25,
+        contrastive_loss_weight: float = 1.0,
+        contrastive_temperature: float = 0.07,
         scheduler: Literal[
             "linear",
             "cosine",
@@ -144,6 +155,8 @@ class Ume(L.LightningModule):
         self.max_length = max_length
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
+        self.contrastive_loss_weight = contrastive_loss_weight
+        self.contrastive_temperature = contrastive_temperature
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -418,7 +431,19 @@ class Ume(L.LightningModule):
 
         return logits, labels
 
-    def split_combined_batch(self, combined_batch: dict[str, Tensor | list[Modality]]) -> tuple[Tensor, Tensor]:
+    def _split_combined_batch(self, combined_batch: dict[str, Tensor | list[Modality]]) -> tuple[Tensor, Tensor]:
+        """Split a combined batch of two inputs into two separate batches.
+
+        Parameters
+        ----------
+        combined_batch : dict[str, Tensor | list[Modality]]
+            The combined batch to split.
+
+        Returns
+        -------
+        tuple[dict[str, Tensor | list[Modality]], dict[str, Tensor | list[Modality]]]
+            A tuple of two dictionaries, each containing the input IDs and attention masks for the two separate batches.
+        """
         input_ids_a = combined_batch["input_ids"][:, 0, :].unsqueeze(1).contiguous()
         input_ids_b = combined_batch["input_ids"][:, 1, :].unsqueeze(1).contiguous()
         attention_mask_a = combined_batch["attention_mask"][:, 0, :].unsqueeze(1).contiguous()
@@ -444,13 +469,29 @@ class Ume(L.LightningModule):
         )
 
     def _infonce_step(
-        self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"], temperature: float = 0.07
+        self,
+        batch_a: dict[str, Tensor | list[Modality]],
+        batch_b: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
     ) -> Tensor:
-        batch_a, batch_b = self.split_combined_batch(batch)
+        """Perform a contrastive step.
 
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            The batch to perform the contrastive step on.
+        stage : Literal["train", "val"]
+            The stage to perform the contrastive step on.
+
+        Returns
+        -------
+        Tensor
+            The loss for the contrastive step.
+        """
         # Embed both sides separately (could merge for more efficiency but I don't think it matters)
         embeddings_a = self.embed(batch_a, aggregate=True)
         embeddings_b = self.embed(batch_b, aggregate=True)
+
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
 
@@ -459,7 +500,7 @@ class Ume(L.LightningModule):
         embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
 
         # Compute similarity matrix
-        similarity_matrix = embeddings_a @ embeddings_b.T / temperature
+        similarity_matrix = embeddings_a @ embeddings_b.T / self.contrastive_temperature
 
         # Get CE in both directions
         labels = torch.arange(embeddings_a.shape[0], device=self.device)
@@ -469,9 +510,24 @@ class Ume(L.LightningModule):
         # Return the average of both losses
         loss = (loss_a + loss_b) / 2
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
+
         return loss
 
     def _mlm_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
+        """Perform a masked language model step.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            The batch to perform the masked language model step on.
+        stage : Literal["train", "val"]
+            The stage to perform the masked language model step on.
+
+        Returns
+        -------
+        Tensor
+            The loss for the masked language model step.
+        """
         batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
 
         logits, labels = self._get_logits_and_labels(batch)
@@ -505,19 +561,37 @@ class Ume(L.LightningModule):
 
         return loss
 
-    def delegate_step_by_batch_shape(
+    def _delegate_step_by_batch_shape(
         self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]
     ) -> Tensor:
-        # Decide step based on second dimension
+        # If the batch contains only one input, we can only run MLM
         if batch["input_ids"].shape[1] == 1:
             return self._mlm_step(batch, stage)
+
+        # If there are two items in the batch, we run MLM on the first item and InfoNCE on the second item
+        # (the first item is the original modality and the second item is the converted modality)
         elif batch["input_ids"].shape[1] == 2:
-            return self._infonce_step(batch, stage)
+            batch_a, batch_b = self._split_combined_batch(batch)
+
+            # See if we can skip InfoNCE
+            if self.contrastive_loss_weight > 0:
+                contrastive_loss = self._infonce_step(batch_a, batch_b, stage)
+            else:
+                contrastive_loss = torch.tensor(0.0, device=self.device)
+
+            # See if we can skip MLM
+            if self.contrastive_loss_weight != 1.0:
+                mlm_loss = self._mlm_step(batch_a, stage)
+            else:
+                mlm_loss = torch.tensor(0.0, device=self.device)
+
+            return (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
+
         else:
             raise ValueError(f"Not sure what '{stage}' step to run with inputs of shape: {batch['input_ids'].shape}")
 
     def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self.delegate_step_by_batch_shape(batch, "train")
+        return self._delegate_step_by_batch_shape(batch, "train")
 
     def validation_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self.delegate_step_by_batch_shape(batch, "val")
+        return self._delegate_step_by_batch_shape(batch, "val")
