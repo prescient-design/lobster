@@ -40,7 +40,12 @@ class Ume(L.LightningModule):
     mask_percentage : float, default=0.25
         Percentage of tokens to mask during training.
     contrastive_loss_weight : float, default=0.0
-        Weight for the contrastive loss.
+        Weight for the contrastive loss. Only relevant if the batch contains two inputs.
+        Is used to balance the MLM and InfoNCE losses:
+        (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * InfoNCE_loss
+        - If contrastive_loss_weight is 0, only MLM is used
+        - If contrastive_loss_weight is 1, only InfoNCE is used
+        - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
     scheduler : str, default="constant_with_warmup"
@@ -92,7 +97,7 @@ class Ume(L.LightningModule):
         beta2: float = 0.98,
         eps: float = 1e-12,
         mask_percentage: float = 0.25,
-        contrastive_loss_weight: float = 0.0,
+        contrastive_loss_weight: float = 1.0,
         contrastive_temperature: float = 0.07,
         scheduler: Literal[
             "linear",
