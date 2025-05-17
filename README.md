@@ -168,6 +168,9 @@ lobster_train data.path_to_fasta="test_data/query.fasta" logger=csv paths.root_d
 ## Contributing <a name="contributing"></a>
 Contributions are welcome! We ask that all users and contributors remember that the LBSTER team are all full-time drug hunters, and our open-source efforts are a labor of love because we care deeply about open science and scientific progress.
 
+### Getting started with contributions
+Expanding unit test coverage, docstrings, and type hints are always welcome and a good place to start to orient yourself to the code base. Likewise for identifying and fixing 🐛bugs🐛. For more involved project ideas, check [Good First Issues](https://github.com/prescient-design/lobster/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22). All new or modified code *must* be unit tested before maintainers will review.
+
 ### Install dev requirements and pre-commit hooks
 
 ```bash
