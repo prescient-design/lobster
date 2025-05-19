@@ -43,7 +43,7 @@ class Ume(L.LightningModule):
         Weight for the contrastive loss. Only relevant if the batch contains two inputs.
         Is used to balance the MLM and InfoNCE losses:
         (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * InfoNCE_loss
-        - If contrastive_loss_weight is 0, only MLM is used
+        - If contrastive_loss_weight is 0, only MLM is used (default)
         - If contrastive_loss_weight is 1, only InfoNCE is used
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
@@ -97,7 +97,7 @@ class Ume(L.LightningModule):
         beta2: float = 0.98,
         eps: float = 1e-12,
         mask_percentage: float = 0.25,
-        contrastive_loss_weight: float = 1.0,
+        contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
         scheduler: Literal[
             "linear",
@@ -442,7 +442,8 @@ class Ume(L.LightningModule):
         Returns
         -------
         tuple[dict[str, Tensor | list[Modality]], dict[str, Tensor | list[Modality]]]
-            A tuple of two dictionaries, each containing the input IDs and attention masks for the two separate batches.
+            A tuple of two dictionaries, each containing the input ID, attention masks,
+            and modality for the two separate batches.
         """
         input_ids_a = combined_batch["input_ids"][:, 0, :].unsqueeze(1).contiguous()
         input_ids_b = combined_batch["input_ids"][:, 1, :].unsqueeze(1).contiguous()
