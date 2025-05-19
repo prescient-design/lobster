@@ -43,7 +43,7 @@ class Ume(L.LightningModule):
         Weight for the contrastive loss. Only relevant if the batch contains two inputs.
         Is used to balance the MLM and InfoNCE losses:
         (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * InfoNCE_loss
-        - If contrastive_loss_weight is 0, only MLM is used
+        - If contrastive_loss_weight is 0, only MLM is used (default)
         - If contrastive_loss_weight is 1, only InfoNCE is used
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
