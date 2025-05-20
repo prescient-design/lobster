@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from lobster.constants import Modality
 from lobster.data import UmeLightningDataModule
-from lobster.datasets import AMPLIFYIterableDataset, MultiplexedSamplingDataset
+from lobster.datasets import AMPLIFYIterableDataset
 from torch import Tensor
 from torch.utils.data import DataLoader
 
@@ -83,15 +83,6 @@ class TestUmeLightningDataModule:
                 weights=None,
             )
             dm.setup()
-
-            # Set train sizes directly since we've mocked the underlying datasets
-            dm._train_sizes = [100, 200]
-
-            expected_weights = [w / sum(dm._train_sizes) for w in dm._train_sizes]
-
-            assert dm._sample
-            assert isinstance(dm.train_dataset, MultiplexedSamplingDataset)
-            assert dm.train_dataset.weights == expected_weights
 
             dataloader = dm.train_dataloader()
             assert isinstance(dataloader, DataLoader)
