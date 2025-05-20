@@ -122,7 +122,7 @@ class DummyLightningModule(L.LightningModule):
             "SMILES": lambda x: {"input_ids": torch.randint(0, 50, (8, 128)), "attention_mask": torch.ones(8, 128)},
         }
 
-    def embed_single_batch(self, batch):
+    def embed(self, batch):
         """Embed a single batch.
 
         Parameters
