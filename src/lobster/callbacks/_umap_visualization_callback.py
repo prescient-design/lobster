@@ -126,7 +126,7 @@ class UmapVisualizationCallback(Callback):
                     if self.group_by not in batch:
                         raise ValueError(f"Group key '{self.group_by}' not found in batch")
 
-                    embeddings = model.embed_single_batch(batch)
+                    embeddings = model.embed(batch)
                     groups = batch[self.group_by]
 
                     # Group embeddings by their corresponding group
@@ -143,9 +143,7 @@ class UmapVisualizationCallback(Callback):
                 }
             else:
                 # Extract all embeddings without grouping
-                all_embeddings = [
-                    model.embed_single_batch(batch).cpu() for batch in tqdm(dataloader, desc="Extracting embeddings")
-                ]
+                all_embeddings = [model.embed(batch).cpu() for batch in tqdm(dataloader, desc="Extracting embeddings")]
 
                 return torch.cat(all_embeddings, dim=0) if all_embeddings else torch.empty(0)
 
