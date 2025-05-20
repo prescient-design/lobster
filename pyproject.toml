@@ -40,6 +40,7 @@ dependencies = [
     "beignet[datasets]",
     "deepspeed",
     "dotenv>=0.9.9",
+    "umap-learn>=0.5.7",
 ]
 
 [build-system]
@@ -59,9 +60,6 @@ lobster_eval = "lobster.cmdline:eval_embed"
 mgm = [
     "rdkit>=2024.9.4",
     "selfies>=2.1.2",
-]
-beignet_mdtraj = [
-    "beignet[mdtraj]"
 ]
 
 [tool.setuptools.packages.find]
