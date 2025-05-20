@@ -54,7 +54,8 @@ lobster_predict = "lobster.cmdline:predict"
 lobster_intervene = "lobster.cmdline:intervene"
 lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
-lobster_eval = "lobster.cmdline:eval_embed"
+lobster_eval_embed = "lobster.cmdline:eval_embed"
+lobster_eval = "lobster.cmdline:evaluate"
 
 [project.optional-dependencies]
 mgm = [

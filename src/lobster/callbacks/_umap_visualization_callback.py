@@ -8,7 +8,7 @@ import umap
 from lightning.pytorch.callbacks import Callback
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from UPath import UPath
+from upath import UPath
 
 logger = logging.getLogger(__name__)
 
