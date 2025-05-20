@@ -1,13 +1,17 @@
 # Model evaluation configuration
+# To run:
 
-output_dir: ${hydra:runtime.cwd}/evaluation_results
+# lobster_eval model.model_path=path_to_your_checkpoint.ckpt
+
+output_dir: ${hydra:runtime.cwd}/evaluation_results/${now:%Y-%m-%d_%H-%M-%S}
+
 datamodule:
-  _target_: lobster.evaluation._dummy.DummyLightningDataModule
-
+  _target_: lobster.data.UmeLightningDataModule
+  tokenizer_max_length: 8192
 
 model:
-  _target_: lobster.evaluation._dummy.DummyLightningModule
-  # model_path: /path/to/model.pt
+  _target_: lobster.model.Ume
+  model_path: ???
 
 callbacks:
   - _target_: lobster.callbacks.CalmLinearProbeCallback
@@ -18,6 +22,7 @@ callbacks:
   - _target_: lobster.callbacks.MoleculeACELinearProbeCallback
     max_length: 128
     batch_size: 8
+    tasks: [CHEMBL234_Ki]
   
   - _target_: lobster.callbacks.PEEREvaluationCallback
     max_length: 128
@@ -25,7 +30,7 @@ callbacks:
     batch_size: 8
   
   - _target_: lobster.callbacks.UmapVisualizationCallback
-    output_dir: umap
-    group_by: dataset
+    output_dir: ${output_dir}/umap
+    group_by: null
     max_samples: 100
   

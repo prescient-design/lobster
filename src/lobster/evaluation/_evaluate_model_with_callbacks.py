@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import inspect
+import logging
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -9,13 +10,15 @@ import lightning as L
 from torch.utils.data import DataLoader
 from upath import UPath
 
+logger = logging.getLogger(__name__)
 
-def _format_metrics_for_markdown(metrics: dict[str, dict[str, float]]) -> str:
+
+def _format_metrics_for_markdown(metrics: dict[str, dict[str, Any]]) -> str:
     """Format metrics dictionary into a markdown table.
 
     Parameters
     ----------
-    metrics : dict[str, dict[str, float]]
+    metrics : dict[str, dict[str, Any]]
         Dictionary of task -> metric -> value
 
     Returns
@@ -31,7 +34,20 @@ def _format_metrics_for_markdown(metrics: dict[str, dict[str, float]]) -> str:
         markdown += "|--------|-------|\n"
 
         for metric_name, value in task_metrics.items():
-            markdown += f"| {metric_name} | {value:.4f} |\n"
+            # Handle nested dictionary values
+            if isinstance(value, dict):
+                # Create a sub-table for nested metrics
+                markdown += f"| {metric_name} | *see below* |\n"
+                markdown += "\n**Nested metrics for " + metric_name + ":**\n\n"
+                markdown += "| Submetric | Value |\n"
+                markdown += "|-----------|-------|\n"
+                for sub_metric, sub_value in value.items():
+                    value_str = f"{sub_value:.4f}" if isinstance(sub_value, float) else str(sub_value)
+                    markdown += f"| {sub_metric} | {value_str} |\n"
+                markdown += "\n"
+            else:
+                value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
+                markdown += f"| {metric_name} | {value_str} |\n"
 
         markdown += "\n"
 
@@ -98,7 +114,7 @@ def _generate_evaluation_report(
         markdown_report += "\n"
 
     report_path = output_dir / "evaluation_report.md"
-
+    logger.info(f"Writing evaluation report to {report_path}")
     with open(report_path, "w") as f:
         f.write(markdown_report)
 
@@ -125,11 +141,13 @@ def evaluate_model_with_callbacks(
     output_dir : str | Path
         Directory to save evaluation results
     """
+    logger.info("Starting model evaluation with callbacks")
     if str(output_dir).startswith("s3://"):
         raise NotImplementedError("S3 output is not supported yet")
 
     output_dir = UPath(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Created output directory: {output_dir}")
 
     results = {}
     issues = []
@@ -137,26 +155,37 @@ def evaluate_model_with_callbacks(
     for callback in callbacks:
         try:
             callback_name = callback.__class__.__name__
+            logger.info(f"Evaluating with callback: {callback_name}")
 
             if not hasattr(callback, "evaluate") or not callable(callback.evaluate):
-                raise ValueError(f"Callback {callback_name} does not have an evaluate method")
+                error_msg = f"Callback {callback_name} does not have an evaluate method"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             # Inspect signature if the callback evaluation method requires a dataloader
             callback_signature = inspect.signature(callback.evaluate)
 
             if "dataloader" in callback_signature.parameters:
                 if dataloader is None:
-                    raise ValueError(f"Callback {callback_name} requires a dataloader but none was provided")
+                    error_msg = f"Callback {callback_name} requires a dataloader but none was provided"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
 
                 callback_results = callback.evaluate(model, dataloader=dataloader)
             else:
                 callback_results = callback.evaluate(model)
 
+            logger.info(f"Successfully evaluated with {callback_name}")
             results[callback_name] = callback_results
 
         except Exception as e:
-            print(f"Error in {callback_name}: {e}")
+            logger.exception(f"Error in {callback_name}: {e}")
             issues.append(f"{callback_name}: {str(e)}")
 
     # Generate markdown report
-    return _generate_evaluation_report(results, issues, output_dir)
+    logger.info("Generating evaluation report")
+    report_path = _generate_evaluation_report(results, issues, output_dir)
+
+    logger.info(f"Evaluation complete, report saved to {report_path}")
+
+    return report_path

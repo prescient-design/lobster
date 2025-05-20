@@ -1,7 +1,7 @@
 import logging
 import tempfile
 from collections import defaultdict
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
 
 import lightning as L
 import torch
@@ -72,9 +72,9 @@ class PEEREvaluationCallback(LinearProbeCallback):
     def __init__(
         self,
         max_length: int,
-        tasks: Optional[Sequence[Union[PEERTask, str]]] = None,
+        tasks: Sequence[PEERTask | str] | None = None,
         batch_size: int = 32,
-        run_every_n_epochs: Optional[int] = None,
+        run_every_n_epochs: int | None = None,
     ):
         """Initialize the PEER benchmark callback.
 
@@ -82,11 +82,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
         ----------
         max_length : int
             Maximum sequence length for tokenization.
-        tasks : Optional[Sequence[Union[PEERTask, str]]], default=None
+        tasks : Sequence[PEERTask | str] | None, default=None
             Specific PEER tasks to evaluate. If None, all tasks are used.
         batch_size : int, default=32
             Batch size for embedding extraction and evaluation.
-        run_every_n_epochs : Optional[int], default=None
+        run_every_n_epochs : int | None, default=None
             Run this callback every n epochs. If None, runs every validation epoch.
         """
         tokenizer_transform = UmeTokenizerTransform(
@@ -122,7 +122,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
     def _process_and_embed(
         self,
         pl_module: L.LightningModule,
-        inputs: Union[Dict[str, Tensor], List[str], str],
+        inputs: dict[str, Tensor] | list[str] | str,
         modality: str = "amino_acid",
         aggregate: bool = True,
     ) -> Tensor:
@@ -132,7 +132,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         ----------
         pl_module : L.LightningModule
             The lightning module with a model that can extract embeddings
-        inputs : Union[Dict[str, Tensor], List[str], str]
+        inputs : dict[str, Tensor] | list[str] | str
             Either tokenized inputs (dict with input_ids, attention_mask)
             or raw inputs (list of strings or single string)
         modality : str, default="amino_acid"
@@ -147,7 +147,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
         # Check if inputs are already tokenized (either dict or BatchEncoding)
-        if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:
+        if isinstance(inputs, dict | BatchEncoding) and "input_ids" in inputs:
             tokenized_inputs = inputs
         else:
             # Tokenize the inputs
@@ -159,7 +159,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def _get_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader with task-specific handling."""
         if task is None:
             # Fall back to parent implementation if no task specified
@@ -216,7 +216,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 # Default case: return anything with test
                 return [split for split in PEER_TASK_SPLITS[task] if split not in ["train", "valid"]]
 
-    def _get_task_datasets(self, task: PEERTask) -> Tuple[PEERDataset, Dict[str, PEERDataset]]:
+    def _get_task_datasets(self, task: PEERTask) -> tuple[PEERDataset, dict[str, PEERDataset]]:
         """Get or create train and test datasets for a given task.
 
         Returns:
@@ -256,7 +256,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def _get_paired_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Extract embeddings for paired inputs (protein-protein or protein-ligand)."""
         task_type = PEER_TASKS[task][0]
         embeddings = []
@@ -308,10 +308,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
         self,
         batch_embeddings: Tensor,
         targets: Tensor,
-        input_ids: Optional[Tensor] = None,
-        attention_mask: Optional[Tensor] = None,
+        input_ids: Tensor | None = None,
+        attention_mask: Tensor | None = None,
         ignore_target_value: int = -100,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Helper method to flatten embeddings and filter special tokens for token-level tasks.
 
         Parameters
@@ -320,16 +320,16 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Embeddings with shape [batch_size, seq_len, hidden_size]
         targets : Tensor
             Target labels with shape [batch_size, seq_len] or [batch_size*seq_len]
-        input_ids : Optional[Tensor], default=None
+        input_ids : Tensor | None, default=None
             Token IDs from tokenizer, used to identify special tokens
-        attention_mask : Optional[Tensor], default=None
+        attention_mask : Tensor | None, default=None
             Attention mask from tokenizer
         ignore_target_value : int, default=-100
             Value in targets to ignore (typically padding value)
 
         Returns
         -------
-        Tuple[Tensor, Tensor]
+        tuple[Tensor, Tensor]
             Filtered embeddings and targets
         """
         _batch_size, _seq_len, hidden_size = batch_embeddings.shape
@@ -383,7 +383,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def _get_structure_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Extract embeddings for structure prediction tasks with special handling."""
         embeddings = []
         targets = []
@@ -537,7 +537,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def _evaluate_task(
         self, task: PEERTask, trainer: L.Trainer, pl_module: L.LightningModule
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Evaluate a single PEER task across all its test splits.
 
         Returns:
@@ -574,7 +574,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         pl_module: L.LightningModule,
         trainer: L.Trainer,
         step: int = 0,
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Core evaluation logic used by both on_validation_epoch_end and evaluate.
 
         Parameters
@@ -588,7 +588,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         Returns
         -------
-        Dict[str, Dict[str, float]]
+        dict[str, dict[str, float]]
             Dictionary of task_name -> split_name -> {metric_name: value} with "mean" entry
         """
         # Track metrics
@@ -679,8 +679,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
     def evaluate(
         self,
         module: L.LightningModule,
-        trainer: L.Trainer = None,
-    ) -> Dict[str, Dict[str, float]]:
+        trainer: L.Trainer | None = None,
+    ) -> dict[str, dict[str, float]]:
         """Evaluate model on PEER benchmark tasks using linear probes.
 
         This method can be called manually at any time to evaluate a model.
@@ -689,12 +689,12 @@ class PEEREvaluationCallback(LinearProbeCallback):
         ----------
         module : L.LightningModule
             The model to evaluate
-        trainer : Optional[L.Trainer], optional
+        trainer : L.Trainer | None, optional
             Trainer for logging metrics, by default None
 
         Returns
         -------
-        Dict[str, Dict[str, float]]
+        dict[str, dict[str, float]]
             Dictionary of task results with metrics and averages
         """
         # Create a simple trainer with logger if none provided
@@ -703,7 +703,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 logger=CSVLogger(tempfile.mkdtemp()),
                 accelerator="auto",
                 devices=1,
-                enable_checkpoints=False,
             )
 
         return self._run_evaluation(module, trainer, step=0)
