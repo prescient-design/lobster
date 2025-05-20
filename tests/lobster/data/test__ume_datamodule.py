@@ -68,8 +68,8 @@ class TestUmeLightningDataModule:
 
         # Patch both dataset classes
         with (
-            patch("lobster.data.AMPLIFYIterableDataset") as mock_amplify_cls,
-            patch("lobster.data.CalmIterableDataset") as mock_calm_cls,
+            patch("lobster.datasets.AMPLIFYIterableDataset") as mock_amplify_cls,
+            patch("lobster.datasets.CalmIterableDataset") as mock_calm_cls,
         ):
             mock_amplify_cls.return_value = mock_amplify
             mock_calm_cls.return_value = mock_calm
