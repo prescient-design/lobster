@@ -306,8 +306,22 @@ class Ume(L.LightningModule):
         self.model.train()
         self.frozen = False
 
-    def _get_embeddings(self, inputs: dict[str, Tensor]) -> Tensor:
-        """Internal helper to get embeddings for a single batch."""
+    def embed_single_batch(self, inputs: dict[str, Tensor], aggregate: bool = True) -> Tensor:
+        """Embed a single batch of inputs.
+
+        Parameters
+        ----------
+        inputs : dict[str, Tensor]
+            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
+        aggregate : bool, default=True
+            Whether to average pool over the sequence length dimension.
+
+        Returns
+        -------
+        Tensor
+            Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
+            Otherwise, shape is (batch_size, seq_len, hidden_size).
+        """
         x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
 
         if self.frozen:
@@ -320,13 +334,9 @@ class Ume(L.LightningModule):
                 input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
             )
 
-        # Reshape to (batch_size, seq_len, hidden_size)
-        batch_size = x["input_ids"].size(0)
-        seq_len = x["input_ids"].size(-1)
+        return embeddings.mean(dim=1) if aggregate else embeddings
 
-        return embeddings.view(batch_size, seq_len, -1)
-
-    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, batch_size: int | None = None) -> Tensor:
+    def embed_batches(self, inputs: dict[str, Tensor], aggregate: bool = True, batch_size: int | None = None) -> Tensor:
         """Get embeddings for encoded inputs.
 
         Parameters
@@ -356,19 +366,12 @@ class Ume(L.LightningModule):
         all_embeddings = []
 
         for batch_input_ids, batch_attention_mask in dataloader:
-            batch_embeddings = self._get_embeddings(
-                {"input_ids": batch_input_ids, "attention_mask": batch_attention_mask}
+            batch_embeddings = self.embed_single_batch(
+                {"input_ids": batch_input_ids, "attention_mask": batch_attention_mask}, aggregate=aggregate
             )
             all_embeddings.append(batch_embeddings)
 
-        # Concatenate all embeddings
-        embeddings = torch.cat(all_embeddings, dim=0)
-
-        if aggregate:
-            # Simple mean pooling over sequence length dimension
-            return embeddings.mean(dim=1)
-        else:
-            return embeddings
+        return torch.cat(all_embeddings, dim=0)
 
     def embed_sequences(
         self,
@@ -431,7 +434,7 @@ class Ume(L.LightningModule):
 
         encoded = tokenizer_transform(list(sequences))
 
-        return self.embed(encoded, aggregate=aggregate, batch_size=batch_size)
+        return self.embed_batches(encoded, aggregate=aggregate, batch_size=batch_size)
 
     def configure_optimizers(self) -> dict[str, object]:
         """Configure optimizers and learning rate schedulers.
@@ -525,8 +528,8 @@ class Ume(L.LightningModule):
             The loss for the contrastive step.
         """
         # Embed both sides separately (could merge for more efficiency but I don't think it matters)
-        embeddings_a = self.embed(batch_a, aggregate=True)
-        embeddings_b = self.embed(batch_b, aggregate=True)
+        embeddings_a = self.embed_single_batch(batch_a, aggregate=True)
+        embeddings_b = self.embed_single_batch(batch_b, aggregate=True)
 
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
