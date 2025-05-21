@@ -1,7 +1,7 @@
 import logging
 import tempfile
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import lightning as L
 import torch
@@ -66,36 +66,48 @@ class PEEREvaluationCallback(LinearProbeCallback):
         Protein Sequence Understanding"
         https://arxiv.org/abs/2206.02096
 
-    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
+    Supports both tokenizer-based models (using UmeTokenizerTransform) and
+    sequence-based models like ESM.
     """
 
     def __init__(
         self,
-        max_length: int,
+        max_length: int = 512,
         tasks: Sequence[PEERTask | str] | None = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
+        requires_tokenization: bool = True,
+        transform_fn: Callable | None = None,
     ):
         """Initialize the PEER benchmark callback.
 
         Parameters
         ----------
-        max_length : int
-            Maximum sequence length for tokenization.
+        max_length : int, default=512
+            Maximum sequence length for tokenization (if needed).
         tasks : Sequence[PEERTask | str] | None, default=None
             Specific PEER tasks to evaluate. If None, all tasks are used.
         batch_size : int, default=32
             Batch size for embedding extraction and evaluation.
         run_every_n_epochs : int | None, default=None
             Run this callback every n epochs. If None, runs every validation epoch.
+        requires_tokenization : bool, default=True
+            Whether the model requires tokenized inputs (via UmeTokenizerTransform) or
+            can accept raw sequences directly.
+        transform_fn : Callable | None, default=None
+            Custom transform function to apply to inputs. If None and requires_tokenization
+            is True, UmeTokenizerTransform will be used.
         """
-        tokenizer_transform = UmeTokenizerTransform(
-            modality="amino_acid",
-            max_length=max_length,
-        )
+        self.requires_tokenization = requires_tokenization
+
+        if requires_tokenization and transform_fn is None:
+            transform_fn = UmeTokenizerTransform(
+                modality="amino_acid",
+                max_length=max_length,
+            )
 
         super().__init__(
-            transform_fn=tokenizer_transform,
+            transform_fn=transform_fn,
             # Default task type will be updated per task
             task_type="regression",
             batch_size=batch_size,
@@ -122,7 +134,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
     def _process_and_embed(
         self,
         pl_module: L.LightningModule,
-        inputs: dict[str, Tensor] | list[str] | str,
+        inputs: dict[str, Tensor] | list[str] | str | BatchEncoding,
         modality: str = "amino_acid",
         aggregate: bool = True,
     ) -> Tensor:
@@ -132,7 +144,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         ----------
         pl_module : L.LightningModule
             The lightning module with a model that can extract embeddings
-        inputs : dict[str, Tensor] | list[str] | str
+        inputs : dict[str, Tensor] | list[str] | str | BatchEncoding
             Either tokenized inputs (dict with input_ids, attention_mask)
             or raw inputs (list of strings or single string)
         modality : str, default="amino_acid"
@@ -146,16 +158,47 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Embeddings tensor of shape (batch_size, hidden_size) if aggregate=True
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
-        # Check if inputs are already tokenized (either dict or BatchEncoding)
-        if isinstance(inputs, dict | BatchEncoding) and "input_ids" in inputs:
-            tokenized_inputs = inputs
-        else:
-            # Tokenize the inputs
-            tokenizer_transform = pl_module.tokenizer_transforms[modality]
-            tokenized_inputs = tokenizer_transform(inputs)
+        # Models that accept sequence inputs directly (like ESM)
+        if not self.requires_tokenization:
+            # Check if inputs are already tokenized (BatchEncoding or dict with input_ids)
+            if isinstance(inputs, dict | BatchEncoding) and "input_ids" in inputs:
+                # Extract the original sequences if possible and available
+                if hasattr(inputs, "original_sequence"):
+                    # Use the original sequence if available
+                    sequences = inputs.original_sequence
+                elif hasattr(self.transform_fn, "tokenizer") and hasattr(self.transform_fn.tokenizer, "decode"):
+                    # Try to decode the input_ids back to sequences
+                    tokenizer = self.transform_fn.tokenizer
+                    sequences = [tokenizer.decode(ids) for ids in inputs["input_ids"]]
+                else:
+                    # We can't handle this case - return error
+                    raise ValueError(
+                        "Model requires sequence inputs but received tokenized inputs "
+                        "without a way to recover the original sequences"
+                    )
+            else:
+                # Inputs are already sequences or can be used directly
+                sequences = inputs
 
-        # Use the embed method from the model
-        return pl_module.embed(tokenized_inputs, aggregate=aggregate)
+            # Call the model's embed method with the sequences
+            return pl_module.embed(sequences, aggregate=aggregate)
+
+        # Models that require tokenized inputs (traditional approach)
+        else:
+            # Check if inputs are already tokenized (either dict or BatchEncoding)
+            if isinstance(inputs, dict | BatchEncoding) and "input_ids" in inputs:
+                tokenized_inputs = inputs
+            else:
+                # Tokenize the inputs
+                if hasattr(pl_module, "tokenizer_transforms") and modality in pl_module.tokenizer_transforms:
+                    tokenizer_transform = pl_module.tokenizer_transforms[modality]
+                    tokenized_inputs = tokenizer_transform(inputs)
+                else:
+                    # Fall back to the transform_fn from this callback
+                    tokenized_inputs = self.transform_fn(inputs)
+
+            # Use the embed method from the model
+            return pl_module.embed(tokenized_inputs, aggregate=aggregate)
 
     def _get_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask | None = None
@@ -185,7 +228,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 for batch in dataloader:
                     x, y = batch
 
-                    # Get embeddings using our new method
+                    # Get embeddings using our modified method that handles both tokenized and direct inputs
                     batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
 
                     embeddings.append(batch_embeddings.cpu())
@@ -286,7 +329,18 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         protein_embeddings = self._process_and_embed(
                             pl_module, seq1, modality="amino_acid", aggregate=True
                         )
-                        ligand_embeddings = self._process_and_embed(pl_module, seq2, modality="ligand", aggregate=True)
+
+                        # For sequence-based models that don't have ligand tokenizers
+                        if not self.requires_tokenization:
+                            # Assume the model can handle ligand sequences directly
+                            ligand_embeddings = self._process_and_embed(
+                                pl_module, seq2, modality="amino_acid", aggregate=True
+                            )
+                        else:
+                            # Use the specific ligand tokenizer for tokenizer-based models
+                            ligand_embeddings = self._process_and_embed(
+                                pl_module, seq2, modality="ligand", aggregate=True
+                            )
 
                         # Concatenate the embeddings
                         batch_embeddings = torch.cat([protein_embeddings, ligand_embeddings], dim=1)
@@ -343,8 +397,13 @@ class PEEREvaluationCallback(LinearProbeCallback):
         else:
             targets_flat = targets
 
-        # If we have tokenized input, use it to filter special tokens
-        if input_ids is not None and attention_mask is not None:
+        # If we have tokenized input and we're using a tokenizer-based model, use it to filter special tokens
+        if (
+            input_ids is not None
+            and attention_mask is not None
+            and self.requires_tokenization
+            and hasattr(self.transform_fn, "tokenizer")
+        ):
             tokenizer = self.transform_fn.tokenizer
             special_token_ids = {
                 tokenizer.cls_token_id,
@@ -374,7 +433,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             filtered_embeddings = batch_embeddings_flat[combined_mask]
             filtered_targets = targets_flat[combined_mask]
         else:
-            # If no tokenizer info provided, just filter based on ignore value
+            # If no tokenizer info provided or using sequence-based model, just filter based on ignore value
             valid_mask = targets_flat != ignore_target_value
             filtered_embeddings = batch_embeddings_flat[valid_mask]
             filtered_targets = targets_flat[valid_mask]
@@ -395,9 +454,22 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 if isinstance(batch, tuple) and len(batch) == 2:
                     x, y = batch
 
-                    # x should be a dictionary with tokenizer outputs
-                    input_ids = x.get("input_ids")
-                    attention_mask = x.get("attention_mask")
+                    # For sequence-based models that don't require tokenization
+                    if not self.requires_tokenization:
+                        if isinstance(x, dict) and "input_ids" in x:
+                            # Get the raw sequences if we can
+                            if hasattr(x, "original_sequence"):
+                                x = x.original_sequence
+                            elif hasattr(self.transform_fn, "tokenizer") and hasattr(
+                                self.transform_fn.tokenizer, "decode"
+                            ):
+                                # Try to decode from input_ids
+                                tokenizer = self.transform_fn.tokenizer
+                                x = [tokenizer.decode(ids) for ids in x["input_ids"]]
+
+                    # Extract input_ids and attention_mask if available (for token filtering)
+                    input_ids = x.get("input_ids") if isinstance(x, dict) else None
+                    attention_mask = x.get("attention_mask") if isinstance(x, dict) else None
                 else:
                     raise ValueError(f"Expected batch to be a tuple of (inputs, targets), got {type(batch)}")
 
