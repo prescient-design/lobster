@@ -74,14 +74,24 @@ Install [uv](https://github.com/astral-sh/uv)
 ```bash
 uv venv --python 3.12  # create a new virtual environment in the `lobster` directory
 source .venv/bin/activate
-uv pip install -e .
+uv sync
 ```
 
-### Using `mamba`
+To use flash attention (only on Linux), add the `flash_attn` extra
+```bash
+uv sync --extra flash_attn
+```
+
+### Using `mamba/pip`
 clone the repo, cd into it and do `mamba env create -f env.yml`
 then from the root of the repo, do
 ```bash
 pip install -e .
+```
+
+or
+```bash
+pip install -e ".[flash_attn]"
 ```
 
 ## Main models you should use <a name="main-models"></a>
@@ -179,7 +189,7 @@ pre-commit install
 
 ### Create lockfile for env
 ```bash
-uv pip compile requirements.in -o requirements.txt
+uv lock
 ```
 
 ### Testing
