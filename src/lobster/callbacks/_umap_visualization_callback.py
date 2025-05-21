@@ -124,7 +124,7 @@ class UmapVisualizationCallback(Callback):
 
                 for batch in tqdm(dataloader, desc="Extracting embeddings"):
                     if self.group_by not in batch:
-                        raise ValueError(f"Group key '{self.group_by}' not found in batch")
+                        raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}, {batch}")
 
                     embeddings = model.embed(batch)
                     groups = batch[self.group_by]
