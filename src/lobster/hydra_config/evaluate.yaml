@@ -11,7 +11,7 @@ datamodule:
 
 model:
   _target_: lobster.model.Ume
-  model_path: ???
+  ckpt_path: ???
 
 callbacks:
   - _target_: lobster.callbacks.CalmLinearProbeCallback

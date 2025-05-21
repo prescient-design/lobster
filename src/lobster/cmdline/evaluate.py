@@ -12,9 +12,9 @@ def evaluate(cfg: DictConfig) -> None:
 
     callbacks = [hydra.utils.instantiate(callback) for callback in cfg.callbacks]
 
-    if hasattr(cfg, "model_path") and cfg.model_path is not None:
+    if hasattr(cfg, "ckpt_path") and cfg.ckpt_path is not None:
         model_cls = hydra.utils.get_class(cfg.model)
-        model = model_cls.load_from_checkpoint(cfg.model_path)
+        model = model_cls.load_from_checkpoint(cfg.ckpt_path)
     else:
         model = hydra.utils.instantiate(cfg.model)
 
