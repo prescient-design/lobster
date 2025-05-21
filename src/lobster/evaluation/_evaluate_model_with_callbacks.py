@@ -123,6 +123,8 @@ def evaluate_model_with_callbacks(
                 callback_results = callback.evaluate(model)
 
             logger.info(f"Successfully evaluated with {callback_name}")
+            logger.info(f"Callback results: {callback_results}")
+
             results[callback_name] = callback_results
 
         except Exception as e:
