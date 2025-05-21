@@ -126,7 +126,9 @@ def compute_loss(batch, model, tokenizer, max_length, device=None) -> List[Dict[
 
 
 def main(rank, args, world_size):
-    setup(rank, world_size)
+    if world_size > 1:
+        setup(rank, world_size)
+    
     output_dir = Path(args.output_dir) / args.model_name.replace("/", "_")
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -168,14 +170,18 @@ def main(rank, args, world_size):
     model.to(device)
 
     # wrap in DDP and compile
-    ddp_model = DistributedDataParallel(model, device_ids=[rank], output_device=rank)
+    if world_size > 1:
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        ddp_model = DistributedDataParallel(model, device_ids=[rank], output_device=rank)
+    else:
+        ddp_model = model
+
     ddp_model = torch.compile(ddp_model)
     
     # Inference loop
     results_tmp_list = []
     cur_shard_num = 0 
     cur_num_in_shard = 0 
-    model_name = args.model_name.replace("/", "_")
 
     for batch in dataloader:
         with torch.no_grad():
@@ -195,18 +201,27 @@ def main(rank, args, world_size):
             
             else:
                 print(f"Processed {cur_num_in_shard} sequences in shard {cur_shard_num}")
-
-    cleanup()
+    
+    if world_size > 1:
+        cleanup()
 
 
 if __name__ == "__main__":
     args = get_args()
     world_size = torch.cuda.device_count()
-    rank = int(os.environ["LOCAL_RANK"])
 
-    try:
-        mp.spawn(main, (args, world_size), world_size, join=True)
-    except Exception as e:
-        print(f"Error in process {rank}: {e}")
-    finally:
-        cleanup()
+    if world_size == 1:
+        print("Only one GPU available. Running without DDP.")
+        main(0, args, world_size)
+        exit()
+    
+    else:
+        print(f"Using {world_size} GPUs for DDP.")
+        rank = int(os.environ["LOCAL_RANK"])
+
+        try:
+            mp.spawn(main, (args, world_size), world_size, join=True)
+        except Exception as e:
+            print(f"Error in process {rank}: {e}")
+        finally:
+            cleanup()
