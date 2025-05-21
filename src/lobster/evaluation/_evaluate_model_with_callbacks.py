@@ -13,47 +13,6 @@ from upath import UPath
 logger = logging.getLogger(__name__)
 
 
-def _format_metrics_for_markdown(metrics: dict[str, dict[str, Any]]) -> str:
-    """Format metrics dictionary into a markdown table.
-
-    Parameters
-    ----------
-    metrics : dict[str, dict[str, Any]]
-        Dictionary of task -> metric -> value
-
-    Returns
-    -------
-    str
-        Formatted markdown table
-    """
-    markdown = ""
-
-    for task, task_metrics in metrics.items():
-        markdown += f"### {task}\n\n"
-        markdown += "| Metric | Value |\n"
-        markdown += "|--------|-------|\n"
-
-        for metric_name, value in task_metrics.items():
-            # Handle nested dictionary values
-            if isinstance(value, dict):
-                # Create a sub-table for nested metrics
-                markdown += f"| {metric_name} | *see below* |\n"
-                markdown += "\n**Nested metrics for " + metric_name + ":**\n\n"
-                markdown += "| Submetric | Value |\n"
-                markdown += "|-----------|-------|\n"
-                for sub_metric, sub_value in value.items():
-                    value_str = f"{sub_value:.4f}" if isinstance(sub_value, float) else str(sub_value)
-                    markdown += f"| {sub_metric} | {value_str} |\n"
-                markdown += "\n"
-            else:
-                value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
-                markdown += f"| {metric_name} | {value_str} |\n"
-
-        markdown += "\n"
-
-    return markdown
-
-
 def _generate_evaluation_report(
     results: dict[str, Any],
     issues: list[str],
@@ -88,23 +47,9 @@ def _generate_evaluation_report(
         # If result is a path, assume it's an image and include it in the markdown
         if isinstance(callback_results, str | Path | UPath) and Path(callback_results).exists():
             markdown_report += f"![{callback_name} Visualization]({callback_results})\n\n"
-
-        # If result is a dictionary, format as table
-        elif isinstance(callback_results, dict):
-            # Nested dictionary
-            if all(isinstance(v, dict) for v in callback_results.values()):
-                markdown_report += _format_metrics_for_markdown({callback_name: callback_results})
-            else:
-                # Simple dictionary, format as table
-                markdown_report += "| Metric | Value |\n"
-                markdown_report += "|--------|-------|\n"
-                for metric_name, value in callback_results.items():
-                    value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
-                    markdown_report += f"| {metric_name} | {value_str} |\n"
-                markdown_report += "\n"
         else:
-            # Other types of results
-            markdown_report += f"{callback_results}\n\n"
+            # For all other types, just dump the raw results
+            markdown_report += f"```\n{callback_results}\n```\n\n"
 
     # Add section for issues if any
     if issues:
@@ -114,7 +59,9 @@ def _generate_evaluation_report(
         markdown_report += "\n"
 
     report_path = output_dir / "evaluation_report.md"
+
     logger.info(f"Writing evaluation report to {report_path}")
+
     with open(report_path, "w") as f:
         f.write(markdown_report)
 

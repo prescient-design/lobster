@@ -1,8 +1,12 @@
+import logging
+
 import hydra
 import hydra.utils
 from omegaconf import DictConfig, OmegaConf
 
 from lobster.evaluation import evaluate_model_with_callbacks
+
+logging.basicConfig(level=logging.INFO)
 
 
 @hydra.main(config_path="../hydra_config", config_name="evaluate", version_base=None)
