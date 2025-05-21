@@ -2,6 +2,7 @@ import logging
 
 import hydra
 import hydra.utils
+import torch
 from omegaconf import DictConfig, OmegaConf
 
 from lobster.evaluation import evaluate_model_with_callbacks
@@ -26,6 +27,8 @@ def evaluate(cfg: DictConfig) -> None:
         model = model_cls.load_from_checkpoint(cfg.ckpt_path)
     else:
         model = hydra.utils.instantiate(cfg.model)
+
+    model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
     logger.info("Instantiating datamodule...")
     datamodule = hydra.utils.instantiate(cfg.datamodule)
