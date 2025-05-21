@@ -155,10 +155,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
             tokenized_inputs = tokenizer_transform(inputs)
 
         # Use the embed method from the model
-        return pl_module.model.embed(tokenized_inputs, aggregate=aggregate)
+        return pl_module.embed(tokenized_inputs, aggregate=aggregate)
 
     def _get_embeddings(
-        self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None
+        self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask | None = None
     ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader with task-specific handling."""
         if task is None:
