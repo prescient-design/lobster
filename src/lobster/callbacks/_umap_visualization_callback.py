@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from typing import Any
 
 import lightning as L
 import numpy as np
@@ -38,9 +39,9 @@ class UmapVisualizationCallback(Callback):
     group_by : str | None
         Key in batch to group embeddings by (e.g., 'dataset'). If None, no grouping is done.
     group_colors : dict[str, str] | None
-        Custom color map for groups. If None, uses default colors
-    enable_grouping : bool
-        Whether to enable grouping of embeddings by the group_by key
+        Custom color map for groups. If None, uses default color palette
+    requires_tokenization : bool
+        Whether the model requires tokenized input for embedding
 
     Examples
     --------
@@ -62,6 +63,7 @@ class UmapVisualizationCallback(Callback):
         random_state: int = 42,
         group_by: str | None = "dataset",
         group_colors: dict[str, str] | None = None,
+        requires_tokenization: bool = True,
     ):
         super().__init__()
         self.output_dir = UPath(output_dir)
@@ -72,14 +74,25 @@ class UmapVisualizationCallback(Callback):
         self.random_state = random_state
         self.group_by = group_by
         self.group_colors = group_colors or {}
-
+        self.requires_tokenization = requires_tokenization
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize dict to store embeddings
         self.all_embeddings = {}
 
     def _skip(self, trainer: L.Trainer) -> bool:
-        """Determine if we should skip visualization this epoch."""
+        """Determine if we should skip visualization this epoch.
+
+        Parameters
+        ----------
+        trainer : L.Trainer
+            The Lightning trainer instance
+
+        Returns
+        -------
+        bool
+            True if visualization should be skipped, False otherwise
+        """
         # Don't skip if run_every_n_epochs is not set
         if self.run_every_n_epochs is None:
             return False
@@ -119,71 +132,136 @@ class UmapVisualizationCallback(Callback):
 
         with torch.no_grad():
             if self.group_by:
-                # Group embeddings by the specified key
-                grouped_embeddings = defaultdict(list)
-                group_sample_counts = defaultdict(int)
-
-                for batch in tqdm(dataloader, desc="Extracting embeddings"):
-                    if self.group_by not in batch:
-                        raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}, {batch}")
-
-                    embeddings = model.embed(batch)
-                    groups = batch[self.group_by]
-
-                    # Group embeddings by their corresponding group
-                    for group in set(groups):
-                        # Skip groups that have reached the sample limit
-                        if group_sample_counts[group] >= self.max_samples:
-                            continue
-
-                        mask = torch.tensor([g == group for g in groups], device=embeddings.device)
-                        if mask.any():
-                            group_embeddings = embeddings[mask].cpu()
-
-                            # Only take up to max_samples
-                            remaining_samples = self.max_samples - group_sample_counts[group]
-                            if len(group_embeddings) > remaining_samples:
-                                group_embeddings = group_embeddings[:remaining_samples]
-
-                            grouped_embeddings[group].append(group_embeddings)
-                            group_sample_counts[group] += len(group_embeddings)
-
-                    # Check if all groups have reached the sample limit
-                    all_groups_done = all(
-                        count >= self.max_samples
-                        for group, count in group_sample_counts.items()
-                        if group in set(groups)
-                    )
-
-                    if all_groups_done and group_sample_counts:
-                        break
-
-                # Concatenate embeddings for each group
-                return {
-                    group: torch.cat(group_embeddings, dim=0)
-                    for group, group_embeddings in grouped_embeddings.items()
-                    if group_embeddings
-                }
+                return self._extract_grouped_embeddings(model, dataloader)
             else:
-                # Extract all embeddings without grouping
-                all_embeddings = []
-                total_samples = 0
+                return self._extract_all_embeddings(model, dataloader)
 
-                for batch in tqdm(dataloader, desc="Extracting embeddings"):
-                    batch_embeddings = model.embed(batch).cpu()
+    def _extract_grouped_embeddings(self, model: L.LightningModule, dataloader: DataLoader) -> dict[str, torch.Tensor]:
+        """Extract embeddings grouped by a key in the batch.
 
-                    # Only take up to max_samples in total
-                    remaining_samples = self.max_samples - total_samples
-                    if len(batch_embeddings) > remaining_samples:
-                        batch_embeddings = batch_embeddings[:remaining_samples]
+        Parameters
+        ----------
+        model : L.LightningModule
+            Model to extract embeddings from
+        dataloader : DataLoader
+            Dataloader with batches
 
-                    all_embeddings.append(batch_embeddings)
-                    total_samples += len(batch_embeddings)
+        Returns
+        -------
+        dict[str, torch.Tensor]
+            Embeddings grouped by the specified key
 
-                    if total_samples >= self.max_samples:
-                        break
+        Raises
+        ------
+        ValueError
+            If group_by key is not found in batch or if requires_tokenization=False
+            and sequence key is missing
+        """
+        grouped_embeddings = defaultdict(list)
+        group_sample_counts = defaultdict(int)
 
-                return torch.cat(all_embeddings, dim=0) if all_embeddings else torch.empty(0)
+        for batch in tqdm(dataloader, desc="Extracting embeddings"):
+            if self.group_by not in batch:
+                raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}, {batch}")
+
+            embeddings = self._get_embeddings_from_batch(model, batch)
+            groups = batch[self.group_by]
+
+            # Group embeddings by their corresponding group
+            for group in set(groups):
+                # Skip groups that have reached the sample limit
+                if group_sample_counts[group] >= self.max_samples:
+                    continue
+
+                mask = torch.tensor([g == group for g in groups], device=embeddings.device)
+                if mask.any():
+                    group_embeddings = embeddings[mask].cpu()
+
+                    # Only take up to max_samples
+                    remaining_samples = self.max_samples - group_sample_counts[group]
+                    if len(group_embeddings) > remaining_samples:
+                        group_embeddings = group_embeddings[:remaining_samples]
+
+                    grouped_embeddings[group].append(group_embeddings)
+                    group_sample_counts[group] += len(group_embeddings)
+
+            # Check if all groups have reached the sample limit
+            all_groups_done = all(
+                count >= self.max_samples for group, count in group_sample_counts.items() if group in set(groups)
+            )
+
+            if all_groups_done and group_sample_counts:
+                break
+
+        # Concatenate embeddings for each group
+        return {
+            group: torch.cat(group_embeddings, dim=0)
+            for group, group_embeddings in grouped_embeddings.items()
+            if group_embeddings
+        }
+
+    def _extract_all_embeddings(self, model: L.LightningModule, dataloader: DataLoader) -> torch.Tensor:
+        """Extract all embeddings without grouping.
+
+        Parameters
+        ----------
+        model : L.LightningModule
+            Model to extract embeddings from
+        dataloader : DataLoader
+            Dataloader with batches
+
+        Returns
+        -------
+        torch.Tensor
+            All embeddings concatenated
+        """
+        all_embeddings = []
+        total_samples = 0
+
+        for batch in tqdm(dataloader, desc="Extracting embeddings"):
+            batch_embeddings = self._get_embeddings_from_batch(model, batch)
+
+            # Only take up to max_samples in total
+            remaining_samples = self.max_samples - total_samples
+            if len(batch_embeddings) > remaining_samples:
+                batch_embeddings = batch_embeddings[:remaining_samples]
+
+            all_embeddings.append(batch_embeddings.cpu())
+            total_samples += len(batch_embeddings)
+
+            if total_samples >= self.max_samples:
+                break
+
+        return torch.cat(all_embeddings, dim=0) if all_embeddings else torch.empty(0)
+
+    def _get_embeddings_from_batch(self, model: L.LightningModule, batch: dict[str, Any]) -> torch.Tensor:
+        """Get embeddings from a batch based on tokenization requirements.
+
+        Parameters
+        ----------
+        model : L.LightningModule
+            Model to extract embeddings from
+        batch : dict[str, Any]
+            Batch of data
+
+        Returns
+        -------
+        torch.Tensor
+            Embeddings from the batch
+
+        Raises
+        ------
+        ValueError
+            If requires_tokenization=False and sequence key is missing
+        """
+        if self.requires_tokenization:
+            return model.embed(batch)
+        else:
+            if batch.get("sequence") is None:
+                raise ValueError(
+                    f"The batch does not contain a 'sequence' key, which is required when requires_tokenization is False. Got keys: {batch.keys()}"
+                )
+            return model.embed(batch["sequence"])
 
     def _plot_umap(
         self,
@@ -191,7 +269,17 @@ class UmapVisualizationCallback(Callback):
         output_file: str | UPath,
         model_name: str = "model",
     ) -> None:
-        """Create UMAP visualization of embeddings."""
+        """Create UMAP visualization of embeddings.
+
+        Parameters
+        ----------
+        embeddings : dict[str, torch.Tensor] | torch.Tensor
+            Embeddings to visualize, either grouped or ungrouped
+        output_file : str | UPath
+            Path to save the visualization
+        model_name : str
+            Name of the model for the plot title
+        """
         # Importing here and setting Agg is necessary to avoid issues with interactive backends
         import matplotlib
 
@@ -204,47 +292,9 @@ class UmapVisualizationCallback(Callback):
 
         # Process embeddings and run UMAP
         if isinstance(embeddings, dict):
-            umap_embeddings, group_labels, available_groups = self._process_grouped_embeddings(embeddings)
-
-            # Plot each group
-            for group in available_groups:
-                mask = np.array(group_labels) == group
-                ax.scatter(
-                    umap_embeddings[mask, 0],
-                    umap_embeddings[mask, 1],
-                    c=[self.group_colors.get(group, "gray")],
-                    s=50,
-                    alpha=0.4,
-                    edgecolors="white",
-                    linewidth=0.5,
-                    label=group,
-                )
-
-            # Add legend
-            ax.legend(
-                title="Groups",
-                title_fontsize=12,
-                fontsize=10,
-                loc="upper left",
-                frameon=True,
-                framealpha=0.9,
-                edgecolor="gray",
-            )
+            self._plot_grouped_embeddings(embeddings, ax)
         else:
-            # Process ungrouped embeddings
-            embeddings_array = embeddings.cpu().numpy()
-            umap_embeddings = self._run_umap(embeddings_array)
-
-            # Single scatter plot without grouping
-            ax.scatter(
-                umap_embeddings[:, 0],
-                umap_embeddings[:, 1],
-                c="steelblue",
-                s=50,
-                alpha=0.4,
-                edgecolors="white",
-                linewidth=0.5,
-            )
+            self._plot_ungrouped_embeddings(embeddings, ax)
 
         # Add labels and styling
         ax.set_title(f"UMAP of {model_name} Embeddings", fontsize=16, weight="bold")
@@ -259,15 +309,108 @@ class UmapVisualizationCallback(Callback):
 
         logger.info(f"Saved UMAP visualization to {output_file}")
 
+    def _plot_grouped_embeddings(self, embeddings: dict[str, torch.Tensor], ax) -> None:
+        """Plot grouped embeddings on matplotlib axes.
+
+        Parameters
+        ----------
+        embeddings : dict[str, torch.Tensor]
+            Embeddings grouped by keys
+        ax : matplotlib.axes.Axes
+            Matplotlib axes to plot on
+        """
+        # Import matplotlib colors here to avoid issues with backends
+        from matplotlib import pyplot as plt
+
+        umap_embeddings, group_labels, available_groups = self._process_grouped_embeddings(embeddings)
+
+        if umap_embeddings is None:
+            logger.warning("No embeddings available for UMAP visualization")
+            return
+
+        # Generate color palette for groups without defined colors
+        palette = plt.cm.tab10.colors  # Use tab10 color palette (10 distinct colors)
+
+        # Plot each group
+        for i, group in enumerate(available_groups):
+            mask = np.array(group_labels) == group
+            # Use custom color if defined, otherwise use color from palette
+            color = self.group_colors.get(group, palette[i % len(palette)])
+
+            ax.scatter(
+                umap_embeddings[mask, 0],
+                umap_embeddings[mask, 1],
+                c=[color],
+                s=50,
+                alpha=0.4,
+                edgecolors="white",
+                linewidth=0.5,
+                label=group,
+            )
+
+        # Add legend
+        ax.legend(
+            title="Groups",
+            title_fontsize=12,
+            fontsize=10,
+            loc="upper left",
+            frameon=True,
+            framealpha=0.9,
+            edgecolor="gray",
+        )
+
+    def _plot_ungrouped_embeddings(self, embeddings: torch.Tensor, ax) -> None:
+        """Plot ungrouped embeddings on matplotlib axes.
+
+        Parameters
+        ----------
+        embeddings : torch.Tensor
+            Tensor of embeddings
+        ax : matplotlib.axes.Axes
+            Matplotlib axes to plot on
+        """
+        if len(embeddings) == 0:
+            logger.warning("No embeddings available for UMAP visualization")
+            return
+
+        embeddings_array = embeddings.cpu().numpy()
+        umap_embeddings = self._run_umap(embeddings_array)
+
+        # Single scatter plot without grouping
+        ax.scatter(
+            umap_embeddings[:, 0],
+            umap_embeddings[:, 1],
+            c="steelblue",
+            s=50,
+            alpha=0.4,
+            edgecolors="white",
+            linewidth=0.5,
+        )
+
     def _save_figure(self, fig, output_file: str | UPath) -> None:
-        """Save a figure to a file with S3 support."""
+        """Save a figure to a file with S3 support.
+
+        Parameters
+        ----------
+        fig : matplotlib.figure.Figure
+            Figure to save
+        output_file : str | UPath
+            Path to save the figure to
+
+        Raises
+        ------
+        NotImplementedError
+            If trying to save to S3
+        """
         import matplotlib.pyplot as plt
 
         plt.tight_layout()
 
-        if str(output_file).startswith("s3://"):
-            raise NotImplementedError("S3 support is not implemented yet")
+        # Convert to string to handle both string and UPath
+        output_path = str(output_file)
 
+        if output_path.startswith("s3://"):
+            raise NotImplementedError("S3 support is not implemented yet")
         else:
             plt.savefig(output_file, dpi=300, bbox_inches="tight")
 
@@ -411,7 +554,15 @@ class UmapVisualizationCallback(Callback):
         return output_file
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        """Extract embeddings and create UMAP visualization at specified epochs."""
+        """Extract embeddings and create UMAP visualization at specified epochs.
+
+        Parameters
+        ----------
+        trainer : L.Trainer
+            The Lightning trainer instance
+        pl_module : L.LightningModule
+            The Lightning module
+        """
         if self._skip(trainer):
             return
 
