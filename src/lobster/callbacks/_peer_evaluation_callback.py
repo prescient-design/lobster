@@ -72,7 +72,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def __init__(
         self,
-        max_length: int = 512,
+        max_length: int | None = None,
         tasks: Sequence[PEERTask | str] | None = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
@@ -83,7 +83,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         Parameters
         ----------
-        max_length : int, default=512
+        max_length : int, default=None
             Maximum sequence length for tokenization (if needed).
         tasks : Sequence[PEERTask | str] | None, default=None
             Specific PEER tasks to evaluate. If None, all tasks are used.
@@ -101,6 +101,9 @@ class PEEREvaluationCallback(LinearProbeCallback):
         self.requires_tokenization = requires_tokenization
 
         if requires_tokenization and transform_fn is None:
+            if max_length is None:
+                raise ValueError("max_length must be provided if requires_tokenization is True")
+
             transform_fn = UmeTokenizerTransform(
                 modality="amino_acid",
                 max_length=max_length,
