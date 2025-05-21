@@ -121,6 +121,7 @@ class UmapVisualizationCallback(Callback):
             if self.group_by:
                 # Group embeddings by the specified key
                 grouped_embeddings = defaultdict(list)
+                group_sample_counts = defaultdict(int)
 
                 for batch in tqdm(dataloader, desc="Extracting embeddings"):
                     if self.group_by not in batch:
@@ -131,9 +132,31 @@ class UmapVisualizationCallback(Callback):
 
                     # Group embeddings by their corresponding group
                     for group in set(groups):
+                        # Skip groups that have reached the sample limit
+                        if group_sample_counts[group] >= self.max_samples:
+                            continue
+
                         mask = torch.tensor([g == group for g in groups], device=embeddings.device)
                         if mask.any():
-                            grouped_embeddings[group].append(embeddings[mask].cpu())
+                            group_embeddings = embeddings[mask].cpu()
+
+                            # Only take up to max_samples
+                            remaining_samples = self.max_samples - group_sample_counts[group]
+                            if len(group_embeddings) > remaining_samples:
+                                group_embeddings = group_embeddings[:remaining_samples]
+
+                            grouped_embeddings[group].append(group_embeddings)
+                            group_sample_counts[group] += len(group_embeddings)
+
+                    # Check if all groups have reached the sample limit
+                    all_groups_done = all(
+                        count >= self.max_samples
+                        for group, count in group_sample_counts.items()
+                        if group in set(groups)
+                    )
+
+                    if all_groups_done and group_sample_counts:
+                        break
 
                 # Concatenate embeddings for each group
                 return {
@@ -143,7 +166,22 @@ class UmapVisualizationCallback(Callback):
                 }
             else:
                 # Extract all embeddings without grouping
-                all_embeddings = [model.embed(batch).cpu() for batch in tqdm(dataloader, desc="Extracting embeddings")]
+                all_embeddings = []
+                total_samples = 0
+
+                for batch in tqdm(dataloader, desc="Extracting embeddings"):
+                    batch_embeddings = model.embed(batch).cpu()
+
+                    # Only take up to max_samples in total
+                    remaining_samples = self.max_samples - total_samples
+                    if len(batch_embeddings) > remaining_samples:
+                        batch_embeddings = batch_embeddings[:remaining_samples]
+
+                    all_embeddings.append(batch_embeddings)
+                    total_samples += len(batch_embeddings)
+
+                    if total_samples >= self.max_samples:
+                        break
 
                 return torch.cat(all_embeddings, dim=0) if all_embeddings else torch.empty(0)
 
@@ -194,7 +232,7 @@ class UmapVisualizationCallback(Callback):
             )
         else:
             # Process ungrouped embeddings
-            embeddings_array = self._subsample_embeddings(embeddings.cpu().numpy())
+            embeddings_array = embeddings.cpu().numpy()
             umap_embeddings = self._run_umap(embeddings_array)
 
             # Single scatter plot without grouping
@@ -267,9 +305,6 @@ class UmapVisualizationCallback(Callback):
             if isinstance(group_embeddings, torch.Tensor):
                 group_embeddings = group_embeddings.cpu().numpy()
 
-            # Subsample if needed
-            group_embeddings = self._subsample_embeddings(group_embeddings)
-
             all_embeddings.append(group_embeddings)
             group_labels.extend([group] * len(group_embeddings))
             available_groups.append(group)
@@ -281,25 +316,6 @@ class UmapVisualizationCallback(Callback):
         umap_embeddings = self._run_umap(all_embeddings_array)
 
         return umap_embeddings, group_labels, available_groups
-
-    def _subsample_embeddings(self, embeddings: np.ndarray) -> np.ndarray:
-        """
-        Subsample embeddings if they exceed the maximum sample count.
-
-        Parameters
-        ----------
-        embeddings : np.ndarray
-            Input embeddings array
-
-        Returns
-        -------
-        np.ndarray
-            Subsampled embeddings
-        """
-        if len(embeddings) > self.max_samples:
-            indices = np.random.choice(len(embeddings), int(self.max_samples), replace=False)
-            return embeddings[indices]
-        return embeddings
 
     def _run_umap(self, embeddings: np.ndarray) -> np.ndarray:
         """
