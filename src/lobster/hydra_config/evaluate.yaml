@@ -29,5 +29,5 @@ callbacks:
   - _target_: lobster.callbacks.UmapVisualizationCallback
     output_dir: ${output_dir}/umap
     group_by: null
-    max_samples: 100
+    max_samples: 500
   
