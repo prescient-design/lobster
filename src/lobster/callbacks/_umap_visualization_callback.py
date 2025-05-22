@@ -159,7 +159,23 @@ class UmapVisualizationCallback(Callback):
         """
         grouped_embeddings = defaultdict(list)
         group_sample_counts = defaultdict(int)
+        all_observed_groups = set()
 
+        # First pass: identify all available groups in the dataset
+        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Scanning for groups")):
+            if self.group_by not in batch:
+                raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}, {batch}")
+
+            groups = batch[self.group_by]
+            all_observed_groups.update(set(groups))
+
+            # Limit initial scan to avoid full dataset pass if it's large
+            if batch_idx >= 10 and all_observed_groups:
+                break
+
+        logger.info(f"Found {len(all_observed_groups)} groups: {all_observed_groups}")
+
+        # Second pass: collect balanced samples
         for batch in tqdm(dataloader, desc="Extracting embeddings"):
             if self.group_by not in batch:
                 raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}, {batch}")
@@ -185,20 +201,25 @@ class UmapVisualizationCallback(Callback):
                     grouped_embeddings[group].append(group_embeddings)
                     group_sample_counts[group] += len(group_embeddings)
 
-            # Check if all groups have reached the sample limit
-            all_groups_done = all(
-                count >= self.max_samples for group, count in group_sample_counts.items() if group in set(groups)
-            )
-
-            if all_groups_done and group_sample_counts:
+            # Check if all observed groups have reached the sample limit
+            if all_observed_groups and all(
+                group_sample_counts[group] >= self.max_samples for group in all_observed_groups
+            ):
+                logger.info("Collected maximum samples from all groups. Stopping.")
                 break
 
         # Concatenate embeddings for each group
-        return {
+        result = {
             group: torch.cat(group_embeddings, dim=0)
             for group, group_embeddings in grouped_embeddings.items()
             if group_embeddings
         }
+
+        # Log collection stats
+        for group, embedding in result.items():
+            logger.info(f"Group '{group}': collected {len(embedding)} samples")
+
+        return result
 
     def _extract_all_embeddings(self, model: L.LightningModule, dataloader: DataLoader) -> torch.Tensor:
         """Extract all embeddings without grouping.
