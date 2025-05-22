@@ -61,7 +61,7 @@ class UmapVisualizationCallback(Callback):
         n_neighbors: int = 300,
         min_dist: float = 1.0,
         random_state: int = 42,
-        group_by: str | None = "dataset",
+        group_by: str | None = None,
         group_colors: dict[str, str] | None = None,
         requires_tokenization: bool = True,
     ):
@@ -159,32 +159,18 @@ class UmapVisualizationCallback(Callback):
         """
         grouped_embeddings = defaultdict(list)
         group_sample_counts = defaultdict(int)
-        all_observed_groups = set()
 
-        # First pass: identify all available groups in the dataset
-        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Scanning for groups")):
-            if self.group_by not in batch:
-                raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}, {batch}")
-
-            groups = batch[self.group_by]
-            all_observed_groups.update(set(groups))
-
-            # Limit initial scan to avoid full dataset pass if it's large
-            if batch_idx >= 10 and all_observed_groups:
-                break
-
-        logger.info(f"Found {len(all_observed_groups)} groups: {all_observed_groups}")
-
-        # Second pass: collect balanced samples
+        # Single pass to collect balanced samples per group
         for batch in tqdm(dataloader, desc="Extracting embeddings"):
             if self.group_by not in batch:
-                raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}, {batch}")
+                raise ValueError(f"Group key '{self.group_by}' not found in batch: {batch.keys()}")
 
             embeddings = self._get_embeddings_from_batch(model, batch)
             groups = batch[self.group_by]
 
             # Group embeddings by their corresponding group
-            for group in set(groups):
+            unique_groups = set(groups)
+            for group in unique_groups:
                 # Skip groups that have reached the sample limit
                 if group_sample_counts[group] >= self.max_samples:
                     continue
@@ -201,11 +187,9 @@ class UmapVisualizationCallback(Callback):
                     grouped_embeddings[group].append(group_embeddings)
                     group_sample_counts[group] += len(group_embeddings)
 
-            # Check if all observed groups have reached the sample limit
-            if all_observed_groups and all(
-                group_sample_counts[group] >= self.max_samples for group in all_observed_groups
-            ):
-                logger.info("Collected maximum samples from all groups. Stopping.")
+            # Check if all groups have reached the sample limit
+            if all(count >= self.max_samples for count in group_sample_counts.values() if count > 0):
+                logger.info("Collected maximum samples from all encountered groups. Stopping.")
                 break
 
         # Concatenate embeddings for each group
@@ -350,7 +334,7 @@ class UmapVisualizationCallback(Callback):
             return
 
         # Generate color palette for groups without defined colors
-        palette = plt.cm.tab10.colors  # Use tab10 color palette (10 distinct colors)
+        palette = plt.get_cmap("tab10").colors  # Use tab10 color palette (10 distinct colors)
 
         # Plot each group
         for i, group in enumerate(available_groups):
