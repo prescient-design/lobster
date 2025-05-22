@@ -41,4 +41,5 @@ def evaluate(cfg: DictConfig) -> None:
         model=model,
         dataloader=dataloader,
         output_dir=cfg.output_dir,
+        metadata=OmegaConf.to_container(cfg, resolve=True),
     )

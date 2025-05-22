@@ -17,6 +17,7 @@ def _generate_evaluation_report(
     results: dict[str, Any],
     issues: list[str],
     output_dir: str | Path,
+    metadata: dict[str, Any] | None = None,
 ) -> Path:
     """Generate a markdown report from evaluation results.
 
@@ -29,6 +30,8 @@ def _generate_evaluation_report(
         List of issues encountered during evaluation
     output_dir : str | Path
         Directory to save the report
+    metadata : dict[str, Any] | None
+        Arbitrary metadata to include in the report (e.g., config information)
 
     Returns
     -------
@@ -37,6 +40,12 @@ def _generate_evaluation_report(
     """
     markdown_report = "# Model Evaluation Report\n\n"
     markdown_report += f"Evaluation date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+
+    # Add metadata section if provided
+    if metadata:
+        markdown_report += "## Metadata\n\n"
+        for key, value in metadata.items():
+            markdown_report += f"**{key}**: {value}\n\n"
 
     # Add section for each callback's results
     markdown_report += "## Evaluation Results\n\n"
@@ -73,6 +82,7 @@ def evaluate_model_with_callbacks(
     model: L.LightningModule,
     dataloader: DataLoader | None = None,
     output_dir: str | Path | UPath = "evaluation_results",
+    metadata: dict[str, Any] | None = None,
 ):
     """Evaluate a model with various callbacks and generate a markdown report.
 
@@ -87,6 +97,8 @@ def evaluate_model_with_callbacks(
         The dataloader to use for evaluation, required for some callbacks
     output_dir : str | Path
         Directory to save evaluation results
+    metadata : dict[str, Any] | None
+        Arbitrary metadata to include in the report (e.g., config information)
     """
     logger.info("Starting model evaluation with callbacks")
     if str(output_dir).startswith("s3://"):
@@ -133,7 +145,7 @@ def evaluate_model_with_callbacks(
 
     # Generate markdown report
     logger.info("Generating evaluation report")
-    report_path = _generate_evaluation_report(results, issues, output_dir)
+    report_path = _generate_evaluation_report(results, issues, output_dir, metadata)
 
     logger.info(f"Evaluation complete, report saved to {report_path}")
 
