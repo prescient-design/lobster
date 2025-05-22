@@ -1062,7 +1062,7 @@ dependencies = [
 beignet-mdtraj = [
     { name = "beignet", extra = ["mdtraj"], marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
-flash-attn = [
+flash = [
     { name = "flash-attn", version = "2.7.4.post1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "flash-attn", version = "2.7.4.post1", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl" }, marker = "python_full_version < '3.12' and sys_platform == 'linux'" },
     { name = "flash-attn", version = "2.7.4.post1", source = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl" }, marker = "python_full_version >= '3.12' and sys_platform == 'linux'" },
@@ -1095,9 +1095,9 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "edlib" },
     { name = "einops" },
-    { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'linux' and extra == 'flash-attn'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl" },
-    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'flash-attn'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl" },
-    { name = "flash-attn", marker = "(python_full_version < '3.11' and extra == 'flash-attn') or (python_full_version >= '3.13' and extra == 'flash-attn') or (sys_platform != 'linux' and extra == 'flash-attn')" },
+    { name = "flash-attn", marker = "python_full_version == '3.11.*' and sys_platform == 'linux' and extra == 'flash'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'flash'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl" },
+    { name = "flash-attn", marker = "(python_full_version < '3.11' and extra == 'flash') or (python_full_version >= '3.13' and extra == 'flash') or (sys_platform != 'linux' and extra == 'flash')" },
     { name = "hydra-core" },
     { name = "icecream" },
     { name = "lightning" },
@@ -1124,7 +1124,7 @@ requires-dist = [
     { name = "universal-pathlib" },
     { name = "wandb" },
 ]
-provides-extras = ["mgm", "beignet-mdtraj", "flash-attn"]
+provides-extras = ["mgm", "beignet-mdtraj", "flash"]
 
 [package.metadata.requires-dev]
 dev = [

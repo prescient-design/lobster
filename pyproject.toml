@@ -62,7 +62,7 @@ mgm = [
 beignet_mdtraj = [
     "beignet[mdtraj]"
 ]
-flash_attn = [
+flash = [
     "flash-attn"
 ]
 

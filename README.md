@@ -77,9 +77,9 @@ source .venv/bin/activate
 uv sync
 ```
 
-To use flash attention (only on Linux), add the `flash_attn` extra
+To use flash attention (only on Linux), add the `flash` extra
 ```bash
-uv sync --extra flash_attn
+uv sync --extra flash
 ```
 
 ### Using `mamba/pip`
@@ -91,7 +91,7 @@ pip install -e .
 
 or
 ```bash
-pip install -e ".[flash_attn]"
+pip install -e ".[flash]"
 ```
 
 ## Main models you should use <a name="main-models"></a>
