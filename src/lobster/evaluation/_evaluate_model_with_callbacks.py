@@ -44,8 +44,11 @@ def _generate_evaluation_report(
     # Add metadata section if provided
     if metadata:
         markdown_report += "## Metadata\n\n"
+        # Format metadata as a YAML code block
+        markdown_report += "```yaml\n"
         for key, value in metadata.items():
-            markdown_report += f"**{key}**: {value}\n\n"
+            markdown_report += f"{key}: {value}\n"
+        markdown_report += "```\n\n"
 
     # Add section for each callback's results
     markdown_report += "## Evaluation Results\n\n"
