@@ -326,6 +326,13 @@ class Ume(L.LightningModule):
 
         x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
 
+        # Make sure the input_ids are of shape (batch_size, 1, seq_len) which is expected downstream
+        if x["input_ids"].ndim == 2:
+            x["input_ids"] = x["input_ids"].unsqueeze(1).contiguous()
+
+        if x["attention_mask"].ndim == 2:
+            x["attention_mask"] = x["attention_mask"].unsqueeze(1).contiguous()
+
         if self.frozen:
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)

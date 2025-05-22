@@ -128,7 +128,7 @@ class FlexBERT(pl.LightningModule):
             FlexBertPredictionHead(self.config), nn.Linear(self.config.hidden_size, self.config.vocab_size)
         )
 
-        assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
+        # assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
         self.loss_fn = CrossEntropyLoss()
         self.save_hyperparameters(logger=False)
 
