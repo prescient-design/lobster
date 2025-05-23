@@ -247,3 +247,69 @@ class TestUme:
             assert isinstance(embeddings, torch.Tensor)
             assert embeddings.dim() == 2  # [batch_size, hidden_size]
             assert embeddings.shape[0] == len(sequences)
+
+    def test_embed_sequences_gpu_flash_attn(self):
+        """Test Ume's embed_sequences method with and without flash-attn on GPU."""
+        # Skip if not on GPU
+        if not torch.cuda.is_available():
+            pytest.skip("This test requires a GPU")
+
+        # Test sequences for each modality
+        test_sequences = {
+            "SMILES": ["CC(=O)OC1=CC=CC=C1C(=O)O"],
+            "amino_acid": ["MKTVRQERLKSIVRILERSKEPVSGAQL"],
+            "nucleotide": ["ATGCATGC"],
+            "3d_coordinates": [["aa", "bb", "cc", "dd"]],
+        }
+
+        # Initialize Ume with flash-attn enabled
+        ume_flash = Ume(
+            model_name="UME_mini",
+            max_length=10,
+            use_flash_attn=True,
+        )
+        ume_flash = ume_flash.cuda()
+
+        # Initialize Ume with flash-attn disabled
+        ume_no_flash = Ume(
+            model_name="UME_mini",
+            max_length=10,
+            use_flash_attn=False,
+        )
+        ume_no_flash = ume_no_flash.cuda()
+
+        # Test embedding for each modality
+        for modality, sequences in test_sequences.items():
+            # Get embeddings with flash-attn
+            start_time = torch.cuda.Event(enable_timing=True)
+            end_time = torch.cuda.Event(enable_timing=True)
+
+            start_time.record()
+            embeddings_flash = ume_flash.embed_sequences(sequences, modality, aggregate=False)
+            end_time.record()
+            torch.cuda.synchronize()
+            flash_time = start_time.elapsed_time(end_time)
+
+            # Get embeddings without flash-attn
+            start_time.record()
+            embeddings_no_flash = ume_no_flash.embed_sequences(sequences, modality, aggregate=False)
+            end_time.record()
+            torch.cuda.synchronize()
+            no_flash_time = start_time.elapsed_time(end_time)
+
+            # Verify shapes and values
+            assert embeddings_flash.shape == embeddings_no_flash.shape
+            assert torch.allclose(embeddings_flash, embeddings_no_flash, rtol=1e-3, atol=1e-3)
+
+            # Log performance difference
+            speedup = no_flash_time / flash_time
+            print(f"\nModality: {modality}")
+            print(f"Flash-attn time: {flash_time:.2f}ms")
+            print(f"No flash-attn time: {no_flash_time:.2f}ms")
+            print(f"Speedup: {speedup:.2f}x")
+
+            # Test with aggregation
+            embeddings_flash_agg = ume_flash.embed_sequences(sequences, modality, aggregate=True)
+            embeddings_no_flash_agg = ume_no_flash.embed_sequences(sequences, modality, aggregate=True)
+
+            assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
