@@ -326,6 +326,13 @@ class Ume(L.LightningModule):
 
         x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
 
+        # Make sure the input_ids are of shape (batch_size, 1, seq_len) which is expected downstream
+        if x["input_ids"].ndim == 2:
+            x["input_ids"] = x["input_ids"].unsqueeze(1).contiguous()
+
+        if x["attention_mask"].ndim == 2:
+            x["attention_mask"] = x["attention_mask"].unsqueeze(1).contiguous()
+
         if self.frozen:
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
@@ -535,7 +542,7 @@ class Ume(L.LightningModule):
 
         # Compute loss
         loss = self.model.loss_fn(logits, labels)
-        self.log(f"{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
+        self.log(f"mlm_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 
         # Compute overall perplextiy
         perplexity = torch.exp(loss)
@@ -592,7 +599,13 @@ class Ume(L.LightningModule):
             raise ValueError(f"Not sure what '{stage}' step to run with inputs of shape: {batch['input_ids'].shape}")
 
     def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self._delegate_step_by_batch_shape(batch, "train")
+        loss = self._delegate_step_by_batch_shape(batch, "train")
+        self.log("train_loss", loss, rank_zero_only=True, sync_dist=True)
+
+        return loss
 
     def validation_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
-        return self._delegate_step_by_batch_shape(batch, "val")
+        loss = self._delegate_step_by_batch_shape(batch, "val")
+        self.log("val_loss", loss, rank_zero_only=True, sync_dist=True)
+
+        return loss

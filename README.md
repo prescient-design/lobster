@@ -70,11 +70,23 @@ For the `cb-lbster` code base cite: [Concept Bottleneck Language Models for Prot
 ## Install <a name="install"></a>
 
 ### Using `uv`
-Install [uv](https://github.com/astral-sh/uv)  
+Install [uv](https://github.com/astral-sh/uv) and create a new virtual environment:
+
+
 ```bash
 uv venv --python 3.12  # create a new virtual environment in the `lobster` directory
 source .venv/bin/activate
 uv pip install -e .
+```
+
+Alternatively, run installation directly with `uv sync`:
+```bash
+uv sync --all-extras --all-groups       
+```
+and then prefix every command with `uv run`. For example,
+
+```bash
+uv run lobster_train data.path_to_fasta="test_data/query.fasta" 
 ```
 
 ### Using `mamba`

@@ -7,7 +7,7 @@ class TestLobsterCmdline:
 
         output = output.splitlines()
 
-        assert output[0] == b"_train is powered by Hydra."
+        assert output[0] == b"train is powered by Hydra."
 
         assert len(output) > 1
 
@@ -15,6 +15,6 @@ class TestLobsterCmdline:
         output = subprocess.check_output("lobster_embed -h", shell=True)
         output = output.splitlines()
 
-        assert output[0] == b"_embed is powered by Hydra."
+        assert output[0] == b"embed is powered by Hydra."
 
         assert len(output) > 1
