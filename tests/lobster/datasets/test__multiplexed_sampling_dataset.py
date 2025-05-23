@@ -1,6 +1,7 @@
 import pytest
-from lobster.datasets import MultiplexedSamplingDataset
 from torch.utils.data import Dataset, IterableDataset
+
+from lobster.datasets import MultiplexedSamplingDataset
 
 
 class StringDataset(Dataset):

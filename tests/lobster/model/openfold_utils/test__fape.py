@@ -3,11 +3,12 @@ import os
 import pytest
 import torch
 from Bio.PDB import PDBParser
+from torch import Size
+from transformers.models.esm.openfold_utils import residue_constants
+
 from lobster.extern.openfold_utils import backbone_loss
 from lobster.model import LobsterPLMFold
 from lobster.transforms import StructureFeaturizer
-from torch import Size
-from transformers.models.esm.openfold_utils import residue_constants
 
 atom37_n_atoms = 37
 

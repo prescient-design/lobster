@@ -126,9 +126,9 @@ class HyenaFilter(nn.Module):
 
         act = HyenaSin(config)
         self.emb_dim = config.emb_dim
-        assert (
-            self.emb_dim % 2 != 0 and self.emb_dim >= 3
-        ), "emb_dim must be odd and greater or equal to 3 (time, sine and cosine)"
+        assert self.emb_dim % 2 != 0 and self.emb_dim >= 3, (
+            "emb_dim must be odd and greater or equal to 3 (time, sine and cosine)"
+        )
         self.seq_len = config.max_seq_len
 
         self.pos_emb = HyenaPositionalEmbedding(config)

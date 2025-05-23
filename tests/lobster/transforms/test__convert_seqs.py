@@ -2,6 +2,8 @@ import importlib.resources
 import re
 
 import pytest
+from rdkit import Chem
+
 from lobster.transforms import (
     convert_aa_to_nt,
     convert_aa_to_selfies,
@@ -19,7 +21,6 @@ from lobster.transforms import (
     replace_unknown_symbols,
     uniform_sample,
 )
-from rdkit import Chem
 
 
 # Helper to get canonical SMILES using RDKit for test comparison
@@ -57,9 +58,9 @@ class TestConvertSeqs:
         aa_seq = "EVQLVESGGGLVQPGGSLRLS"
         nt_seq = convert_aa_to_nt(aa_seq, residue_to_codon_map, uniform_sample)
         assert isinstance(nt_seq, str), f"Failed for aa seq {aa_seq}, nt seq should be a str"
-        assert len(nt_seq) == 3 * (
-            len(aa_seq) + 1
-        ), f"Failed for AA seq {aa_seq}, nt seq does not have the expected length"
+        assert len(nt_seq) == 3 * (len(aa_seq) + 1), (
+            f"Failed for AA seq {aa_seq}, nt seq does not have the expected length"
+        )
         assert "STOP" not in nt_seq, f"Failed for AA seq {aa_seq}, nt seq shouldn't STOP character"
         aa_seq_2 = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert aa_seq == aa_seq_2, f"Failed for AA seq {aa_seq}, nt seq is not str"
@@ -95,9 +96,9 @@ class TestConvertSeqs:
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGTATGA"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert isinstance(aa_seq, str), f"Failed for nt seq {nt_seq}, AA seq should be a str"
-        assert len(nt_seq) == 3 * (
-            len(aa_seq) + 1
-        ), f"Failed for nt_seq {nt_seq}, AA seq does not have the expected length"
+        assert len(nt_seq) == 3 * (len(aa_seq) + 1), (
+            f"Failed for nt_seq {nt_seq}, AA seq does not have the expected length"
+        )
         assert aa_seq == "EVQLVESGGGLV", f"Failed for nt seq {nt_seq}, wrong AA seq"
 
         # early stop codons (TAA, TAG, TGA)
@@ -175,21 +176,21 @@ class TestConvertSeqs:
             if randomize_smiles:
                 assert result_smiles is not None, f"Randomized SMILES should not be None for valid input {aa_seq}"
                 mol_from_random = Chem.MolFromSmiles(result_smiles)
-                assert (
-                    mol_from_random is not None
-                ), f"Randomized SMILES '{result_smiles}' is not valid for input {aa_seq}"
-                assert (
-                    expected_smiles_pattern is not None
-                ), "Canonical SMILES pattern must be provided for randomized tests"
+                assert mol_from_random is not None, (
+                    f"Randomized SMILES '{result_smiles}' is not valid for input {aa_seq}"
+                )
+                assert expected_smiles_pattern is not None, (
+                    "Canonical SMILES pattern must be provided for randomized tests"
+                )
                 assert get_canonical_smiles(result_smiles) == expected_smiles_pattern
             elif expected_smiles_pattern is None:
                 assert result_smiles is None
             else:
                 assert result_smiles == expected_smiles_pattern
                 if result_smiles:
-                    assert result_smiles == get_canonical_smiles(
-                        result_smiles
-                    ), f"SMILES {result_smiles} should be canonical"
+                    assert result_smiles == get_canonical_smiles(result_smiles), (
+                        f"SMILES {result_smiles} should be canonical"
+                    )
 
     @pytest.mark.parametrize(
         "nt_seq, cap, randomize_smiles, expected_output, raises_error",
@@ -270,12 +271,12 @@ class TestConvertSeqs:
             result_smiles = convert_nt_to_smiles(nt_seq, cap=cap, randomize_smiles=randomize_smiles)  # type: ignore[arg-type]
 
             if randomize_smiles:
-                assert (
-                    result_smiles is not None
-                ), f"Randomized SMILES should not be None for valid input {nt_seq} with cap {cap}"
-                assert (
-                    Chem.MolFromSmiles(result_smiles) is not None
-                ), f"Randomized SMILES '{result_smiles}' is not valid"
+                assert result_smiles is not None, (
+                    f"Randomized SMILES should not be None for valid input {nt_seq} with cap {cap}"
+                )
+                assert Chem.MolFromSmiles(result_smiles) is not None, (
+                    f"Randomized SMILES '{result_smiles}' is not valid"
+                )
                 # expected_output is the canonical SMILES of the non-randomized version (with the same cap)
                 assert expected_output is not None, "Canonical SMILES target must be provided for randomized tests"
                 assert get_canonical_smiles(result_smiles) == expected_output
@@ -284,9 +285,9 @@ class TestConvertSeqs:
             else:  # Non-randomized, direct match
                 assert result_smiles == expected_output
                 if result_smiles:  # If not None, it should be canonical already
-                    assert result_smiles == get_canonical_smiles(
-                        result_smiles
-                    ), f"SMILES {result_smiles} should be canonical"
+                    assert result_smiles == get_canonical_smiles(result_smiles), (
+                        f"SMILES {result_smiles} should be canonical"
+                    )
 
     @pytest.mark.parametrize(
         "input_smiles, randomize_smiles, expected_smiles_pattern",

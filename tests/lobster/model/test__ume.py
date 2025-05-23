@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
+
 from lobster.constants import Modality
 from lobster.model import Ume
 
