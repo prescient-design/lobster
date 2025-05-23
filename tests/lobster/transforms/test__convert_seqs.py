@@ -1,6 +1,5 @@
 import importlib.resources
 import re
-from typing import Dict, List, Optional, Set, Type
 
 import pytest
 from lobster.transforms import (
@@ -24,7 +23,7 @@ from rdkit import Chem
 
 
 # Helper to get canonical SMILES using RDKit for test comparison
-def get_canonical_smiles(smiles: str) -> Optional[str]:
+def get_canonical_smiles(smiles: str) -> str | None:
     mol = Chem.MolFromSmiles(smiles)
     if mol:
         return Chem.MolToSmiles(mol, doRandom=False)
@@ -32,19 +31,19 @@ def get_canonical_smiles(smiles: str) -> Optional[str]:
 
 
 @pytest.fixture(scope="class")
-def residue_to_codon_map() -> Dict[str, List[str]]:
+def residue_to_codon_map() -> dict[str, list[str]]:
     path = importlib.resources.files("lobster") / "assets" / "codon_tables" / "codon_table.json"
     residue_to_codon = json_load(path)
     return residue_to_codon
 
 
 @pytest.fixture(scope="class")
-def codon_to_residue_map(residue_to_codon_map: Dict[str, List[str]]) -> Dict[str, str]:
+def codon_to_residue_map(residue_to_codon_map: dict[str, list[str]]) -> dict[str, str]:
     codon_to_residue = invert_residue_to_codon_mapping(residue_to_codon_map)
     return codon_to_residue
 
 
-def split_by_two_characters(s: str, char1: str, char2: str) -> List[str]:
+def split_by_two_characters(s: str, char1: str, char2: str) -> list[str]:
     pattern = f"[{re.escape(char1)}{re.escape(char2)}]+"
     return [item for item in re.split(pattern, s) if item]
 
@@ -52,8 +51,8 @@ def split_by_two_characters(s: str, char1: str, char2: str) -> List[str]:
 class TestConvertSeqs:
     def test_convert_aa_to_nt(
         self,
-        residue_to_codon_map: Dict[str, List[str]],
-        codon_to_residue_map: Dict[str, str],
+        residue_to_codon_map: dict[str, list[str]],
+        codon_to_residue_map: dict[str, str],
     ):
         aa_seq = "EVQLVESGGGLVQPGGSLRLS"
         nt_seq = convert_aa_to_nt(aa_seq, residue_to_codon_map, uniform_sample)
@@ -72,7 +71,7 @@ class TestConvertSeqs:
         assert "<unk>" in nt_seq, f"Failed for AA seq {aa_seq}, nt seq should have <unk> token"
         assert len(nt_seq) == 71
 
-    def test_convert_nt_to_aa(self, codon_to_residue_map: Dict[str, str]):
+    def test_convert_nt_to_aa(self, codon_to_residue_map: dict[str, str]):
         # seq len divisible by 3 (no stop codon)
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGTA"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
@@ -158,11 +157,11 @@ class TestConvertSeqs:
     def test_convert_aa_to_smiles_parameterized(
         self,
         aa_seq: str,
-        allowed_aa: Optional[Set[str]],
+        allowed_aa: set[str] | None,
         replace_unknown: bool,
         randomize_smiles: bool,
-        expected_smiles_pattern: Optional[str],
-        raises_error: Optional[Type[BaseException]],
+        expected_smiles_pattern: str | None,
+        raises_error: type[BaseException] | None,
     ):
         if raises_error:
             with pytest.raises(raises_error):
@@ -259,10 +258,10 @@ class TestConvertSeqs:
     def test_convert_nt_to_smiles_parameterized(
         self,
         nt_seq: str,
-        cap: Optional[str],
+        cap: str | None,
         randomize_smiles: bool,
-        expected_output: Optional[str],
-        raises_error: Optional[Type[BaseException]],
+        expected_output: str | None,
+        raises_error: type[BaseException] | None,
     ):
         if raises_error:
             with pytest.raises(raises_error):
@@ -304,7 +303,7 @@ class TestConvertSeqs:
         ],
     )
     def test_convert_smiles_to_smiles_parameterized(
-        self, input_smiles: str, randomize_smiles: bool, expected_smiles_pattern: Optional[str]
+        self, input_smiles: str, randomize_smiles: bool, expected_smiles_pattern: str | None
     ):
         result_smiles = convert_smiles_to_smiles(input_smiles, randomize_smiles=randomize_smiles)
 
@@ -418,7 +417,7 @@ class TestConvertSeqs:
         seq3 = "EvqLV"
         assert convert_aa_to_selfies(seq3, allowed_aa) == seq2
 
-    def test_convert_nt_to_selfies(self, codon_to_residue_map: Dict[str, str]):
+    def test_convert_nt_to_selfies(self, codon_to_residue_map: dict[str, str]):
         allowed_aa = {
             "T",
             "G",

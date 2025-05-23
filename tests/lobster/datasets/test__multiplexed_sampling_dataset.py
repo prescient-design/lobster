@@ -19,8 +19,7 @@ class IterableStringDataset(IterableDataset):
         self.data = data
 
     def __iter__(self):
-        for item in self.data:
-            yield item
+        yield from self.data
 
 
 @pytest.fixture

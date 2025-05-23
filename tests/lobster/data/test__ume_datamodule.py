@@ -1,12 +1,11 @@
 from pathlib import Path
 
 import pytest
-from torch import Tensor
-from torch.utils.data import DataLoader
-
 from lobster.constants import Modality
 from lobster.data import UmeLightningDataModule
 from lobster.datasets import MultiplexedSamplingDataset
+from torch import Tensor
+from torch.utils.data import DataLoader
 
 
 @pytest.fixture
@@ -19,7 +18,7 @@ class TestUmeLightningDataModule:
     def test__init__(self, dm):
         assert dm._batch_size == 8
         assert dm._tokenizer_max_length == 512
-        assert isinstance(dm._root, (str, Path))
+        assert isinstance(dm._root, str | Path)
 
     def test_train_dataloader(self, dm):
         dm.setup()

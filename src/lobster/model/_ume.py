@@ -348,11 +348,17 @@ class Ume(L.LightningModule):
             # Copied from tokens_to_latents to remove the inference_mode decorator, allow training
             if getattr(self.model.config, "padding", "unpadded") == "padded":
                 # For padded attention, just pass as (batch, seqlen)
-                input_ids = x["input_ids"].squeeze(1) if x["input_ids"].dim() == 3 and x["input_ids"].shape[1] == 1 else x["input_ids"]
-                attention_mask = x["attention_mask"].squeeze(1) if x["attention_mask"].dim() == 3 and x["attention_mask"].shape[1] == 1 else x["attention_mask"]
-                embeddings = self.model.model(
-                    input_ids, attention_mask=attention_mask, max_seqlen=self.max_length
+                input_ids = (
+                    x["input_ids"].squeeze(1)
+                    if x["input_ids"].dim() == 3 and x["input_ids"].shape[1] == 1
+                    else x["input_ids"]
                 )
+                attention_mask = (
+                    x["attention_mask"].squeeze(1)
+                    if x["attention_mask"].dim() == 3 and x["attention_mask"].shape[1] == 1
+                    else x["attention_mask"]
+                )
+                embeddings = self.model.model(input_ids, attention_mask=attention_mask, max_seqlen=self.max_length)
             else:
                 input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(x["input_ids"], x["attention_mask"])
                 embeddings = self.model.model(

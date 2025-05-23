@@ -83,7 +83,7 @@ line-length = 120
 exclude = [
   "scripts",
   "notebooks",
-  "src/lobster/model/openfold_utils",
+  "src/lobster/extern/openfold_utils",
   "src/lobster/model/modern_bert"
 ]
 

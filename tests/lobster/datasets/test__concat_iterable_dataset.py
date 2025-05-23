@@ -1,9 +1,8 @@
 from collections import Counter
 
 import pytest
-from torch.utils.data import IterableDataset
-
 from lobster.datasets import RoundRobinConcatIterableDataset
+from torch.utils.data import IterableDataset
 
 
 class IterableStringDataset(IterableDataset):
@@ -11,8 +10,7 @@ class IterableStringDataset(IterableDataset):
         self.data = data
 
     def __iter__(self):
-        for item in self.data:
-            yield item
+        yield from self.data
 
 
 @pytest.fixture
