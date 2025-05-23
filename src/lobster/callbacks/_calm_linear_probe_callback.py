@@ -1,7 +1,7 @@
 import logging
 import warnings
 from collections import defaultdict
-from typing import Dict, Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import lightning as L
 import numpy as np
@@ -72,10 +72,10 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     def __init__(
         self,
         max_length: int,
-        tasks: Optional[Sequence[str]] = None,
-        species: Optional[Sequence[str]] = None,
+        tasks: Sequence[str] | None = None,
+        species: Sequence[str] | None = None,
         batch_size: int = 32,
-        run_every_n_epochs: Optional[int] = None,
+        run_every_n_epochs: int | None = None,
         test_size: float = 0.2,
         max_samples: int = 3000,
     ):
@@ -101,8 +101,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self.aggregate_metrics = defaultdict(list)
 
     def _create_split_datasets(
-        self, task: str, species: Optional[str] = None
-    ) -> Tuple[CalmPropertyDataset, CalmPropertyDataset]:
+        self, task: str, species: str | None = None
+    ) -> tuple[CalmPropertyDataset, CalmPropertyDataset]:
         """Create train/test splits for a given task.
 
         Parameters
@@ -153,7 +153,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_dataset,
         module: L.LightningModule,
         trainer: L.Trainer = None,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Evaluate a single task.
 
         Parameters
@@ -208,7 +208,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self,
         module: L.LightningModule,
         trainer: L.Trainer | None = None,
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Evaluate the model on CALM datasets using linear probes.
 
         This method can be used both during training (with a trainer)

@@ -1,5 +1,4 @@
 import heapq
-from typing import Optional
 
 import edlib
 import numpy as np
@@ -90,7 +89,7 @@ def edit_dist(x: str, y: str):
 
 def ranked_fft(
     library: np.ndarray,
-    ranking_scores: Optional[np.ndarray] = None,
+    ranking_scores: np.ndarray | None = None,
     n: int = 2,
     descending: bool = False,
 ):

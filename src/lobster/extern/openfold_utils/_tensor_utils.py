@@ -1,5 +1,4 @@
 from functools import partial
-from typing import List
 
 import torch
 
@@ -17,7 +16,7 @@ def batched_gather(data, inds, dim=0, no_batch_dims=0):
     return data[ranges]
 
 
-def permute_final_dims(tensor: torch.Tensor, inds: List[int]):
+def permute_final_dims(tensor: torch.Tensor, inds: list[int]):
     zero_index = -1 * len(inds)
     first_inds = list(range(len(tensor.shape[:zero_index])))
     return tensor.permute(first_inds + [zero_index + i for i in inds])

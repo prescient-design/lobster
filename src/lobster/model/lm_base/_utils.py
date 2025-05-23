@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import torch
 from transformers.utils import ModelOutput
@@ -32,15 +31,15 @@ class MaskedLMOutput(ModelOutput):
 
     """
 
-    loss: Optional[torch.FloatTensor] = None
+    loss: torch.FloatTensor | None = None
     logits: torch.FloatTensor = None
-    hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
-    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
-    concepts: Optional[torch.FloatTensor] = None
-    tok_concepts: Optional[torch.FloatTensor] = None
-    cbm_emd: Optional[torch.FloatTensor] = None
-    unk_emd: Optional[torch.FloatTensor] = None
-    input_emb: Optional[torch.FloatTensor] = None
+    hidden_states: tuple[torch.FloatTensor, ...] | None = None
+    attentions: tuple[torch.FloatTensor, ...] | None = None
+    concepts: torch.FloatTensor | None = None
+    tok_concepts: torch.FloatTensor | None = None
+    cbm_emd: torch.FloatTensor | None = None
+    unk_emd: torch.FloatTensor | None = None
+    input_emb: torch.FloatTensor | None = None
 
 
 @dataclass
@@ -87,14 +86,14 @@ class BaseModelOutputWithPastAndCrossAttentions(ModelOutput):
     """
 
     last_hidden_state: torch.FloatTensor = None
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
-    hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
-    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
-    cross_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
-    concepts: Optional[torch.FloatTensor] = None
-    tok_concepts: Optional[torch.FloatTensor] = None
-    cbm_emd: Optional[torch.FloatTensor] = None
-    unk_emd: Optional[torch.FloatTensor] = None
+    past_key_values: tuple[tuple[torch.FloatTensor]] | None = None
+    hidden_states: tuple[torch.FloatTensor, ...] | None = None
+    attentions: tuple[torch.FloatTensor, ...] | None = None
+    cross_attentions: tuple[torch.FloatTensor, ...] | None = None
+    concepts: torch.FloatTensor | None = None
+    tok_concepts: torch.FloatTensor | None = None
+    cbm_emd: torch.FloatTensor | None = None
+    unk_emd: torch.FloatTensor | None = None
 
 
 @dataclass
@@ -146,12 +145,12 @@ class BaseModelOutputWithPoolingAndCrossAttentions(ModelOutput):
 
     last_hidden_state: torch.FloatTensor = None
     pooler_output: torch.FloatTensor = None
-    hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
-    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
-    cross_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
-    concepts: Optional[torch.FloatTensor] = None
-    tok_concepts: Optional[torch.FloatTensor] = None
-    cbm_emd: Optional[torch.FloatTensor] = None
-    unk_emd: Optional[torch.FloatTensor] = None
-    input_emb: Optional[torch.FloatTensor] = None
+    hidden_states: tuple[torch.FloatTensor, ...] | None = None
+    past_key_values: tuple[tuple[torch.FloatTensor]] | None = None
+    attentions: tuple[torch.FloatTensor, ...] | None = None
+    cross_attentions: tuple[torch.FloatTensor, ...] | None = None
+    concepts: torch.FloatTensor | None = None
+    tok_concepts: torch.FloatTensor | None = None
+    cbm_emd: torch.FloatTensor | None = None
+    unk_emd: torch.FloatTensor | None = None
+    input_emb: torch.FloatTensor | None = None

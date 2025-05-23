@@ -1,6 +1,6 @@
 """From Keunwoo Choi's https://code.roche.com/choik11/genie-proteinie/-/blob/k/vanilla-data/genie_proteinie/data/utils.py"""
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import torch
 from torch.utils.data import Dataset, IterableDataset

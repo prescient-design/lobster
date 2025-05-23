@@ -1,5 +1,5 @@
 import random
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Literal
 
 import lightning.pytorch as pl
 import numpy as np
@@ -29,8 +29,8 @@ class LobsterMLP(pl.LightningModule):
         self,
         num_labels: int = 1,
         num_chains: int = 1,
-        model_name: Optional[str] = None,
-        checkpoint: Optional[str] = None,
+        model_name: str | None = None,
+        checkpoint: str | None = None,
         model_type: Literal[
             "LobsterPMLM",
             "LobsterPCLM",
@@ -40,7 +40,7 @@ class LobsterMLP(pl.LightningModule):
             "LobsterLateConditionalClassifierPMLM",
         ] = "LobsterPMLM",
         ffd_dim: int = 64,
-        pooler: Optional[Literal["mean", "attn", "cls"]] = "mean",
+        pooler: Literal["mean", "attn", "cls"] | None = "mean",
         lr: float = 1e-3,
         seed: int = 0,
         max_length: int = 512,
@@ -50,7 +50,7 @@ class LobsterMLP(pl.LightningModule):
         freeze_encoder: bool = True,
         linear_probe: bool = False,
         emb_type: Literal["latent_mean", "latent_cls", "concept", "concept_embed"] = "latent_cls",
-        pca_components: Optional[int] = None,
+        pca_components: int | None = None,
     ):
         """
         MLP head.
@@ -203,7 +203,7 @@ class LobsterMLP(pl.LightningModule):
             )
 
         # Cache for base encoder embeddings
-        self.embedding_cache: Dict[str, torch.Tensor] = {}
+        self.embedding_cache: dict[str, torch.Tensor] = {}
 
         self.save_hyperparameters(logger=False)
 
@@ -325,7 +325,7 @@ class LobsterMLP(pl.LightningModule):
         # return [optimizer], [scheduler]
         return optimizer
 
-    def _compute_loss(self, batch) -> Tuple[torch.Tensor]:
+    def _compute_loss(self, batch) -> tuple[torch.Tensor]:
         sequences, ys = batch
         if self._num_labels < 3:  # regression or binary
             ys = ys[0].float()
@@ -353,7 +353,7 @@ class LobsterMLP(pl.LightningModule):
 
         return loss, y_hat, ys
 
-    def _get_hidden_states(self, chains: List[str], ys: torch.Tensor) -> torch.Tensor:
+    def _get_hidden_states(self, chains: list[str], ys: torch.Tensor) -> torch.Tensor:
         """
         Get hidden states for a given sequence, using the cache if available.
         """

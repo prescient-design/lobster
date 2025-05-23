@@ -1,5 +1,6 @@
 import random
-from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
+from collections.abc import Callable, Iterable, Sequence
+from typing import Any, TypeVar
 
 import torch
 from lightning import LightningDataModule
@@ -20,21 +21,20 @@ class PPISequenceDataModule(LightningDataModule):
         source=None,
         *,
         cache_sequence_indicies: bool = True,
-        remove_nulls: Optional[bool] = False,
-        transform_fn: Optional[Callable] = None,
-        target_transform_fn: Optional[Callable] = None,
-        joint_transform_fn: Optional[Callable] = None,
-        lengths: Optional[Sequence[float]] = None,
-        generator: Optional[Generator] = None,
+        remove_nulls: bool | None = False,
+        transform_fn: Callable | None = None,
+        target_transform_fn: Callable | None = None,
+        joint_transform_fn: Callable | None = None,
+        lengths: Sequence[float] | None = None,
+        generator: Generator | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
-        sampler: Optional[Union[Iterable, Sampler]] = None,
-        batch_sampler: Optional[Union[Iterable[Sequence], Sampler[Sequence]]] = None,
+        sampler: Iterable | Sampler | None = None,
+        batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
         num_workers: int = 0,
-        collate_fn: Optional[
-            Callable[["list[T]"], Any]
-        ] = None,  # Hydra note -- should be data._collate.ESMBatchConverterPPI
+        collate_fn: Callable[["list[T]"], Any]
+        | None = None,  # Hydra note -- should be data._collate.ESMBatchConverterPPI
         pin_memory: bool = True,
         drop_last: bool = False,
         truncation_seq_length=512,
@@ -42,7 +42,7 @@ class PPISequenceDataModule(LightningDataModule):
         contact_maps=False,
         sequence1_cols: tuple = ("fv_heavy", "fv_light"),
         sequence2_cols: tuple = ("antigen_sequence",),
-        label_col: Optional[str] = None,
+        label_col: str | None = None,
     ) -> None:
         super().__init__()
 

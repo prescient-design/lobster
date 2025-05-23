@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 import lightning.pytorch as pl
 from peft import LoraConfig, get_peft_model
@@ -12,7 +12,7 @@ class LobsterPEFT(pl.LightningModule):
     def __init__(
         self,
         model_type: Literal["LobsterPMLM", "LobsterPCLM"] = "LobsterPMLM",
-        ckpt_path: Optional[str] = None,
+        ckpt_path: str | None = None,
         lora_rank: int = 64,
         lora_alpha: int = 32,
         lora_dropout: float = 0.1,

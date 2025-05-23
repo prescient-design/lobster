@@ -1,7 +1,7 @@
 import dataclasses
 import io
 import string
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 from Bio.PDB import PDBParser
@@ -33,20 +33,20 @@ class Protein:
     b_factors: np.ndarray  # [num_res, num_atom_type]
 
     # Chain indices for multi-chain predictions
-    chain_index: Optional[np.ndarray] = None
+    chain_index: np.ndarray | None = None
 
     # Optional remark about the protein. Included as a comment in output PDB
     # files
-    remark: Optional[str] = None
+    remark: str | None = None
 
     # Templates used to generate this protein (prediction-only)
-    parents: Optional[Sequence[str]] = None
+    parents: Sequence[str] | None = None
 
     # Chain corresponding to each parent
-    parents_chain_index: Optional[Sequence[int]] = None
+    parents_chain_index: Sequence[int] | None = None
 
 
-def from_pdb_string(pdb_str: str, chain_id: Optional[str] = None) -> Protein:
+def from_pdb_string(pdb_str: str, chain_id: str | None = None) -> Protein:
     """
     Takes a PDB string and constructs a Protein object.
 

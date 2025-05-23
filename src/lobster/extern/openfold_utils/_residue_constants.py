@@ -1,7 +1,7 @@
 import collections
 import functools
 import os
-from typing import List, Mapping, Tuple
+from collections.abc import Mapping
 
 import numpy as np
 
@@ -444,7 +444,7 @@ def sequence_to_onehot(sequence: str, mapping: Mapping[str, int], map_unknown_to
     if sorted(set(mapping.values())) != list(range(num_entries)):
         raise ValueError(
             "The mapping must have values from 0 to num_unique_aas-1 "
-            "without any gaps. Got: %s" % sorted(mapping.values())
+            f"without any gaps. Got: {sorted(mapping.values())}"
         )
 
     one_hot_arr = np.zeros((len(sequence), num_entries), dtype=np.int32)
@@ -508,12 +508,12 @@ BondAngle = collections.namedtuple(
 )
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def load_stereo_chemical_props() -> (
-    Tuple[
-        Mapping[str, List[Bond]],
-        Mapping[str, List[Bond]],
-        Mapping[str, List[BondAngle]],
+    tuple[
+        Mapping[str, list[Bond]],
+        Mapping[str, list[Bond]],
+        Mapping[str, list[BondAngle]],
     ]
 ):
     """
@@ -533,7 +533,7 @@ def load_stereo_chemical_props() -> (
     # original OpenFold downloads this separately
     # stereo_chemical_props = resources.read_text("openfold.resources", "stereo_chemical_props.txt")
     stereo_chemical_props_path = os.path.join(os.path.dirname(__file__), "resources/stereo_chemical_props.txt")
-    with open(stereo_chemical_props_path, "r") as f:
+    with open(stereo_chemical_props_path) as f:
         lines = f.readlines()
     lines_iter = iter(lines)
 

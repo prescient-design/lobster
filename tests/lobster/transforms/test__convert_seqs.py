@@ -1,8 +1,9 @@
 import importlib.resources
 import re
-from typing import Dict, List, Optional, Set, Type
 
 import pytest
+from rdkit import Chem
+
 from lobster.transforms import (
     convert_aa_to_nt,
     convert_aa_to_selfies,
@@ -20,11 +21,10 @@ from lobster.transforms import (
     replace_unknown_symbols,
     uniform_sample,
 )
-from rdkit import Chem
 
 
 # Helper to get canonical SMILES using RDKit for test comparison
-def get_canonical_smiles(smiles: str) -> Optional[str]:
+def get_canonical_smiles(smiles: str) -> str | None:
     mol = Chem.MolFromSmiles(smiles)
     if mol:
         return Chem.MolToSmiles(mol, doRandom=False)
@@ -32,19 +32,19 @@ def get_canonical_smiles(smiles: str) -> Optional[str]:
 
 
 @pytest.fixture(scope="class")
-def residue_to_codon_map() -> Dict[str, List[str]]:
+def residue_to_codon_map() -> dict[str, list[str]]:
     path = importlib.resources.files("lobster") / "assets" / "codon_tables" / "codon_table.json"
     residue_to_codon = json_load(path)
     return residue_to_codon
 
 
 @pytest.fixture(scope="class")
-def codon_to_residue_map(residue_to_codon_map: Dict[str, List[str]]) -> Dict[str, str]:
+def codon_to_residue_map(residue_to_codon_map: dict[str, list[str]]) -> dict[str, str]:
     codon_to_residue = invert_residue_to_codon_mapping(residue_to_codon_map)
     return codon_to_residue
 
 
-def split_by_two_characters(s: str, char1: str, char2: str) -> List[str]:
+def split_by_two_characters(s: str, char1: str, char2: str) -> list[str]:
     pattern = f"[{re.escape(char1)}{re.escape(char2)}]+"
     return [item for item in re.split(pattern, s) if item]
 
@@ -52,15 +52,15 @@ def split_by_two_characters(s: str, char1: str, char2: str) -> List[str]:
 class TestConvertSeqs:
     def test_convert_aa_to_nt(
         self,
-        residue_to_codon_map: Dict[str, List[str]],
-        codon_to_residue_map: Dict[str, str],
+        residue_to_codon_map: dict[str, list[str]],
+        codon_to_residue_map: dict[str, str],
     ):
         aa_seq = "EVQLVESGGGLVQPGGSLRLS"
         nt_seq = convert_aa_to_nt(aa_seq, residue_to_codon_map, uniform_sample)
         assert isinstance(nt_seq, str), f"Failed for aa seq {aa_seq}, nt seq should be a str"
-        assert len(nt_seq) == 3 * (
-            len(aa_seq) + 1
-        ), f"Failed for AA seq {aa_seq}, nt seq does not have the expected length"
+        assert len(nt_seq) == 3 * (len(aa_seq) + 1), (
+            f"Failed for AA seq {aa_seq}, nt seq does not have the expected length"
+        )
         assert "STOP" not in nt_seq, f"Failed for AA seq {aa_seq}, nt seq shouldn't STOP character"
         aa_seq_2 = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert aa_seq == aa_seq_2, f"Failed for AA seq {aa_seq}, nt seq is not str"
@@ -72,7 +72,7 @@ class TestConvertSeqs:
         assert "<unk>" in nt_seq, f"Failed for AA seq {aa_seq}, nt seq should have <unk> token"
         assert len(nt_seq) == 71
 
-    def test_convert_nt_to_aa(self, codon_to_residue_map: Dict[str, str]):
+    def test_convert_nt_to_aa(self, codon_to_residue_map: dict[str, str]):
         # seq len divisible by 3 (no stop codon)
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGTA"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
@@ -96,9 +96,9 @@ class TestConvertSeqs:
         nt_seq = "GAGGTGCAACTAGTCGAGTCCGGAGGGGGGCTTGTATGA"
         aa_seq = convert_nt_to_aa(nt_seq, codon_to_residue_map)
         assert isinstance(aa_seq, str), f"Failed for nt seq {nt_seq}, AA seq should be a str"
-        assert len(nt_seq) == 3 * (
-            len(aa_seq) + 1
-        ), f"Failed for nt_seq {nt_seq}, AA seq does not have the expected length"
+        assert len(nt_seq) == 3 * (len(aa_seq) + 1), (
+            f"Failed for nt_seq {nt_seq}, AA seq does not have the expected length"
+        )
         assert aa_seq == "EVQLVESGGGLV", f"Failed for nt seq {nt_seq}, wrong AA seq"
 
         # early stop codons (TAA, TAG, TGA)
@@ -158,11 +158,11 @@ class TestConvertSeqs:
     def test_convert_aa_to_smiles_parameterized(
         self,
         aa_seq: str,
-        allowed_aa: Optional[Set[str]],
+        allowed_aa: set[str] | None,
         replace_unknown: bool,
         randomize_smiles: bool,
-        expected_smiles_pattern: Optional[str],
-        raises_error: Optional[Type[BaseException]],
+        expected_smiles_pattern: str | None,
+        raises_error: type[BaseException] | None,
     ):
         if raises_error:
             with pytest.raises(raises_error):
@@ -176,21 +176,21 @@ class TestConvertSeqs:
             if randomize_smiles:
                 assert result_smiles is not None, f"Randomized SMILES should not be None for valid input {aa_seq}"
                 mol_from_random = Chem.MolFromSmiles(result_smiles)
-                assert (
-                    mol_from_random is not None
-                ), f"Randomized SMILES '{result_smiles}' is not valid for input {aa_seq}"
-                assert (
-                    expected_smiles_pattern is not None
-                ), "Canonical SMILES pattern must be provided for randomized tests"
+                assert mol_from_random is not None, (
+                    f"Randomized SMILES '{result_smiles}' is not valid for input {aa_seq}"
+                )
+                assert expected_smiles_pattern is not None, (
+                    "Canonical SMILES pattern must be provided for randomized tests"
+                )
                 assert get_canonical_smiles(result_smiles) == expected_smiles_pattern
             elif expected_smiles_pattern is None:
                 assert result_smiles is None
             else:
                 assert result_smiles == expected_smiles_pattern
                 if result_smiles:
-                    assert result_smiles == get_canonical_smiles(
-                        result_smiles
-                    ), f"SMILES {result_smiles} should be canonical"
+                    assert result_smiles == get_canonical_smiles(result_smiles), (
+                        f"SMILES {result_smiles} should be canonical"
+                    )
 
     @pytest.mark.parametrize(
         "nt_seq, cap, randomize_smiles, expected_output, raises_error",
@@ -259,10 +259,10 @@ class TestConvertSeqs:
     def test_convert_nt_to_smiles_parameterized(
         self,
         nt_seq: str,
-        cap: Optional[str],
+        cap: str | None,
         randomize_smiles: bool,
-        expected_output: Optional[str],
-        raises_error: Optional[Type[BaseException]],
+        expected_output: str | None,
+        raises_error: type[BaseException] | None,
     ):
         if raises_error:
             with pytest.raises(raises_error):
@@ -271,12 +271,12 @@ class TestConvertSeqs:
             result_smiles = convert_nt_to_smiles(nt_seq, cap=cap, randomize_smiles=randomize_smiles)  # type: ignore[arg-type]
 
             if randomize_smiles:
-                assert (
-                    result_smiles is not None
-                ), f"Randomized SMILES should not be None for valid input {nt_seq} with cap {cap}"
-                assert (
-                    Chem.MolFromSmiles(result_smiles) is not None
-                ), f"Randomized SMILES '{result_smiles}' is not valid"
+                assert result_smiles is not None, (
+                    f"Randomized SMILES should not be None for valid input {nt_seq} with cap {cap}"
+                )
+                assert Chem.MolFromSmiles(result_smiles) is not None, (
+                    f"Randomized SMILES '{result_smiles}' is not valid"
+                )
                 # expected_output is the canonical SMILES of the non-randomized version (with the same cap)
                 assert expected_output is not None, "Canonical SMILES target must be provided for randomized tests"
                 assert get_canonical_smiles(result_smiles) == expected_output
@@ -285,9 +285,9 @@ class TestConvertSeqs:
             else:  # Non-randomized, direct match
                 assert result_smiles == expected_output
                 if result_smiles:  # If not None, it should be canonical already
-                    assert result_smiles == get_canonical_smiles(
-                        result_smiles
-                    ), f"SMILES {result_smiles} should be canonical"
+                    assert result_smiles == get_canonical_smiles(result_smiles), (
+                        f"SMILES {result_smiles} should be canonical"
+                    )
 
     @pytest.mark.parametrize(
         "input_smiles, randomize_smiles, expected_smiles_pattern",
@@ -304,7 +304,7 @@ class TestConvertSeqs:
         ],
     )
     def test_convert_smiles_to_smiles_parameterized(
-        self, input_smiles: str, randomize_smiles: bool, expected_smiles_pattern: Optional[str]
+        self, input_smiles: str, randomize_smiles: bool, expected_smiles_pattern: str | None
     ):
         result_smiles = convert_smiles_to_smiles(input_smiles, randomize_smiles=randomize_smiles)
 
@@ -418,7 +418,7 @@ class TestConvertSeqs:
         seq3 = "EvqLV"
         assert convert_aa_to_selfies(seq3, allowed_aa) == seq2
 
-    def test_convert_nt_to_selfies(self, codon_to_residue_map: Dict[str, str]):
+    def test_convert_nt_to_selfies(self, codon_to_residue_map: dict[str, str]):
         allowed_aa = {
             "T",
             "G",

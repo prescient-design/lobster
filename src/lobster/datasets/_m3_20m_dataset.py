@@ -1,5 +1,6 @@
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, ClassVar, Sequence, Tuple
+from typing import ClassVar
 
 import pandas
 import pooch
@@ -154,7 +155,7 @@ class M320MDataset(Dataset):
 
         self._x = list(self.data[self.columns].apply(tuple, axis=1))
 
-    def __getitem__(self, index: int) -> Tuple[str, str]:
+    def __getitem__(self, index: int) -> tuple[str, str]:
         x = self._x[index]
 
         if len(x) == 1:

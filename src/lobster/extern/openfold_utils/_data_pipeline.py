@@ -1,4 +1,4 @@
-from typing import Mapping
+from collections.abc import Mapping
 
 import numpy as np
 from transformers.models.esm.openfold_utils import residue_constants

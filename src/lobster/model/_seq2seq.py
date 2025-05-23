@@ -1,5 +1,5 @@
 import re
-from typing import Callable, Union
+from collections.abc import Callable
 
 import lightning.pytorch as pl
 import torch
@@ -31,8 +31,8 @@ class PrescientPT5(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         freeze: bool = False,
         mask_percentage: float = 0.15,
-        transform_fn: Union[Callable, Transform, None] = None,
-        config: Union[PretrainedConfig, T5Config, None] = None,
+        transform_fn: Callable | Transform | None = None,
+        config: PretrainedConfig | T5Config | None = None,
         ckpt_path: str = None,
         scheduler_cfg: DictConfig = None,
     ):

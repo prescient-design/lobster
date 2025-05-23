@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, Optional, Sequence
+from collections.abc import Sequence
 
 import lightning as L
 from torch.utils.data import DataLoader
@@ -33,7 +33,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
     def __init__(
         self,
         max_length: int,
-        tasks: Optional[Sequence[str]] = None,
+        tasks: Sequence[str] | None = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
     ):
@@ -56,7 +56,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         self,
         module: L.LightningModule,
         trainer: L.Trainer | None = None,
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Evaluate the model on MoleculeACE datasets using linear probes.
 
         This method can be used both during training (with a trainer)

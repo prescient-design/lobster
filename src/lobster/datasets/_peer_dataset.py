@@ -1,7 +1,7 @@
 import ast
 import re
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pooch
@@ -55,13 +55,13 @@ class PEERDataset(Dataset):
 
     def __init__(
         self,
-        task: Union[PEERTask, str],
-        root: Optional[Union[str, Path]] = None,
+        task: PEERTask | str,
+        root: str | Path | None = None,
         *,
         split: str = "train",
-        transform_fn: Optional[Callable] = None,
-        target_transform_fn: Optional[Callable] = None,
-        columns: Optional[Sequence[str]] = None,
+        transform_fn: Callable | None = None,
+        target_transform_fn: Callable | None = None,
+        columns: Sequence[str] | None = None,
     ):
         super().__init__()
 
@@ -126,7 +126,7 @@ class PEERDataset(Dataset):
 
     @staticmethod
     def string_to_tensor(
-        string_data: str, dtype: torch.dtype = torch.float32, shape: Optional[Tuple] = None
+        string_data: str, dtype: torch.dtype = torch.float32, shape: tuple | None = None
     ) -> torch.Tensor:
         """
         Convert string representation directly to PyTorch tensor.

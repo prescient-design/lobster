@@ -2,9 +2,10 @@ from unittest.mock import Mock
 
 import pytest
 import torch
-from lobster.transforms import TokenizerTransform
 from transformers import PreTrainedTokenizerFast
 from transformers.tokenization_utils_base import BatchEncoding
+
+from lobster.transforms import TokenizerTransform
 
 
 @pytest.fixture

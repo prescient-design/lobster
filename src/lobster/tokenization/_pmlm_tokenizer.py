@@ -3,7 +3,6 @@
 import importlib.resources
 import os
 from itertools import islice
-from typing import List, Optional, Union
 
 from datasets import load_dataset
 from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, trainers
@@ -87,8 +86,8 @@ class PmlmTokenizer(PreTrainedTokenizer):
         return self._id_to_token.get(index, self.unk_token)
 
     def build_inputs_with_special_tokens(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
+        self, token_ids_0: list[int], token_ids_1: list[int] | None = None
+    ) -> list[int]:
         cls = [self.cls_token_id]
         sep = [self.eos_token_id]  # No sep token in ESM vocabulary
         if token_ids_1 is None:
@@ -102,10 +101,10 @@ class PmlmTokenizer(PreTrainedTokenizer):
 
     def get_special_tokens_mask(
         self,
-        token_ids_0: List,
-        token_ids_1: Optional[List] = None,
+        token_ids_0: list,
+        token_ids_1: list | None = None,
         already_has_special_tokens: bool = False,
-    ) -> List[int]:
+    ) -> list[int]:
         """
         Retrieves sequence ids from a token list that has no special tokens added. This method is called when adding
         special tokens using the tokenizer `prepare_for_model` or `encode_plus` methods.
@@ -152,7 +151,7 @@ class PmlmTokenizer(PreTrainedTokenizer):
 
     def _add_tokens(
         self,
-        new_tokens: Union[List[str], List[AddedToken]],
+        new_tokens: list[str] | list[AddedToken],
         special_tokens: bool = False,
     ) -> int:
         return super()._add_tokens(new_tokens, special_tokens=True)
@@ -227,7 +226,7 @@ class TrainablePmlmTokenizer(PmlmTokenizer):
 
     @staticmethod
     def _batch_txt_iterator(txt_file, num_lines):
-        with open(txt_file, "r") as f:
+        with open(txt_file) as f:
             return list(islice(f, num_lines))
 
     def fit(self, txt_file, num_lines=100):

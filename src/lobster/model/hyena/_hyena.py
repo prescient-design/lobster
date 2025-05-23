@@ -1,5 +1,5 @@
 import importlib.resources
-from typing import Callable, Optional, Union
+from collections.abc import Callable
 
 import lightning.pytorch as pl
 import torch
@@ -25,8 +25,8 @@ class LobsterHyenaCLM(pl.LightningModule):
         eps: float = 1e-12,
         num_training_steps: int = 10_000,
         num_warmup_steps: int = 1000,
-        transform_fn: Union[Callable, Transform, None] = None,
-        tokenizer_dir: Optional[str] = "hyena_tokenizer",
+        transform_fn: Callable | Transform | None = None,
+        tokenizer_dir: str | None = "hyena_tokenizer",
         ckpt_path: str = None,
         max_length: int = 1024,
         scheduler_cfg: DictConfig = None,

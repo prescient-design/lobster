@@ -2,12 +2,13 @@ from typing import Any, Literal
 from unittest import mock
 
 import pytest
+from rdkit import Chem
+
 from lobster.transforms._equivalence_transforms import (
     NucleotideToSmilesPairTransform,
     PeptideToSmilesPairTransform,
     SmilesToSmilesPairTransform,
 )
-from rdkit import Chem
 
 
 def get_canonical_smiles(smiles: str) -> str | None:

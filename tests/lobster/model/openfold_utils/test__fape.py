@@ -62,7 +62,7 @@ def _get_model_output(example_aa_sequence, device):
 class TestBackBoneLoss:
     def test_backbone_loss(self, example_aa_sequence, example_pdb_path, structure_featurizer, device):
         seq_len = len(example_aa_sequence)
-        with open(example_pdb_path, "r") as f:
+        with open(example_pdb_path) as f:
             pdb_str = f.read()
         features = structure_featurizer(pdb_str, seq_len, "test")
 

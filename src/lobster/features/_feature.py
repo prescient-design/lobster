@@ -1,17 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from types import ModuleType
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Mapping,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
     TypeVar,
-    Union,
 )
 
 import torch
@@ -27,14 +20,14 @@ class Feature(Tensor):
     Feature
     """
 
-    __f: Optional[ModuleType] = None
+    __f: ModuleType | None = None
 
     @staticmethod
     def _to_tensor(
         data: Any,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[Union[torch.device, str, int]] = None,
-        requires_grad: Optional[bool] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | str | int | None = None,
+        requires_grad: bool | None = None,
     ) -> Tensor:
         if requires_grad is None:
             if isinstance(data, Tensor):
@@ -47,7 +40,7 @@ class Feature(Tensor):
         return tensor.requires_grad_(requires_grad)
 
     @classmethod
-    def wrap_like(cls: Type[F], other: F, tensor: Tensor) -> F:
+    def wrap_like(cls: type[F], other: F, tensor: Tensor) -> F:
         raise NotImplementedError
 
     # NOTE:
@@ -64,9 +57,9 @@ class Feature(Tensor):
     def __torch_function__(
         cls,
         func: Callable[..., Tensor],
-        types: Tuple[Type[Tensor], ...],
+        types: tuple[type[Tensor], ...],
         args: Sequence[Any] = (),
-        kwargs: Optional[Mapping[str, Any]] = None,
+        kwargs: Mapping[str, Any] | None = None,
     ) -> Tensor:
         """
         The default behavior of :class:`~Tensor`’s retains the custom tensor
@@ -165,7 +158,7 @@ class Feature(Tensor):
         with DisableTorchFunctionSubclass():
             return super().shape
 
-    def __deepcopy__(self: F, memo: Dict[int, Any]) -> F:
+    def __deepcopy__(self: F, memo: dict[int, Any]) -> F:
         # NOTE:
         #   Detach, because ``deepcopy(Tensor)``, unlike ``Tensor.clone``,
         #   isn’t be added to the computational graph.
@@ -185,12 +178,6 @@ class Feature(Tensor):
         )  # type: ignore[return-value]
 
 
-_InputType = Union[
-    Dict[str, Tensor],
-    Feature,
-    Sequence[Tensor],
-    Tensor,
-    str,
-]
+_InputType = dict[str, Tensor] | Feature | Sequence[Tensor] | Tensor | str
 
-_InputTypeJIT = Union[Dict[str, Tensor], Sequence[Tensor], Tensor]
+_InputTypeJIT = dict[str, Tensor] | Sequence[Tensor] | Tensor

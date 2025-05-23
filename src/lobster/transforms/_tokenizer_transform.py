@@ -1,5 +1,3 @@
-from typing import List, Optional, Union
-
 from torch.nn import Module
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 from transformers.tokenization_utils_base import BatchEncoding, PaddingStrategy, TruncationStrategy
@@ -8,12 +6,12 @@ from transformers.tokenization_utils_base import BatchEncoding, PaddingStrategy,
 class TokenizerTransform(Module):
     def __init__(
         self,
-        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
-        padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = False,
-        max_length: Optional[int] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
+        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+        padding: bool | str | PaddingStrategy = False,
+        truncation: bool | str | TruncationStrategy = False,
+        max_length: int | None = None,
+        return_token_type_ids: bool | None = None,
+        return_attention_mask: bool | None = None,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
@@ -39,7 +37,7 @@ class TokenizerTransform(Module):
 
     def forward(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
     ) -> BatchEncoding:
         return self.tokenizer(
             text,

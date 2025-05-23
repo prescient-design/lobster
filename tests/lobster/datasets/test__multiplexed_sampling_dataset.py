@@ -1,6 +1,7 @@
 import pytest
-from lobster.datasets import MultiplexedSamplingDataset
 from torch.utils.data import Dataset, IterableDataset
+
+from lobster.datasets import MultiplexedSamplingDataset
 
 
 class StringDataset(Dataset):
@@ -19,8 +20,7 @@ class IterableStringDataset(IterableDataset):
         self.data = data
 
     def __iter__(self):
-        for item in self.data:
-            yield item
+        yield from self.data
 
 
 @pytest.fixture

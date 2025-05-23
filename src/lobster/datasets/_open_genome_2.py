@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, ClassVar, List
+from typing import ClassVar
 
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from lobster.transforms import Transform
@@ -52,7 +53,7 @@ class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
         print(f"Sample {i+1}: {sample[:50]}...")
     """
 
-    SUPPORTED_SPLITS: ClassVar[List[str]] = ["train", "validation", "test"]
+    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "validation", "test"]
 
     def __init__(
         self,

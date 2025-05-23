@@ -1,8 +1,9 @@
 import os
 import random
 import subprocess
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
+from typing import Any, TypeVar
 
 import numpy as np
 import torch
@@ -14,7 +15,7 @@ from torch.utils.data import DataLoader, Sampler
 
 from lobster.transforms import StructureFeaturizer
 
-PathLike = Union[Path, str]
+PathLike = Path | str
 T = TypeVar("T")
 
 
@@ -100,7 +101,7 @@ class CATHFastaPDBDataset(FastaStructureDataset):
 
     def get_structure_features(self, pdb_id):
         structure_fpath = self.pdb_root_dir / pdb_id
-        with open(structure_fpath, "r") as f:
+        with open(structure_fpath) as f:
             pdb_str = f.read()
         return self.structure_featurizer(pdb_str, self.seq_len, pdb_id)
 
@@ -118,7 +119,7 @@ class PDBDataset(torch.utils.data.Dataset):
         self,
         root: PathLike,
         max_length: int = 512,
-        pdb_id_to_filename_fn: Optional[Callable[[str], str]] = lambda x: x,
+        pdb_id_to_filename_fn: Callable[[str], str] | None = lambda x: x,
     ):
         super().__init__()
         self._root = root
@@ -131,7 +132,7 @@ class PDBDataset(torch.utils.data.Dataset):
 
     def get_structure_features(self, pdb_id):
         structure_fpath = Path(self._root) / self._pdb_id_to_filename_fn(pdb_id)
-        with open(structure_fpath, "r") as f:
+        with open(structure_fpath) as f:
             pdb_str = f.read()
         return self.structure_featurizer(pdb_str, self._max_length, pdb_id)
 
@@ -147,20 +148,20 @@ class PDBDataModule(LightningDataModule):
     def __init__(
         self,
         root: PathLike,
-        pdb_id_to_filename_fn: Optional[Callable[[str], str]] = lambda x: x,
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
-        generator: Optional[Generator] = None,
+        pdb_id_to_filename_fn: Callable[[str], str] | None = lambda x: x,
+        lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
+        generator: Generator | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
-        sampler: Optional[Union[Iterable, Sampler]] = None,
-        batch_sampler: Optional[Union[Iterable[Sequence], Sampler[Sequence]]] = None,
+        sampler: Iterable | Sampler | None = None,
+        batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
         num_workers: int = 0,
-        collate_fn: Optional[Callable[[list[T]], Any]] = None,
+        collate_fn: Callable[[list[T]], Any] | None = None,
         pin_memory: bool = True,
         max_length: int = 512,
         drop_last: bool = False,
-        transform_fn: Optional[Callable] = None,
+        transform_fn: Callable | None = None,
     ):
         super().__init__()
         if lengths is None:

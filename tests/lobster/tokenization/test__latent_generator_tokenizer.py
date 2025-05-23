@@ -1,8 +1,9 @@
+from transformers import PreTrainedTokenizerFast
+
 from lobster.tokenization._latent_generator_3d_coord_tokenizer import (
     LatentGenerator3DCoordTokenizerFast,
     _make_latent_generator_3d_coord_tokenizer,
 )
-from transformers import PreTrainedTokenizerFast
 
 
 def test__make_latent_generator_3d_coord_tokenizer():

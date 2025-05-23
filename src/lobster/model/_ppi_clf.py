@@ -1,5 +1,5 @@
 import random
-from typing import Literal, Optional
+from typing import Literal
 
 import lightning.pytorch as pl
 import torch
@@ -15,8 +15,8 @@ class PPIClassifier(pl.LightningModule):
     def __init__(
         self,
         ffd_dim: int = 256,
-        model_name: Optional[str] = None,
-        checkpoint: Optional[str] = None,  # TODO - name this encoder_checkpoint for clarity?
+        model_name: str | None = None,
+        checkpoint: str | None = None,  # TODO - name this encoder_checkpoint for clarity?
         base_model_type: Literal["LobsterPMLM"] = "LobsterPMLM",
         lr: float = 1e-3,
         beta1: float = 0.9,
@@ -26,7 +26,7 @@ class PPIClassifier(pl.LightningModule):
         freeze_encoder: bool = True,
         max_length: int = 512,
         # encoder_kwargs: Optional[dict] = {},
-        ckpt_path: Optional[str] = None,  # dummy kwarg for compatibility with hydra (TODO - handle elsewhere?)
+        ckpt_path: str | None = None,  # dummy kwarg for compatibility with hydra (TODO - handle elsewhere?)
     ):
         """
         Classifier tasks for two-protein inputs (e.g. PPI).

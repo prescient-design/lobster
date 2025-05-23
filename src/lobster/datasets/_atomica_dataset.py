@@ -1,4 +1,5 @@
-from typing import Callable, Literal, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal
 
 import pandas as pd
 from torch.utils.data import Dataset

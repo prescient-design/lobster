@@ -75,7 +75,7 @@ class HyenaConfig(PretrainedConfig):
 
     @classmethod
     def from_original_config(cls, config_path, **kwargs):
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = json.load(f)
 
         vocab_size = config["vocab_size"]

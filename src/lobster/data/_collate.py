@@ -1,5 +1,5 @@
 import importlib
-from typing import Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from lobster.tokenization import PmlmTokenizer
 
 
-class EsmBatchConverter(object):
+class EsmBatchConverter:
     """Callable to convert an unprocessed (labels + strings) batch to a
     processed (labels + tensor) batch.
     """
@@ -18,7 +18,7 @@ class EsmBatchConverter(object):
         truncation_seq_length: int = 1024,
         prepend_bos=True,  # same as esm2 alphabet
         append_eos=True,  # same as esm2 alphabet
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        tokenizer_dir: str | None = "pmlm_tokenizer",
     ):
         self.model_name = model_name
         self.truncation_seq_length = truncation_seq_length
@@ -30,7 +30,7 @@ class EsmBatchConverter(object):
         path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
         self.tokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
 
-    def __call__(self, raw_batch: Sequence[Tuple[str, str]]):
+    def __call__(self, raw_batch: Sequence[tuple[str, str]]):
         # RoBERTa uses an eos token, while ESM-1 does not.
         batch_size = len(raw_batch)
         batch_labels, seq_str_list = zip(*raw_batch)
@@ -72,7 +72,7 @@ class ESMBatchConverterPPI(EsmBatchConverter):
         contact_maps: bool = False,
         prepend_bos=True,  # same as esm2 alphabet
         append_eos=True,  # same as esm2 alphabet
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        tokenizer_dir: str | None = "pmlm_tokenizer",
     ):
         super().__init__(
             model_name=model_name,
@@ -87,7 +87,7 @@ class ESMBatchConverterPPI(EsmBatchConverter):
         self.tokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
         self._contact_maps = contact_maps
 
-    def __call__(self, raw_batch: Sequence[Tuple[str, str]]):
+    def __call__(self, raw_batch: Sequence[tuple[str, str]]):
         """Adapted for PPI Data"""
         # NOTE - Removed nulls that came from transforms, might need to write custom dataloader sampler if batch sizes too small
         if self._contact_maps:

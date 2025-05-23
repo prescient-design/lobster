@@ -1,6 +1,7 @@
 import os
 import tempfile
-from typing import Any, Callable, Dict, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
 import lightning.pytorch as pl
 import torch
@@ -28,10 +29,10 @@ class LobsterPLMFold(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         freeze: bool = False,
         mask_percentage: float = 0.15,
-        transform_fn: Union[Callable, Transform, None] = None,
-        config: Union[PretrainedConfig, None] = None,
+        transform_fn: Callable | Transform | None = None,
+        config: PretrainedConfig | None = None,
         ckpt_path: str = None,
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        tokenizer_dir: str | None = "pmlm_tokenizer",
         max_length: int = 512,
         cache_dir: str = None,
         scheduler_cfg: DictConfig = None,
@@ -138,7 +139,7 @@ class LobsterPLMFold(pl.LightningModule):
 
         return {"val_loss": loss}
 
-    def forward_pass(self, batch: Dict[str, Any]):
+    def forward_pass(self, batch: dict[str, Any]):
         outputs = {}
         sequences = batch["sequence"]
         tokenized_output = self.tokenizer.batch_encode_plus(
@@ -283,7 +284,7 @@ class FoldseekTransform(Transform):
 
             seq_dict = {}
             name = os.path.basename(path_to_pdb)
-            with open(tsv_temp_file.name, "r") as file_handle:
+            with open(tsv_temp_file.name) as file_handle:
                 for _i, line in enumerate(file_handle):
                     # print(line)
                     desc, seq, struc_seq = line.split("\t")[:3]
