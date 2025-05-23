@@ -52,7 +52,7 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
     trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
 
     if rank_zero_only.rank == 0 and isinstance(trainer.logger, WandbLogger):
-        trainer.logger.experiment.config.update({"cfg": log_cfg})
+        trainer.logger.experiment.config.update({"cfg": log_cfg}, allow_val_change=cfg.logger.get("allow_val_change"))
 
     if not cfg.dryrun:
         trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.model.ckpt_path)
