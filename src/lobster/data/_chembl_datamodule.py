@@ -1,6 +1,7 @@
 import random
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence, TypeVar
+from typing import Any, TypeVar
 
 import torch.utils.data
 from beignet.datasets import ChEMBLDataset

@@ -2,7 +2,6 @@
 
 import importlib.resources
 import os
-from typing import List, Optional, Union
 
 from transformers.tokenization_utils import PreTrainedTokenizer, Trie
 from transformers.tokenization_utils_base import AddedToken
@@ -74,7 +73,7 @@ class HyenaTokenizer(PreTrainedTokenizer):
 
     # def _tokenize(self, text, **kwargs):
     #     return text.split()
-    def _tokenize(self, text: str) -> List[str]:
+    def _tokenize(self, text: str) -> list[str]:
         return list(text)
 
     def get_vocab_size(self, with_added_tokens=False):
@@ -90,8 +89,8 @@ class HyenaTokenizer(PreTrainedTokenizer):
         return self._id_to_token.get(index, self.unk_token)
 
     def build_inputs_with_special_tokens(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
+        self, token_ids_0: list[int], token_ids_1: list[int] | None = None
+    ) -> list[int]:
         sep = [self.sep_token_id]
         # cls = [self.cls_token_id]
         result = token_ids_0 + sep
@@ -101,10 +100,10 @@ class HyenaTokenizer(PreTrainedTokenizer):
 
     def get_special_tokens_mask(
         self,
-        token_ids_0: List[int],
-        token_ids_1: Optional[List[int]] = None,
+        token_ids_0: list[int],
+        token_ids_1: list[int] | None = None,
         already_has_special_tokens: bool = False,
-    ) -> List[int]:
+    ) -> list[int]:
         if already_has_special_tokens:
             return super().get_special_tokens_mask(
                 token_ids_0=token_ids_0,
@@ -127,5 +126,5 @@ class HyenaTokenizer(PreTrainedTokenizer):
     def vocab_size(self) -> int:
         return self.get_vocab_size(with_added_tokens=False)
 
-    def _add_tokens(self, new_tokens: Union[List[str], List[AddedToken]], special_tokens: bool = False) -> int:
+    def _add_tokens(self, new_tokens: list[str] | list[AddedToken], special_tokens: bool = False) -> int:
         return super()._add_tokens(new_tokens, special_tokens=True)

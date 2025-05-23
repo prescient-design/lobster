@@ -1,5 +1,4 @@
 from os import PathLike
-from typing import Union
 
 import lightning.pytorch as pl
 import torch
@@ -11,7 +10,7 @@ from lobster.model._mlm import LobsterPMLM
 
 
 class MiniCLIP(pl.LightningModule):
-    def __init__(self, pretrained_model_name_or_path: Union[str, PathLike], lr: float = 1e-3):
+    def __init__(self, pretrained_model_name_or_path: str | PathLike, lr: float = 1e-3):
         super().__init__()
         self._lr = lr
 

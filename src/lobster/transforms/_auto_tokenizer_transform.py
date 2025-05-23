@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
 from transformers import AutoTokenizer
 from transformers.tokenization_utils_base import (
@@ -14,12 +14,12 @@ from ._transform import Transform
 class AutoTokenizerTransform(Transform):
     def __init__(
         self,
-        pretrained_model_name_or_path: Union[str, PathLike],
+        pretrained_model_name_or_path: str | PathLike,
         padding: Union[bool, str, "PaddingStrategy"] = False,
         truncation: Union[bool, str, "TruncationStrategy"] = False,
-        max_length: Optional[int] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
+        max_length: int | None = None,
+        return_token_type_ids: bool | None = None,
+        return_attention_mask: bool | None = None,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
@@ -49,7 +49,7 @@ class AutoTokenizerTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> "BatchEncoding":
         tokenized = self._auto_tokenizer(
@@ -74,11 +74,11 @@ class AutoTokenizerTransform(Transform):
 
         return tokenized
 
-    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
         return self.transform(input, parameters)
 
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
-    def _check_inputs(self, inputs: List[Any]) -> None:
+    def _check_inputs(self, inputs: list[Any]) -> None:
         pass

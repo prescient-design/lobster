@@ -1,6 +1,7 @@
 import logging
 import time
-from typing import Any, Callable, Dict, Union
+from collections.abc import Callable
+from typing import Any
 
 import lightning as L
 import torch
@@ -33,8 +34,8 @@ class TokensPerSecondCallback(L.Callback):
     def __init__(
         self,
         log_interval_steps: int = 500,
-        batch_size_fn: Union[Callable[[Any], int], None] = None,
-        batch_length_fn: Union[Callable[[Any], int], None] = None,
+        batch_size_fn: Callable[[Any], int] | None = None,
+        batch_length_fn: Callable[[Any], int] | None = None,
         verbose: bool = True,
     ):
         super().__init__()
@@ -52,7 +53,7 @@ class TokensPerSecondCallback(L.Callback):
         self.last_logged_step = 0
 
     def on_train_batch_end(
-        self, trainer: Trainer, pl_module: LightningModule, outputs: Dict[str, Any], batch: Any, batch_idx: int
+        self, trainer: Trainer, pl_module: LightningModule, outputs: dict[str, Any], batch: Any, batch_idx: int
     ) -> None:
         """Called after each training batch ends."""
         batch_size = self.batch_size_fn(batch)

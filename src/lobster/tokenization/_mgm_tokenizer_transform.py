@@ -1,7 +1,8 @@
 import importlib.resources
+from collections.abc import Callable
 from importlib.util import find_spec
 from os import PathLike
-from typing import Any, Callable, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 import torch
 from transformers.tokenization_utils_base import (
@@ -40,20 +41,20 @@ logger = logging.get_logger(__name__)
 class MgmTokenizerTransform(Transform):
     def __init__(
         self,
-        pretrained_model_name_or_path: Union[str, PathLike] = None,
-        padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = False,
-        max_length: Optional[int] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
+        pretrained_model_name_or_path: str | PathLike = None,
+        padding: bool | str | PaddingStrategy = False,
+        truncation: bool | str | TruncationStrategy = False,
+        max_length: int | None = None,
+        return_token_type_ids: bool | None = None,
+        return_attention_mask: bool | None = None,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
         return_length: bool = False,
         verbose: bool = True,
-        tokenizer_dir: Optional[str] = "mgm_tokenizer",
-        codon_tables_dir: Optional[str] = "codon_tables",
-        codon_to_residue_file: Optional[str] = "codon_table.json",
+        tokenizer_dir: str | None = "mgm_tokenizer",
+        codon_tables_dir: str | None = "codon_tables",
+        codon_to_residue_file: str | None = "codon_table.json",
         mlm: bool = True,
         codon_sampling_strategy: Callable = uniform_sample,
         input_modality: Literal["nt", "aa", "selfies"] = "nt",
@@ -275,12 +276,12 @@ class MgmTokenizerTransform(Transform):
 
     def postprocess_selfies_inputs(
         self,
-        inputs: List[str],
+        inputs: list[str],
         max_len: int,
         crop_left: bool,
         modality_0: str,
         modality_1: str,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Inputs: 2 seqs from different modalities, one of which is selfies. Their total length is > max_len.
         Computes the max # of residues which can be encoded between the 2 seqs, and crops them such that:
@@ -313,12 +314,12 @@ class MgmTokenizerTransform(Transform):
 
     def prep_input(
         self,
-        input: Union[str, List[str]],
+        input: str | list[str],
         modality_combination: str,
         n_modalities: int,
         max_len: int,
         crop_left: bool,
-    ) -> List[str]:
+    ) -> list[str]:
         """Converts input sequence into the sampled modality combination, truncates the resulting
         sequence(s) according to the maximum possible sequence length, and adds modality-specific
         cls tokens as such:
@@ -550,7 +551,7 @@ class MgmTokenizerTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         modality_combination = self.sample_modalities()
@@ -595,17 +596,17 @@ class MgmTokenizerTransform(Transform):
             tokenized["labels"] = labels
         return tokenized
 
-    def _reverse_text(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
+    def _reverse_text(self, text: str | list[str]) -> str | list[str]:
         if isinstance(text, str):
             return text[::-1]
         elif isinstance(text, list):
             return [t[::-1] for t in text]
 
-    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
         return self.transform(input, parameters)
 
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
-    def _check_inputs(self, inputs: List[Any]) -> None:
+    def _check_inputs(self, inputs: list[Any]) -> None:
         pass

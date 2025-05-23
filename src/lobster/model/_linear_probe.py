@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 import lightning.pytorch as pl
 import torch
@@ -25,8 +25,8 @@ class LobsterLinearProbe(pl.LightningModule):
         self,
         num_labels: int = 1,
         num_chains: int = 1,
-        model_name: Optional[str] = None,
-        checkpoint: Optional[str] = None,
+        model_name: str | None = None,
+        checkpoint: str | None = None,
         model_type: Literal["LobsterPMLM", "LobsterPCLM"] = "LobsterPMLM",
         max_length: int = 512,
         lr: float = 1e-3,

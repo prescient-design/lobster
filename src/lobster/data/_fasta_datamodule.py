@@ -1,6 +1,7 @@
 import importlib
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
+from typing import Any, TypeVar
 
 import pandas as pd
 import torch.utils.data
@@ -21,26 +22,26 @@ T = TypeVar("T")
 class FastaLightningDataModule(LightningDataModule):
     def __init__(
         self,
-        path_to_fasta: Union[str, list[str]],
-        root: Union[str, Path] = None,
+        path_to_fasta: str | list[str],
+        root: str | Path = None,
         *,
         cache_sequence_indicies: bool = True,
         download: bool = False,
-        transform_fn: Union[Callable, Transform, None] = None,
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
-        generator: Optional[Generator] = None,
+        transform_fn: Callable | Transform | None = None,
+        lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
+        generator: Generator | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
-        sampler: Optional[Union[Iterable, Sampler]] = None,
-        batch_sampler: Optional[Union[Iterable[Sequence], Sampler[Sequence]]] = None,
+        sampler: Iterable | Sampler | None = None,
+        batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
         num_workers: int = 0,
-        collate_fn: Optional[Callable[[list[T]], Any]] = None,
+        collate_fn: Callable[[list[T]], Any] | None = None,
         max_length: int = 512,
         pin_memory: bool = True,
         drop_last: bool = False,
         is_relative_model: bool = False,
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        tokenizer_dir: str | None = "pmlm_tokenizer",
         mlm: bool = True,
     ) -> None:
         """

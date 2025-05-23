@@ -1,6 +1,7 @@
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional, Tuple, TypeVar, Union
+from typing import TypeVar
 
 import numpy
 from beignet.datasets._sized_sequence_dataset import SizedSequenceDataset
@@ -12,9 +13,9 @@ T = TypeVar("T")
 class FASTADataset(SizedSequenceDataset):
     def __init__(
         self,
-        root: Union[str, Path],
+        root: str | Path,
         *,
-        transform: Optional[Callable] = None,
+        transform: Callable | None = None,
         use_text_descriptions: bool = True,
     ) -> None:
         if isinstance(root, str):
@@ -44,7 +45,7 @@ class FASTADataset(SizedSequenceDataset):
 
         super().__init__(self.root, sizes)
 
-    def __getitem__(self, index: int) -> Tuple[str, str]:
+    def __getitem__(self, index: int) -> tuple[str, str]:
         x = self.get(index)
         if self.transform:
             x = self.transform(x)
