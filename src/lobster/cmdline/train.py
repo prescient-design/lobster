@@ -42,6 +42,7 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
                 name=cfg.logger.get("name"),
                 resume=cfg.logger.get("resume"),
                 id=cfg.logger.get("id"),
+                allow_val_change=cfg.logger.get("allow_val_change"),
             )
     else:
         logger = None
