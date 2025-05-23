@@ -214,3 +214,35 @@ class TestUme:
             split_batch_mock.assert_called_once()
             mlm_mock.assert_called_once()
             infonce_mock.assert_called_once()
+
+    def test_embed_sequences_cpu(self):
+        """Test Ume's embed_sequences method without flash-attn on CPU."""
+        # Initialize Ume with a small model and flash-attn disabled
+        ume = Ume(
+            model_name="UME_mini",
+            max_length=10,
+            use_flash_attn=False  # Disable flash-attn
+        )
+        
+        # Test sequences for each modality
+        test_sequences = {
+            "SMILES": ["CC(=O)OC1=CC=CC=C1C(=O)O"],
+            "amino_acid": ["MKTVRQERLKSIVRILERSKEPVSGAQL"],
+            "nucleotide": ["ATGCATGC"],
+            "3d_coordinates": [["aa", "bb", "cc", "dd"]]
+        }
+        
+        # Test embedding for each modality
+        for modality, sequences in test_sequences.items():
+            # Get embeddings without aggregation
+            embeddings = ume.embed_sequences(sequences, modality, aggregate=False)
+            assert isinstance(embeddings, torch.Tensor)
+            assert embeddings.dim() == 3  # [batch_size, seq_length, hidden_size]
+            assert embeddings.shape[0] == len(sequences)
+            assert embeddings.shape[1] <= ume.max_length
+            
+            # Get embeddings with aggregation
+            embeddings = ume.embed_sequences(sequences, modality, aggregate=True)
+            assert isinstance(embeddings, torch.Tensor)
+            assert embeddings.dim() == 2  # [batch_size, hidden_size]
+            assert embeddings.shape[0] == len(sequences)
