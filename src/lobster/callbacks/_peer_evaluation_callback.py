@@ -4,9 +4,12 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 
 import lightning as L
+import numpy as np
 import torch
 from lightning.pytorch.loggers import CSVLogger
+from scipy.stats import spearmanr
 from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.multioutput import MultiOutputClassifier
 from torch import Tensor
 from torch.utils.data import DataLoader
@@ -133,6 +136,48 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         # Cache for datasets
         self.datasets = {}
+
+    def _get_relevant_metric(self, task: PEERTask) -> str:
+        """Get the relevant metric for a given PEER task.
+
+        Parameters
+        ----------
+        task : PEERTask
+            The PEER task to get the relevant metric for.
+
+        Returns
+        -------
+        str
+            The name of the relevant metric for this task.
+        """
+        # Function prediction tasks
+        if task in {PEERTask.FLUORESCENCE, PEERTask.STABILITY, PEERTask.BETALACTAMASE}:
+            return "spearman"
+        # Localization and function classification tasks
+        elif task in {
+            PEERTask.SOLUBILITY,
+            PEERTask.SUBCELLULAR_LOCALIZATION,
+            PEERTask.BINARY_LOCALIZATION,
+            PEERTask.FOLD,
+            PEERTask.SECONDARY_STRUCTURE,
+        }:
+            return "accuracy"
+        # Contact prediction
+        elif task == PEERTask.PROTEINNET:
+            return "l5_precision"
+        # PPI classification
+        elif task in {PEERTask.HUMANPPI, PEERTask.YEASTPPI}:
+            return "accuracy"
+        # Regression tasks with RMSE
+        elif task in {PEERTask.PPIAFFINITY, PEERTask.PDBBIND, PEERTask.BINDINGDB}:
+            return "rmse"
+        # Default to accuracy for classification and rmse for regression
+        else:
+            task_type = PEER_TASKS[task][0]
+            if task_type in {"binary", "multiclass", "multilabel"}:
+                return "accuracy"
+            else:  # regression
+                return "rmse"
 
     def _process_and_embed(
         self,
@@ -610,6 +655,73 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         return probe
 
+    def _evaluate_probe(self, probe, embeddings: Tensor, targets: Tensor, task: PEERTask = None) -> dict[str, float]:
+        """Evaluate a trained probe on the given embeddings and targets, returning task-specific metrics."""
+        if task is None:
+            # Fallback to parent implementation if no task specified
+            return super()._evaluate_probe(probe, embeddings, targets)
+
+        embeddings_np = embeddings.numpy()
+        targets_np = targets.numpy()
+
+        relevant_metric = self._get_relevant_metric(task)
+        metrics = {}
+
+        # Get predictions from the probe
+        predictions = probe.predict(embeddings_np)
+
+        # Calculate the relevant metric based on the task
+        match relevant_metric:
+            case "accuracy":
+                # For classification tasks
+                if predictions.ndim > 1 and predictions.shape[1] > 1:
+                    # Multi-class: reshape if needed
+                    targets_np = targets_np.ravel() if targets_np.ndim > 1 else targets_np
+
+                metrics["accuracy"] = accuracy_score(targets_np, predictions)
+
+            case "spearman":
+                # For regression tasks requiring Spearman correlation
+                if predictions.ndim > 1:
+                    # Multiple outputs - calculate correlation for each and average
+                    correlations = []
+                    for i in range(predictions.shape[1]):
+                        corr, _ = spearmanr(targets_np[:, i], predictions[:, i])
+                        correlations.append(corr)
+                    metrics["spearman"] = np.mean(correlations)
+                else:
+                    # Single output
+                    corr, _ = spearmanr(targets_np, predictions)
+                    metrics["spearman"] = corr
+
+            case "rmse":
+                # For regression tasks requiring RMSE
+                rmse = np.sqrt(mean_squared_error(targets_np, predictions))
+                metrics["rmse"] = rmse
+
+            case "l5_precision":
+                # For contact prediction tasks
+                if task == PEERTask.PROTEINNET:
+                    # For contact prediction, we need L/5 precision
+                    # We sort predictions by confidence and take top L/5
+                    if hasattr(probe, "predict_proba"):
+                        # Get probabilities for positive class
+                        probs = probe.predict_proba(embeddings_np)[:, 1]
+
+                        # Get sequence length L (approximated from data)
+                        # This is simplified - in practice you might want to group by protein
+                        L = int(np.sqrt(len(targets_np) * 2))
+                        top_k = max(1, L // 5)
+
+                        # Get top L/5 predictions
+                        top_indices = np.argsort(probs)[-top_k:]
+                        metrics["l5_precision"] = np.mean(targets_np[top_indices])
+                    else:
+                        # Fallback if predict_proba is not available
+                        metrics["accuracy"] = accuracy_score(targets_np, predictions)
+
+        return metrics
+
     def _evaluate_task(
         self, task: PEERTask, trainer: L.Trainer, pl_module: L.LightningModule
     ) -> dict[str, dict[str, float]]:
@@ -634,8 +746,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
                 test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader, task)
 
-                # Evaluate probe
-                metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
+                # Evaluate probe with task-specific metrics
+                metrics = self._evaluate_probe(probe, test_embeddings, test_targets, task)
                 split_metrics[split_name] = metrics
 
             return split_metrics
@@ -650,22 +762,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         trainer: L.Trainer,
         step: int = 0,
     ) -> dict[str, dict[str, float]]:
-        """Core evaluation logic used by both on_validation_epoch_end and evaluate.
-
-        Parameters
-        ----------
-        pl_module : L.LightningModule
-            The model to evaluate
-        trainer : L.Trainer
-            Trainer instance for logging metrics
-        step : int, optional
-            Step value for logging metrics, by default 0
-
-        Returns
-        -------
-        dict[str, dict[str, float]]
-            Dictionary of task_name -> split_name -> {metric_name: value} with "mean" entry
-        """
+        """Core evaluation logic used by both on_validation_epoch_end and evaluate."""
         # Track metrics
         category_metrics = defaultdict(lambda: defaultdict(list))
         all_metrics = defaultdict(list)
@@ -677,40 +774,45 @@ class PEEREvaluationCallback(LinearProbeCallback):
             task_category = PEER_TASK_CATEGORIES[task]
             split_metrics = self._evaluate_task(task, trainer, pl_module)
 
+            # Get the relevant metric for this task
+            relevant_metric = self._get_relevant_metric(task)
+
             # Store task metrics for return value
             all_task_metrics[str(task)] = split_metrics
 
-            # Process metrics for each split
+            # Process metrics for each split, but only log the relevant metric
             for split_name, metrics in split_metrics.items():
-                # Log split-specific metrics
-                for metric_name, value in metrics.items():
-                    metric_key = f"peer_linear_probe/{task}/{split_name}/{metric_name}"
+                # Only log the relevant metric for this task
+                if relevant_metric in metrics:
+                    value = metrics[relevant_metric]
+                    metric_key = f"peer_linear_probe/{task}/{split_name}/{relevant_metric}"
                     trainer.logger.log_metrics({metric_key: value}, step=step)
 
                     # Collect metrics for category averages
                     if len(split_metrics) > 1:
-                        category_metrics[task_category][f"{metric_name}_by_split"].append(value)
+                        category_metrics[task_category][f"{relevant_metric}_by_split"].append(value)
 
-                    # Collect metrics for global averages
-                    all_metrics[metric_name].append(value)
+                    # Collect metrics for global averages - using the metric type as the key
+                    all_metrics[relevant_metric].append(value)
 
                 split_count += 1
 
             # Calculate and log task averages across splits if there are multiple splits
             if len(split_metrics) > 1:
                 task_avg_metrics = {}
-                for metric_name in next(iter(split_metrics.values()), {}):
-                    values = [m.get(metric_name) for m in split_metrics.values() if metric_name in m]
+                # Only average the relevant metric
+                if any(relevant_metric in m for m in split_metrics.values()):
+                    values = [m.get(relevant_metric) for m in split_metrics.values() if relevant_metric in m]
                     if values:
                         avg_value = sum(values) / len(values)
-                        task_avg_key = f"peer_linear_probe/{task}/average/{metric_name}"
+                        task_avg_key = f"peer_linear_probe/{task}/average/{relevant_metric}"
                         trainer.logger.log_metrics({task_avg_key: avg_value}, step=step)
-                        task_avg_metrics[metric_name] = avg_value
+                        task_avg_metrics[relevant_metric] = avg_value
 
                 if task_avg_metrics:
                     all_task_metrics[f"{task}/average"] = task_avg_metrics
 
-        # Log category averages
+        # Log category averages - but only for metrics that are relevant to tasks in that category
         category_metrics_dict = {}
         for category, metrics_dict in category_metrics.items():
             category_metrics_dict[str(category)] = {}
@@ -724,7 +826,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         if category_metrics_dict:
             all_task_metrics["categories"] = category_metrics_dict
 
-        # Calculate and log overall averages
+        # Calculate and log overall averages for each metric type
         mean_metrics = {}
         for metric_name, values in all_metrics.items():
             if values:
