@@ -34,6 +34,11 @@ class RandomNeighborScoreCallback(Callback):
     and a modality parameter and returns embeddings. To use with other
     models, you may need to override `_get_embeddings`.
 
+    Reference
+    ---------
+    Prabakaran R, Bromberg Y. “Quantifying uncertainty in Protein Representations
+    Across Models and Task.” bioRxiv (2025) doi:10.1101/2025.04.30.651545
+
     Examples
     --------
     Basic usage with a trainer:
