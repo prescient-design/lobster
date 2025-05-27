@@ -5,13 +5,14 @@ from typing import Literal
 import lightning as L
 import numpy as np
 import torch
-from beignet.transforms import Transform
 from lightning.pytorch.callbacks import Callback
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
 from torch import Tensor
 from torch.utils.data import DataLoader
 from torchmetrics import AUROC, Accuracy, F1Score, MeanSquaredError, R2Score, SpearmanCorrCoef
+
+from lobster.transforms import Transform
 
 TaskType = Literal["regression", "binary", "multiclass", "multilabel"]
 

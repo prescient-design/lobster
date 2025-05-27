@@ -60,10 +60,10 @@ def test_callback_initialization():
         mock_dataset_class.return_value = mock_bio_dataset
 
         callback = RandomNeighborScoreCallback(
-            biological_dataset_name="AMPLIFY", k=100, biological_dataset_limit=50, num_random_sequences=50, seed=42
+            dataset_name="AMPLIFY", k=100, biological_dataset_limit=50, num_random_sequences=50, seed=42
         )
 
-        assert callback.biological_dataset_name == "AMPLIFY"
+        assert callback.dataset_name == "AMPLIFY"
         assert callback.k == 100
         assert callback.biological_dataset_limit == 50
         assert callback.num_random_sequences == 50
@@ -83,7 +83,7 @@ def test_callback_with_mocked_dataset(mock_trainer, mock_model):
         mock_dataset_class.return_value = mock_bio_dataset
 
         callback = RandomNeighborScoreCallback(
-            biological_dataset_name="AMPLIFY",
+            dataset_name="AMPLIFY",
             k=2,
             biological_dataset_limit=20,
             num_random_sequences=20,
@@ -112,7 +112,7 @@ def test_callback_skip_logic(mock_model):
         mock_dataset_class.return_value = mock_bio_dataset
 
         callback = RandomNeighborScoreCallback(
-            biological_dataset_name="AMPLIFY",
+            dataset_name="AMPLIFY",
             run_every_n_epochs=2,
             k=10,
             biological_dataset_limit=20,
@@ -142,16 +142,16 @@ def test_modality_mapping():
     with patch.object(RandomNeighborScoreCallback.SUPPORTED_DATASETS["AMPLIFY"], "__new__") as mock_dataset_class:
         mock_dataset_class.return_value = mock_bio_dataset
 
-        callback = RandomNeighborScoreCallback(biological_dataset_name="AMPLIFY", k=10)
+        callback = RandomNeighborScoreCallback(dataset_name="AMPLIFY", k=10)
         assert callback._get_modality_for_dataset() == "amino_acid"
 
-        callback.biological_dataset_name = "Calm"
+        callback.dataset_name = "Calm"
         assert callback._get_modality_for_dataset() == "nucleotide"
 
-        callback.biological_dataset_name = "ZINC"
+        callback.dataset_name = "ZINC"
         assert callback._get_modality_for_dataset() == "SMILES"
 
 
 def test_unsupported_dataset():
     with pytest.raises(ValueError, match="Dataset 'InvalidDataset' not supported"):
-        RandomNeighborScoreCallback(biological_dataset_name="InvalidDataset", k=10)
+        RandomNeighborScoreCallback(dataset_name="InvalidDataset", k=10)

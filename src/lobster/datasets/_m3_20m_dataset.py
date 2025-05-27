@@ -4,11 +4,11 @@ from typing import ClassVar
 
 import pandas
 import pooch
-from beignet.transforms import Transform
 from torch.utils.data import Dataset
 
 from lobster.constants import Modality
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
+from lobster.transforms import Transform
 
 
 class M320MIterableDataset(HuggingFaceIterableDataset):

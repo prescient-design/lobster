@@ -48,7 +48,7 @@ class RandomNeighborScoreCallback(Callback):
     >>>
     >>> # Initialize callback
     >>> callback = RandomNeighborScoreCallback(
-    ...     biological_dataset_name="AMPLIFY",
+    ...     dataset_name="AMPLIFY",
     ...     k=100,
     ...     biological_dataset_limit=500,
     ...     seed=42,
@@ -80,7 +80,7 @@ class RandomNeighborScoreCallback(Callback):
 
     def __init__(
         self,
-        biological_dataset_name: Literal["AMPLIFY", "Calm", "M320M", "ZINC", "OpenGenome2"],
+        dataset_name: Literal["AMPLIFY", "Calm", "M320M", "ZINC", "OpenGenome2"],
         k: int = 500,
         distance_metric: Literal["cosine", "euclidean"] = "cosine",
         run_every_n_epochs: int | None = None,
@@ -97,7 +97,7 @@ class RandomNeighborScoreCallback(Callback):
         """
         Parameters
         ----------
-        biological_dataset_name : str
+        dataset_name : str
             Name of the biological dataset to use. Must be one of the supported datasets.
         k : int
             Number of nearest neighbors to consider for RNS calculation
@@ -126,13 +126,12 @@ class RandomNeighborScoreCallback(Callback):
         """
         super().__init__()
 
-        if biological_dataset_name not in self.SUPPORTED_DATASETS:
+        if dataset_name not in self.SUPPORTED_DATASETS:
             raise ValueError(
-                f"Dataset '{biological_dataset_name}' not supported. "
-                f"Choose from: {list(self.SUPPORTED_DATASETS.keys())}"
+                f"Dataset '{dataset_name}' not supported. Choose from: {list(self.SUPPORTED_DATASETS.keys())}"
             )
 
-        self.biological_dataset_name = biological_dataset_name
+        self.dataset_name = dataset_name
         self.k = k
         self.distance_metric = distance_metric
         self.run_every_n_epochs = run_every_n_epochs
@@ -184,18 +183,18 @@ class RandomNeighborScoreCallback(Callback):
 
     def _get_sequence_key_for_dataset(self) -> str:
         """Get the appropriate sequence key/column name for each dataset."""
-        dataset_class = self.SUPPORTED_DATASETS[self.biological_dataset_name]
+        dataset_class = self.SUPPORTED_DATASETS[self.dataset_name]
         return dataset_class.SEQUENCE_KEY
 
     def _get_modality_for_dataset(self) -> str:
         """Determine the appropriate modality based on the dataset type."""
-        dataset_class = self.SUPPORTED_DATASETS[self.biological_dataset_name]
+        dataset_class = self.SUPPORTED_DATASETS[self.dataset_name]
         return dataset_class.MODALITY
 
     def _create_dataloaders(self):
         """Create biological and random dataloaders."""
         # Create biological dataset
-        dataset_class = self.SUPPORTED_DATASETS[self.biological_dataset_name]
+        dataset_class = self.SUPPORTED_DATASETS[self.dataset_name]
         sequence_key = self._get_sequence_key_for_dataset()
 
         # Create dataset with only the sequence column using the dataset's SEQUENCE_KEY
@@ -321,7 +320,7 @@ class RandomNeighborScoreCallback(Callback):
         --------
         >>> from lobster.model import Ume
         >>> model = Ume(model_name="UME_mini")
-        >>> callback = RandomNeighborScoreCallback(biological_dataset_name="AMPLIFY")
+        >>> callback = RandomNeighborScoreCallback(dataset_name="AMPLIFY")
         >>> metrics = callback.evaluate(model)
         >>> print(f"RNS: {metrics['random_neighbor_score']:.4f}")
         """
