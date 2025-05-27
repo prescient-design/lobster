@@ -52,15 +52,16 @@ class DummyLightningDataModule(L.LightningDataModule):
     def __init__(self, num_samples=32, seq_len=128):
         super().__init__()
         self.dataset = DummyDataset(num_samples, seq_len)
+        self.num_workers = 0
 
     def setup(self, stage: str | None = None):
         pass
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=32, num_workers=4)
+        return DataLoader(self.dataset, batch_size=32, num_workers=self.num_workers)
 
     def val_dataloader(self):
-        return DataLoader(self.dataset, batch_size=32, num_workers=4)
+        return DataLoader(self.dataset, batch_size=32, num_workers=self.num_workers)
 
 
 @pytest.fixture
