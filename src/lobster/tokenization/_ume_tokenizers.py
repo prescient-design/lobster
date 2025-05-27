@@ -48,6 +48,7 @@ To create the tokenizers, run
 import importlib.resources
 import warnings
 from pathlib import Path
+from typing import Literal
 
 from tokenizers import Regex
 from tokenizers.models import BPE, WordLevel
@@ -504,8 +505,8 @@ class UmeTokenizerTransform(Module):
 
     Parameters
     ----------
-    modality : ModalityType or str
-        Single modality. Examples: "amino_acid", "smiles", "nucleotide", "coordinates_3d"
+    modality : ModalityType or Literal["amino_acid", "smiles", "nucleotide", "coordinates_3d"]
+        Modality to tokenize.
     max_length : int or None
         Maximum sequence length. If None, no padding/truncation.
     return_modality : bool, optional
@@ -518,7 +519,7 @@ class UmeTokenizerTransform(Module):
 
     def __init__(
         self,
-        modality: ModalityType | str,
+        modality: ModalityType | Literal["amino_acid", "smiles", "nucleotide", "coordinates_3d"],
         max_length: int | None,
         return_modality: bool = False,
         add_special_tokens: bool = True,
