@@ -1,5 +1,6 @@
 import random
-from typing import Any, Callable, Iterable, Optional, Sequence, Tuple, TypeVar, Union
+from collections.abc import Callable, Iterable, Sequence
+from typing import Any, TypeVar
 
 import torch
 from lightning import LightningDataModule
@@ -19,18 +20,18 @@ class DyAbDataFrameLightningDataModule(LightningDataModule):
         self,
         data: DataFrame = None,
         *,
-        remove_nulls: Optional[bool] = False,
-        transform_fn: Optional[Callable] = None,
-        target_transform_fn: Optional[Callable] = None,
-        joint_transform_fn: Optional[Callable] = None,
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
-        generator: Optional[Generator] = None,
+        remove_nulls: bool | None = False,
+        transform_fn: Callable | None = None,
+        target_transform_fn: Callable | None = None,
+        joint_transform_fn: Callable | None = None,
+        lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
+        generator: Generator | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
-        sampler: Optional[Union[Iterable, Sampler]] = None,
-        batch_sampler: Optional[Union[Iterable[Sequence], Sampler[Sequence]]] = None,
-        collate_fn: Optional[Callable[[list[T]], Any]] = None,
+        sampler: Iterable | Sampler | None = None,
+        batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
+        collate_fn: Callable[[list[T]], Any] | None = None,
         num_workers: int = 0,
         pin_memory: bool = True,
         drop_last: bool = False,
@@ -195,15 +196,15 @@ class DyAbDataFrameDatasetInMemory(DataFrameDatasetInMemory):
     def __init__(
         self,
         data: DataFrame,
-        columns: Optional[Sequence[str]] = None,
-        target_columns: Optional[Sequence[str]] = None,
+        columns: Sequence[str] | None = None,
+        target_columns: Sequence[str] | None = None,
     ):
         super().__init__(data, columns=columns, target_columns=target_columns)
         self._data = data
         self._columns = columns if columns is not None else None
         self._target_columns = target_columns if target_columns is not None else None
 
-    def __getitem__(self, index: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def __getitem__(self, index: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         item1 = self._data.iloc[index]
         item2 = self._data.sample(n=1).iloc[0]
 

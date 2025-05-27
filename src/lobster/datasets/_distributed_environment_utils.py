@@ -1,10 +1,9 @@
 import os
-from typing import Tuple
 
 import torch
 
 
-def detect_distributed_environment() -> Tuple[bool, int, int]:
+def detect_distributed_environment() -> tuple[bool, int, int]:
     """
     Detect if running in a distributed environment and return rank and world size.
 

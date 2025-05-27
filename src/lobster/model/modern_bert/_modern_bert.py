@@ -116,6 +116,15 @@ class FlexBERT(pl.LightningModule):
         config_args = FLEXBERT_CONFIG_ARGS[model_name]
         model_kwargs = model_kwargs or {}
 
+        # If flash-attn is not available but use_fa2 is True, warn and set to False
+        if model_kwargs.get("use_fa2", True) and not _FLASH_ATTN_AVAILABLE:
+            import warnings
+            warnings.warn(
+                "flash_attn not available but use_fa2=True. Setting use_fa2=False. "
+                "This will use standard attention instead of flash-attn."
+            )
+            model_kwargs["use_fa2"] = False
+
         self.config = FlexBertConfig(
             **config_args,
             vocab_size=vocab_size,
@@ -128,7 +137,6 @@ class FlexBERT(pl.LightningModule):
             FlexBertPredictionHead(self.config), nn.Linear(self.config.hidden_size, self.config.vocab_size)
         )
 
-        # assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
         self.loss_fn = CrossEntropyLoss()
         self.save_hyperparameters(logger=False)
 

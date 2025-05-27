@@ -1,5 +1,6 @@
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, ClassVar, Literal, Optional, Sequence, Tuple, Union
+from typing import ClassVar, Literal
 
 import pandas as pd
 from datasets import load_dataset
@@ -22,10 +23,10 @@ class CalmDataset(Dataset):
 
     def __init__(
         self,
-        root: Union[str, Path],
+        root: str | Path,
         *,
-        transform: Optional[Union[Callable, Transform]] = None,
-        columns: Optional[Sequence[str]] = None,
+        transform: Callable | Transform | None = None,
+        columns: Sequence[str] | None = None,
         split: Literal["train_full", "train", "validation", "test", "heldout"] = "train",
     ):
         """
@@ -80,7 +81,7 @@ class CalmDataset(Dataset):
 
         self._x = list(self.data[self.columns].apply(tuple, axis=1))
 
-    def __getitem__(self, index: int) -> Union[Tuple[str, ...], str]:
+    def __getitem__(self, index: int) -> tuple[str, ...] | str:
         """
         Get a sample from the dataset.
 
@@ -136,15 +137,15 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
 
     def __init__(
         self,
-        root: Union[str, Path],
+        root: str | Path,
         *,
-        transform: Optional[Union[Callable, Transform]] = None,
-        keys: Optional[Sequence[str]] = None,
+        transform: Callable | Transform | None = None,
+        keys: Sequence[str] | None = None,
         split: Literal["train_full", "train", "validation", "test", "heldout"] = "train",
         download: bool = False,
         shuffle: bool = False,
         shuffle_buffer_size: int = 1000,
-        limit: Optional[int] = None,
+        limit: int | None = None,
     ):
         """
         Initialize the CalmIterableDataset.

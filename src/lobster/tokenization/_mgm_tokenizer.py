@@ -2,7 +2,6 @@
 
 import importlib.resources
 import os
-from typing import List, Optional, Union
 
 from transformers.tokenization_utils import PreTrainedTokenizer, Trie
 from transformers.tokenization_utils_base import AddedToken
@@ -94,7 +93,7 @@ class MgmTokenizer(PreTrainedTokenizer):
                 trie.add(token)
         self.tokens_trie = trie
 
-    def _tokenize(self, text: str) -> List[str]:
+    def _tokenize(self, text: str) -> list[str]:
         return text.split()
 
     def get_vocab_size(self, with_added_tokens=False):
@@ -120,8 +119,8 @@ class MgmTokenizer(PreTrainedTokenizer):
     """
 
     def build_inputs_with_special_tokens(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
+        self, token_ids_0: list[int], token_ids_1: list[int] | None = None
+    ) -> list[int]:
         cls = [self.cls_token_id]
         sep = [self.sep_token_id]
         eos = [self.eos_token_id]
@@ -137,10 +136,10 @@ class MgmTokenizer(PreTrainedTokenizer):
 
     def get_special_tokens_mask(
         self,
-        token_ids_0: List[int],
-        token_ids_1: Optional[List[int]] = None,
+        token_ids_0: list[int],
+        token_ids_1: list[int] | None = None,
         already_has_special_tokens: bool = False,
-    ) -> List[int]:
+    ) -> list[int]:
         if already_has_special_tokens:
             return super().get_special_tokens_mask(
                 token_ids_0=token_ids_0,
@@ -168,7 +167,7 @@ class MgmTokenizer(PreTrainedTokenizer):
 
     def _add_tokens(
         self,
-        new_tokens: Union[List[str], List[AddedToken]],
+        new_tokens: list[str] | list[AddedToken],
         special_tokens: bool = False,
     ) -> int:
         return super()._add_tokens(new_tokens, special_tokens=True)

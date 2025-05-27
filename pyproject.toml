@@ -82,6 +82,7 @@ line-length = 120
 exclude = [
   "scripts",
   "notebooks",
+  "src/lobster/extern/openfold_utils",
   "src/lobster/model/openfold_utils",
   "src/lobster/model/modern_bert"
 ]
@@ -102,6 +103,7 @@ ignore = [
     "B905",  # requires python >= 3.10
     "B007",  # unused-loop-control-variable
     "E741",  # ambiguous-variable-name
+    "E902",  # file not found error
 ]
 
 [tool.ruff.lint.per-file-ignores]

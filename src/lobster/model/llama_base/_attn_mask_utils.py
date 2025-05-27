@@ -1,16 +1,15 @@
 # Adapted from https://huggingface.co/McGill-NLP/LLM2Vec-Sheared-LLaMA-mntp/blob/main/attn_mask_utils.py
-from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 
 
 def _prepare_4d_attention_mask_for_sdpa(
-    attention_mask: Optional[torch.Tensor],
-    input_shape: Union[torch.Size, Tuple, List],
+    attention_mask: torch.Tensor | None,
+    input_shape: torch.Size | tuple | list,
     inputs_embeds: torch.Tensor,
     past_key_values_length: int,
-    sliding_window: Optional[int] = None,
+    sliding_window: int | None = None,
 ):
     attn_mask_converter = AttentionMaskConverter(is_causal=False, sliding_window=sliding_window)
 
@@ -74,11 +73,11 @@ def _prepare_4d_attention_mask_for_sdpa(
 
 
 def _prepare_4d_attention_mask(
-    attention_mask: Optional[torch.Tensor],
-    input_shape: Union[torch.Size, Tuple, List],
+    attention_mask: torch.Tensor | None,
+    input_shape: torch.Size | tuple | list,
     inputs_embeds: torch.Tensor,
     past_key_values_length: int,
-    sliding_window: Optional[int] = None,
+    sliding_window: int | None = None,
 ):
     attn_mask_converter = AttentionMaskConverter(is_causal=False, sliding_window=sliding_window)
 
@@ -105,11 +104,11 @@ def _prepare_4d_attention_mask(
 
 
 def _prepare_4d_causal_attention_mask(
-    attention_mask: Optional[torch.Tensor],
-    input_shape: Union[torch.Size, Tuple, List],
+    attention_mask: torch.Tensor | None,
+    input_shape: torch.Size | tuple | list,
     inputs_embeds: torch.Tensor,
     past_key_values_length: int,
-    sliding_window: Optional[int] = None,
+    sliding_window: int | None = None,
 ):
     attn_mask_converter = AttentionMaskConverter(is_causal=False, sliding_window=sliding_window)
 
@@ -136,11 +135,11 @@ def _prepare_4d_causal_attention_mask(
 
 
 def _prepare_4d_causal_attention_mask_for_sdpa(
-    attention_mask: Optional[torch.Tensor],
-    input_shape: Union[torch.Size, Tuple, List],
+    attention_mask: torch.Tensor | None,
+    input_shape: torch.Size | tuple | list,
     inputs_embeds: torch.Tensor,
     past_key_values_length: int,
-    sliding_window: Optional[int] = None,
+    sliding_window: int | None = None,
 ):
     """
     Prepares the correct `attn_mask` argument to be used by `torch.nn.functional.scaled_dot_product_attention`.

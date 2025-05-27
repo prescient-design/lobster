@@ -58,6 +58,9 @@ class Ume(L.LightningModule):
         Additional keyword arguments to pass to the FlexBERT model.
     scheduler_kwargs : dict | None, default=None
         Additional keyword arguments to pass to the learning rate scheduler.
+    use_flash_attn : bool, default=True
+        Whether to use flash-attn for attention computation. If False, will use standard attention.
+        This is useful for CPU-only operation where flash-attn is not available.
     ckpt_path : str | None, default=None
         Path to a checkpoint file to load. Unused.
 
@@ -115,6 +118,7 @@ class Ume(L.LightningModule):
         num_warmup_steps: int | None = 1_000,
         model_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
+        use_flash_attn: bool = True,
         ckpt_path: str | None = None,
     ) -> None:
         """Initialize the Universal Molecular Encoder"""
@@ -130,6 +134,12 @@ class Ume(L.LightningModule):
 
         # Get any tokenizer to get the special tokens
         tokenizer = list(self.tokenizer_transforms.values())[0].tokenizer
+
+        # Prepare model kwargs with flash-attn setting
+        model_kwargs = model_kwargs or {}
+        model_kwargs["use_fa2"] = use_flash_attn
+        if not use_flash_attn:
+            model_kwargs["padding"] = "padded"
 
         # Instantiate the model
         self.model = FlexBERT(
@@ -326,22 +336,34 @@ class Ume(L.LightningModule):
 
         x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
 
-        # Make sure the input_ids are of shape (batch_size, 1, seq_len) which is expected downstream
-        if x["input_ids"].ndim == 2:
-            x["input_ids"] = x["input_ids"].unsqueeze(1).contiguous()
-
-        if x["attention_mask"].ndim == 2:
-            x["attention_mask"] = x["attention_mask"].unsqueeze(1).contiguous()
+        # Ensure input_ids and attention_mask are 3D (batch_size, 1, length)
+        for key in ["input_ids", "attention_mask"]:
+            if x[key].dim() == 2:
+                x[key] = x[key].unsqueeze(1)
 
         if self.frozen:
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
         else:
             # Copied from tokens_to_latents to remove the inference_mode decorator, allow training
-            input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(x["input_ids"], x["attention_mask"])
-            embeddings = self.model.model(
-                input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
-            )
+            if getattr(self.model.config, "padding", "unpadded") == "padded":
+                # For padded attention, just pass as (batch, seqlen)
+                input_ids = (
+                    x["input_ids"].squeeze(1)
+                    if x["input_ids"].dim() == 3 and x["input_ids"].shape[1] == 1
+                    else x["input_ids"]
+                )
+                attention_mask = (
+                    x["attention_mask"].squeeze(1)
+                    if x["attention_mask"].dim() == 3 and x["attention_mask"].shape[1] == 1
+                    else x["attention_mask"]
+                )
+                embeddings = self.model.model(input_ids, attention_mask=attention_mask, max_seqlen=self.max_length)
+            else:
+                input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(x["input_ids"], x["attention_mask"])
+                embeddings = self.model.model(
+                    input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
+                )
 
         # Reshape to (batch_size, seq_len, hidden_size)
         batch_size = x["input_ids"].size(0)

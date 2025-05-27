@@ -1,4 +1,3 @@
-import typing as T
 import warnings
 from pathlib import Path
 
@@ -15,7 +14,7 @@ from lobster.extern.openfold_utils import (
     protein_from_pdb_string,
 )
 
-PathLike = T.Union[Path, str]
+PathLike = Path | str
 
 
 def trim_or_pad(tensor: torch.Tensor, pad_to: int, pad_idx: int = 0):
@@ -36,7 +35,7 @@ def trim_or_pad(tensor: torch.Tensor, pad_to: int, pad_idx: int = 0):
 
 
 class StructureFeaturizer:
-    def _openfold_features_from_pdb(self, pdb_str: str, pdb_id: T.Optional[str] = None) -> OFProtein:
+    def _openfold_features_from_pdb(self, pdb_str: str, pdb_id: str | None = None) -> OFProtein:
         """
         Create rigid groups from a PDB file on disk.
 
@@ -63,7 +62,7 @@ class StructureFeaturizer:
 
         return protein_features
 
-    def _process_structure_features(self, features: T.Dict[str, np.ndarray], seq_len: T.Optional[int] = None):
+    def _process_structure_features(self, features: dict[str, np.ndarray], seq_len: int | None = None):
         """Process feature dtypes and pad to max length for a single sequence."""
         features_requiring_padding = [
             "aatype",
@@ -105,7 +104,7 @@ class StructureFeaturizer:
         features["aatype"] = features["aatype"].argmax(dim=-1)
         return features
 
-    def __call__(self, pdb_str: str, seq_len: int, pdb_id: T.Optional[str] = None):
+    def __call__(self, pdb_str: str, seq_len: int, pdb_id: str | None = None):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             features = self._openfold_features_from_pdb(pdb_str, pdb_id)
