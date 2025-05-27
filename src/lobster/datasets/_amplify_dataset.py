@@ -2,6 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar, Literal
 
+from lobster.constants import Modality
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from lobster.transforms import Transform
 
@@ -60,12 +61,15 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
     """
 
     SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "test"]
+    MODALITY: ClassVar[Modality] = Modality.AMINO_ACID
+    SEQUENCE_KEY: ClassVar[str] = "sequence"
 
     def __init__(
         self,
         root: str | Path | None = None,
         *,
         transform: Callable | Transform | None = None,
+        keys: list[str] | None = None,
         download: bool = False,
         shuffle: bool = False,
         split: str = "train",
@@ -84,6 +88,8 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
         transform : Callable or Transform or None, optional
             Optional transform to be applied on a sample, such as tokenization
             or tensor conversion.
+        keys : list of str or None, optional
+            List of keys to be used from the dataset. If None, uses SEQUENCE_KEY.
         download : bool, optional
             If True, downloads the full dataset before streaming. If False,
             streams the dataset on-the-fly (more memory efficient). Default is False.
@@ -107,7 +113,7 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
             dataset_name="chandar-lab/UR100P",
             root=root,
             transform=transform,
-            keys=["sequence"],
+            keys=keys or [self.SEQUENCE_KEY],
             split=split,
             shuffle=shuffle,
             data_dir=data_dir,

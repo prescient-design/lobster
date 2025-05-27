@@ -36,8 +36,8 @@ class RandomNeighborScoreCallback(Callback):
 
     Reference
     ---------
-    Prabakaran R, Bromberg Y. “Quantifying uncertainty in Protein Representations
-    Across Models and Task.” bioRxiv (2025) doi:10.1101/2025.04.30.651545
+    Prabakaran R, Bromberg Y. "Quantifying uncertainty in Protein Representations
+    Across Models and Task." bioRxiv (2025) doi:10.1101/2025.04.30.651545
 
     Examples
     --------
@@ -184,26 +184,13 @@ class RandomNeighborScoreCallback(Callback):
 
     def _get_sequence_key_for_dataset(self) -> str:
         """Get the appropriate sequence key/column name for each dataset."""
-        sequence_key_map = {
-            "AMPLIFY": "sequence",
-            "Calm": "sequence",
-            "M320M": "smiles",
-            "ZINC": "smiles",
-            "OpenGenome2": "text",
-        }
-        return sequence_key_map[self.biological_dataset_name]
+        dataset_class = self.SUPPORTED_DATASETS[self.biological_dataset_name]
+        return dataset_class.SEQUENCE_KEY
 
     def _get_modality_for_dataset(self) -> str:
         """Determine the appropriate modality based on the dataset type."""
-        # Map dataset names to modalities
-        modality_map = {
-            "AMPLIFY": "amino_acid",
-            "Calm": "nucleotide",
-            "M320M": "SMILES",
-            "ZINC": "SMILES",
-            "OpenGenome2": "nucleotide",
-        }
-        return modality_map[self.biological_dataset_name]
+        dataset_class = self.SUPPORTED_DATASETS[self.biological_dataset_name]
+        return dataset_class.MODALITY
 
     def _create_dataloaders(self):
         """Create biological and random dataloaders."""
@@ -211,26 +198,15 @@ class RandomNeighborScoreCallback(Callback):
         dataset_class = self.SUPPORTED_DATASETS[self.biological_dataset_name]
         sequence_key = self._get_sequence_key_for_dataset()
 
-        # Create dataset with only the sequence column
-        if self.biological_dataset_name in ["AMPLIFY", "OpenGenome2"]:
-            # These datasets already use single keys by default
-            biological_dataset = dataset_class(
-                root=self.root,
-                download=True,
-                shuffle=False,
-                limit=self.biological_dataset_limit,
-                split=self.split,
-            )
-        else:
-            # For datasets that support multiple keys, specify only the sequence key
-            biological_dataset = dataset_class(
-                root=self.root,
-                download=True,
-                shuffle=False,
-                limit=self.biological_dataset_limit,
-                split=self.split,
-                keys=[sequence_key],
-            )
+        # Create dataset with only the sequence column using the dataset's SEQUENCE_KEY
+        biological_dataset = dataset_class(
+            root=self.root,
+            download=True,
+            shuffle=False,
+            limit=self.biological_dataset_limit,
+            split=self.split,
+            keys=[sequence_key],
+        )
 
         # Extract vocabulary from biological dataset
         vocab = self._extract_vocabulary_from_dataset(biological_dataset)

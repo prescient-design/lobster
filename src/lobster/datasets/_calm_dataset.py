@@ -6,6 +6,7 @@ import pandas as pd
 from datasets import load_dataset
 from torch.utils.data import Dataset
 
+from lobster.constants import Modality
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from lobster.transforms import Transform
 
@@ -134,6 +135,8 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
     """
 
     SUPPORTED_SPLITS: ClassVar[list[str]] = ["train_full", "train", "validation", "test", "heldout"]
+    MODALITY: ClassVar[Modality] = Modality.NUCLEOTIDE
+    SEQUENCE_KEY: ClassVar[str] = "sequence"
 
     def __init__(
         self,
@@ -182,7 +185,7 @@ class CalmIterableDataset(HuggingFaceIterableDataset):
             dataset_name="taylor-joren/calm",
             root=root,
             transform=transform,
-            keys=keys or ["sequence", "description"],
+            keys=keys or [self.SEQUENCE_KEY],
             split="train",
             shuffle=shuffle,
             download=download,

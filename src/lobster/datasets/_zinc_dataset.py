@@ -2,6 +2,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
+from lobster.constants import Modality
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from lobster.transforms import Transform
 
@@ -37,6 +38,8 @@ class ZINCIterableDataset(HuggingFaceIterableDataset):
     """
 
     SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "validation", "test"]
+    MODALITY: ClassVar[Modality] = Modality.SMILES
+    SEQUENCE_KEY: ClassVar[str] = "smiles"
 
     def __init__(
         self,
@@ -80,7 +83,7 @@ class ZINCIterableDataset(HuggingFaceIterableDataset):
             dataset_name="haydn-jones/ZINC20",
             root=root,
             transform=transform,
-            keys=keys or ["smiles"],
+            keys=keys or [self.SEQUENCE_KEY],
             split=split,
             download=download,
             shuffle=shuffle,

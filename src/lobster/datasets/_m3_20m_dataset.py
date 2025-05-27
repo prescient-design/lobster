@@ -7,6 +7,7 @@ import pooch
 from beignet.transforms import Transform
 from torch.utils.data import Dataset
 
+from lobster.constants import Modality
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 
 
@@ -32,6 +33,8 @@ class M320MIterableDataset(HuggingFaceIterableDataset):
     """
 
     SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "validation", "test"]
+    MODALITY: ClassVar[Modality] = Modality.SMILES
+    SEQUENCE_KEY: ClassVar[str] = "smiles"
 
     def __init__(
         self,
@@ -67,7 +70,7 @@ class M320MIterableDataset(HuggingFaceIterableDataset):
             dataset_name="karina-zadorozhny/M320M",
             root=root,
             transform=transform,
-            keys=keys or ["smiles", "Description"],
+            keys=keys or [self.SEQUENCE_KEY],
             split=split,
             download=download,
             shuffle=shuffle,
