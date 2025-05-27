@@ -209,7 +209,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Models that accept sequence inputs directly (like ESM)
         if not self.requires_tokenization:
             # Check if inputs are already tokenized (BatchEncoding or dict with input_ids)
-            if isinstance(inputs, dict | BatchEncoding) and "input_ids" in inputs:
+            if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:  # noqa: UP038
                 # Extract the original sequences if possible and available
                 if hasattr(inputs, "original_sequence"):
                     # Use the original sequence if available
@@ -234,7 +234,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Models that require tokenized inputs (traditional approach)
         else:
             # Check if inputs are already tokenized (either dict or BatchEncoding)
-            if isinstance(inputs, dict | BatchEncoding) and "input_ids" in inputs:
+            if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:  # noqa: UP038
                 tokenized_inputs = inputs
             else:
                 # Tokenize the inputs
