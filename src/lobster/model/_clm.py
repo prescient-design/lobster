@@ -1,5 +1,6 @@
 import importlib.resources
-from typing import Callable, Literal, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Literal
 
 import lightning.pytorch as pl
 import torch
@@ -22,8 +23,8 @@ class LobsterPCLM(pl.LightningModule):
         eps: float = 1e-12,
         num_training_steps: int = 10_000,
         num_warmup_steps: int = 1000,
-        transform_fn: Union[Callable, Transform, None] = None,
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        transform_fn: Callable | Transform | None = None,
+        tokenizer_dir: str | None = "pmlm_tokenizer",
         ckpt_path: str = None,
         max_length: int = 512,
         num_key_value_heads: int = None,
@@ -252,7 +253,7 @@ class LobsterPCLM(pl.LightningModule):
 
         return -1 * torch.where(mask, loss_per_tok, torch.zeros_like(loss_per_tok)).sum(axis=1) / mask.sum(axis=1)
 
-    def get_nll_and_logits(self, sequence: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_nll_and_logits(self, sequence: str) -> tuple[torch.Tensor, torch.Tensor]:
         input_ids = torch.tensor(self.tokenizer(sequence)["input_ids"], device=self.device).unsqueeze(0)
         with torch.inference_mode():
             outputs = self.model(input_ids, labels=input_ids)

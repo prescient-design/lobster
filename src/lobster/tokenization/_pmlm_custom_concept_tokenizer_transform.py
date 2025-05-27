@@ -1,6 +1,6 @@
 import importlib.resources
 import re
-from typing import Any, Dict, List, Union
+from typing import Any
 
 import torch
 from transformers.tokenization_utils_base import (
@@ -27,7 +27,7 @@ def extract_unirefswissport_fields(input_string):
 def build_lookup_table(file_path, concept_name=""):
     lookup_table = {}
     concept_names = []
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(file_path, encoding="utf-8") as file:
         for line_number, line in enumerate(file, start=1):
             # Strip line breaks and leading/trailing whitespace
             stripped_line = line.strip()
@@ -58,7 +58,7 @@ class UnirefDescriptorTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         tokenized = {}
@@ -97,19 +97,19 @@ class UnirefDescriptorTransform(Transform):
         )
         return tokenized
 
-    def _reverse_text(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
+    def _reverse_text(self, text: str | list[str]) -> str | list[str]:
         if isinstance(text, str):
             return text[::-1]
         elif isinstance(text, list):
             return [t[::-1] for t in text]
 
-    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
         return self.transform(input, parameters)
 
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
-    def _check_inputs(self, inputs: List[Any]) -> None:
+    def _check_inputs(self, inputs: list[Any]) -> None:
         pass
 
 
@@ -174,7 +174,7 @@ class UnirefSwissPortDescriptorTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         concepts_value = extract_unirefswissport_fields(text)
@@ -194,19 +194,19 @@ class UnirefSwissPortDescriptorTransform(Transform):
 
         return tokenized
 
-    def _reverse_text(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
+    def _reverse_text(self, text: str | list[str]) -> str | list[str]:
         if isinstance(text, str):
             return text[::-1]
         elif isinstance(text, list):
             return [t[::-1] for t in text]
 
-    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
         return self.transform(input, parameters)
 
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
-    def _check_inputs(self, inputs: List[Any]) -> None:
+    def _check_inputs(self, inputs: list[Any]) -> None:
         pass
 
     def _return_unk(self, tokenized):

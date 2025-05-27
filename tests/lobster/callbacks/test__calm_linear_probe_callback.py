@@ -3,9 +3,10 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 import torch
+from torch.utils.data import Dataset
+
 from lobster.callbacks import CalmLinearProbeCallback
 from lobster.constants._calm_tasks import CALM_TASKS
-from torch.utils.data import Dataset
 
 # Add a constant for the max_length parameter used in tests
 MAX_LENGTH = 1024

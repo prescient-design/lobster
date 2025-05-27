@@ -1,5 +1,4 @@
 import random
-from typing import Optional
 
 import lightning.pytorch as pl
 import torch
@@ -15,8 +14,8 @@ from lobster.model._esm import ESMBase
 class ContactPredictionHead(pl.LightningModule):
     def __init__(
         self,
-        model_name: Optional[str] = None,
-        checkpoint: Optional[str] = None,
+        model_name: str | None = None,
+        checkpoint: str | None = None,
         beta1: float = 0.9,
         beta2: float = 0.98,
         eps: float = 1e-12,

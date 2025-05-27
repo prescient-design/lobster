@@ -1,8 +1,9 @@
 import pytest
 import torch
-from lobster.metrics import RandomNeighborScore
 from torch import Tensor
 from torch.testing import assert_close
+
+from lobster.metrics import RandomNeighborScore
 
 
 class TestRandomNeighborScore:
