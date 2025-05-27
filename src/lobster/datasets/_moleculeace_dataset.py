@@ -1,5 +1,5 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Tuple
 
 import pandas
 import pooch
@@ -73,7 +73,7 @@ class MoleculeACEDataset(Dataset):
         else:
             self.data = data[data["split"] == "test"]
 
-    def __getitem__(self, index: int) -> Tuple[str | Tensor, Tensor]:
+    def __getitem__(self, index: int) -> tuple[str | Tensor, Tensor]:
         item = self.data.iloc[index]
 
         x = item[self.column]

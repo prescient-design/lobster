@@ -19,7 +19,7 @@ class TestUmeLightningDataModule:
     def test__init__(self, dm):
         assert dm._batch_size == 8
         assert dm._tokenizer_max_length == 512
-        assert isinstance(dm._root, (str, Path))
+        assert isinstance(dm._root, str | Path)
 
     def test_train_dataloader(self, dm):
         dm.setup()

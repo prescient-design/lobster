@@ -1,5 +1,6 @@
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Literal, Optional, Sequence, Tuple
+from typing import Literal
 
 import pandas as pd
 import pooch
@@ -67,12 +68,12 @@ class CalmPropertyDataset(Dataset):
         task: CALMTask | str,
         root: str | Path | None = None,
         *,
-        species: Optional[CALMSpecies | str] = None,
-        split: Optional[Literal["train", "validation", "test"]] = None,
+        species: CALMSpecies | str | None = None,
+        split: Literal["train", "validation", "test"] | None = None,
         download: bool = True,
-        transform_fn: Optional[Callable | Transform] = None,
-        target_transform_fn: Optional[Callable | Transform] = None,
-        columns: Optional[Sequence[str]] = None,
+        transform_fn: Callable | Transform | None = None,
+        target_transform_fn: Callable | Transform | None = None,
+        columns: Sequence[str] | None = None,
         force_download: bool = False,
     ):
         super().__init__()
@@ -104,7 +105,7 @@ class CalmPropertyDataset(Dataset):
 
         self._set_columns(columns)
 
-    def _configure_paths(self) -> Tuple[str, Path]:
+    def _configure_paths(self) -> tuple[str, Path]:
         """Configure file paths based on task and species.
 
         Returns
@@ -222,7 +223,7 @@ class CalmPropertyDataset(Dataset):
 
         self.columns = columns
 
-    def __getitem__(self, index: int) -> Tuple[str | Tensor, Tensor]:
+    def __getitem__(self, index: int) -> tuple[str | Tensor, Tensor]:
         item = self.data.iloc[index]
 
         x = item[self.columns[0]]  # First column is always the input sequence/data

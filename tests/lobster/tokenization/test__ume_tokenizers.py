@@ -1,5 +1,6 @@
 import pytest
 import torch
+
 from lobster.constants import Modality
 from lobster.tokenization._ume_tokenizers import (
     UmeAminoAcidTokenizerFast,

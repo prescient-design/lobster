@@ -1,5 +1,6 @@
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Callable, ClassVar, List, Sequence, Tuple, Union
+from typing import Any, ClassVar
 
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from lobster.transforms import Transform
@@ -35,19 +36,19 @@ class ZINCIterableDataset(HuggingFaceIterableDataset):
     ```
     """
 
-    SUPPORTED_SPLITS: ClassVar[List[str]] = ["train", "validation", "test"]
+    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "validation", "test"]
 
     def __init__(
         self,
-        root: Union[str, Path, None] = None,
+        root: str | Path | None = None,
         *,
-        transform: Union[Callable, Transform, None] = None,
-        keys: Union[Sequence[str], None] = None,
+        transform: Callable | Transform | None = None,
+        keys: Sequence[str] | None = None,
         split: str = "train",
         download: bool = False,
         shuffle: bool = True,
         shuffle_buffer_size: int = 1000,
-        limit: Union[int, None] = None,
+        limit: int | None = None,
     ):
         """
         Initialize the ZINC20 dataset.
@@ -87,7 +88,7 @@ class ZINCIterableDataset(HuggingFaceIterableDataset):
             limit=limit,
         )
 
-    def _passes_type_check(self, sample: Tuple[Any, ...]) -> bool:
+    def _passes_type_check(self, sample: tuple[Any, ...]) -> bool:
         """
         Check if sample passes type check.
 

@@ -1,5 +1,5 @@
 import importlib
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import Bio.PDB.Polypeptide as Poly
 import torch
@@ -49,7 +49,7 @@ class Atom3DPPIToSequenceAndContactMap(Transform):
         self,
         feat: DataFrame,
         target: DataFrame,
-    ) -> Tuple[Tuple[Optional[str], Optional[str]], Optional[torch.Tensor]]:
+    ) -> tuple[tuple[str | None, str | None], torch.Tensor | None]:
         """
         Return list of tuples of (id, sequence) for different chains of monomers in a given dataframe
         Adapted from atom3d.protein.sequence
@@ -104,8 +104,8 @@ class PairedSequenceToTokens(Transform):
 
     def transform(
         self,
-        inpt: Optional[Tuple[str, str]],
-    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+        inpt: tuple[str, str] | None,
+    ) -> tuple[torch.Tensor, torch.Tensor] | None:
         """
         Return a tuple of tokens representing sequenceA and sequenceB
         """
@@ -146,7 +146,7 @@ class Atom3DPPIToSequence(Transform):
     def transform(
         self,
         inpt: DataFrame,
-    ) -> Dict:
+    ) -> dict:
         """
         Return a tuple of sequences for different chains of monomers in a given dataframe
         Adapted from atom3d.protein.sequence

@@ -1,6 +1,6 @@
 """Adapted from https://github.com/huggingface/transformers/tree/v4.23.1/src/transformers/models"""
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import torch
 import torch.utils.checkpoint
@@ -125,7 +125,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         )
 
     @staticmethod
-    def _af2_to_esm_from_vocab_list(vocab_list: List[str]) -> torch.Tensor:
+    def _af2_to_esm_from_vocab_list(vocab_list: list[str]) -> torch.Tensor:
         # Remember that t is shifted from residue_constants by 1 (0 is padding).
         esm_reorder = [vocab_list.index("<pad>")] + [vocab_list.index(v) for v in residue_constants.restypes_with_x]
         return torch.tensor(esm_reorder)
@@ -133,11 +133,11 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
     def forward(
         self,
         input_ids: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        masking_pattern: Optional[torch.Tensor] = None,
-        num_recycles: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        masking_pattern: torch.Tensor | None = None,
+        num_recycles: int | None = None,
+    ) -> dict[str, Any]:
         r"""
         Returns:
         -------
@@ -298,7 +298,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
     @torch.no_grad()
     def infer(
         self,
-        seqs: Union[str, List[str]],
+        seqs: str | list[str],
         position_ids=None,
     ):
         if isinstance(seqs, str):
@@ -336,7 +336,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         )
 
     @staticmethod
-    def output_to_pdb(output: Dict) -> List[str]:
+    def output_to_pdb(output: dict) -> list[str]:
         """Returns the pbd (file) string from the model given the model output."""
         output = {k: v.to("cpu").numpy() for k, v in output.items()}
         pdbs = []
@@ -363,7 +363,7 @@ class PPLMFoldBase(PPLMFoldBasePreTrainedModel):
         output = self.infer(seqs, *args, **kwargs)
         return self.output_to_pdb(output)[0]
 
-    def infer_pdbs(self, seqs: List[str], *args, **kwargs) -> List[str]:
+    def infer_pdbs(self, seqs: list[str], *args, **kwargs) -> list[str]:
         """Returns the pdb (file) string from the model given an input sequence."""
         output = self.infer(seqs, *args, **kwargs)
         return self.output_to_pdb(output)

@@ -1,5 +1,4 @@
 from dataclasses import asdict, dataclass
-from typing import Optional
 
 from transformers.configuration_utils import PretrainedConfig
 
@@ -185,7 +184,7 @@ class TrunkConfig:
     layer_drop: float = 0
     cpu_grad_checkpoint: bool = False
     max_recycles: int = 4
-    chunk_size: Optional[int] = 128
+    chunk_size: int | None = 128
     structure_module: "StructureModuleConfig" = None
 
     def __post_init__(self):

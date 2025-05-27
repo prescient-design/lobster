@@ -1,8 +1,9 @@
 import importlib.resources
 import json
 import os
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Callable, Iterable, Literal, Optional, Union
+from typing import Literal
 
 import lightning.pytorch as pl
 import pandas as pd
@@ -30,11 +31,11 @@ class LobsterCBMPMLM(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         freeze: bool = False,
         mask_percentage: float = 0.15,
-        initial_mask_percentage: Optional[float] = None,
-        transform_fn: Union[Callable, None] = None,
-        config: Union[PretrainedConfig, None] = None,
+        initial_mask_percentage: float | None = None,
+        transform_fn: Callable | None = None,
+        config: PretrainedConfig | None = None,
         ckpt_path: str = None,
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        tokenizer_dir: str | None = "pmlm_tokenizer",
         max_length: int = 512,
         max_num_concepts: int = 2000,
         position_embedding_type: Literal["rotary", "absolute"] = "rotary",
@@ -45,7 +46,7 @@ class LobsterCBMPMLM(pl.LightningModule):
         noise_mean: float = 0.0,
         noise_std_min: float = 0.0,
         noise_std_max: float = 0.0,
-        descriptors_transform: Union[str, list[str]] = None,
+        descriptors_transform: str | list[str] = None,
     ):
         """
         Prescient Protein Masked Language Model.
@@ -98,7 +99,7 @@ class LobsterCBMPMLM(pl.LightningModule):
             if not concepts_path.exists():
                 concepts_path = hf_hub_download(model_name, "concepts.json")
 
-            with open(concepts_path, "r") as f:
+            with open(concepts_path) as f:
                 concepts = json.load(f)
 
             self.tokenizer = PmlmTokenizer.from_pretrained(model_name, do_lower_case=False)
@@ -318,7 +319,7 @@ class LobsterCBMPMLM(pl.LightningModule):
         sequence: str,
         batch_size: int = 32,
         return_probs: bool = False,
-    ) -> tuple[float, Optional[tuple[torch.Tensor, torch.Tensor]]]:
+    ) -> tuple[float, tuple[torch.Tensor, torch.Tensor] | None]:
         N = len(sequence)
 
         ref_seq = " ".join(sequence)
@@ -517,7 +518,7 @@ class LobsterCBMPMLM(pl.LightningModule):
     def num_trainable_parameters(self):
         return sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], *args, **kwargs):
+    def save_pretrained(self, save_directory: str | os.PathLike, *args, **kwargs):
         self.model.save_pretrained(save_directory, *args, **kwargs)
         self.tokenizer.save_pretrained(save_directory, *args, **kwargs)
 
