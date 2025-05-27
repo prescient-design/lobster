@@ -1,4 +1,3 @@
-import random
 from pathlib import Path
 from typing import Literal
 
@@ -6,7 +5,7 @@ import lightning as L
 import torch
 from lightning.pytorch.callbacks import Callback
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from ..datasets import (
@@ -14,54 +13,10 @@ from ..datasets import (
     CalmIterableDataset,
     M320MIterableDataset,
     OpenGenome2IterableDataset,
+    RandomSequenceDataset,
     ZINCIterableDataset,
 )
 from ..metrics._random_neighbor_score import RandomNeighborScore
-
-
-class RandomSequenceDataset(Dataset):
-    """Dataset that generates random sequences from a vocabulary."""
-
-    def __init__(
-        self,
-        vocab: set[str],
-        num_sequences: int,
-        min_length: int = 50,
-        max_length: int = 500,
-        seed: int = 42,
-    ):
-        """
-        Parameters
-        ----------
-        vocab : set[str]
-            Set of characters/tokens to use for generating random sequences
-        num_sequences : int
-            Number of random sequences to generate
-        min_length : int
-            Minimum length of generated sequences
-        max_length : int
-            Maximum length of generated sequences
-        seed : int
-            Random seed for reproducibility
-        """
-        self.vocab = list(vocab)
-        self.num_sequences = num_sequences
-        self.min_length = min_length
-        self.max_length = max_length
-
-        # Generate all sequences at initialization for consistency
-        random.seed(seed)
-        self.sequences = []
-        for _ in range(num_sequences):
-            length = random.randint(min_length, max_length)
-            sequence = "".join(random.choices(self.vocab, k=length))
-            self.sequences.append(sequence)
-
-    def __len__(self) -> int:
-        return len(self.sequences)
-
-    def __getitem__(self, idx: int) -> str:
-        return self.sequences[idx]
 
 
 class RandomNeighborScoreCallback(Callback):
@@ -75,9 +30,39 @@ class RandomNeighborScoreCallback(Callback):
     This version supports pre-loaded dataset options for biological embeddings
     and automatically generates random sequences from the extracted vocabulary.
 
-    Assumes the underlying model is Ume as it accesses
-    `module.model.tokens_to_latents` to extract embeddings. To use with other
+    The model must implement an `embed_sequences` method that takes sequences
+    and a modality parameter and returns embeddings. To use with other
     models, you may need to override `_get_embeddings`.
+
+    Examples
+    --------
+    Basic usage with a trainer:
+
+    >>> from lobster.callbacks import RandomNeighborScoreCallback
+    >>> from lobster.model import Ume
+    >>>
+    >>> # Initialize callback
+    >>> callback = RandomNeighborScoreCallback(
+    ...     biological_dataset_name="AMPLIFY",
+    ...     k=100,
+    ...     biological_dataset_limit=500,
+    ...     seed=42,
+    ...     split="test"
+    ... )
+    >>>
+    >>> # Use with trainer
+    >>> trainer = L.Trainer(callbacks=[callback])
+    >>> trainer.fit(model, datamodule)
+
+    Standalone evaluation:
+
+    >>> # Load your model
+    >>> model = Ume(model_name="UME_mini", use_flash_attn=False)
+    >>>
+    >>> # Evaluate
+    >>> metrics = callback.evaluate(model, trainer=None)
+    >>> rns_score = metrics["random_neighbor_score"]
+    >>> print(f"Random Neighbor Score: {rns_score:.4f}")
     """
 
     SUPPORTED_DATASETS = {
@@ -249,10 +234,15 @@ class RandomNeighborScoreCallback(Callback):
     def _get_embeddings(self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader) -> Tensor:
         """Extract embeddings from the model for a given dataloader.
 
+        The model must implement an `embed_sequences` method that accepts:
+        - sequences: list of sequence strings
+        - modality: string indicating the sequence type
+        - aggregate: boolean for aggregation (set to True)
+
         Parameters
         ----------
-        model : Union[L.LightningModule, torch.nn.Module]
-            The model to extract embeddings from
+        model : L.LightningModule | torch.nn.Module
+            The model to extract embeddings from. Must have `embed_sequences` method.
         dataloader : DataLoader
             DataLoader for the data to extract embeddings for
 
@@ -260,6 +250,11 @@ class RandomNeighborScoreCallback(Callback):
         -------
         Tensor
             Embeddings tensor of shape (n_samples, embedding_dim)
+
+        Raises
+        ------
+        NotImplementedError
+            If the model does not have an `embed_sequences` method
         """
         embeddings = []
 
@@ -310,14 +305,22 @@ class RandomNeighborScoreCallback(Callback):
         Parameters
         ----------
         module : L.LightningModule
-            The model to evaluate
-        trainer : Optional[L.Trainer]
+            The model to evaluate. Must implement `embed_sequences` method.
+        trainer : L.Trainer | None
             Optional trainer for logging metrics
 
         Returns
         -------
-        Dict[str, float]
+        dict[str, float]
             Dictionary containing the RNS score
+
+        Examples
+        --------
+        >>> from lobster.model import Ume
+        >>> model = Ume(model_name="UME_mini")
+        >>> callback = RandomNeighborScoreCallback(biological_dataset_name="AMPLIFY")
+        >>> metrics = callback.evaluate(model)
+        >>> print(f"RNS: {metrics['random_neighbor_score']:.4f}")
         """
         # Initialize dataloaders if not already done
         if self.biological_dataloader is None or self.random_dataloader is None:
