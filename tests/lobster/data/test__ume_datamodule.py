@@ -2,11 +2,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from torch import Tensor
+from torch.utils.data import DataLoader
+
 from lobster.constants import Modality
 from lobster.data import UmeLightningDataModule
 from lobster.datasets import AMPLIFYIterableDataset
-from torch import Tensor
-from torch.utils.data import DataLoader
 
 
 @pytest.fixture
