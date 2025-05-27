@@ -66,8 +66,8 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
 
     def __init__(
         self,
-        root: str | Path | None = None,
         *,
+        root: str | Path | None = None,
         transform: Callable | Transform | None = None,
         keys: list[str] | None = None,
         download: bool = False,
