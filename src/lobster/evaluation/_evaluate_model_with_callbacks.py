@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 def _generate_evaluation_report(
     results: dict[str, Any],
-    issues: list[str],
     output_dir: str | Path,
     metadata: dict[str, Any] | None = None,
 ) -> Path:
@@ -26,8 +25,6 @@ def _generate_evaluation_report(
     results : dict[str, Any]
         Dictionary of callback name -> evaluation results, which can be metrics dictionary
         or paths to generated files
-    issues : list[str]
-        List of issues encountered during evaluation
     output_dir : str | Path
         Directory to save the report
     metadata : dict[str, Any] | None
@@ -62,13 +59,6 @@ def _generate_evaluation_report(
         else:
             # For all other types, just dump the raw results
             markdown_report += f"```\n{callback_results}\n```\n\n"
-
-    # Add section for issues if any
-    if issues:
-        markdown_report += "## Issues Encountered\n\n"
-        for issue in issues:
-            markdown_report += f"- {issue}\n"
-        markdown_report += "\n"
 
     report_path = output_dir / "evaluation_report.md"
 
@@ -112,7 +102,6 @@ def evaluate_model_with_callbacks(
     logger.info(f"Created output directory: {output_dir}")
 
     results = {}
-    issues = []
 
     for callback in callbacks:
         try:
@@ -144,11 +133,10 @@ def evaluate_model_with_callbacks(
 
         except Exception as e:
             logger.exception(f"Error in {callback_name}: {e}")
-            issues.append(f"{callback_name}: {str(e)}")
 
     # Generate markdown report
     logger.info("Generating evaluation report")
-    report_path = _generate_evaluation_report(results, issues, output_dir, metadata)
+    report_path = _generate_evaluation_report(results, output_dir, metadata)
 
     logger.info(f"Evaluation complete, report saved to {report_path}")
 
