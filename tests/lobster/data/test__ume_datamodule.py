@@ -1,6 +1,8 @@
+import unittest.mock
 from pathlib import Path
 
 import pytest
+from datasets import Dataset
 from torch import Tensor
 from torch.utils.data import DataLoader
 
@@ -21,7 +23,20 @@ class TestUmeLightningDataModule:
         assert dm._tokenizer_max_length == 512
         assert isinstance(dm._root, str | Path)
 
-    def test_train_dataloader(self, dm):
+    @unittest.mock.patch("lobster.datasets._huggingface_iterable_dataset.load_dataset")
+    def test_train_dataloader(self, mock_load_dataset, dm):
+        # Create enough mock data for a batch
+        mock_data = []
+        for i in range(20):  # Create 20 samples to ensure we have enough for a batch
+            mock_data.append(
+                {
+                    "sequence": f"MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG{i}",
+                    "name": f"test_protein_{i}",
+                }
+            )
+
+        mock_load_dataset.return_value = Dataset.from_list(mock_data)
+
         dm.setup()
 
         dataloader = dm.train_dataloader()
@@ -34,7 +49,20 @@ class TestUmeLightningDataModule:
         assert isinstance(batch["modality"], list)
         assert isinstance(batch["modality"][0], Modality)
 
-    def test_train_dataloader_multiplex(self, tmp_path):
+    @unittest.mock.patch("lobster.datasets._huggingface_iterable_dataset.load_dataset")
+    def test_train_dataloader_multiplex(self, mock_load_dataset, tmp_path):
+        # Create enough mock data for a batch
+        mock_data = []
+        for i in range(20):  # Create 20 samples to ensure we have enough for a batch
+            mock_data.append(
+                {
+                    "sequence": f"MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG{i}",
+                    "name": f"test_protein_{i}",
+                }
+            )
+
+        mock_load_dataset.return_value = Dataset.from_list(mock_data)
+
         dm = UmeLightningDataModule(
             root=tmp_path,
             datasets=["AMPLIFY", "Calm"],
