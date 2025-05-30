@@ -3,6 +3,7 @@ import os
 import argparse
 from pathlib import Path
 
+
 import numpy as np
 import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -15,6 +16,8 @@ from torch.nn.functional import cross_entropy
 
 from lobster.datasets import FASTADataset 
 
+
+torch.set_float32_matmul_precision('high')
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -161,7 +164,7 @@ def main(rank, args, world_size):
     )
 
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.batch_size, sampler=sampler
+        dataset, batch_size=args.batch_size, sampler=sampler, shuffle=False
     )
     
     # Create model
@@ -200,7 +203,7 @@ def main(rank, args, world_size):
                 results_tmp_list = []
             
             else:
-                print(f"Processed {cur_num_in_shard} sequences in shard {cur_shard_num}")
+                print(f"Rank {rank} processed {cur_num_in_shard} sequences in shard {cur_shard_num}")
     
     if world_size > 1:
         cleanup()
@@ -218,10 +221,4 @@ if __name__ == "__main__":
     else:
         print(f"Using {world_size} GPUs for DDP.")
         rank = int(os.environ["LOCAL_RANK"])
-
-        try:
-            mp.spawn(main, (args, world_size), world_size, join=True)
-        except Exception as e:
-            print(f"Error in process {rank}: {e}")
-        finally:
-            cleanup()
+        mp.spawn(main, (args, world_size), world_size, join=True)
