@@ -313,3 +313,50 @@ class TestUme:
             embeddings_no_flash_agg = ume_no_flash.embed_sequences(sequences, modality, aggregate=True)
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
+
+    def test_save_load_checkpoint(self, tmp_path):
+        """Test saving and loading a UME mini model checkpoint using torch.save/torch.load."""
+        import torch
+
+        # Initialize a UME mini model
+        ume = Ume(
+            model_name="UME_mini",
+            max_length=10,
+            use_flash_attn=False,
+        )
+
+        # Save the model state_dict to a temporary directory
+        checkpoint_path = tmp_path / "test_checkpoint.pt"
+        torch.save(ume.state_dict(), checkpoint_path)
+
+        # Load the model state_dict into a new model
+        loaded_ume = Ume(
+            model_name="UME_mini",
+            max_length=10,
+            use_flash_attn=False,
+        )
+        loaded_ume.load_state_dict(torch.load(checkpoint_path))
+        assert loaded_ume.use_flash_attn is False
+
+        # Test inference with different modalities
+        test_sequences = {
+            "SMILES": ["CC(=O)OC1=CC=CC=C1C(=O)O"],
+            "amino_acid": ["MKTVRQERLKSIVRILERSKEPVSGAQL"],
+            "nucleotide": ["ATGCATGC"],
+            "3d_coordinates": [["aa", "bb", "cc", "dd"]],
+        }
+
+        # Test embedding for each modality
+        for modality, sequences in test_sequences.items():
+            # Test without aggregation
+            embeddings = loaded_ume.embed_sequences(sequences, modality, aggregate=False)
+            assert isinstance(embeddings, torch.Tensor)
+            assert embeddings.dim() == 3  # [batch_size, seq_length, hidden_size]
+            assert embeddings.shape[0] == len(sequences)
+            assert embeddings.shape[1] <= loaded_ume.max_length
+
+            # Test with aggregation
+            embeddings = loaded_ume.embed_sequences(sequences, modality, aggregate=True)
+            assert isinstance(embeddings, torch.Tensor)
+            assert embeddings.dim() == 2  # [batch_size, hidden_size]
+            assert embeddings.shape[0] == len(sequences)

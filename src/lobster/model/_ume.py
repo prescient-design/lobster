@@ -167,6 +167,7 @@ class Ume(L.LightningModule):
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
+        self.use_flash_attn = use_flash_attn
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -631,3 +632,36 @@ class Ume(L.LightningModule):
         self.log("val_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
+
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: str,
+        use_flash_attn: bool = True,
+        **kwargs,
+    ) -> "Ume":
+        """Load a model from a checkpoint.
+
+        Parameters
+        ----------
+        checkpoint_path : str
+            Path to the checkpoint file.
+        use_flash_attn : bool, default=True
+            Whether to use flash-attn for attention computation.
+        **kwargs
+            Additional keyword arguments to pass to the model initialization.
+
+        Returns
+        -------
+        Ume
+            The loaded model.
+        """
+        model = super().load_from_checkpoint(checkpoint_path, **kwargs)
+
+        # Reinitialize tokenizer transforms
+        model.tokenizer_transforms = {
+            modality: UmeTokenizerTransform(modality, max_length=model.hparams.max_length, return_modality=True)
+            for modality in Modality
+        }
+
+        return model
