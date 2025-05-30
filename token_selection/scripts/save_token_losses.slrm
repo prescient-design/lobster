@@ -2,7 +2,7 @@
 
 #SBATCH --job-name token_loss
 #SBATCH --nodes 1 
-#SBATCH --gpus-per-node 2 
+#SBATCH --gpus-per-node 1 
 #SBATCH --partition gpu2
 #SBATCH --cpus-per-gpu 4 
 #SBATCH --mem 150G
@@ -34,7 +34,7 @@ echo $CONDA_PREFIX
 which python
 
 # see save_token_losses.py for the default parser arguments
-srun torchrun prhot/scripts/save_token_losses.py \
+srun torchrun token_selection/scripts/save_token_losses.py \
     --fasta_file  /data/bucket/freyn6/data/uniref50.fasta \
     --output_dir /data2/lux70/data/uniref50/per_token_losses \
-    --max_num_per_shard 1000
+    --max_num_per_shard 10000

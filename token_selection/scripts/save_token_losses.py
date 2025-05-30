@@ -189,14 +189,13 @@ def main(rank, args, world_size):
     for batch in dataloader:
         with torch.no_grad():
             outputs = compute_loss(batch, ddp_model, tokenizer, args.max_length, device)
-            print(len(outputs))
             results_tmp_list.extend(outputs)
             cur_num_in_shard += len(outputs)
 
             if cur_num_in_shard >= args.max_num_per_shard:
+                print(f"Saving shard {cur_shard_num} to {output_file}...")
                 output_file = output_dir / f"rank_{rank:02}_shard_{cur_shard_num:06}.parquet"
                 pd.DataFrame(results_tmp_list).to_parquet(output_file, engine='pyarrow', index=False)
-                print(f"Saved shard {cur_shard_num} to {output_file}")
 
                 cur_shard_num += 1
                 cur_num_in_shard = 0
@@ -205,9 +204,6 @@ def main(rank, args, world_size):
             else:
                 print(f"Rank {rank} processed {cur_num_in_shard} sequences in shard {cur_shard_num}")
     
-    if world_size > 1:
-        cleanup()
-
 
 if __name__ == "__main__":
     args = get_args()
@@ -222,3 +218,7 @@ if __name__ == "__main__":
         print(f"Using {world_size} GPUs for DDP.")
         rank = int(os.environ["LOCAL_RANK"])
         mp.spawn(main, (args, world_size), world_size, join=True)
+    
+    if world_size > 1:
+        cleanup()
+
