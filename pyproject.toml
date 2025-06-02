@@ -22,7 +22,7 @@ dependencies = [
     "wandb",
     "hydra-core",
     "torchdata",
-    "datasets",
+    "datasets>2",
     "tokenizers",
     "transformers>=4.24.0",
     "scikit-learn",
