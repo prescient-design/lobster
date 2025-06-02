@@ -127,7 +127,7 @@ beignet = { git = "https://github.com/Genentech/beignet" }
 [[tool.uv.dependency-metadata]]
 name = "flash-attn"
 version = "2.7.4"
-requires-dist = ["torch", "einops"]
+requires-dist = ["torch", "einops", "setuptools"]
 
 [dependency-groups]
 dev = [
