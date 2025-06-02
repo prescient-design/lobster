@@ -335,7 +335,7 @@ class Ume(L.LightningModule):
         if not all(k in inputs for k in {"input_ids", "attention_mask"}):
             raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
 
-        x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
+        x = {k: v for k, v in inputs.items() if isinstance(v, Tensor)}
 
         # Ensure input_ids and attention_mask are 3D (batch_size, 1, length)
         for key in ["input_ids", "attention_mask"]:
