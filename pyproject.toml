@@ -8,7 +8,6 @@ requires-python = ">=3.11, <3.13"
 dependencies = [
     "pooch",
     "torch",
-    "flash-attn; sys_platform == 'linux'",
     "tqdm",
     "lightning",
     "torchmetrics",
@@ -23,7 +22,7 @@ dependencies = [
     "wandb",
     "hydra-core",
     "torchdata",
-    "datasets",
+    "datasets>2",
     "tokenizers",
     "transformers>=4.24.0",
     "scikit-learn",
@@ -61,6 +60,9 @@ lobster_eval = "lobster.cmdline:evaluate"
 mgm = [
     "rdkit>=2024.9.4",
     "selfies>=2.1.2",
+]
+flash = [
+    "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
 ]
 
 [tool.setuptools.packages.find]
@@ -116,15 +118,16 @@ ignore = [
 
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
-constraint-dependencies = ["torch==2.5.1", "flash-attn==2.7.4.post1"]
-
+no-build-isolation-package = ["flash-attn"]
+constraint-dependencies = ["torch==2.6.0"] # flash-attn wheels available
 
 [tool.uv.sources]
-flash_attn = [
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.11'"},
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.12'"},
-]
 beignet = { git = "https://github.com/Genentech/beignet" }
+
+[[tool.uv.dependency-metadata]]
+name = "flash-attn"
+version = "2.7.4"
+requires-dist = ["torch", "einops"]
 
 [dependency-groups]
 dev = [

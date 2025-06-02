@@ -81,12 +81,18 @@ uv pip install -e .
 
 Alternatively, run installation directly with `uv sync`:
 ```bash
-uv sync --all-extras --all-groups       
+uv sync
 ```
 and then prefix every command with `uv run`. For example,
 
 ```bash
 uv run lobster_train data.path_to_fasta="test_data/query.fasta" 
+```
+
+### flash attention
+To make use of [flash attention](https://github.com/Dao-AILab/flash-attention) install with the `flash` extra
+```bash
+uv sync --extra flash
 ```
 
 ### Using `mamba`
