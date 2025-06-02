@@ -35,7 +35,7 @@ jobs:
         with:
           version: latest
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --all-extras --dev
+      - run: uv sync --dev
       - run: uv run pytest
       - env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
