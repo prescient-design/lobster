@@ -64,6 +64,9 @@ mgm = [
 flash = [
     "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
 ]
+mcp = [
+    "mcp[cli]"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -119,7 +122,10 @@ ignore = [
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 no-build-isolation-package = ["flash-attn"]
-constraint-dependencies = ["torch==2.6.0"] # flash-attn wheels available
+constraint-dependencies = [
+    "torch>=2.0.0; extra != 'flash'",
+    "torch==2.6.0; extra == 'flash'"
+] # flash-attn wheels available
 
 [tool.uv.sources]
 beignet = { git = "https://github.com/Genentech/beignet" }
