@@ -50,9 +50,8 @@ class Ume(L.LightningModule):
         Temperature for the contrastive loss.
     contrastive_memory_constrained : bool, default=True
         Whether to use memory-efficient contrastive loss computation that avoids creating
-        the full similarity matrix. Reduces memory usage from O(batch_size^2) to O(batch_size).
-        Note that this version is much slower and should only be used if the standard version
-        gives unresolvable CUDA OOM errors.
+        the full similarity matrix. Note that this version is much slower and should only
+        be used if the standard version gives CUDA OOM errors.
     scheduler : str, default="constant_with_warmup"
         Type of learning rate scheduler to use.
     num_training_steps : int | None, default=None
@@ -536,8 +535,7 @@ class Ume(L.LightningModule):
         """Compute InfoNCE loss in a truly memory-efficient way without storing the full similarity matrix.
 
         Instead of creating a (batch_size, batch_size) similarity matrix all at once, this method
-        processes each sample individually, computing similarities one row at a time. This reduces
-        memory usage from O(batch_size^2) to O(batch_size).
+        processes each sample individually.
 
         Benefits: Reduces peak memory usage
         Downsides: Slower due to loop, less GPU parallelization than full matrix operations
@@ -560,12 +558,12 @@ class Ume(L.LightningModule):
         total_log_prob_b = 0.0
 
         for i in range(batch_size):
-            # Direction A -> B: compute similarities for sample i in embeddings_a against all embeddings_b
+            # Similarities for sample i in embeddings_a against all embeddings_b
             similarities_ab = torch.mv(embeddings_b, embeddings_a[i]) / self.contrastive_temperature  # (batch_size,)
             log_probs_ab = nn.functional.log_softmax(similarities_ab, dim=0)
             total_log_prob_a += log_probs_ab[i]  # Positive pair is at index i
 
-            # Direction B -> A: compute similarities for sample i in embeddings_b against all embeddings_a
+            # Similarities for sample i in embeddings_b against all embeddings_a
             similarities_ba = torch.mv(embeddings_a, embeddings_b[i]) / self.contrastive_temperature  # (batch_size,)
             log_probs_ba = nn.functional.log_softmax(similarities_ba, dim=0)
             total_log_prob_b += log_probs_ba[i]  # Positive pair is at index i
