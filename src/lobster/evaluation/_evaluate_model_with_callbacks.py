@@ -13,18 +13,14 @@ from upath import UPath
 logger = logging.getLogger(__name__)
 
 
-def _generate_evaluation_report(
-    results: dict[str, Any],
+def _write_initial_evaluation_report(
     output_dir: str | Path,
     metadata: dict[str, Any] | None = None,
 ) -> Path:
-    """Generate a markdown report from evaluation results.
+    """Initialize a markdown report with header and metadata.
 
     Parameters
     ----------
-    results : dict[str, Any]
-        Dictionary of callback name -> evaluation results, which can be metrics dictionary
-        or paths to generated files
     output_dir : str | Path
         Directory to save the report
     metadata : dict[str, Any] | None
@@ -33,7 +29,7 @@ def _generate_evaluation_report(
     Returns
     -------
     Path
-        Path to the generated report
+        Path to the initialized report
     """
     markdown_report = "# Model Evaluation Report\n\n"
     markdown_report += f"Evaluation date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
@@ -47,27 +43,48 @@ def _generate_evaluation_report(
             markdown_report += f"{key}: {value}\n"
         markdown_report += "```\n\n"
 
-    # Add section for each callback's results
+    # Add section header for evaluation results
     markdown_report += "## Evaluation Results\n\n"
-
-    for callback_name, callback_results in results.items():
-        markdown_report += f"### {callback_name}\n\n"
-
-        # If result is a path, assume it's an image and include it in the markdown
-        if isinstance(callback_results, str | Path | UPath) and Path(callback_results).exists():
-            markdown_report += f"![{callback_name} Visualization]({callback_results})\n\n"
-        else:
-            # For all other types, just dump the raw results
-            markdown_report += f"```\n{callback_results}\n```\n\n"
 
     report_path = output_dir / "evaluation_report.md"
 
-    logger.info(f"Writing evaluation report to {report_path}")
+    logger.info(f"Initializing evaluation report at {report_path}")
 
     with open(report_path, "w") as f:
         f.write(markdown_report)
 
     return report_path
+
+
+def _append_callback_results(
+    report_path: Path,
+    callback_name: str,
+    callback_results: Any,
+) -> None:
+    """Append callback results to the existing markdown report.
+
+    Parameters
+    ----------
+    report_path : Path
+        Path to the existing report file
+    callback_name : str
+        Name of the callback
+    callback_results : Any
+        Results from the callback evaluation
+    """
+    result_section = f"### {callback_name}\n\n"
+
+    # If result is a path, assume it's an image and include it in the markdown
+    if isinstance(callback_results, str | Path | UPath) and Path(callback_results).exists():
+        result_section += f"![{callback_name} Visualization]({callback_results})\n\n"
+    else:
+        # For all other types, just dump the raw results
+        result_section += f"```\n{callback_results}\n```\n\n"
+
+    logger.info(f"Appending {callback_name} results to evaluation report")
+
+    with open(report_path, "a") as f:
+        f.write(result_section)
 
 
 def evaluate_model_with_callbacks(
@@ -101,7 +118,8 @@ def evaluate_model_with_callbacks(
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Created output directory: {output_dir}")
 
-    results = {}
+    # Initialize the report with metadata
+    report_path = _write_initial_evaluation_report(output_dir, metadata)
 
     for callback in callbacks:
         try:
@@ -129,14 +147,11 @@ def evaluate_model_with_callbacks(
             logger.info(f"Successfully evaluated with {callback_name}")
             logger.info(f"Callback results: {callback_results}")
 
-            results[callback_name] = callback_results
+            # Append results to the report immediately
+            _append_callback_results(report_path, callback_name, callback_results)
 
         except Exception as e:
             logger.exception(f"Error in {callback_name}: {e}")
-
-    # Generate markdown report
-    logger.info("Generating evaluation report")
-    report_path = _generate_evaluation_report(results, output_dir, metadata)
 
     logger.info(f"Evaluation complete, report saved to {report_path}")
 
