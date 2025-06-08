@@ -323,3 +323,45 @@ class TestUme:
             embeddings_no_flash_agg = ume_no_flash.embed_sequences(sequences, modality, aggregate=True)
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
+
+    def test_contrastive_loss_equivalence(self):
+        """Test that standard and memory-efficient InfoNCE implementations produce identical losses."""
+        ume_standard = Ume(
+            model_name="UME_mini",
+            max_length=16,
+            contrastive_memory_constrained=False,  # Standard implementation
+            contrastive_loss_weight=1.0,
+            use_flash_attn=False,
+        )
+
+        ume_memory_constrained = Ume(
+            model_name="UME_mini",
+            max_length=16,
+            contrastive_memory_constrained=True,  # Memory-efficient implementation
+            contrastive_loss_weight=1.0,
+            use_flash_attn=False,
+        )
+
+        # Ensure both models have identical weights
+        ume_memory_constrained.load_state_dict(ume_standard.state_dict())
+
+        batch_size = 64
+        seq_length = 128
+
+        batch = {
+            "input_ids": torch.randint(10, 100, (batch_size, 2, seq_length)),
+            "attention_mask": torch.ones(batch_size, 2, seq_length),
+            "modality": [["SMILES", "amino_acid"] for _ in range(batch_size)],
+        }
+
+        with torch.no_grad():
+            loss_standard = ume_standard._delegate_step_by_batch_shape(batch, "val")
+            loss_memory_constrained = ume_memory_constrained._delegate_step_by_batch_shape(batch, "val")
+
+        torch.testing.assert_close(
+            loss_standard,
+            loss_memory_constrained,
+            rtol=1e-6,
+            atol=1e-6,
+            msg="Standard and memory-efficient InfoNCE implementations should produce identical losses",
+        )

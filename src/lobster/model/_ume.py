@@ -48,6 +48,11 @@ class Ume(L.LightningModule):
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
+    contrastive_memory_constrained : bool, default=True
+        Whether to use memory-efficient contrastive loss computation that avoids creating
+        the full similarity matrix. Reduces memory usage from O(batch_size^2) to O(batch_size).
+        Note that this version is much slower and should only be used if the standard version
+        gives unresolvable CUDA OOM errors.
     scheduler : str, default="constant_with_warmup"
         Type of learning rate scheduler to use.
     num_training_steps : int | None, default=None
@@ -102,6 +107,7 @@ class Ume(L.LightningModule):
         mask_percentage: float = 0.25,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
+        contrastive_memory_constrained: bool = True,
         scheduler: Literal[
             "linear",
             "cosine",
@@ -167,6 +173,7 @@ class Ume(L.LightningModule):
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
+        self.contrastive_memory_constrained = contrastive_memory_constrained
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -498,6 +505,77 @@ class Ume(L.LightningModule):
             },
         )
 
+    def _standard_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
+        """Compute InfoNCE loss using the standard approach with full similarity matrix.
+
+        Parameters
+        ----------
+        embeddings_a : Tensor
+            First set of normalized embeddings, shape (batch_size, hidden_size)
+        embeddings_b : Tensor
+            Second set of normalized embeddings, shape (batch_size, hidden_size)
+
+        Returns
+        -------
+        Tensor
+            InfoNCE loss
+        """
+        # Compute similarity matrix
+        similarities = embeddings_a @ embeddings_b.T / self.contrastive_temperature
+
+        # Create labels (diagonal should be positive)
+        labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
+
+        # InfoNCE loss in both directions
+        loss_a = nn.functional.cross_entropy(similarities, labels)
+        loss_b = nn.functional.cross_entropy(similarities.T, labels)
+
+        return (loss_a + loss_b) / 2
+
+    def _memory_constrained_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
+        """Compute InfoNCE loss in a truly memory-efficient way without storing the full similarity matrix.
+
+        Instead of creating a (batch_size, batch_size) similarity matrix all at once, this method
+        processes each sample individually, computing similarities one row at a time. This reduces
+        memory usage from O(batch_size^2) to O(batch_size).
+
+        Benefits: Reduces peak memory usage
+        Downsides: Slower due to loop, less GPU parallelization than full matrix operations
+
+        Parameters
+        ----------
+        embeddings_a : Tensor
+            First set of normalized embeddings, shape (batch_size, hidden_size)
+        embeddings_b : Tensor
+            Second set of normalized embeddings, shape (batch_size, hidden_size)
+
+        Returns
+        -------
+        Tensor
+            InfoNCE loss
+        """
+        batch_size = embeddings_a.shape[0]
+
+        total_log_prob_a = 0.0
+        total_log_prob_b = 0.0
+
+        for i in range(batch_size):
+            # Direction A -> B: compute similarities for sample i in embeddings_a against all embeddings_b
+            similarities_ab = torch.mv(embeddings_b, embeddings_a[i]) / self.contrastive_temperature  # (batch_size,)
+            log_probs_ab = nn.functional.log_softmax(similarities_ab, dim=0)
+            total_log_prob_a += log_probs_ab[i]  # Positive pair is at index i
+
+            # Direction B -> A: compute similarities for sample i in embeddings_b against all embeddings_a
+            similarities_ba = torch.mv(embeddings_a, embeddings_b[i]) / self.contrastive_temperature  # (batch_size,)
+            log_probs_ba = nn.functional.log_softmax(similarities_ba, dim=0)
+            total_log_prob_b += log_probs_ba[i]  # Positive pair is at index i
+
+        # InfoNCE loss, negative log-likelihood of positive pairs
+        loss_a = -total_log_prob_a / batch_size
+        loss_b = -total_log_prob_b / batch_size
+
+        return (loss_a + loss_b) / 2
+
     def _infonce_step(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -525,20 +603,16 @@ class Ume(L.LightningModule):
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
 
-        # Normalize embeddings
+        # Normalize embeddings once for both implementations
         embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
         embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
 
-        # Compute similarity matrix
-        similarity_matrix = embeddings_a @ embeddings_b.T / self.contrastive_temperature
+        # Choose implementation based on memory efficiency setting
+        if self.contrastive_memory_constrained:
+            loss = self._memory_constrained_infonce_loss(embeddings_a, embeddings_b)
+        else:
+            loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
 
-        # Get CE in both directions
-        labels = torch.arange(embeddings_a.shape[0], device=self.device)
-        loss_a = nn.CrossEntropyLoss()(similarity_matrix, labels)
-        loss_b = nn.CrossEntropyLoss()(similarity_matrix.T, labels)
-
-        # Return the average of both losses
-        loss = (loss_a + loss_b) / 2
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
@@ -586,7 +660,7 @@ class Ume(L.LightningModule):
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
-            # Do no specify on_step since Lightning will handle this automatically
+            # Do not specify on_step since Lightning will handle this automatically
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
 
         return loss
