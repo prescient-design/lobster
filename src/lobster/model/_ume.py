@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torchmetrics.text import Perplexity
+from transformers import get_scheduler
 
 from lobster.constants import Modality, ModalityType
 from lobster.tokenization import UmeTokenizerTransform
@@ -51,8 +52,14 @@ class Ume(L.LightningModule):
         - If contrastive_loss_weight is 0, only MLM is used (default)
         - If contrastive_loss_weight is 1, only InfoNCE is used
         - If 0 < contrastive_loss_weight < 1, both are used
+        Note: The learnable temperature parameter is only trained when both contrastive_loss_weight > 0
+        and learnable_temperature=True.
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
+    learnable_temperature : bool, default=False
+        Whether to use a learnable temperature for the contrastive loss.
+        If True, temperature will be learned during training (like CLIP's logit_scale).
+        If False, temperature will remain fixed at contrastive_temperature value.
     use_disco_clip : bool, default=False
         Whether to use DisCo-CLIP distributed contrastive loss for memory efficiency.
         Disco-CLIP enables gathering embeddings across all GPUs which results in
@@ -86,12 +93,6 @@ class Ume(L.LightningModule):
     frozen : bool
         Indicates whether model parameters are frozen.
 
-    References
-    ----------
-    DisCo-CLIP: A Distributed Contrastive Loss for Memory Efficient CLIP Training
-        Chen, Y., Qi, X., Wang, J., & Zhang, L. (2023).
-        In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR).
-        GitHub: https://github.com/IDEA-Research/DisCo-CLIP
 
     Examples
     --------
@@ -119,6 +120,7 @@ class Ume(L.LightningModule):
         mask_percentage: float = 0.25,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
+        learnable_temperature: bool = False,
         use_disco_clip: bool = False,
         scheduler: Literal[
             "linear",
@@ -185,10 +187,23 @@ class Ume(L.LightningModule):
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
         self.use_disco_clip = use_disco_clip
+        self.learnable_temperature = learnable_temperature
+        self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.scheduler = scheduler
+        self.num_training_steps = num_training_steps
+        self.num_warmup_steps = num_warmup_steps
+        self.scheduler_kwargs = scheduler_kwargs or {}
 
-        # Learnable temperature parameter (like CLIP's logit_scale)
-        # Initialize to log(1/temperature) so exp() gives the desired initial temperature
-        self.logit_scale = nn.Parameter(torch.ones([]) * torch.log(torch.tensor(1.0 / contrastive_temperature)))
+        # Initialize temperature parameter based on learnable_temperature flag
+        if learnable_temperature:
+            # Initialize to log(1/temperature) since we're using exp()
+            self.logit_scale = nn.Parameter(torch.ones([]) * torch.log(torch.tensor(1.0 / contrastive_temperature)))
+        else:
+            # Fixed temperature - store as a buffer not a parameter
+            self.register_buffer("logit_scale", torch.log(torch.tensor(1.0 / contrastive_temperature)))
 
         # Keep the original for backwards compatibility if needed
         self.contrastive_temperature = contrastive_temperature
@@ -460,7 +475,26 @@ class Ume(L.LightningModule):
         dict[str, object]
             Dictionary containing optimizer and learning rate scheduler.
         """
-        return self.model.configure_optimizers()
+        # Use all parameters from the Ume model, not just the FlexBERT sub-model
+        # This ensures learnable parameters like logit_scale are included
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=self.lr,
+            betas=(self.beta1, self.beta2),
+            eps=self.eps,
+        )
+
+        scheduler = get_scheduler(
+            self.scheduler,
+            optimizer,
+            num_training_steps=self.num_training_steps,
+            num_warmup_steps=self.num_warmup_steps,
+            scheduler_specific_kwargs=self.scheduler_kwargs,
+        )
+
+        scheduler_config = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler_config}
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs with different modalities and get logits and labels for training."""
@@ -635,9 +669,10 @@ class Ume(L.LightningModule):
 
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 
-        # Log the current learned temperature for monitoring
+        # Log the current temperature for monitoring (learnable or fixed)
         current_temperature = 1.0 / self.logit_scale.exp()
-        self.log(f"contrastive_{stage}_temperature", current_temperature, rank_zero_only=True, sync_dist=True)
+        temperature_log_name = "contrastive_temperature"
+        self.log(temperature_log_name, current_temperature, rank_zero_only=True, sync_dist=True)
 
         return loss
 

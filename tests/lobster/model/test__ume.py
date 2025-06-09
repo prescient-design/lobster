@@ -133,13 +133,45 @@ class TestUme:
     def test_configure_optimizers(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
-            mock_model.configure_optimizers.return_value = {"optimizer": "mock_optimizer"}
             mock_flex_bert.return_value = mock_model
 
-            ume = Ume()
-            result = ume.configure_optimizers()
-            assert result == {"optimizer": "mock_optimizer"}
-            mock_model.configure_optimizers.assert_called_once()
+            with patch("lobster.model._ume.get_scheduler") as mock_get_scheduler:
+                mock_get_scheduler.return_value = MagicMock()
+
+                ume = Ume(
+                    lr=1e-3,
+                    beta1=0.9,
+                    beta2=0.98,
+                    eps=1e-12,
+                    scheduler="constant_with_warmup",
+                    num_training_steps=1000,
+                    num_warmup_steps=100,
+                    learnable_temperature=True,  # This ensures we have at least the temperature parameter
+                )
+
+                # Mock some dummy parameters so the optimizer doesn't get an empty list
+                dummy_param = torch.nn.Parameter(torch.randn(10))
+                with patch.object(ume, "parameters", return_value=[dummy_param]):
+                    result = ume.configure_optimizers()
+
+                    # Check that result has the expected structure
+                    assert "optimizer" in result
+                    assert "lr_scheduler" in result
+                    assert isinstance(result["optimizer"], torch.optim.AdamW)
+
+                    # Verify optimizer parameters
+                    optimizer_params = list(result["optimizer"].param_groups[0]["params"])
+                    assert len(optimizer_params) == 1
+                    assert optimizer_params[0] is dummy_param
+
+                    # Verify scheduler was called with correct parameters
+                    mock_get_scheduler.assert_called_once_with(
+                        "constant_with_warmup",
+                        result["optimizer"],
+                        num_training_steps=1000,
+                        num_warmup_steps=100,
+                        scheduler_specific_kwargs={},
+                    )
 
     def test_train_mlm_step(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
