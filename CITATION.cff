@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "lobster"
+abstract: "Language models for Biological Sequence Transformation and Evolutionary Representation."
+authors:
+  - family-names: "Design"
+    given-names: "Prescient"
+    # TODO: Replace with actual author information
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+version: "0.1.0"  # TODO: Update with actual version
+date-released: "2025-06-09"  # TODO: Update with actual release date
+url: "https://github.com/prescient-design/lobster"
+repository-code: "https://github.com/prescient-design/lobster"
+keywords:
+  - "language models"
+  - "biological sequence transformation"
+  - "evolutionary representation"
+  - "sequence generation"
+  - "sequence editing"
+  - "sequence analysis"
+  - "sequence comparison"
+license: Apache-2.0
+preferred-citation:
+  type: software
+  title: "LBSTR: Language models for Biological Sequence Transformation and Evolutionary Representation"
+  authors:
+    - family-names: "Design"
+      given-names: "Prescient"
+  url: "https://github.com/prescient-design/lobster"
+  year: 2025
