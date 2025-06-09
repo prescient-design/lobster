@@ -120,7 +120,7 @@ class Ume(L.LightningModule):
         mask_percentage: float = 0.25,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
-        learnable_temperature: bool = False,
+        learnable_temperature: bool = False,  # TODO: remove this, it's only for compatibility
         use_disco_clip: bool = False,
         scheduler: Literal[
             "linear",

@@ -4,7 +4,13 @@ from ._linear_probe_callback import LinearProbeCallback
 from ._moleculeace_linear_probe_callback import MoleculeACELinearProbeCallback
 from ._peer_evaluation_callback import PEEREvaluationCallback
 from ._tokens_per_second_callback import TokensPerSecondCallback, default_batch_length_fn, default_batch_size_fn
-from ._umap_visualization_callback import UmapVisualizationCallback
+
+try:
+    from ._umap_visualization_callback import UmapVisualizationCallback
+
+    _umap_available = True
+except ImportError:
+    _umap_available = False
 
 __all__ = [
     "MoleculeACELinearProbeCallback",
@@ -15,5 +21,7 @@ __all__ = [
     "TokensPerSecondCallback",
     "default_batch_length_fn",
     "default_batch_size_fn",
-    "UmapVisualizationCallback",
 ]
+
+if _umap_available:
+    __all__.append("UmapVisualizationCallback")
