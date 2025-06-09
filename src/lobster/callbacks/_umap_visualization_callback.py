@@ -5,17 +5,11 @@ from typing import Any
 import lightning as L
 import numpy as np
 import torch
+import umap
 from lightning.pytorch.callbacks import Callback
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from upath import UPath
-
-try:
-    import umap
-
-    UMAP_INSTALLED = True
-except ImportError:
-    UMAP_INSTALLED = False
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +21,6 @@ class UmapVisualizationCallback(Callback):
     dimensionality reduction, colored by a specified grouping (e.g., dataset origin).
     It extracts embeddings from validation data and generates plots at specified
     intervals during training.
-
-    Note
-    ----
-    This callback requires the optional umap-learn dependency. Install it with:
-    pip install lbster[umap] or pip install umap-learn>=0.5.7
 
     Parameters
     ----------
@@ -56,9 +45,6 @@ class UmapVisualizationCallback(Callback):
 
     Examples
     --------
-    >>> # First, install the optional dependency:
-    >>> # pip install lbster[umap]
-    >>>
     >>> # Group by dataset
     >>> callback = UmapVisualizationCallback(
     ...     output_dir="my_eval",
@@ -80,13 +66,6 @@ class UmapVisualizationCallback(Callback):
         requires_tokenization: bool = True,
     ):
         super().__init__()
-
-        if not UMAP_INSTALLED:
-            raise ImportError(
-                "umap-learn is not installed. Please install it with: "
-                "pip install lbster[umap] or pip install umap-learn>=0.5.7"
-            )
-
         self.output_dir = UPath(output_dir)
         self.max_samples = max_samples
         self.run_every_n_epochs = run_every_n_epochs

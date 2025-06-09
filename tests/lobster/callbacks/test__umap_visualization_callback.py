@@ -1,16 +1,8 @@
 import os
 
-import pytest
-
-try:
-    from lobster.callbacks import UmapVisualizationCallback
-
-    UMAP_INSTALLED = True
-except ImportError:
-    UMAP_INSTALLED = False
+from lobster.callbacks import UmapVisualizationCallback
 
 
-@pytest.mark.skipif(not UMAP_INSTALLED, reason="umap-learn not installed")
 def test_umap_visualization_callback(tmp_path, dummy_model, dummy_datamodule):
     """Test that the UmapVisualizationCallback can generate visualizations without a trainer."""
     output_dir = tmp_path / "umap_test"
@@ -31,7 +23,6 @@ def test_umap_visualization_callback(tmp_path, dummy_model, dummy_datamodule):
     assert result_path.exists()
 
 
-@pytest.mark.skipif(not UMAP_INSTALLED, reason="umap-learn not installed")
 def test_umap_without_grouping(tmp_path, dummy_model, dummy_datamodule):
     """Test that the UmapVisualizationCallback works without grouping."""
     output_dir = tmp_path / "umap_test"
