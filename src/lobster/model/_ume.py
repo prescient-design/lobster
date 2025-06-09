@@ -166,12 +166,29 @@ class Ume(L.LightningModule):
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
+
+        # Learnable temperature parameter (like CLIP's logit_scale)
+        # Initialize to log(1/temperature) so exp() gives the desired initial temperature
+        self.logit_scale = nn.Parameter(torch.ones([]) * torch.log(torch.tensor(1.0 / contrastive_temperature)))
+
+        # Keep the original for backwards compatibility if needed
         self.contrastive_temperature = contrastive_temperature
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
             setattr(self, f"train_perplexity/{modality.value}", Perplexity(ignore_index=-100))
             setattr(self, f"val_perplexity/{modality.value}", Perplexity(ignore_index=-100))
+
+    @property
+    def current_temperature(self) -> float:
+        """Get the current value of the learned temperature parameter.
+
+        Returns
+        -------
+        float
+            Current temperature value (1 / logit_scale.exp())
+        """
+        return (1.0 / self.logit_scale.exp()).item()
 
     @property
     def modalities(self) -> list[str]:
@@ -498,6 +515,34 @@ class Ume(L.LightningModule):
             },
         )
 
+    def _standard_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
+        """Compute InfoNCE loss using the standard approach with full similarity matrix.
+
+        Parameters
+        ----------
+        embeddings_a : Tensor
+            First set of normalized embeddings, shape (batch_size, hidden_size)
+        embeddings_b : Tensor
+            Second set of normalized embeddings, shape (batch_size, hidden_size)
+
+        Returns
+        -------
+        Tensor
+            InfoNCE loss
+        """
+        # Compute similarity matrix using learnable temperature (like CLIP)
+        # logit_scale.exp() converts from log-space back to the actual scale
+        similarities = embeddings_a @ embeddings_b.T * self.logit_scale.exp()
+
+        # Create labels (diagonal should be positive)
+        labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
+
+        # InfoNCE loss in both directions
+        loss_a = nn.functional.cross_entropy(similarities, labels)
+        loss_b = nn.functional.cross_entropy(similarities.T, labels)
+
+        return (loss_a + loss_b) / 2
+
     def _infonce_step(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -525,21 +570,17 @@ class Ume(L.LightningModule):
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
 
-        # Normalize embeddings
+        # Normalize embeddings once for both implementations
         embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
         embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
 
-        # Compute similarity matrix
-        similarity_matrix = embeddings_a @ embeddings_b.T / self.contrastive_temperature
+        loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
 
-        # Get CE in both directions
-        labels = torch.arange(embeddings_a.shape[0], device=self.device)
-        loss_a = nn.CrossEntropyLoss()(similarity_matrix, labels)
-        loss_b = nn.CrossEntropyLoss()(similarity_matrix.T, labels)
-
-        # Return the average of both losses
-        loss = (loss_a + loss_b) / 2
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
+
+        # Log the current learned temperature for monitoring
+        current_temperature = 1.0 / self.logit_scale.exp()
+        self.log(f"contrastive_{stage}_temperature", current_temperature, rank_zero_only=True, sync_dist=True)
 
         return loss
 
@@ -586,7 +627,7 @@ class Ume(L.LightningModule):
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
-            # Do no specify on_step since Lightning will handle this automatically
+            # Do not specify on_step since Lightning will handle this automatically
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
 
         return loss
