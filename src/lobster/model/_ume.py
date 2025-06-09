@@ -1,3 +1,4 @@
+import logging
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
@@ -11,9 +12,13 @@ from torchmetrics.text import Perplexity
 from lobster.constants import Modality, ModalityType
 from lobster.tokenization import UmeTokenizerTransform
 
+from ._disco_clip import Gather
+from ._utils import get_rank, is_distributed
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
+
+logger = logging.getLogger(__name__)
 
 
 class Ume(L.LightningModule):
@@ -48,6 +53,11 @@ class Ume(L.LightningModule):
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
+    use_disco_clip : bool, default=False
+        Whether to use DisCo-CLIP distributed contrastive loss for memory efficiency.
+        Disco-CLIP enables gathering embeddings across all GPUs which results in
+        more memory-efficient training (because we share only embeddings across not
+        full activations). This way we get more negative examples.
     scheduler : str, default="constant_with_warmup"
         Type of learning rate scheduler to use.
     num_training_steps : int | None, default=None
@@ -76,6 +86,13 @@ class Ume(L.LightningModule):
     frozen : bool
         Indicates whether model parameters are frozen.
 
+    References
+    ----------
+    DisCo-CLIP: A Distributed Contrastive Loss for Memory Efficient CLIP Training
+        Chen, Y., Qi, X., Wang, J., & Zhang, L. (2023).
+        In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR).
+        GitHub: https://github.com/IDEA-Research/DisCo-CLIP
+
     Examples
     --------
     >>> # Initialize a new model
@@ -102,6 +119,7 @@ class Ume(L.LightningModule):
         mask_percentage: float = 0.25,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
+        use_disco_clip: bool = False,
         scheduler: Literal[
             "linear",
             "cosine",
@@ -166,6 +184,7 @@ class Ume(L.LightningModule):
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
+        self.use_disco_clip = use_disco_clip
 
         # Learnable temperature parameter (like CLIP's logit_scale)
         # Initialize to log(1/temperature) so exp() gives the desired initial temperature
@@ -543,6 +562,51 @@ class Ume(L.LightningModule):
 
         return (loss_a + loss_b) / 2
 
+    def _disco_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
+        """Compute InfoNCE loss using DisCo-CLIP distributed approach for memory efficiency.
+
+        Parameters
+        ----------
+        embeddings_a : Tensor
+            First set of normalized embeddings, shape (local_batch_size, hidden_size)
+        embeddings_b : Tensor
+            Second set of normalized embeddings, shape (local_batch_size, hidden_size)
+
+        Returns
+        -------
+        Tensor
+            InfoNCE loss
+        """
+        # Gather embeddings from all GPUs using DisCo-CLIP
+        all_embeddings_a = Gather(embeddings_a)
+        all_embeddings_b = Gather(embeddings_b)
+
+        # Get local batch size and rank for label calculation
+        local_batch_size = embeddings_a.shape[0]
+        rank = get_rank()
+
+        # Compute local similarities using DisCo-CLIP approach with slicing
+        # This is more memory-efficient: we only compute (local_batch x total_batch) instead of (total_batch x total_batch)
+        logits_a = (
+            self.logit_scale.exp()
+            * all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
+            @ all_embeddings_b.T
+        )
+        logits_b = (
+            self.logit_scale.exp()
+            * all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
+            @ all_embeddings_a.T
+        )
+
+        # Create labels - positive pairs are at positions offset by rank * local_batch_size
+        labels = torch.arange(local_batch_size, device=embeddings_a.device) + rank * local_batch_size
+
+        # InfoNCE loss in both directions
+        loss_a = nn.functional.cross_entropy(logits_a, labels)
+        loss_b = nn.functional.cross_entropy(logits_b, labels)
+
+        return (loss_a + loss_b) / 2
+
     def _infonce_step(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -574,7 +638,11 @@ class Ume(L.LightningModule):
         embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
         embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
 
-        loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
+        # Choose loss computation method based on configuration
+        if self.use_disco_clip and is_distributed():
+            loss = self._disco_infonce_loss(embeddings_a, embeddings_b)
+        else:
+            loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
 
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 

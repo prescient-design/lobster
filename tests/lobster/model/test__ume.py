@@ -323,3 +323,38 @@ class TestUme:
             embeddings_no_flash_agg = ume_no_flash.embed_sequences(sequences, modality, aggregate=True)
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
+
+    def test_infonce_loss_disco_clip_equivalence(self):
+        """Test that standard and DisCo-CLIP InfoNCE losses are equivalent in single-GPU scenario."""
+        with (
+            patch("lobster.model._ume.is_distributed", return_value=False),
+            patch("lobster.model._ume.get_rank", return_value=0),
+            patch("lobster.model._ume.Gather") as mock_gather,
+        ):
+            # Mock Gather to return the same embeddings (simulating single-GPU)
+            mock_gather.side_effect = lambda x: x.clone()
+
+            # Create one model - we'll test both loss methods on it
+            ume = Ume(model_name="UME_mini", use_flash_attn=False)
+
+            # Create simple test embeddings (32 samples as requested)
+            batch_size = 32
+            hidden_size = ume.embedding_dim
+
+            torch.manual_seed(42)
+            embeddings_a = torch.randn(batch_size, hidden_size)
+            embeddings_b = torch.randn(batch_size, hidden_size)
+
+            # Normalize (as done in actual implementation)
+            embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
+            embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
+
+            # Test both loss methods on the same embeddings
+            standard_loss = ume._standard_infonce_loss(embeddings_a, embeddings_b)
+            disco_loss = ume._disco_infonce_loss(embeddings_a, embeddings_b)
+
+            # Should be nearly identical (small floating-point differences expected)
+            torch.testing.assert_close(standard_loss, disco_loss, rtol=1e-4, atol=1e-5)
+
+            # Verify Gather was called twice for DisCo-CLIP method
+            assert mock_gather.call_count == 2
