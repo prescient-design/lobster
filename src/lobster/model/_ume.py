@@ -14,7 +14,7 @@ from lobster.constants import Modality, ModalityType
 from lobster.tokenization import UmeTokenizerTransform
 
 from ._disco_clip import Gather
-from ._utils import get_rank, is_distributed
+from ._distributed_utils import get_rank, is_distributed
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
