@@ -52,14 +52,8 @@ class Ume(L.LightningModule):
         - If contrastive_loss_weight is 0, only MLM is used (default)
         - If contrastive_loss_weight is 1, only InfoNCE is used
         - If 0 < contrastive_loss_weight < 1, both are used
-        Note: The learnable temperature parameter is only trained when both contrastive_loss_weight > 0
-        and learnable_temperature=True.
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
-    learnable_temperature : bool, default=False
-        Whether to use a learnable temperature for the contrastive loss.
-        If True, temperature will be learned during training (like CLIP's logit_scale).
-        If False, temperature will remain fixed at contrastive_temperature value.
     use_disco_clip : bool, default=False
         Whether to use DisCo-CLIP distributed contrastive loss for memory efficiency.
         Disco-CLIP enables gathering embeddings across all GPUs which results in
@@ -120,7 +114,6 @@ class Ume(L.LightningModule):
         mask_percentage: float = 0.25,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
-        learnable_temperature: bool = False,  # TODO: remove this, it's only for compatibility
         use_disco_clip: bool = False,
         scheduler: Literal[
             "linear",
@@ -187,7 +180,6 @@ class Ume(L.LightningModule):
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
         self.use_disco_clip = use_disco_clip
-        self.learnable_temperature = learnable_temperature
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
@@ -196,16 +188,6 @@ class Ume(L.LightningModule):
         self.num_training_steps = num_training_steps
         self.num_warmup_steps = num_warmup_steps
         self.scheduler_kwargs = scheduler_kwargs or {}
-
-        # Initialize temperature parameter based on learnable_temperature flag
-        if learnable_temperature:
-            # Initialize to log(1/temperature) since we're using exp()
-            self.logit_scale = nn.Parameter(torch.ones([]) * torch.log(torch.tensor(1.0 / contrastive_temperature)))
-        else:
-            # Fixed temperature - store as a buffer not a parameter
-            self.register_buffer("logit_scale", torch.log(torch.tensor(1.0 / contrastive_temperature)))
-
-        # Keep the original for backwards compatibility if needed
         self.contrastive_temperature = contrastive_temperature
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
@@ -476,7 +458,6 @@ class Ume(L.LightningModule):
             Dictionary containing optimizer and learning rate scheduler.
         """
         # Use all parameters from the Ume model, not just the FlexBERT sub-model
-        # This ensures learnable parameters like logit_scale are included
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.lr,
@@ -572,9 +553,8 @@ class Ume(L.LightningModule):
         Tensor
             InfoNCE loss
         """
-        # Compute similarity matrix using learnable temperature (like CLIP)
-        # logit_scale.exp() converts from log-space back to the actual scale
-        similarities = embeddings_a @ embeddings_b.T * self.logit_scale.exp()
+        # Compute similarity matrix using fixed temperature
+        similarities = embeddings_a @ embeddings_b.T / self.contrastive_temperature
 
         # Create labels (diagonal should be positive)
         labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
@@ -611,14 +591,14 @@ class Ume(L.LightningModule):
         # Compute local similarities using DisCo-CLIP approach with slicing
         # This is more memory-efficient: we only compute (local_batch x total_batch) instead of (total_batch x total_batch)
         logits_a = (
-            self.logit_scale.exp()
-            * all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
+            all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_b.T
+            / self.contrastive_temperature
         )
         logits_b = (
-            self.logit_scale.exp()
-            * all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
+            all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_a.T
+            / self.contrastive_temperature
         )
 
         # Create labels - positive pairs are at positions offset by rank * local_batch_size
@@ -669,10 +649,8 @@ class Ume(L.LightningModule):
 
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 
-        # Log the current temperature for monitoring (learnable or fixed)
-        current_temperature = 1.0 / self.logit_scale.exp()
-        temperature_log_name = "contrastive_temperature"
-        self.log(temperature_log_name, current_temperature, rank_zero_only=True, sync_dist=True)
+        # Log the current temperature for monitoring
+        self.log("contrastive_temperature", self.contrastive_temperature, rank_zero_only=True, sync_dist=True)
 
         return loss
 
