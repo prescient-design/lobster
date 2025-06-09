@@ -1148,6 +1148,7 @@ dependencies = [
     { name = "torchvision", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "transformers", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "umap-learn", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "universal-pathlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "wandb", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
@@ -1162,9 +1163,6 @@ mcp = [
 mgm = [
     { name = "rdkit", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "selfies", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-]
-umap = [
-    { name = "umap-learn", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 
 [package.dev-dependencies]
@@ -1214,11 +1212,11 @@ requires-dist = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers", specifier = ">=4.24.0" },
-    { name = "umap-learn", marker = "extra == 'umap'", specifier = ">=0.5.7" },
+    { name = "umap-learn", specifier = ">=0.5.7" },
     { name = "universal-pathlib" },
     { name = "wandb" },
 ]
-provides-extras = ["mgm", "flash", "mcp", "umap"]
+provides-extras = ["mgm", "flash", "mcp"]
 
 [package.metadata.requires-dev]
 dev = [
