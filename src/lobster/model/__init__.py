@@ -15,6 +15,7 @@ from ._peft_lightning_module import LobsterPEFT
 from ._ppi_clf import PPIClassifier
 from ._seq2seq import PrescientPT5
 from ._ume import Ume
+from .e3gnn import E3GNN
 from .lm_base import LMBaseContactPredictionHead, LMBaseForMaskedLM
 from .modern_bert import FlexBERT
 # from ._utils import model_typer
