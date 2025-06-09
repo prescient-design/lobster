@@ -39,7 +39,6 @@ dependencies = [
     "beignet[datasets]",
     "deepspeed",
     "dotenv>=0.9.9",
-    "umap-learn>=0.5.7",
 ]
 
 [build-system]
@@ -66,6 +65,9 @@ flash = [
 ]
 mcp = [
     "mcp[cli]"
+]
+umap = [
+    "umap-learn>=0.5.7"
 ]
 
 [tool.setuptools.packages.find]
@@ -129,6 +131,7 @@ constraint-dependencies = [
 
 [tool.uv.sources]
 beignet = { git = "https://github.com/Genentech/beignet" }
+disco = { git = "https://github.com/IDEA-Research/DisCo-CLIP.git" }
 
 [[tool.uv.dependency-metadata]]
 name = "flash-attn"
