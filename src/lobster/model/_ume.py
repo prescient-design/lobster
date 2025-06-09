@@ -199,17 +199,6 @@ class Ume(L.LightningModule):
             setattr(self, f"val_perplexity/{modality.value}", Perplexity(ignore_index=-100))
 
     @property
-    def current_temperature(self) -> float:
-        """Get the current value of the learned temperature parameter.
-
-        Returns
-        -------
-        float
-            Current temperature value (1 / logit_scale.exp())
-        """
-        return (1.0 / self.logit_scale.exp()).item()
-
-    @property
     def modalities(self) -> list[str]:
         """List of supported modalities.
 
