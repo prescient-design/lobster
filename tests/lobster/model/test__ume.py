@@ -146,7 +146,6 @@ class TestUme:
                     scheduler="constant_with_warmup",
                     num_training_steps=1000,
                     num_warmup_steps=100,
-                    learnable_temperature=True,  # This ensures we have at least the temperature parameter
                 )
 
                 # Mock some dummy parameters so the optimizer doesn't get an empty list
