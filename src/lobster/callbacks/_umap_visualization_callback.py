@@ -5,11 +5,17 @@ from typing import Any
 import lightning as L
 import numpy as np
 import torch
-import umap
 from lightning.pytorch.callbacks import Callback
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from upath import UPath
+
+try:
+    import umap
+
+    UMAP_INSTALLED = True
+except ImportError:
+    UMAP_INSTALLED = False
 
 logger = logging.getLogger(__name__)
 
@@ -479,6 +485,9 @@ class UmapVisualizationCallback(Callback):
         np.ndarray
             UMAP-transformed embeddings
         """
+        if not UMAP_INSTALLED:
+            raise ImportError("UMAP is not installed. Please install it to use this callback.")
+
         reducer = umap.UMAP(
             n_neighbors=self.n_neighbors,
             min_dist=self.min_dist,

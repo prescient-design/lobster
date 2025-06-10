@@ -39,7 +39,6 @@ dependencies = [
     "beignet[datasets]",
     "deepspeed",
     "dotenv>=0.9.9",
-    "umap-learn>=0.5.7"
 ]
 
 [build-system]
@@ -67,7 +66,9 @@ flash = [
 mcp = [
     "mcp[cli]"
 ]
-
+eval = [
+     "umap-learn>=0.5.7"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
