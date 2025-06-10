@@ -133,13 +133,44 @@ class TestUme:
     def test_configure_optimizers(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
             mock_model = MagicMock()
-            mock_model.configure_optimizers.return_value = {"optimizer": "mock_optimizer"}
             mock_flex_bert.return_value = mock_model
 
-            ume = Ume()
-            result = ume.configure_optimizers()
-            assert result == {"optimizer": "mock_optimizer"}
-            mock_model.configure_optimizers.assert_called_once()
+            with patch("lobster.model._ume.get_scheduler") as mock_get_scheduler:
+                mock_get_scheduler.return_value = MagicMock()
+
+                ume = Ume(
+                    lr=1e-3,
+                    beta1=0.9,
+                    beta2=0.98,
+                    eps=1e-12,
+                    scheduler="constant_with_warmup",
+                    num_training_steps=1000,
+                    num_warmup_steps=100,
+                )
+
+                # Mock some dummy parameters so the optimizer doesn't get an empty list
+                dummy_param = torch.nn.Parameter(torch.randn(10))
+                with patch.object(ume, "parameters", return_value=[dummy_param]):
+                    result = ume.configure_optimizers()
+
+                    # Check that result has the expected structure
+                    assert "optimizer" in result
+                    assert "lr_scheduler" in result
+                    assert isinstance(result["optimizer"], torch.optim.AdamW)
+
+                    # Verify optimizer parameters
+                    optimizer_params = list(result["optimizer"].param_groups[0]["params"])
+                    assert len(optimizer_params) == 1
+                    assert optimizer_params[0] is dummy_param
+
+                    # Verify scheduler was called with correct parameters
+                    mock_get_scheduler.assert_called_once_with(
+                        "constant_with_warmup",
+                        result["optimizer"],
+                        num_training_steps=1000,
+                        num_warmup_steps=100,
+                        scheduler_specific_kwargs={},
+                    )
 
     def test_train_mlm_step(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
@@ -323,3 +354,38 @@ class TestUme:
             embeddings_no_flash_agg = ume_no_flash.embed_sequences(sequences, modality, aggregate=True)
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
+
+    def test_infonce_loss_disco_clip_equivalence(self):
+        """Test that standard and DisCo-CLIP InfoNCE losses are equivalent in single-GPU scenario."""
+        with (
+            patch("lobster.model._ume.is_distributed", return_value=False),
+            patch("lobster.model._ume.get_rank", return_value=0),
+            patch("lobster.model._ume.Gather") as mock_gather,
+        ):
+            # Mock Gather to return the same embeddings (simulating single-GPU)
+            mock_gather.side_effect = lambda x: x.clone()
+
+            # Create one model - we'll test both loss methods on it
+            ume = Ume(model_name="UME_mini", use_flash_attn=False)
+
+            # Create simple test embeddings (32 samples as requested)
+            batch_size = 32
+            hidden_size = ume.embedding_dim
+
+            torch.manual_seed(42)
+            embeddings_a = torch.randn(batch_size, hidden_size)
+            embeddings_b = torch.randn(batch_size, hidden_size)
+
+            # Normalize (as done in actual implementation)
+            embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
+            embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
+
+            # Test both loss methods on the same embeddings
+            standard_loss = ume._standard_infonce_loss(embeddings_a, embeddings_b)
+            disco_loss = ume._disco_infonce_loss(embeddings_a, embeddings_b)
+
+            # Should be nearly identical (small floating-point differences expected)
+            torch.testing.assert_close(standard_loss, disco_loss, rtol=1e-4, atol=1e-5)
+
+            # Verify Gather was called twice for DisCo-CLIP method
+            assert mock_gather.call_count == 2

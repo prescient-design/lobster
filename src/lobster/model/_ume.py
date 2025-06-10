@@ -1,3 +1,4 @@
+import logging
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
@@ -7,13 +8,18 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torchmetrics.text import Perplexity
+from transformers import get_scheduler
 
 from lobster.constants import Modality, ModalityType
 from lobster.tokenization import UmeTokenizerTransform
 
+from ._disco_clip import Gather
+from ._distributed_utils import get_rank, is_distributed
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
+
+logger = logging.getLogger(__name__)
 
 
 class Ume(L.LightningModule):
@@ -48,6 +54,11 @@ class Ume(L.LightningModule):
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
+    use_disco_clip : bool, default=False
+        Whether to use DisCo-CLIP distributed contrastive loss for memory efficiency.
+        Disco-CLIP enables gathering embeddings across all GPUs which results in
+        more memory-efficient training (because we share only embeddings across not
+        full activations). This way we get more negative examples.
     scheduler : str, default="constant_with_warmup"
         Type of learning rate scheduler to use.
     num_training_steps : int | None, default=None
@@ -76,6 +87,7 @@ class Ume(L.LightningModule):
     frozen : bool
         Indicates whether model parameters are frozen.
 
+
     Examples
     --------
     >>> # Initialize a new model
@@ -102,6 +114,7 @@ class Ume(L.LightningModule):
         mask_percentage: float = 0.25,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
+        use_disco_clip: bool = False,
         scheduler: Literal[
             "linear",
             "cosine",
@@ -166,6 +179,15 @@ class Ume(L.LightningModule):
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
+        self.use_disco_clip = use_disco_clip
+        self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.scheduler = scheduler
+        self.num_training_steps = num_training_steps
+        self.num_warmup_steps = num_warmup_steps
+        self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
@@ -435,7 +457,25 @@ class Ume(L.LightningModule):
         dict[str, object]
             Dictionary containing optimizer and learning rate scheduler.
         """
-        return self.model.configure_optimizers()
+        # Use all parameters from the Ume model, not just the FlexBERT sub-model
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=self.lr,
+            betas=(self.beta1, self.beta2),
+            eps=self.eps,
+        )
+
+        scheduler = get_scheduler(
+            self.scheduler,
+            optimizer,
+            num_training_steps=self.num_training_steps,
+            num_warmup_steps=self.num_warmup_steps,
+            scheduler_specific_kwargs=self.scheduler_kwargs,
+        )
+
+        scheduler_config = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler_config}
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs with different modalities and get logits and labels for training."""
@@ -498,6 +538,78 @@ class Ume(L.LightningModule):
             },
         )
 
+    def _standard_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
+        """Compute InfoNCE loss using the standard approach with full similarity matrix.
+
+        Parameters
+        ----------
+        embeddings_a : Tensor
+            First set of normalized embeddings, shape (batch_size, hidden_size)
+        embeddings_b : Tensor
+            Second set of normalized embeddings, shape (batch_size, hidden_size)
+
+        Returns
+        -------
+        Tensor
+            InfoNCE loss
+        """
+        # Compute similarity matrix using fixed temperature
+        similarities = embeddings_a @ embeddings_b.T / self.contrastive_temperature
+
+        # Create labels (diagonal should be positive)
+        labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
+
+        # InfoNCE loss in both directions
+        loss_a = nn.functional.cross_entropy(similarities, labels)
+        loss_b = nn.functional.cross_entropy(similarities.T, labels)
+
+        return (loss_a + loss_b) / 2
+
+    def _disco_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
+        """Compute InfoNCE loss using DisCo-CLIP distributed approach for memory efficiency.
+
+        Parameters
+        ----------
+        embeddings_a : Tensor
+            First set of normalized embeddings, shape (local_batch_size, hidden_size)
+        embeddings_b : Tensor
+            Second set of normalized embeddings, shape (local_batch_size, hidden_size)
+
+        Returns
+        -------
+        Tensor
+            InfoNCE loss
+        """
+        # Gather embeddings from all GPUs using DisCo-CLIP
+        all_embeddings_a = Gather(embeddings_a)
+        all_embeddings_b = Gather(embeddings_b)
+
+        # Get local batch size and rank for label calculation
+        local_batch_size = embeddings_a.shape[0]
+        rank = get_rank()
+
+        # Compute local similarities using DisCo-CLIP approach with slicing
+        # This is more memory-efficient: we only compute (local_batch x total_batch) instead of (total_batch x total_batch)
+        logits_a = (
+            all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
+            @ all_embeddings_b.T
+            / self.contrastive_temperature
+        )
+        logits_b = (
+            all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
+            @ all_embeddings_a.T
+            / self.contrastive_temperature
+        )
+
+        # Create labels - positive pairs are at positions offset by rank * local_batch_size
+        labels = torch.arange(local_batch_size, device=embeddings_a.device) + rank * local_batch_size
+
+        # InfoNCE loss in both directions
+        loss_a = nn.functional.cross_entropy(logits_a, labels)
+        loss_b = nn.functional.cross_entropy(logits_b, labels)
+
+        return (loss_a + loss_b) / 2
+
     def _infonce_step(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -525,21 +637,20 @@ class Ume(L.LightningModule):
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
 
-        # Normalize embeddings
+        # Normalize embeddings once for both implementations
         embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
         embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
 
-        # Compute similarity matrix
-        similarity_matrix = embeddings_a @ embeddings_b.T / self.contrastive_temperature
+        # Choose loss computation method based on configuration
+        if self.use_disco_clip and is_distributed():
+            loss = self._disco_infonce_loss(embeddings_a, embeddings_b)
+        else:
+            loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
 
-        # Get CE in both directions
-        labels = torch.arange(embeddings_a.shape[0], device=self.device)
-        loss_a = nn.CrossEntropyLoss()(similarity_matrix, labels)
-        loss_b = nn.CrossEntropyLoss()(similarity_matrix.T, labels)
-
-        # Return the average of both losses
-        loss = (loss_a + loss_b) / 2
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
+
+        # Log the current temperature for monitoring
+        self.log("contrastive_temperature", self.contrastive_temperature, rank_zero_only=True, sync_dist=True)
 
         return loss
 
@@ -586,7 +697,7 @@ class Ume(L.LightningModule):
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
-            # Do no specify on_step since Lightning will handle this automatically
+            # Do not specify on_step since Lightning will handle this automatically
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
 
         return loss

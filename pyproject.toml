@@ -66,9 +66,6 @@ flash = [
 mcp = [
     "mcp[cli]"
 ]
-eval = [
-    "umap-learn>=0.5.7",
-]
 
 [tool.setuptools.packages.find]
 where = ["src"]
