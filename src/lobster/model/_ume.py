@@ -61,6 +61,10 @@ class Ume(L.LightningModule):
     use_flash_attn : bool, default=True
         Whether to use flash-attn for attention computation. If False, will use standard attention.
         This is useful for CPU-only operation where flash-attn is not available.
+    auxiliary_encoders : dict[Modality, nn.Module] | None, default=None
+        Dictionary mapping modalities to auxiliary encoder models. For example, map
+        Modality.COORDINATES_3D to an E3GNN model for 3D molecular structure encoding.
+        These encoders will be used instead of the main transformer for their respective modalities.
     ckpt_path : str | None, default=None
         Path to a checkpoint file to load. Unused.
 
@@ -119,6 +123,7 @@ class Ume(L.LightningModule):
         model_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
         use_flash_attn: bool = True,
+        auxiliary_encoders: dict[Modality, nn.Module] | None = None,
         ckpt_path: str | None = None,
     ) -> None:
         """Initialize the Universal Molecular Encoder"""
@@ -167,6 +172,24 @@ class Ume(L.LightningModule):
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
+
+        # Set up auxiliary encoders
+        self.auxiliary_encoders = nn.ModuleDict()
+        self.auxiliary_projectors = nn.ModuleDict()
+
+        if auxiliary_encoders:
+            for modality, encoder in auxiliary_encoders.items():
+                # Store the encoder
+                self.auxiliary_encoders[modality.value] = encoder
+
+                # Create a projection layer to match embedding dimensions
+                encoder_output_dim = getattr(encoder, "output_dim", getattr(encoder, "hidden_dim", None))
+                if encoder_output_dim is None:
+                    raise ValueError(f"Cannot determine output dimension for auxiliary encoder for {modality.value}")
+
+                # Project auxiliary encoder outputs to match main model embedding dimension
+                if encoder_output_dim != self.embedding_dim:
+                    self.auxiliary_projectors[modality.value] = nn.Linear(encoder_output_dim, self.embedding_dim)
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -264,11 +287,79 @@ class Ume(L.LightningModule):
 
         return dict(sorted(vocab.items(), key=lambda item: item[0]))
 
+    def _parse_3d_coordinates(self, sequences: Sequence[str]) -> tuple[Tensor, Tensor]:
+        """Parse 3D coordinate strings into atomic numbers and coordinates tensors.
+
+        Expected format: Each sequence should be a string like:
+        "8 0.0 0.0 0.0 1 0.96 0.0 0.0 1 -0.24 0.93 0.0"
+        Which represents: atomic_num x y z atomic_num x y z ...
+
+        Parameters
+        ----------
+        sequences : Sequence[str]
+            List of 3D coordinate strings
+
+        Returns
+        -------
+        tuple[Tensor, Tensor]
+            Tuple of (atomic_numbers, coordinates) tensors
+            atomic_numbers: [batch_size, max_atoms]
+            coordinates: [batch_size, max_atoms, 3]
+        """
+        batch_atoms = []
+        batch_coords = []
+        max_atoms = 0
+
+        for seq in sequences:
+            # Parse the sequence: atomic_num x y z atomic_num x y z ...
+            tokens = seq.strip().split()
+            if len(tokens) % 4 != 0:
+                raise ValueError(
+                    f"Invalid 3D coordinate format. Expected groups of 4 (atomic_num x y z), got {len(tokens)} tokens"
+                )
+
+            n_atoms = len(tokens) // 4
+            max_atoms = max(max_atoms, n_atoms)
+
+            atoms = []
+            coords = []
+
+            for i in range(n_atoms):
+                atomic_num = int(tokens[i * 4])
+                x = float(tokens[i * 4 + 1])
+                y = float(tokens[i * 4 + 2])
+                z = float(tokens[i * 4 + 3])
+
+                atoms.append(atomic_num)
+                coords.append([x, y, z])
+
+            batch_atoms.append(torch.tensor(atoms, dtype=torch.long))
+            batch_coords.append(torch.tensor(coords, dtype=torch.float))
+
+        # Pad to same length
+        padded_atoms = []
+        padded_coords = []
+
+        for atoms, coords in zip(batch_atoms, batch_coords):
+            n_atoms = len(atoms)
+
+            # Pad with zeros (atomic number 0 = no atom)
+            padded_atom = torch.zeros(max_atoms, dtype=torch.long)
+            padded_coord = torch.zeros(max_atoms, 3, dtype=torch.float)
+
+            padded_atom[:n_atoms] = atoms
+            padded_coord[:n_atoms] = coords
+
+            padded_atoms.append(padded_atom)
+            padded_coords.append(padded_coord)
+
+        return torch.stack(padded_atoms), torch.stack(padded_coords)
+
     def freeze(self) -> None:
         """Freeze the model parameters.
 
         This method sets requires_grad=False for all model parameters
-        and puts the model in evaluation mode.
+        and puts the model in evaluation mode. Also freezes auxiliary encoders.
 
         Examples
         --------
@@ -286,17 +377,29 @@ class Ume(L.LightningModule):
         >>> import torch
         >>> embeddings = encoder.embed_sequences(["ACDEFGHIK"], "amino_acid")
         """
+        # Freeze main model
         for param in self.model.parameters():
             param.requires_grad = False
-
         self.model.eval()
+
+        # Freeze auxiliary encoders and projectors
+        for encoder in self.auxiliary_encoders.values():
+            for param in encoder.parameters():
+                param.requires_grad = False
+            encoder.eval()
+
+        for projector in self.auxiliary_projectors.values():
+            for param in projector.parameters():
+                param.requires_grad = False
+            projector.eval()
+
         self.frozen = True
 
     def unfreeze(self) -> None:
         """Unfreeze the model parameters.
 
         This method sets requires_grad=True for all model parameters
-        and puts the model in training mode.
+        and puts the model in training mode. Also unfreezes auxiliary encoders.
 
         Examples
         --------
@@ -309,10 +412,22 @@ class Ume(L.LightningModule):
         >>> # Now unfreeze it
         >>> encoder.unfreeze()
         """
+        # Unfreeze main model
         for param in self.model.parameters():
             param.requires_grad = True
-
         self.model.train()
+
+        # Unfreeze auxiliary encoders and projectors
+        for encoder in self.auxiliary_encoders.values():
+            for param in encoder.parameters():
+                param.requires_grad = True
+            encoder.train()
+
+        for projector in self.auxiliary_projectors.values():
+            for param in projector.parameters():
+                param.requires_grad = True
+            projector.train()
+
         self.frozen = False
 
     def embed(self, inputs: dict[str, Tensor], aggregate: bool = True) -> Tensor:
@@ -416,16 +531,64 @@ class Ume(L.LightningModule):
         >>> token_embeddings = encoder.embed_sequences(dna_seqs, "nucleotide", aggregate=False)
         >>> print(token_embeddings.shape)
         torch.Size([2, 10, 768])  # [batch_size, seq_len, hidden_dim] (includes special tokens)
+        >>>
+        >>> # Get 3D molecular structure embeddings using E3GNN
+        >>> coords_3d = ["8 0.0 0.0 0.0 1 0.96 0.0 0.0 1 -0.24 0.93 0.0"]  # Water molecule
+        >>> embeddings_3d = encoder.embed_sequences(coords_3d, "3d_coordinates")
+        >>> print(embeddings_3d.shape)
+        torch.Size([1, 768])
         """
         if isinstance(sequences, str):
             sequences = [sequences]
 
         modality_enum = Modality(modality) if isinstance(modality, str) else modality
+
+        # Check if this modality has an auxiliary encoder
+        if modality_enum.value in self.auxiliary_encoders:
+            return self._embed_with_auxiliary_encoder(sequences, modality_enum)
+
+        # Use the main transformer model
         tokenizer_transform = self.tokenizer_transforms[modality_enum]
-
         encoded = tokenizer_transform(list(sequences))
-
         return self.embed(encoded, aggregate=aggregate)
+
+    def _embed_with_auxiliary_encoder(self, sequences: Sequence[str], modality: Modality) -> Tensor:
+        """Get embeddings using an auxiliary encoder for the specified modality.
+
+        Parameters
+        ----------
+        sequences : Sequence[str]
+            List of input strings to encode
+        modality : Modality
+            The modality enum
+
+        Returns
+        -------
+        Tensor
+            Tensor of embeddings with shape (batch_size, hidden_size)
+        """
+        encoder = self.auxiliary_encoders[modality.value]
+
+        if modality == Modality.COORDINATES_3D:
+            # Parse 3D coordinates and run through E3GNN
+            atoms, coords = self._parse_3d_coordinates(sequences)
+            atoms = atoms.to(self.device)
+            coords = coords.to(self.device)
+
+            if self.frozen:
+                with torch.no_grad():
+                    embeddings = encoder(atoms, coords)
+            else:
+                embeddings = encoder(atoms, coords)
+        else:
+            raise NotImplementedError(f"Auxiliary encoder for {modality.value} not implemented yet")
+
+        # Project to match main model embedding dimension if needed
+        if modality.value in self.auxiliary_projectors:
+            projector = self.auxiliary_projectors[modality.value]
+            embeddings = projector(embeddings)
+
+        return embeddings
 
     def configure_optimizers(self) -> dict[str, object]:
         """Configure optimizers and learning rate schedulers.
@@ -508,8 +671,10 @@ class Ume(L.LightningModule):
 
         Parameters
         ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The batch to perform the contrastive step on.
+        batch_a : dict[str, Tensor | list[Modality]]
+            The first batch to perform the contrastive step on.
+        batch_b : dict[str, Tensor | list[Modality]]
+            The second batch to perform the contrastive step on.
         stage : Literal["train", "val"]
             The stage to perform the contrastive step on.
 
@@ -518,12 +683,12 @@ class Ume(L.LightningModule):
         Tensor
             The loss for the contrastive step.
         """
-        # Embed both sides separately (could merge for more efficiency but I don't think it matters)
-        embeddings_a = self.embed(batch_a, aggregate=True)
-        embeddings_b = self.embed(batch_b, aggregate=True)
+        # Get embeddings for both sides, handling auxiliary encoders
+        embeddings_a = self._get_embeddings_for_batch(batch_a)
+        embeddings_b = self._get_embeddings_for_batch(batch_b)
 
         assert embeddings_a.shape == embeddings_b.shape
-        assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
+        assert embeddings_a.shape[1] == self.embedding_dim
 
         # Normalize embeddings
         embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
@@ -542,6 +707,69 @@ class Ume(L.LightningModule):
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
+
+    def _get_embeddings_for_batch(self, batch: dict[str, Tensor | list[Modality]]) -> Tensor:
+        """Get embeddings for a batch, handling both regular and auxiliary encoders.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Batch containing input data and modality information
+
+        Returns
+        -------
+        Tensor
+            Embeddings with shape (batch_size, embedding_dim)
+        """
+        # Get modality list
+        modalities: list[Modality] = batch.get("metadata", {}).get("modality", batch.get("modality", []))
+
+        if not modalities:
+            # Fallback to transformer if no modality info
+            return self.embed(batch, aggregate=True)
+
+        # Check if any modalities use auxiliary encoders
+        auxiliary_indices = []
+        transformer_indices = []
+
+        for i, modality in enumerate(modalities):
+            if modality.value in self.auxiliary_encoders:
+                auxiliary_indices.append(i)
+            else:
+                transformer_indices.append(i)
+
+        batch_size = len(modalities)
+        embeddings = torch.zeros(batch_size, self.embedding_dim, device=self.device)
+
+        # Process transformer modalities
+        if transformer_indices:
+            transformer_batch = {
+                "input_ids": batch["input_ids"][transformer_indices],
+                "attention_mask": batch["attention_mask"][transformer_indices],
+            }
+            transformer_embeddings = self.embed(transformer_batch, aggregate=True)
+            embeddings[transformer_indices] = transformer_embeddings
+
+        # Process auxiliary encoder modalities
+        if auxiliary_indices:
+            # For now, we assume we need to handle them one by one
+            # In the future, this could be optimized for batch processing
+            for i in auxiliary_indices:
+                modality = modalities[i]
+
+                if modality == Modality.COORDINATES_3D:
+                    # Extract 3D coordinate data for this sample
+                    # This assumes the input_ids contain the raw string data encoded somehow
+                    # For proper implementation, we'd need to modify the data pipeline
+                    # For now, raise an error to indicate this needs proper data handling
+                    raise NotImplementedError(
+                        "Processing 3D coordinates from batched data not yet implemented. "
+                        "Use embed_sequences directly for 3D coordinates."
+                    )
+                else:
+                    raise NotImplementedError(f"Batch processing for {modality.value} not implemented yet")
+
+        return embeddings
 
     def _mlm_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
         """Perform a masked language model step.
