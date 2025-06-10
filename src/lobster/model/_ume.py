@@ -142,7 +142,7 @@ class Ume(L.LightningModule):
         # Instantiate tokenizer transforms for each modality
         self.tokenizer_transforms = {
             modality: UmeTokenizerTransform(modality, max_length=max_length, return_modality=True)
-            for modality in Modality
+            for modality in [Modality.AMINO_ACID, Modality.SMILES, Modality.NUCLEOTIDE]
         }
 
         # Get any tokenizer to get the special tokens
