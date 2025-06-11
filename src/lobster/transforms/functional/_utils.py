@@ -15,7 +15,7 @@ def invert_residue_to_codon_mapping(mapping: dict[Any, list[Any]]) -> dict[Any, 
     return reversed
 
 
-def json_load(json_file) -> Any:
+def json_load(json_file: str) -> Any:
     with open(json_file) as f:
         data = json.load(f)
     return data

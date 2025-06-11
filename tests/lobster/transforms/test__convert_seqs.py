@@ -4,8 +4,9 @@ import re
 import pytest
 from rdkit import Chem
 
-from lobster.transforms import (
+from lobster.transforms.functional import (
     convert_aa_to_nt,
+    convert_aa_to_nt_probabilistic,
     convert_aa_to_selfies,
     convert_aa_to_smiles,
     convert_nt_to_aa,
@@ -544,3 +545,86 @@ class TestConvertSeqs:
 
         assert isinstance(sf_seq, str)
         assert sf_seq == exp_sf_seq
+
+    @pytest.mark.parametrize(
+        "aa_seq, vendor_codon_table, add_stop_codon, expected_length_multiple",
+        [
+            ("M", {"M": {"ATG": 1.0}, "*": {"TAA": 0.5, "TAG": 0.3, "TGA": 0.2}}, True, 2),  # M + stop = 6 bases
+            (
+                "MA",
+                {"M": {"ATG": 1.0}, "A": {"GCT": 0.3, "GCC": 0.4, "GCA": 0.2, "GCG": 0.1}, "*": {"TAA": 1.0}},
+                True,
+                3,
+            ),  # M + A + stop = 9 bases
+            ("M", {"M": {"ATG": 1.0}}, False, 1),  # M only = 3 bases
+            ("", {}, True, 0),  # Empty sequence
+            ("", {}, False, 0),  # Empty sequence
+        ],
+    )
+    def test_convert_aa_to_nt_probabilistic_parameterized(
+        self,
+        aa_seq: str,
+        vendor_codon_table: dict[str, dict[str, float]],
+        add_stop_codon: bool,
+        expected_length_multiple: int,
+    ):
+        """Test probabilistic amino acid to nucleotide conversion."""
+        result = convert_aa_to_nt_probabilistic(aa_seq, vendor_codon_table, add_stop_codon)
+
+        assert isinstance(result, str)
+        assert len(result) == expected_length_multiple * 3
+
+        # Check if result contains only valid nucleotides
+        valid_chars = set("ATGC")
+        assert all(c in valid_chars for c in result)
+
+    def test_convert_aa_to_nt_probabilistic_real_table(self):
+        """Test probabilistic conversion with real vendor codon table data."""
+        aa_seq = "MKL"  # Start with known amino acids
+
+        # Use a subset of the real vendor table for testing
+        vendor_table = {
+            "M": {"ATG": 1.0},
+            "K": {"AAA": 0.43, "AAG": 0.57},
+            "L": {"TTA": 0.08, "TTG": 0.14, "CTT": 0.15, "CTC": 0.18, "CTA": 0.09, "CTG": 0.36},
+            "*": {"TAA": 0.27, "TAG": 0.23, "TGA": 0.50},
+        }
+
+        result = convert_aa_to_nt_probabilistic(aa_seq, vendor_table, add_stop_codon=True)
+
+        assert isinstance(result, str)
+        assert len(result) == 12  # 3 AA + 1 stop = 4 codons = 12 bases
+
+        # Check structure: should be 4 codons
+        assert result[0:3] == "ATG"  # M always ATG
+        assert result[3:6] in ["AAA", "AAG"]  # K codons
+        assert result[6:9] in ["TTA", "TTG", "CTT", "CTC", "CTA", "CTG"]  # L codons
+        assert result[9:12] in ["TAA", "TAG", "TGA"]  # Stop codons
+
+    def test_convert_aa_to_nt_probabilistic_unknown_residue(self):
+        """Test probabilistic conversion with unknown amino acids raises ValueError."""
+        aa_seq = "MXK"  # X is unknown
+        vendor_table = {"M": {"ATG": 1.0}, "K": {"AAA": 0.5, "AAG": 0.5}, "*": {"TAA": 1.0}}
+
+        with pytest.raises(ValueError, match="Unknown amino acid residue 'X' not found in vendor codon table"):
+            convert_aa_to_nt_probabilistic(aa_seq, vendor_table, add_stop_codon=True)
+
+    def test_convert_aa_to_nt_probabilistic_case_insensitive(self):
+        """Test that function handles lowercase input."""
+        aa_seq = "mkl"  # lowercase
+        vendor_table = {"M": {"ATG": 1.0}, "K": {"AAA": 1.0}, "L": {"TTG": 1.0}, "*": {"TAA": 1.0}}
+
+        result = convert_aa_to_nt_probabilistic(aa_seq, vendor_table, add_stop_codon=True)
+
+        assert isinstance(result, str)
+        assert result == "ATGAAATTGTAA"
+
+    def test_convert_aa_to_nt_probabilistic_no_stop_codon(self):
+        """Test conversion without adding stop codon."""
+        aa_seq = "MK"
+        vendor_table = {"M": {"ATG": 1.0}, "K": {"AAA": 1.0}}
+
+        result = convert_aa_to_nt_probabilistic(aa_seq, vendor_table, add_stop_codon=False)
+
+        assert isinstance(result, str)
+        assert result == "ATGAAA"  # No stop codon

@@ -15,6 +15,8 @@ from transformers.utils import logging
 from lobster.tokenization import MgmTokenizer
 from lobster.transforms import (
     Transform,
+)
+from lobster.transforms.functional import (
     convert_aa_to_nt,
     convert_aa_to_selfies,
     convert_nt_to_aa,
