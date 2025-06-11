@@ -741,29 +741,3 @@ class Ume(L.LightningModule):
         self.log("val_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
-
-    @classmethod
-    def load_from_checkpoint_with_flash_attn_disabled(cls, checkpoint_path: str, **kwargs) -> "Ume":
-        """Load a checkpoint with flash attention disabled for CPU inference.
-
-        This method ensures architectural compatibility when loading checkpoints
-        that were trained with flash attention but need to run without it.
-
-        Parameters
-        ----------
-        checkpoint_path : str
-            Path to the checkpoint file (local or S3)
-        **kwargs
-            Additional arguments to override model configuration
-
-        Returns
-        -------
-        Ume
-            Loaded model with flash attention disabled
-        """
-        # Force unpadded architecture for checkpoint compatibility
-        # Checkpoints trained with flash attention have unpadded layers
-        kwargs["use_flash_attn"] = False
-
-        # Load using Lightning's method with our compatibility settings
-        return cls.load_from_checkpoint(checkpoint_path, strict=False, **kwargs)
