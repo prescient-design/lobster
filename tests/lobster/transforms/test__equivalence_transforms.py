@@ -603,7 +603,7 @@ class TestProteinToNucleotidePairTransform:
         # Mock convert_aa_to_nt_probabilistic to raise an exception
         with mock.patch(
             "lobster.transforms._equivalence_transforms.convert_aa_to_nt_probabilistic",
-            side_effect=Exception("Test error"),
+            side_effect=ValueError("Test error"),
         ):
             outputs = transform(["MK"])
 
