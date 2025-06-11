@@ -43,8 +43,6 @@ class RandomNeighborScore(Metric):
     higher_is_better: bool = False  # Lower RNS values are better
     full_state_update: bool = False
 
-    # TODO @zadorozk: Add support for pre-built sets of sequences if embedding function
-    # provided
     def __init__(
         self,
         biological_embeddings: Tensor,
@@ -71,7 +69,10 @@ class RandomNeighborScore(Metric):
         )
 
         if k >= self.biological_embeddings.shape[0] + self.random_embeddings.shape[0]:
-            raise ValueError("k must be smaller than the total number of reference embeddings.")
+            raise ValueError(
+                f"k must be smaller than the total number of reference embeddings. "
+                f"Got k={k}, and number of reference embeddings={self.biological_embeddings.shape[0] + self.random_embeddings.shape[0]}"
+            )
 
     def _balance_reference_sets(self, embeddings1: Tensor, embeddings2: Tensor) -> tuple[Tensor, Tensor]:
         """

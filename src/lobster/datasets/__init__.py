@@ -10,6 +10,7 @@ from ._moleculeace_dataset import MoleculeACEDataset
 from ._multiplexed_sampling_dataset import MultiplexedSamplingDataset
 from ._open_genome_2 import OpenGenome2IterableDataset
 from ._peer_dataset import PEERDataset
+from ._random_sequence_dataset import RandomSequenceDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
 from ._zinc_dataset import ZINCIterableDataset
@@ -34,4 +35,5 @@ __all__ = [
     "LatentGeneratorPinderIterableDataset",
     "ZINCIterableDataset",
     "OpenGenome2IterableDataset",
+    "RandomSequenceDataset",
 ]
