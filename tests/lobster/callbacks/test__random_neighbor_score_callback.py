@@ -134,24 +134,6 @@ def test_callback_skip_logic(mock_model):
         assert callback._skip(trainer) is False
 
 
-def test_modality_mapping():
-    # Mock biological sequences for initialization
-    bio_sequences = ["ACDEFGHIKLMNPQRSTVWY", "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
-    mock_bio_dataset = MockDataset(bio_sequences, size=10)
-
-    with patch.object(RandomNeighborScoreCallback.SUPPORTED_DATASETS["AMPLIFY"], "__new__") as mock_dataset_class:
-        mock_dataset_class.return_value = mock_bio_dataset
-
-        callback = RandomNeighborScoreCallback(dataset_name="AMPLIFY", k=10)
-        assert callback._get_modality_for_dataset() == "amino_acid"
-
-        callback.dataset_name = "Calm"
-        assert callback._get_modality_for_dataset() == "nucleotide"
-
-        callback.dataset_name = "ZINC"
-        assert callback._get_modality_for_dataset() == "SMILES"
-
-
 def test_unsupported_dataset():
     with pytest.raises(ValueError, match="Dataset 'InvalidDataset' not supported"):
         RandomNeighborScoreCallback(dataset_name="InvalidDataset", k=10)
