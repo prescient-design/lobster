@@ -286,6 +286,7 @@ class NucleotideToProteinPairTransform(Transform):
             return input, protein_sequence
         except (KeyError, ValueError) as e:
             logger.warning(f"Conversion to protein failed for input: {input} with error: {e}")
+
             return input, None
 
 
@@ -369,5 +370,7 @@ class ProteinToNucleotidePairTransform(Transform):
             )
 
             return input, nucleotide_sequence
-        except Exception:
+        except (KeyError, ValueError) as e:
+            logger.warning(f"Conversion to nucleotide failed for input: {input} with error: {e}")
+
             return input, None
