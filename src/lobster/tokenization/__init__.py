@@ -20,7 +20,6 @@ from ._pmlm_tokenizer_transform import (
 from ._smiles_tokenizer import SmilesTokenizerFast
 from ._ume_tokenizers import (
     UmeAminoAcidTokenizerFast,
-    UmeLatentGenerator3DCoordTokenizerFast,
     UmeNucleotideTokenizerFast,
     UmeSmilesTokenizerFast,
     UmeTokenizerTransform,

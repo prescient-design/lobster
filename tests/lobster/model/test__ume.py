@@ -13,7 +13,6 @@ def sample_sequences():
         "SMILES": ["CC(=O)OC1=CC=CC=C1C(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],
         "amino_acid": ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],
         "nucleotide": ["ATGCATGC", "GCTAGCTA"],
-        "3d_coordinates": [["aa", "bb", "cc", "dd"], ["aa", "bb", "cc", "dd"]],
     }
 
 
@@ -261,7 +260,6 @@ class TestUme:
             "SMILES": ["CC(=O)OC1=CC=CC=C1C(=O)O"],
             "amino_acid": ["MKTVRQERLKSIVRILERSKEPVSGAQL"],
             "nucleotide": ["ATGCATGC"],
-            "3d_coordinates": [["aa", "bb", "cc", "dd"]],
         }
 
         # Test embedding for each modality
@@ -290,7 +288,6 @@ class TestUme:
             "SMILES": ["CC(=O)OC1=CC=CC=C1C(=O)O"],
             "amino_acid": ["MKTVRQERLKSIVRILERSKEPVSGAQL"],
             "nucleotide": ["ATGCATGC"],
-            "3d_coordinates": [["aa", "bb", "cc", "dd"]],
         }
 
         # Initialize Ume with flash-attn enabled

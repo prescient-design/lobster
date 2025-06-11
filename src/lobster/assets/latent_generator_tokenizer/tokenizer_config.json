@@ -49,7 +49,7 @@
   "model_max_length": 1000000000000000019884624838656,
   "pad_token": "<pad>",
   "padding_side": "right",
-  "tokenizer_class": "PreTrainedTokenizerFast",
+  "tokenizer_class": "PreTrainedTokenizer",
   "truncation_side": "left",
   "unk_token": "<unk>"
 }
