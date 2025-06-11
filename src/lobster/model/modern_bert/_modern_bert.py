@@ -281,22 +281,38 @@ class FlexBERT(pl.LightningModule):
         Parameters
         ----------
         input_ids: torch.Tensor
-            Input IDs of shape (batch_size, 1, length).
+            Input IDs of shape (batch_size, 1, length) for unpadded models or (batch_size, length) for padded models.
         attention_mask: torch.Tensor
-            Attention mask of shape (batch_size, 1, length).
+            Attention mask of shape (batch_size, 1, length) for unpadded models or (batch_size, length) for padded models.
         
         Returns
         -------
         torch.Tensor
-            Latents of shape (batch_size * sequence_length, hidden_size).
+            Latents of shape (batch_size * sequence_length, hidden_size) for unpadded models
+            or (batch_size, sequence_length, hidden_size) for padded models.
         """
-        input_ids, attention_mask, cu_seqlens = self._prepare_inputs(input_ids, attention_mask)
-        
         with torch.inference_mode():
-            return self.model(
-                input_ids, 
-                attention_mask=attention_mask, 
-                cu_seqlens=cu_seqlens, 
-                max_seqlen=self.max_length
-            )
+            if self.config.padding == "unpadded":
+                # For unpadded models, convert 3D to 2D if needed and let the encoder handle unpadding
+                if input_ids.dim() == 3:
+                    input_ids = input_ids.squeeze(1)
+                if attention_mask.dim() == 3:
+                    attention_mask = attention_mask.squeeze(1)
+                
+                # Call the model with 2D tensors - the unpadded encoder will handle unpadding automatically
+                return self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask
+                )
+            else:
+                # For padded models, also ensure we have 2D tensors
+                if input_ids.dim() == 3:
+                    input_ids = input_ids.squeeze(1)
+                if attention_mask.dim() == 3:
+                    attention_mask = attention_mask.squeeze(1)
+                
+                return self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask
+                )
             

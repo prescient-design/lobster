@@ -151,8 +151,19 @@ class Ume(L.LightningModule):
         # Prepare model kwargs with flash-attn setting
         model_kwargs = model_kwargs or {}
         model_kwargs["use_fa2"] = use_flash_attn
-        if not use_flash_attn:
-            model_kwargs["padding"] = "padded"
+
+        # Important: If loading from checkpoint, preserve the original architecture
+        # A checkpoint trained with flash attention has unpadded layers that can't be changed
+        # We can still disable flash attention at the layer level while keeping unpadded architecture
+        if ckpt_path is not None:
+            # Always use unpadded architecture when loading from checkpoint
+            # The individual attention layers will respect the use_fa2 setting
+            model_kwargs["padding"] = "unpadded"
+        elif not use_flash_attn:
+            # For checkpoint compatibility, default to unpadded architecture
+            # This allows loading flash attention checkpoints with disabled flash attention
+            # Only use padded architecture if explicitly requested
+            model_kwargs["padding"] = model_kwargs.get("padding", "unpadded")
 
         # Instantiate the model
         self.model = FlexBERT(
@@ -180,6 +191,7 @@ class Ume(L.LightningModule):
         self.frozen = False
         self.contrastive_loss_weight = contrastive_loss_weight
         self.use_disco_clip = use_disco_clip
+        self.use_flash_attn = use_flash_attn
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
@@ -367,30 +379,17 @@ class Ume(L.LightningModule):
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
         else:
-            # Copied from tokens_to_latents to remove the inference_mode decorator, allow training
-            if getattr(self.model.config, "padding", "unpadded") == "padded":
-                # For padded attention, just pass as (batch, seqlen)
-                input_ids = (
-                    x["input_ids"].squeeze(1)
-                    if x["input_ids"].dim() == 3 and x["input_ids"].shape[1] == 1
-                    else x["input_ids"]
-                )
-                attention_mask = (
-                    x["attention_mask"].squeeze(1)
-                    if x["attention_mask"].dim() == 3 and x["attention_mask"].shape[1] == 1
-                    else x["attention_mask"]
-                )
-                embeddings = self.model.model(input_ids, attention_mask=attention_mask, max_seqlen=self.max_length)
-            else:
-                input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(x["input_ids"], x["attention_mask"])
-                embeddings = self.model.model(
-                    input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
-                )
+            # Use tokens_to_latents which now handles architecture differences properly
+            embeddings = self.model.tokens_to_latents(x["input_ids"], x["attention_mask"])
 
         # Reshape to (batch_size, seq_len, hidden_size)
         batch_size = x["input_ids"].size(0)
         seq_len = x["input_ids"].size(-1)
-        embeddings = embeddings.view(batch_size, seq_len, -1)
+
+        if self.model.config.padding == "unpadded":
+            # For unpadded models, tokens_to_latents returns flattened output
+            embeddings = embeddings.view(batch_size, seq_len, -1)
+        # For padded models, embeddings are already in the correct shape (batch_size, seq_len, hidden_size)
 
         if aggregate:
             # Simple mean pooling over sequence length dimension
@@ -742,3 +741,29 @@ class Ume(L.LightningModule):
         self.log("val_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
+
+    @classmethod
+    def load_from_checkpoint_with_flash_attn_disabled(cls, checkpoint_path: str, **kwargs) -> "Ume":
+        """Load a checkpoint with flash attention disabled for CPU inference.
+
+        This method ensures architectural compatibility when loading checkpoints
+        that were trained with flash attention but need to run without it.
+
+        Parameters
+        ----------
+        checkpoint_path : str
+            Path to the checkpoint file (local or S3)
+        **kwargs
+            Additional arguments to override model configuration
+
+        Returns
+        -------
+        Ume
+            Loaded model with flash attention disabled
+        """
+        # Force unpadded architecture for checkpoint compatibility
+        # Checkpoints trained with flash attention have unpadded layers
+        kwargs["use_flash_attn"] = False
+
+        # Load using Lightning's method with our compatibility settings
+        return cls.load_from_checkpoint(checkpoint_path, strict=False, **kwargs)
