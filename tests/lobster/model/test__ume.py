@@ -359,3 +359,63 @@ class TestUme:
         )
 
         assert result == mock_model
+
+    def test_load_checkpoint_disable_flash_attn_cpu_inference(self):
+        """Test loading Ume checkpoint trained with flash-attn, disabling it, and running inference on CPU."""
+        # Check if S3 bucket is accessible, skip test if not
+        try:
+            import boto3
+            from botocore.exceptions import ClientError, NoCredentialsError
+
+            s3_client = boto3.client("s3")
+            s3_client.head_bucket(Bucket="prescient-lobster")
+        except (ImportError, NoCredentialsError, ClientError) as e:
+            pytest.skip(f"S3 bucket 'prescient-lobster' not accessible: {e}")
+
+        checkpoint_path = "s3://prescient-lobster/ume/runs/2025-06-11T02-12-16/epoch=0-step=19500-val_loss=1.0225.ckpt"
+
+        # Load the checkpoint that was trained with flash-attn
+        ume = Ume.load_from_checkpoint(
+            checkpoint_path,
+            use_flash_attn=False,  # Disable flash-attn for CPU inference
+            map_location="cpu",  # Force CPU loading
+        )
+
+        # Ensure model is on CPU and in eval mode
+        ume = ume.cpu()
+        ume.eval()
+
+        # Verify flash-attn is disabled
+        assert ume.use_flash_attn is False
+
+        # Test sequences for each supported modality
+        test_sequences = {
+            "SMILES": ["CC(=O)OC1=CC=CC=C1C(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],
+            "amino_acid": ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],
+            "nucleotide": ["ATGCATGC", "GCTAGCTA"],
+        }
+
+        # Test embedding for each modality
+        for modality, sequences in test_sequences.items():
+            # Test without aggregation
+            embeddings = ume.embed_sequences(sequences, modality, aggregate=False)
+            assert isinstance(embeddings, torch.Tensor)
+            assert embeddings.dim() == 3  # [batch_size, seq_length, hidden_size]
+            assert embeddings.shape[0] == len(sequences)
+            assert embeddings.shape[1] <= ume.max_length
+            assert embeddings.device.type == "cpu"
+
+            # Test with aggregation
+            embeddings_agg = ume.embed_sequences(sequences, modality, aggregate=True)
+            assert isinstance(embeddings_agg, torch.Tensor)
+            assert embeddings_agg.dim() == 2  # [batch_size, hidden_size]
+            assert embeddings_agg.shape[0] == len(sequences)
+            assert embeddings_agg.device.type == "cpu"
+
+            # Verify embeddings are not all zeros (sanity check)
+            assert not torch.allclose(embeddings, torch.zeros_like(embeddings))
+            assert not torch.allclose(embeddings_agg, torch.zeros_like(embeddings_agg))
+
+            # Verify embeddings have reasonable magnitude
+            assert embeddings.abs().mean() > 0.01
+            assert embeddings_agg.abs().mean() > 0.01
