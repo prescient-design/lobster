@@ -23,7 +23,6 @@ class CalmLightningDataModule(LightningDataModule):
         transform_fn: Callable | Transform | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
-        shuffle: bool = True,
         sampler: Iterable | Sampler | None = None,
         batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
         num_workers: int = 0,
@@ -48,8 +47,6 @@ class CalmLightningDataModule(LightningDataModule):
             Seed for the random generator, by default 0xDEADBEEF.
         batch_size : int, optional
             Number of samples per batch, by default 1.
-        shuffle : bool, optional
-            Whether to shuffle the data, by default True.
         sampler : Optional[Union[Iterable, Sampler]], optional
             Sampler for data loading, by default None.
         batch_sampler : Optional[Union[Iterable[Sequence], Sampler[Sequence]]], optional
@@ -73,7 +70,6 @@ class CalmLightningDataModule(LightningDataModule):
         self._seed = seed
         self._batch_size = batch_size
         self._max_length = max_length
-        self._shuffle = shuffle
         self._sampler = sampler
         self._batch_sampler = batch_sampler
         self._num_workers = num_workers
@@ -126,7 +122,7 @@ class CalmLightningDataModule(LightningDataModule):
                 root=self._root,
                 split="validation",
                 transform=self._transform_fn,
-                columns=columns,
+                keys=columns,
             )
 
             self._test_dataset = CalmIterableDataset(
@@ -149,7 +145,6 @@ class CalmLightningDataModule(LightningDataModule):
         return DataLoader(
             self._train_dataset,
             batch_size=self._batch_size,
-            shuffle=self._shuffle,
             sampler=self._sampler,
             batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
@@ -162,7 +157,6 @@ class CalmLightningDataModule(LightningDataModule):
         return DataLoader(
             self._val_dataset,
             batch_size=self._batch_size,
-            shuffle=False,
             sampler=self._sampler,
             batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
@@ -174,7 +168,6 @@ class CalmLightningDataModule(LightningDataModule):
         return DataLoader(
             self._test_dataset,
             batch_size=self._batch_size,
-            shuffle=False,
             sampler=self._sampler,
             batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
@@ -186,7 +179,6 @@ class CalmLightningDataModule(LightningDataModule):
         return DataLoader(
             self._predict_dataset,
             batch_size=self._batch_size,
-            shuffle=False,
             sampler=self._sampler,
             batch_sampler=self._batch_sampler,
             num_workers=self._num_workers,
