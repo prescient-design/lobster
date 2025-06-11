@@ -1,3 +1,4 @@
+import logging
 import random
 from typing import Any
 
@@ -13,6 +14,8 @@ from lobster.transforms.functional import (
 from lobster.transforms.functional._utils import invert_residue_to_codon_mapping
 
 from .functional._utils import json_load
+
+logger = logging.getLogger(__name__)
 
 
 class SmilesToSmilesPairTransform(Transform):
@@ -281,7 +284,8 @@ class NucleotideToProteinPairTransform(Transform):
         try:
             protein_sequence = convert_nt_to_aa(input, self._codon_to_residue)
             return input, protein_sequence
-        except Exception:
+        except (KeyError, ValueError) as e:
+            logger.warning(f"Conversion to protein failed for input: {input} with error: {e}")
             return input, None
 
 
