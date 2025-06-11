@@ -7,7 +7,7 @@ import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Sampler
 
-from lobster.datasets._calm_dataset import CalmDataset
+from lobster.datasets import CalmIterableDataset
 from lobster.tokenization import NucleotideTokenizerFast
 from lobster.transforms import TokenizerTransform, Transform
 
@@ -96,11 +96,11 @@ class CalmLightningDataModule(LightningDataModule):
         # Verify all required splits are available
         columns = ["sequence", "description"] if self._use_text_descriptions else ["sequence"]
 
-        for split in CalmDataset.SUPPORTED_SPLITS:
-            dataset = CalmDataset(
+        for split in CalmIterableDataset.SUPPORTED_SPLITS:
+            dataset = CalmIterableDataset(
                 root=self._root,
                 transform=None,
-                columns=columns,
+                keys=columns,
                 split=split,
             )
 
@@ -115,34 +115,34 @@ class CalmLightningDataModule(LightningDataModule):
 
         if stage == "fit" or stage == "test":
             # Use pre-created IID splits
-            self._train_dataset = CalmDataset(
+            self._train_dataset = CalmIterableDataset(
                 root=self._root,
                 split="train",
                 transform=self._transform_fn,
-                columns=columns,
+                keys=columns,
             )
 
-            self._val_dataset = CalmDataset(
+            self._val_dataset = CalmIterableDataset(
                 root=self._root,
                 split="validation",
                 transform=self._transform_fn,
                 columns=columns,
             )
 
-            self._test_dataset = CalmDataset(
+            self._test_dataset = CalmIterableDataset(
                 root=self._root,
                 split="test",  # sampled iid from train_full, same as test and val sets
                 transform=self._transform_fn,
-                columns=columns,
+                keys=columns,
             )
 
         if stage == "predict":
             predict_split = "heldout"  # pre-curated from paper
-            self._predict_dataset = CalmDataset(
+            self._predict_dataset = CalmIterableDataset(
                 root=self._root,
                 split=predict_split,
                 transform=self._transform_fn,
-                columns=columns,
+                keys=columns,
             )
 
     def train_dataloader(self) -> DataLoader:

@@ -28,6 +28,8 @@ class RandomSequenceDataset(Dataset):
         seed : int
             Random seed for reproducibility
         """
+        super().__init__()
+
         self.vocab = list(vocab)
         self.num_sequences = num_sequences
         self.min_length = min_length

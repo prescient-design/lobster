@@ -1,9 +1,11 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import ClassVar
 
-from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
+from lobster.constants import Modality
 from lobster.transforms import Transform
+
+from ._huggingface_iterable_dataset import HuggingFaceIterableDataset
 
 
 class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
@@ -54,12 +56,15 @@ class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
     """
 
     SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "validation", "test"]
+    MODALITY: ClassVar[Modality] = Modality.NUCLEOTIDE
+    SEQUENCE_KEY: ClassVar[str] = "text"
 
     def __init__(
         self,
         root: str | Path | None = None,
         *,
         transform: Callable | Transform | None = None,
+        keys: Sequence[str] | None = None,
         download: bool = False,
         shuffle: bool = True,
         split: str = "train",
@@ -85,6 +90,8 @@ class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
         split : str, optional
             Which split of the dataset to use. Must be one of 'train', 'validation', or 'test'.
             Default is 'train'.
+        keys : list[str] | None, optional
+            Keys to use for the dataset. If None, uses the default keys.
         shuffle_buffer_size : int, optional
             Buffer size for shuffling streaming datasets. Default is 1000.
         limit : int or None, optional
@@ -94,7 +101,7 @@ class OpenGenome2IterableDataset(HuggingFaceIterableDataset):
             dataset_name="arcinstitute/opengenome2",
             root=root,
             transform=transform,
-            keys=["text"],  # NOTE - might be other columns later in streaming
+            keys=keys or [self.SEQUENCE_KEY],
             split=split,
             shuffle=shuffle,
             download=download,

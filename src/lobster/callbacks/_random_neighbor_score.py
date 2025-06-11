@@ -180,21 +180,11 @@ class RandomNeighborScoreCallback(Callback):
 
         return valid_chars
 
-    def _get_sequence_key_for_dataset(self) -> str:
-        """Get the appropriate sequence key/column name for each dataset."""
-        dataset_class = self.SUPPORTED_DATASETS[self.dataset_name]
-        return dataset_class.SEQUENCE_KEY
-
-    def _get_modality_for_dataset(self) -> str:
-        """Determine the appropriate modality based on the dataset type."""
-        dataset_class = self.SUPPORTED_DATASETS[self.dataset_name]
-        return dataset_class.MODALITY
-
     def _create_dataloaders(self):
         """Create biological and random dataloaders."""
         # Create biological dataset
         dataset_class = self.SUPPORTED_DATASETS[self.dataset_name]
-        sequence_key = self._get_sequence_key_for_dataset()
+        sequence_key = dataset_class.SEQUENCE_KEY
 
         # Create dataset with only the sequence column using the dataset's SEQUENCE_KEY
         biological_dataset = dataset_class(
@@ -284,8 +274,11 @@ class RandomNeighborScoreCallback(Callback):
                 # Use the model's embed_sequences method
                 if hasattr(model, "embed_sequences"):
                     # Determine modality based on dataset type
-                    modality = self._get_modality_for_dataset()
+                    dataset_class = self.SUPPORTED_DATASETS[self.dataset_name]
+                    modality = dataset_class.MODALITY
+
                     batch_embeddings = model.embed_sequences(sequences, modality, aggregate=True)
+
                     embeddings.append(batch_embeddings.cpu())
                 else:
                     # Fallback for other model types

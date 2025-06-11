@@ -2,8 +2,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
-from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
+from lobster.constants import Modality
 from lobster.transforms import Transform
+
+from ._huggingface_iterable_dataset import HuggingFaceIterableDataset
 
 
 class ZINCIterableDataset(HuggingFaceIterableDataset):
@@ -37,6 +39,8 @@ class ZINCIterableDataset(HuggingFaceIterableDataset):
     """
 
     SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "validation", "test"]
+    MODALITY: ClassVar[Modality] = Modality.SMILES
+    SEQUENCE_KEY: ClassVar[str] = "smiles"
 
     def __init__(
         self,
@@ -73,6 +77,8 @@ class ZINCIterableDataset(HuggingFaceIterableDataset):
             If True, shuffles the dataset.
         shuffle_buffer_size : int, optional
             Buffer size for shuffling streaming datasets.
+        keys : list[str] | None, optional
+            Keys to use for the dataset. If None, uses the default keys.
         limit : int or None, optional
             Limit the number of samples to load.
         """
@@ -80,7 +86,7 @@ class ZINCIterableDataset(HuggingFaceIterableDataset):
             dataset_name="haydn-jones/ZINC20",
             root=root,
             transform=transform,
-            keys=keys or ["smiles"],
+            keys=keys or [self.SEQUENCE_KEY],
             split=split,
             download=download,
             shuffle=shuffle,
