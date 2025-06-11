@@ -283,7 +283,9 @@ class NucleotideToProteinPairTransform(Transform):
 
         try:
             protein_sequence = convert_nt_to_aa(input, self._codon_to_residue)
+
             return input, protein_sequence
+
         except (KeyError, ValueError) as e:
             logger.warning(f"Conversion to protein failed for input: {input} with error: {e}")
 
@@ -370,6 +372,7 @@ class ProteinToNucleotidePairTransform(Transform):
             )
 
             return input, nucleotide_sequence
+
         except (KeyError, ValueError) as e:
             logger.warning(f"Conversion to nucleotide failed for input: {input} with error: {e}")
 
