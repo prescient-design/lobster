@@ -493,7 +493,7 @@ class TestNucleotideToProteinPairTransform:
 
         # Mock convert_nt_to_aa to raise an exception
         with mock.patch(
-            "lobster.transforms._equivalence_transforms.convert_nt_to_aa", side_effect=Exception("Test error")
+            "lobster.transforms._equivalence_transforms.convert_nt_to_aa", side_effect=ValueError("Test error")
         ):
             outputs = transform(["ATGAAACAG"])
 
