@@ -1,3 +1,4 @@
+import random
 from collections.abc import Callable
 from importlib.util import find_spec
 from typing import Literal
@@ -85,8 +86,6 @@ def convert_aa_to_nt_probabilistic(
     str
         The nucleotide sequence
     """
-    import random
-
     if not aa_seq.isupper():
         aa_seq = aa_seq.upper()
 
