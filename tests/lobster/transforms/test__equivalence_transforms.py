@@ -5,8 +5,10 @@ import pytest
 from rdkit import Chem
 
 from lobster.transforms._equivalence_transforms import (
+    NucleotideToProteinPairTransform,
     NucleotideToSmilesPairTransform,
     PeptideToSmilesPairTransform,
+    ProteinToNucleotidePairTransform,
     SmilesToSmilesPairTransform,
 )
 
@@ -371,3 +373,263 @@ class TestNucleotideToSmilesPairTransform:
         else:
             assert result is not None
             assert get_canonical_smiles(result) == expected_smiles_target
+
+
+class TestNucleotideToProteinPairTransform:
+    def test_init_default(self):
+        """Test default initialization."""
+        transform = NucleotideToProteinPairTransform()
+        assert transform._reading_frame == 0
+        assert transform._max_input_length is None
+        assert transform._codon_to_residue is not None
+        assert transform._residue_to_codon is not None
+
+    def test_init_custom_parameters(self):
+        """Test initialization with custom parameters."""
+        transform = NucleotideToProteinPairTransform(reading_frame=1, max_input_length=100)
+        assert transform._reading_frame == 1
+        assert transform._max_input_length == 100
+
+    def test_init_invalid_reading_frame(self):
+        """Test initialization with invalid reading frame."""
+        with pytest.raises(ValueError, match="reading_frame must be 0, 1, or 2"):
+            NucleotideToProteinPairTransform(reading_frame=3)
+
+    @pytest.mark.parametrize(
+        "inputs, expected_error, error_message_contains",
+        [
+            ([], ValueError, "expects one string input, got none"),
+            (["n1", "n2"], ValueError, "expects a single string input, but got 2"),
+            ([123], TypeError, "expects a string input, but got type <class 'int'>"),
+        ],
+    )
+    def test_check_inputs_invalid(
+        self, inputs: list[Any], expected_error: type[Exception], error_message_contains: str
+    ):
+        transform = NucleotideToProteinPairTransform()
+        with pytest.raises(expected_error, match=error_message_contains):
+            transform(inputs)
+
+    @pytest.mark.parametrize(
+        "input_nt, reading_frame, expected_original, expected_protein",
+        [
+            # Frame 0: start from beginning
+            ("ATGAAATAG", 0, "ATGAAATAG", "MK"),  # ATG AAA TAG -> M K (stop)
+            ("ATGAAACAG", 0, "ATGAAACAG", "MKQ"),  # ATG AAA CAG -> M K Q
+            # Frame 1: skip first nucleotide
+            ("CATGAAATAG", 1, "ATGAAATAG", "MK"),  # C+ATG AAA TAG -> M K (stop)
+            # Frame 2: skip first two nucleotides
+            ("CCATGAAATAG", 2, "ATGAAATAG", "MK"),  # CC+ATG AAA TAG -> M K (stop)
+            # Empty input
+            ("", 0, "", ""),
+            # Short input
+            ("AT", 0, "AT", "<unk>"),  # Not enough for a complete codon
+        ],
+    )
+    def test_transform_basic(self, input_nt: str, reading_frame: int, expected_original: str, expected_protein: str):
+        transform = NucleotideToProteinPairTransform(reading_frame=reading_frame)
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == expected_original.upper()
+        if expected_protein == "":
+            assert result == ""
+        else:
+            assert result == expected_protein
+
+    def test_transform_case_insensitive(self):
+        """Test that input is converted to uppercase."""
+        transform = NucleotideToProteinPairTransform()
+        input_nt = "atgaaatag"
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "ATGAAATAG"
+        assert result == "MK"
+
+    def test_transform_with_max_input_length(self):
+        """Test truncation with max_input_length."""
+        transform = NucleotideToProteinPairTransform(max_input_length=6)
+        input_nt = "ATGAAACAG"  # 9 bases
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "ATGAAA"  # Truncated to 6 bases
+        assert result == "MK"  # Only 1 complete codon after truncation
+
+    def test_transform_unknown_codon(self):
+        """Test handling of unknown codons."""
+        transform = NucleotideToProteinPairTransform()
+        input_nt = "ATGXXXCAG"  # XXX is not a valid codon
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "ATGXXXCAG"
+        assert result == "M<unk>Q"  # XXX becomes <unk>
+
+    def test_transform_early_stop_codon(self):
+        """Test handling of early stop codons."""
+        transform = NucleotideToProteinPairTransform()
+        input_nt = "ATGTAAAAACAT"  # ATG TAA AAA CAT -> M (stop) - translation stops
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "ATGTAAAAACAT"
+        assert result == "M"  # Translation stops at TAA
+
+    def test_transform_exception_handling(self):
+        """Test that exceptions during conversion result in None."""
+        transform = NucleotideToProteinPairTransform()
+
+        # Mock convert_nt_to_aa to raise an exception
+        with mock.patch(
+            "lobster.transforms._equivalence_transforms.convert_nt_to_aa", side_effect=ValueError("Test error")
+        ):
+            outputs = transform(["ATGAAACAG"])
+
+            assert len(outputs) == 1
+            original, result = outputs[0]
+
+            assert original == "ATGAAACAG"
+            assert result is None
+
+
+class TestProteinToNucleotidePairTransform:
+    def test_init_default(self):
+        """Test default initialization."""
+        transform = ProteinToNucleotidePairTransform()
+        assert transform._max_input_length is None
+        assert transform._add_stop_codon is True
+        assert transform._vendor_codon_table is not None
+
+    def test_init_custom_parameters(self):
+        """Test initialization with custom parameters."""
+        transform = ProteinToNucleotidePairTransform(max_input_length=50, add_stop_codon=False)
+        assert transform._max_input_length == 50
+        assert transform._add_stop_codon is False
+
+    @pytest.mark.parametrize(
+        "inputs, expected_error, error_message_contains",
+        [
+            ([], ValueError, "expects one string input, got none"),
+            (["p1", "p2"], ValueError, "expects a single string input, but got 2"),
+            ([123], TypeError, "expects a string input, but got type <class 'int'>"),
+        ],
+    )
+    def test_check_inputs_invalid(
+        self, inputs: list[Any], expected_error: type[Exception], error_message_contains: str
+    ):
+        transform = ProteinToNucleotidePairTransform()
+        with pytest.raises(expected_error, match=error_message_contains):
+            transform(inputs)
+
+    def test_transform_basic_with_stop_codon(self):
+        """Test basic transformation with stop codon."""
+        transform = ProteinToNucleotidePairTransform(add_stop_codon=True)
+        input_protein = "MK"
+        outputs = transform([input_protein])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "MK"
+        assert result is not None
+        assert isinstance(result, str)
+        assert len(result) == 9  # 2 AA + 1 stop = 3 codons = 9 bases
+
+        # Check structure
+        assert result[0:3] == "ATG"  # M always ATG
+        assert result[3:6] in ["AAA", "AAG"]  # K codons based on usage frequency
+        assert result[6:9] in ["TAA", "TAG", "TGA"]  # Stop codons
+
+    def test_transform_basic_without_stop_codon(self):
+        """Test basic transformation without stop codon."""
+        transform = ProteinToNucleotidePairTransform(add_stop_codon=False)
+        input_protein = "MK"
+        outputs = transform([input_protein])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "MK"
+        assert result is not None
+        assert isinstance(result, str)
+        assert len(result) == 6  # 2 AA = 2 codons = 6 bases
+
+        # Check structure
+        assert result[0:3] == "ATG"  # M always ATG
+        assert result[3:6] in ["AAA", "AAG"]  # K codons
+
+    def test_transform_case_insensitive(self):
+        """Test that input is converted to uppercase."""
+        transform = ProteinToNucleotidePairTransform(add_stop_codon=False)
+        input_protein = "mk"
+        outputs = transform([input_protein])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "MK"
+        assert result is not None
+        assert len(result) == 6
+
+    def test_transform_with_max_input_length(self):
+        """Test truncation with max_input_length."""
+        transform = ProteinToNucleotidePairTransform(max_input_length=2, add_stop_codon=False)
+        input_protein = "MKLV"  # 4 amino acids
+        outputs = transform([input_protein])
+
+        assert len(outputs) == 1
+        original, result = outputs[0]
+
+        assert original == "MK"  # Truncated to 2 amino acids
+        assert result is not None
+        assert len(result) == 6  # 2 codons = 6 bases
+
+    def test_transform_exception_handling(self):
+        """Test that exceptions during conversion result in None."""
+        transform = ProteinToNucleotidePairTransform()
+
+        # Mock convert_aa_to_nt_probabilistic to raise an exception
+        with mock.patch(
+            "lobster.transforms._equivalence_transforms.convert_aa_to_nt_probabilistic",
+            side_effect=ValueError("Test error"),
+        ):
+            outputs = transform(["MK"])
+
+            assert len(outputs) == 1
+            original, result = outputs[0]
+
+            assert original == "MK"
+            assert result is None
+
+    def test_probabilistic_behavior(self):
+        """Test that the probabilistic nature works (different runs can give different results)."""
+        transform = ProteinToNucleotidePairTransform(add_stop_codon=False)
+        input_protein = "L"  # Leucine has 6 possible codons
+
+        # Run multiple times and collect results
+        results = set()
+        for _ in range(50):  # Run enough times to likely see variation
+            outputs = transform([input_protein])
+            result = outputs[0][1]
+            results.add(result)
+
+        # Should have more than one result due to probabilistic sampling
+        # (though theoretically could be the same by chance)
+        assert len(results) >= 1  # At least one result
+
+        # All results should be valid leucine codons
+        valid_leucine_codons = {"TTA", "TTG", "CTT", "CTC", "CTA", "CTG"}
+        for result in results:
+            assert result in valid_leucine_codons

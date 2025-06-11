@@ -1,3 +1,4 @@
+import random
 from collections.abc import Callable
 from importlib.util import find_spec
 from typing import Literal
@@ -59,6 +60,66 @@ def convert_aa_to_nt(
     stop_codons = residue_to_codon["STOP"]
     stop_codon = sample_fn(stop_codons)
     nt_seq += stop_codon
+    return nt_seq
+
+
+def convert_aa_to_nt_probabilistic(
+    aa_seq: str,
+    vendor_codon_table: dict[str, dict[str, float]],
+    add_stop_codon: bool = True,
+) -> str:
+    """
+    Convert amino acid sequence to nucleotide sequence using probabilistic codon sampling.
+
+    Parameters
+    ----------
+    aa_seq : str
+        The amino acid sequence to convert
+    vendor_codon_table : dict[str, dict[str, float]]
+        Vendor codon table with usage frequencies. Keys are amino acids, values are
+        dictionaries mapping codons to their usage frequencies.
+    add_stop_codon : bool
+        Whether to add a stop codon at the end
+
+    Returns
+    -------
+    str
+        The nucleotide sequence
+    """
+    if not aa_seq.isupper():
+        aa_seq = aa_seq.upper()
+
+    nt_seq = ""
+    for residue in aa_seq:
+        if residue not in vendor_codon_table:
+            raise ValueError(f"Unknown amino acid residue '{residue}' not found in vendor codon table")
+
+        try:
+            codon_probs = vendor_codon_table[residue]
+            available_codons = list(codon_probs.keys())
+            probabilities = list(codon_probs.values())
+            codon = random.choices(available_codons, weights=probabilities, k=1)[0]
+
+        except (KeyError, IndexError) as e:
+            raise Exception(f"Error processing residue '{residue}': {e}") from e
+
+        nt_seq += codon
+
+    # Add stop codon if requested and sequence is not empty
+    if add_stop_codon and aa_seq:
+        # Handle stop codons (use "*" key in vendor table)
+        stop_key = "*" if "*" in vendor_codon_table else "STOP"
+
+        if stop_key in vendor_codon_table:
+            stop_probs = vendor_codon_table[stop_key]
+            available_stop_codons = list(stop_probs.keys())
+            stop_probabilities = list(stop_probs.values())
+            stop_codon = random.choices(available_stop_codons, weights=stop_probabilities, k=1)[0]
+        else:
+            # Fallback if no stop codon info available
+            stop_codon = "TAA"  # Most common stop codon
+        nt_seq += stop_codon
+
     return nt_seq
 
 
