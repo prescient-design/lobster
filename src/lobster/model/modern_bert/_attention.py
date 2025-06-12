@@ -157,20 +157,27 @@ class BertAlibiUnpadSelfAttention(nn.Module):
                     alibi_slopes=slopes,
                 )
         else:
-            qkv = pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, *_ = qkv.shape
-            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attention_head_size)
-            # if we have nonzero attention dropout (e.g. during fine-tuning) or no Triton, compute attention in PyTorch
-            q = qkv[:, :, 0, :, :].permute(0, 2, 1, 3)  # b h s d
-            k = qkv[:, :, 1, :, :].permute(0, 2, 3, 1)  # b h d s
-            v = qkv[:, :, 2, :, :].permute(0, 2, 1, 3)  # b h s d
-            attention_scores = torch.matmul(q, k) / math.sqrt(self.attention_head_size)
-            attention_scores = attention_scores + bias
-            attention_probs = nn.functional.softmax(attention_scores, dim=-1)
-            attention_probs = self.dropout(attention_probs)
-            attention = torch.matmul(attention_probs, v).permute(0, 2, 1, 3)  # b s h d
-
-            attention = unpad_input_only(attention, torch.squeeze(attn_mask) == 1)
+            # Use native unpadded SDPA without padding/unpadding
+            # This ensures consistent processing regardless of flash attention availability
+            qkv = qkv.view(-1, 3, self.num_attention_heads, self.attention_head_size)
+            q, k, v = qkv.unbind(dim=1)  # Each has shape (total_nnz, num_heads, head_dim)
+            
+            # Reshape for SDPA: (num_heads, total_nnz, head_dim)
+            q = q.transpose(0, 1)
+            k = k.transpose(0, 1)
+            v = v.transpose(0, 1)
+            
+            # Apply dropout if needed
+            if self.p_dropout > 0.0:
+                attention = F.scaled_dot_product_attention(
+                    q, k, v, dropout_p=self.p_dropout
+                )
+            else:
+                attention = F.scaled_dot_product_attention(q, k, v)
+            
+            # Reshape back: (total_nnz, num_heads, head_dim)
+            attention = attention.transpose(0, 1)
+            attention = attention.reshape(bs, -1)
 
         return attention.view(bs, dim)
 
@@ -412,22 +419,27 @@ class FlexBertUnpadAttention(FlexBertAttentionBase):
             # attn = attn.view(bs, dim)
             attn = attn.reshape(bs, dim)
         else:
-            qkv = pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, seqlen, _ = qkv.shape
-
-            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
-            q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                dropout_p=self.p_dropout,
-                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(unpad_bs, 1, seqlen, seqlen)
-                if self.use_sdpa_attn_mask
-                else None,
-            )
-            attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
-            attn = unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
+            # Use native unpadded SDPA without padding/unpadding
+            # This ensures consistent processing regardless of flash attention availability
+            qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+            q, k, v = qkv.unbind(dim=1)  # Each has shape (total_nnz, num_heads, head_dim)
+            
+            # Reshape for SDPA: (num_heads, total_nnz, head_dim)
+            q = q.transpose(0, 1)
+            k = k.transpose(0, 1)
+            v = v.transpose(0, 1)
+            
+            # Apply dropout if needed
+            if self.p_dropout > 0.0:
+                attn = F.scaled_dot_product_attention(
+                    q, k, v, dropout_p=self.p_dropout
+                )
+            else:
+                attn = F.scaled_dot_product_attention(q, k, v)
+            
+            # Reshape back: (total_nnz, num_heads, head_dim)
+            attn = attn.transpose(0, 1)
+            attn = attn.reshape(bs, dim)
 
         return self.out_drop(self.Wo(attn))
 
@@ -562,22 +574,27 @@ class FlexBertUnpadParallelAttention(FlexBertAttentionBase):
                 )
             attn = attn.view(bs, dim)
         else:
-            qkv = pad_input(qkv, indices, cu_seqlens.shape[0] - 1, max_seqlen)  # batch, max_seqlen, thd
-            unpad_bs, seqlen, _ = qkv.shape
-
-            qkv = qkv.view(unpad_bs, -1, 3, self.num_attention_heads, self.attn_head_size)
-            q, k, v = qkv.transpose(3, 1).unbind(dim=2)  # b h s d
-            attn = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                dropout_p=self.p_dropout,
-                attn_mask=attn_mask[:, None, None, :seqlen].to(torch.bool).expand(unpad_bs, 1, seqlen, seqlen)
-                if self.use_sdpa_attn_mask
-                else None,
-            )
-            attn = attn.transpose(1, 2).view(unpad_bs, -1, dim)  # b s h d
-            attn = unpad_input_only(attn, torch.squeeze(attn_mask) == 1)
+            # Use native unpadded SDPA without padding/unpadding
+            # This ensures consistent processing regardless of flash attention availability
+            qkv = qkv.view(-1, 3, self.num_attention_heads, self.attn_head_size)
+            q, k, v = qkv.unbind(dim=1)  # Each has shape (total_nnz, num_heads, head_dim)
+            
+            # Reshape for SDPA: (num_heads, total_nnz, head_dim)
+            q = q.transpose(0, 1)
+            k = k.transpose(0, 1)
+            v = v.transpose(0, 1)
+            
+            # Apply dropout if needed
+            if self.p_dropout > 0.0:
+                attn = F.scaled_dot_product_attention(
+                    q, k, v, dropout_p=self.p_dropout
+                )
+            else:
+                attn = F.scaled_dot_product_attention(q, k, v)
+            
+            # Reshape back: (total_nnz, num_heads, head_dim)
+            attn = attn.transpose(0, 1)
+            attn = attn.reshape(bs, dim)
 
         return self.out_drop(self.Wo(attn.view(bs, dim)))
 
