@@ -159,11 +159,17 @@ class Ume(L.LightningModule):
             # Always use unpadded architecture when loading from checkpoint
             # The individual attention layers will respect the use_fa2 setting
             model_kwargs["padding"] = "unpadded"
-        elif not use_flash_attn:
-            # For checkpoint compatibility, default to unpadded architecture
-            # This allows loading flash attention checkpoints with disabled flash attention
-            # Only use padded architecture if explicitly requested
-            model_kwargs["padding"] = model_kwargs.get("padding", "unpadded")
+            if not use_flash_attn:
+                model_kwargs["use_sdpa_attn_mask"] = True
+        else:
+            # When creating a new model, choose the appropriate architecture
+            if use_flash_attn:
+                # Flash attention works with unpadded architecture
+                model_kwargs["padding"] = "unpadded"
+            else:
+                # SDPA requires padded architecture to work correctly
+                model_kwargs["padding"] = "padded"
+                model_kwargs["use_sdpa_attn_mask"] = True
 
         # Instantiate the model
         self.model = FlexBERT(
