@@ -5,11 +5,11 @@ import pytest
 from rdkit import Chem
 
 from lobster.transforms._equivalence_transforms import (
-    NucleotideToProteinPairTransform,
+    AminoAcidToNucleotideAndSmilesTransform,
+    AminoAcidToNucleotidePairTransform,
+    AminoAcidToSmilesPairTransform,
+    NucleotideToAminoAcidPairTransform,
     NucleotideToSmilesPairTransform,
-    PeptideToNucleotideAndSmilesTransform,
-    PeptideToSmilesPairTransform,
-    ProteinToNucleotidePairTransform,
     SmilesToSmilesPairTransform,
 )
 
@@ -136,11 +136,11 @@ class TestSmilesToSmilesPairTransform:
         assert result is None
 
 
-class TestPeptideToSmilesPairTransform:
+class TestAminoAcidToSmilesPairTransform:
     def test_init(self):
-        transform_no_random = PeptideToSmilesPairTransform(randomize_smiles=False)
+        transform_no_random = AminoAcidToSmilesPairTransform(randomize_smiles=False)
         assert not transform_no_random._randomize_smiles
-        transform_random = PeptideToSmilesPairTransform(randomize_smiles=True)
+        transform_random = AminoAcidToSmilesPairTransform(randomize_smiles=True)
         assert transform_random._randomize_smiles
 
     @pytest.mark.parametrize(
@@ -154,19 +154,19 @@ class TestPeptideToSmilesPairTransform:
     def test_check_inputs_invalid(
         self, inputs: list[Any], expected_error: type[Exception], error_message_contains: str
     ):
-        transform = PeptideToSmilesPairTransform()
+        transform = AminoAcidToSmilesPairTransform()
         with pytest.raises(expected_error, match=error_message_contains):
             transform(inputs)
 
     def test_transform_empty_peptide(self):
-        transform = PeptideToSmilesPairTransform(randomize_smiles=False)
+        transform = AminoAcidToSmilesPairTransform(randomize_smiles=False)
         outputs = transform([""])
         assert len(outputs) == 1
         original, result = outputs[0]
         assert original == ""
         assert result == ""
 
-        transform_random = PeptideToSmilesPairTransform(randomize_smiles=True)
+        transform_random = AminoAcidToSmilesPairTransform(randomize_smiles=True)
         outputs_rand = transform_random([""])
         assert len(outputs_rand) == 1
         original_rand, result_rand = outputs_rand[0]
@@ -183,7 +183,7 @@ class TestPeptideToSmilesPairTransform:
         ],
     )
     def test_transform_valid_peptide(self, input_peptide: str, randomize_smiles: bool, expected_canonical_smiles: str):
-        transform = PeptideToSmilesPairTransform(randomize_smiles=randomize_smiles)
+        transform = AminoAcidToSmilesPairTransform(randomize_smiles=randomize_smiles)
         outputs = transform([input_peptide])
 
         assert len(outputs) == 1
@@ -217,7 +217,7 @@ class TestPeptideToSmilesPairTransform:
         expected_original: str,
         expected_smiles_target: str,
     ):
-        transform = PeptideToSmilesPairTransform(max_input_length=max_len)
+        transform = AminoAcidToSmilesPairTransform(max_input_length=max_len)
         outputs = transform([input_peptide])
 
         assert len(outputs) == 1
@@ -376,10 +376,10 @@ class TestNucleotideToSmilesPairTransform:
             assert get_canonical_smiles(result) == expected_smiles_target
 
 
-class TestNucleotideToProteinPairTransform:
+class TestNucleotideToAminoAcidPairTransform:
     def test_init_default(self):
         """Test default initialization."""
-        transform = NucleotideToProteinPairTransform()
+        transform = NucleotideToAminoAcidPairTransform()
         assert transform._reading_frame == 0
         assert transform._max_input_length is None
         assert transform._codon_to_residue is not None
@@ -387,14 +387,14 @@ class TestNucleotideToProteinPairTransform:
 
     def test_init_custom_parameters(self):
         """Test initialization with custom parameters."""
-        transform = NucleotideToProteinPairTransform(reading_frame=1, max_input_length=100)
+        transform = NucleotideToAminoAcidPairTransform(reading_frame=1, max_input_length=100)
         assert transform._reading_frame == 1
         assert transform._max_input_length == 100
 
     def test_init_invalid_reading_frame(self):
         """Test initialization with invalid reading frame."""
         with pytest.raises(ValueError, match="reading_frame must be 0, 1, or 2"):
-            NucleotideToProteinPairTransform(reading_frame=3)
+            NucleotideToAminoAcidPairTransform(reading_frame=3)
 
     @pytest.mark.parametrize(
         "inputs, expected_error, error_message_contains",
@@ -407,7 +407,7 @@ class TestNucleotideToProteinPairTransform:
     def test_check_inputs_invalid(
         self, inputs: list[Any], expected_error: type[Exception], error_message_contains: str
     ):
-        transform = NucleotideToProteinPairTransform()
+        transform = NucleotideToAminoAcidPairTransform()
         with pytest.raises(expected_error, match=error_message_contains):
             transform(inputs)
 
@@ -428,7 +428,7 @@ class TestNucleotideToProteinPairTransform:
         ],
     )
     def test_transform_basic(self, input_nt: str, reading_frame: int, expected_original: str, expected_protein: str):
-        transform = NucleotideToProteinPairTransform(reading_frame=reading_frame)
+        transform = NucleotideToAminoAcidPairTransform(reading_frame=reading_frame)
         outputs = transform([input_nt])
 
         assert len(outputs) == 1
@@ -442,7 +442,7 @@ class TestNucleotideToProteinPairTransform:
 
     def test_transform_case_insensitive(self):
         """Test that input is converted to uppercase."""
-        transform = NucleotideToProteinPairTransform()
+        transform = NucleotideToAminoAcidPairTransform()
         input_nt = "atgaaatag"
         outputs = transform([input_nt])
 
@@ -454,7 +454,7 @@ class TestNucleotideToProteinPairTransform:
 
     def test_transform_with_max_input_length(self):
         """Test truncation with max_input_length."""
-        transform = NucleotideToProteinPairTransform(max_input_length=6)
+        transform = NucleotideToAminoAcidPairTransform(max_input_length=6)
         input_nt = "ATGAAACAG"  # 9 bases
         outputs = transform([input_nt])
 
@@ -466,7 +466,7 @@ class TestNucleotideToProteinPairTransform:
 
     def test_transform_unknown_codon(self):
         """Test handling of unknown codons."""
-        transform = NucleotideToProteinPairTransform()
+        transform = NucleotideToAminoAcidPairTransform()
         input_nt = "ATGXXXCAG"  # XXX is not a valid codon
         outputs = transform([input_nt])
 
@@ -478,7 +478,7 @@ class TestNucleotideToProteinPairTransform:
 
     def test_transform_early_stop_codon(self):
         """Test handling of early stop codons."""
-        transform = NucleotideToProteinPairTransform()
+        transform = NucleotideToAminoAcidPairTransform()
         input_nt = "ATGTAAAAACAT"  # ATG TAA AAA CAT -> M (stop) - translation stops
         outputs = transform([input_nt])
 
@@ -490,7 +490,7 @@ class TestNucleotideToProteinPairTransform:
 
     def test_transform_exception_handling(self):
         """Test that exceptions during conversion result in None."""
-        transform = NucleotideToProteinPairTransform()
+        transform = NucleotideToAminoAcidPairTransform()
 
         # Mock convert_nt_to_aa to raise an exception
         with mock.patch(
@@ -505,17 +505,17 @@ class TestNucleotideToProteinPairTransform:
             assert result is None
 
 
-class TestProteinToNucleotidePairTransform:
+class TestAminoAcidToNucleotidePairTransform:
     def test_init_default(self):
         """Test default initialization."""
-        transform = ProteinToNucleotidePairTransform()
+        transform = AminoAcidToNucleotidePairTransform()
         assert transform._max_input_length is None
         assert transform._add_stop_codon is True
         assert transform._vendor_codon_table is not None
 
     def test_init_custom_parameters(self):
         """Test initialization with custom parameters."""
-        transform = ProteinToNucleotidePairTransform(max_input_length=50, add_stop_codon=False)
+        transform = AminoAcidToNucleotidePairTransform(max_input_length=50, add_stop_codon=False)
         assert transform._max_input_length == 50
         assert transform._add_stop_codon is False
 
@@ -530,13 +530,13 @@ class TestProteinToNucleotidePairTransform:
     def test_check_inputs_invalid(
         self, inputs: list[Any], expected_error: type[Exception], error_message_contains: str
     ):
-        transform = ProteinToNucleotidePairTransform()
+        transform = AminoAcidToNucleotidePairTransform()
         with pytest.raises(expected_error, match=error_message_contains):
             transform(inputs)
 
     def test_transform_basic_with_stop_codon(self):
         """Test basic transformation with stop codon."""
-        transform = ProteinToNucleotidePairTransform(add_stop_codon=True)
+        transform = AminoAcidToNucleotidePairTransform(add_stop_codon=True)
         input_protein = "MK"
         outputs = transform([input_protein])
 
@@ -555,7 +555,7 @@ class TestProteinToNucleotidePairTransform:
 
     def test_transform_basic_without_stop_codon(self):
         """Test basic transformation without stop codon."""
-        transform = ProteinToNucleotidePairTransform(add_stop_codon=False)
+        transform = AminoAcidToNucleotidePairTransform(add_stop_codon=False)
         input_protein = "MK"
         outputs = transform([input_protein])
 
@@ -573,7 +573,7 @@ class TestProteinToNucleotidePairTransform:
 
     def test_transform_case_insensitive(self):
         """Test that input is converted to uppercase."""
-        transform = ProteinToNucleotidePairTransform(add_stop_codon=False)
+        transform = AminoAcidToNucleotidePairTransform(add_stop_codon=False)
         input_protein = "mk"
         outputs = transform([input_protein])
 
@@ -586,7 +586,7 @@ class TestProteinToNucleotidePairTransform:
 
     def test_transform_with_max_input_length(self):
         """Test truncation with max_input_length."""
-        transform = ProteinToNucleotidePairTransform(max_input_length=2, add_stop_codon=False)
+        transform = AminoAcidToNucleotidePairTransform(max_input_length=2, add_stop_codon=False)
         input_protein = "MKLV"  # 4 amino acids
         outputs = transform([input_protein])
 
@@ -599,7 +599,7 @@ class TestProteinToNucleotidePairTransform:
 
     def test_transform_exception_handling(self):
         """Test that exceptions during conversion result in None."""
-        transform = ProteinToNucleotidePairTransform()
+        transform = AminoAcidToNucleotidePairTransform()
 
         # Mock convert_aa_to_nt_probabilistic to raise an exception
         with mock.patch(
@@ -616,7 +616,7 @@ class TestProteinToNucleotidePairTransform:
 
     def test_probabilistic_behavior(self):
         """Test that the probabilistic nature works (different runs can give different results)."""
-        transform = ProteinToNucleotidePairTransform(add_stop_codon=False)
+        transform = AminoAcidToNucleotidePairTransform(add_stop_codon=False)
         input_protein = "L"  # Leucine has 6 possible codons
 
         # Run multiple times and collect results
@@ -636,10 +636,10 @@ class TestProteinToNucleotidePairTransform:
             assert result in valid_leucine_codons
 
 
-def test_peptide_to_nucleotide_and_smiles_transform():
-    """Test the PeptideToNucleotideAndSmilesTransform with a simple peptide sequence."""
+def test_amino_acid_to_nucleotide_and_smiles_transform():
+    """Test the AminoAcidToNucleotideAndSmilesTransform with a simple peptide sequence."""
     # Create the transform
-    transform = PeptideToNucleotideAndSmilesTransform(
+    transform = AminoAcidToNucleotideAndSmilesTransform(
         max_input_length=1000, add_stop_codon=True, randomize_smiles=False
     )
 
@@ -655,7 +655,7 @@ def test_peptide_to_nucleotide_and_smiles_transform():
     assert smiles == "CC[C@H](C)[C@H](NC(=O)CNC(=O)[C@H](C)NC(=O)[C@@H](N)CCSC)C(=O)N[C@@H](CS)C(=O)O"
 
     # Test with max_input_length
-    transform = PeptideToNucleotideAndSmilesTransform(max_input_length=3, add_stop_codon=True, randomize_smiles=False)
+    transform = AminoAcidToNucleotideAndSmilesTransform(max_input_length=3, add_stop_codon=True, randomize_smiles=False)
     peptide_seq, nucleotide_seq, smiles = transform(peptide)
     assert peptide_seq == "MAG"
     assert nucleotide_seq is not None

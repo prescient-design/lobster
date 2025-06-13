@@ -8,11 +8,11 @@
 from ._auto_tokenizer_transform import AutoTokenizerTransform
 from ._binarize import BinarizeTransform
 from ._equivalence_transforms import (
-    NucleotideToProteinPairTransform,
+    AminoAcidToNucleotideAndSmilesTransform,
+    AminoAcidToNucleotidePairTransform,
+    AminoAcidToSmilesPairTransform,
+    NucleotideToAminoAcidPairTransform,
     NucleotideToSmilesPairTransform,
-    PeptideToNucleotideAndSmilesTransform,
-    PeptideToSmilesPairTransform,
-    ProteinToNucleotidePairTransform,
     SmilesToSmilesPairTransform,
 )
 from ._lambda import Lambda
@@ -23,12 +23,12 @@ from ._transform import Transform
 __all__ = [
     "AutoTokenizerTransform",
     "BinarizeTransform",
-    "NucleotideToProteinPairTransform",
+    "NucleotideToAminoAcidPairTransform",
     "NucleotideToSmilesPairTransform",
-    "PeptideToSmilesPairTransform",
-    "ProteinToNucleotidePairTransform",
+    "AminoAcidToSmilesPairTransform",
+    "AminoAcidToNucleotidePairTransform",
     "SmilesToSmilesPairTransform",
-    "PeptideToNucleotideAndSmilesTransform",
+    "AminoAcidToNucleotideAndSmilesTransform",
     "Lambda",
     "StructureFeaturizer",
     "TokenizerTransform",

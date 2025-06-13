@@ -2,7 +2,7 @@ import logging
 import random
 from typing import Any
 
-from lobster.constants import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
+from lobster.constants import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR, Modality
 from lobster.transforms._transform import Transform
 from lobster.transforms.functional import (
     convert_aa_to_nt_probabilistic,
@@ -23,6 +23,9 @@ class SmilesToSmilesPairTransform(Transform):
     Transforms a SMILES string to its canonical form or a randomized equivalent SMILES string.
     If the conversion fails, the output SMILES string will be None.
     """
+
+    input_modality = Modality.SMILES
+    output_modalities = (Modality.SMILES,)
 
     def __init__(self, randomize_smiles: bool = False) -> None:
         """
@@ -69,11 +72,14 @@ class SmilesToSmilesPairTransform(Transform):
         return input, convert_smiles_to_smiles(input, randomize_smiles=self._randomize_smiles)
 
 
-class PeptideToSmilesPairTransform(Transform):
+class AminoAcidToSmilesPairTransform(Transform):
     """
     Transforms a peptide sequence string into a pair of (peptide_sequence, SMILES).
     If the conversion to SMILES fails, the SMILES string will be None.
     """
+
+    input_modality = Modality.AMINO_ACID
+    output_modalities = (Modality.SMILES,)
 
     def __init__(self, randomize_smiles: bool = False, max_input_length: int | None = None) -> None:
         """
@@ -133,6 +139,9 @@ class NucleotideToSmilesPairTransform(Transform):
     Transforms a nucleotide sequence string into a pair of (nucleotide_sequence, SMILES).
     If the conversion to SMILES fails, the SMILES string will be None.
     """
+
+    input_modality = Modality.NUCLEOTIDE
+    output_modalities = (Modality.SMILES,)
 
     def __init__(
         self, randomize_smiles: bool = False, randomize_cap: bool = False, max_input_length: int | None = None
@@ -202,12 +211,15 @@ class NucleotideToSmilesPairTransform(Transform):
         return input, smiles_sequence
 
 
-class NucleotideToProteinPairTransform(Transform):
+class NucleotideToAminoAcidPairTransform(Transform):
     """
     Transforms a nucleotide sequence string into a pair of (nucleotide_sequence, protein_sequence).
     If the conversion to protein fails, the protein string will be None.
     By default, translation starts from the beginning of the sequence (frame 0).
     """
+
+    input_modality = Modality.NUCLEOTIDE
+    output_modalities = (Modality.AMINO_ACID,)
 
     def __init__(
         self, reading_frame: int = 0, max_input_length: int | None = None, codon_table_path: str | None = None
@@ -292,7 +304,7 @@ class NucleotideToProteinPairTransform(Transform):
             return input, None
 
 
-class ProteinToNucleotidePairTransform(Transform):
+class AminoAcidToNucleotidePairTransform(Transform):
     """
     Transforms a protein sequence string into a pair of (protein_sequence, nucleotide_sequence).
     If the conversion to nucleotide fails, the nucleotide string will be None.
@@ -302,11 +314,11 @@ class ProteinToNucleotidePairTransform(Transform):
     uses probabilistic sampling based on codon usage frequencies.
     """
 
+    input_modality = Modality.AMINO_ACID
+    output_modalities = (Modality.NUCLEOTIDE,)
+
     def __init__(
-        self,
-        max_input_length: int | None = None,
-        codon_vendor_table_path: str | None = None,
-        add_stop_codon: bool = True,
+        self, max_input_length: int | None = None, vendor_table_path: str | None = None, add_stop_codon: bool = True
     ) -> None:
         """
         Parameters
@@ -314,7 +326,7 @@ class ProteinToNucleotidePairTransform(Transform):
         max_input_length : int | None
             The maximum length of the input protein sequence.
             Sequences longer than this will be truncated prior to conversion.
-        codon_vendor_table_path : str | None
+        vendor_table_path : str | None
             The path to the vendor codon table file with usage frequencies.
             If None, uses the default CODON_TABLE_PATH_VENDOR.
         add_stop_codon : bool
@@ -329,11 +341,11 @@ class ProteinToNucleotidePairTransform(Transform):
         self._add_stop_codon = add_stop_codon
 
         # Set default vendor table path if None
-        if codon_vendor_table_path is None:
-            codon_vendor_table_path = CODON_TABLE_PATH_VENDOR
+        if vendor_table_path is None:
+            vendor_table_path = CODON_TABLE_PATH_VENDOR
 
         # Load vendor table for probabilistic sampling
-        self._vendor_codon_table = json_load(codon_vendor_table_path)
+        self._vendor_codon_table = json_load(vendor_table_path)
 
     def _check_inputs(self, inputs: list[Any]) -> None:
         if not inputs:
@@ -382,15 +394,17 @@ class ProteinToNucleotidePairTransform(Transform):
             return input, None
 
 
-class PeptideToNucleotideAndSmilesTransform(Transform):
+class AminoAcidToNucleotideAndSmilesTransform(Transform):
     """
     Transforms a peptide sequence string into a triplet of (peptide_sequence, nucleotide_sequence, SMILES).
     If any conversion fails, the corresponding output will be None.
-
     Note: The nucleotide conversion is inherently ambiguous due to codon degeneracy.
     Multiple codons can code for the same amino acid, so the reverse translation
     uses probabilistic sampling based on codon usage frequencies.
     """
+
+    input_modality = Modality.AMINO_ACID
+    output_modalities = (Modality.NUCLEOTIDE, Modality.SMILES)
 
     def __init__(
         self,
@@ -442,14 +456,12 @@ class PeptideToNucleotideAndSmilesTransform(Transform):
     def _transform(self, input: str, parameters: dict[str, Any]) -> tuple[str, str | None, str | None]:
         """
         Converts a peptide sequence to both nucleotide and SMILES representations.
-
         Parameters
         ----------
         input : str
             The peptide sequence string to convert.
         parameters : dict[str, Any]
              Not used in this transform but part of the interface.
-
         Returns
         -------
         tuple[str, str | None, str | None]
