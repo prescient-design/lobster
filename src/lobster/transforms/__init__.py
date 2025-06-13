@@ -16,6 +16,7 @@ from ._equivalence_transforms import (
     SmilesToSmilesPairTransform,
 )
 from ._lambda import Lambda
+from ._modality_aware_transform import ComposedTransform, ModalityAwareTransform
 from ._structure_featurizer import StructureFeaturizer
 from ._tokenizer_transform import TokenizerTransform
 from ._transform import Transform
@@ -33,4 +34,6 @@ __all__ = [
     "StructureFeaturizer",
     "TokenizerTransform",
     "Transform",
+    "ModalityAwareTransform",
+    "ComposedTransform",
 ]
