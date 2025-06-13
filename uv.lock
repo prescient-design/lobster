@@ -1130,6 +1130,7 @@ dependencies = [
     { name = "hydra-core", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "icecream", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "lightning", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "litdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "onnx", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "onnxscript", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1194,6 +1195,7 @@ requires-dist = [
     { name = "hydra-core" },
     { name = "icecream" },
     { name = "lightning" },
+    { name = "litdata", specifier = ">=0.2.49" },
     { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'" },
     { name = "onnx" },
     { name = "onnxscript" },
@@ -1264,6 +1266,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0f/bb/63a6a8c9e7a96b6ba92647fa5b1595c2dbee29f8178705adb4704d82ecba/lightning_utilities-0.14.3.tar.gz", hash = "sha256:37e2f83f273890052955a44054382c211a303012ee577619efbaa5df9e65e9f5", size = 30346, upload-time = "2025-04-03T15:59:56.928Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1a/c1/31b3184cba7b257a4a3b5ca5b88b9204ccb7aa02fe3c992280899293ed54/lightning_utilities-0.14.3-py3-none-any.whl", hash = "sha256:4ab9066aa36cd7b93a05713808901909e96cc3f187ea6fd3052b2fd91313b468", size = 28894, upload-time = "2025-04-03T15:59:55.658Z" },
+]
+
+[[package]]
+name = "litdata"
+version = "0.2.49"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "filelock", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "tifffile", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "torchvision", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2f/d8/3a83c570f634b66ae006b051c83c9a3781e7a6cb6d79fb427afaa8d654c6/litdata-0.2.49.tar.gz", hash = "sha256:e4a3cf572104ad68edac2890a8341f551361fb92ba81a31344f88faaab9b8845", size = 187509, upload-time = "2025-06-04T08:59:30.869Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/86/833ab59355d2c15054940aa4b67d05ba715b9653876299a335221c6e2fda/litdata-0.2.49-py3-none-any.whl", hash = "sha256:d735618accb49b9f0279e4fe6c8f15e1b68659108106c851434a7bbd0fbb817a", size = 174994, upload-time = "2025-06-04T08:59:29.601Z" },
 ]
 
 [[package]]
@@ -2780,6 +2801,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b7/4d/08c89e34946fce2aec4fbb45c9016efd5f4d7f24af8e5d93296e935631d8/threadpoolctl-3.6.0.tar.gz", hash = "sha256:8ab8b4aa3491d812b623328249fab5302a68d2d71745c8a4c719a2fcaba9f44e", size = 21274, upload-time = "2025-03-13T13:49:23.031Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/d5/f9a850d79b0851d1d4ef6456097579a9005b31fea68726a4ae5f2d82ddd9/threadpoolctl-3.6.0-py3-none-any.whl", hash = "sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb", size = 18638, upload-time = "2025-03-13T13:49:21.846Z" },
+]
+
+[[package]]
+name = "tifffile"
+version = "2025.6.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/11/9e/636e3e433c24da41dd639e0520db60750dbf5e938d023b83af8097382ea3/tifffile-2025.6.11.tar.gz", hash = "sha256:0ece4c2e7a10656957d568a093b07513c0728d30c1bd8cc12725901fffdb7143", size = 370125, upload-time = "2025-06-12T04:49:38.839Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/d8/1ba8f32bfc9cb69e37edeca93738e883f478fbe84ae401f72c0d8d507841/tifffile-2025.6.11-py3-none-any.whl", hash = "sha256:32effb78b10b3a283eb92d4ebf844ae7e93e151458b0412f38518b4e6d2d7542", size = 230800, upload-time = "2025-06-12T04:49:37.458Z" },
 ]
 
 [[package]]
