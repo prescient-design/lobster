@@ -672,14 +672,6 @@ class Ume(L.LightningModule):
         dict[str, Tensor | list[Modality]]
             A new batch containing only the specified input.
         """
-        print(f"Modality: {batch['modality']}")
-        print(
-            {
-                "input_ids": batch["input_ids"][:, index],
-                "attention_mask": batch["attention_mask"][:, index],
-                "modality": [modalities[index] for modalities in batch["modality"]],
-            }
-        )
         return {
             "input_ids": batch["input_ids"][:, index],
             "attention_mask": batch["attention_mask"][:, index],
