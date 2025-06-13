@@ -275,3 +275,10 @@ class DyAbModel(pl.LightningModule):
             input_image[:, channel, :, :] += embeddings
 
         return input_image
+
+    def predict(self, batch):
+        with torch.inference_mode():
+            output = self._compute_loss(batch)
+        assert output is not None
+        _, preds, _ = output
+        return preds
