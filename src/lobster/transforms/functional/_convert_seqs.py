@@ -67,6 +67,7 @@ def convert_aa_to_nt_probabilistic(
     aa_seq: str,
     vendor_codon_table: dict[str, dict[str, float]],
     add_stop_codon: bool = True,
+    skip_unknown: bool = False,
 ) -> str:
     """
     Convert amino acid sequence to nucleotide sequence using probabilistic codon sampling.
@@ -80,6 +81,9 @@ def convert_aa_to_nt_probabilistic(
         dictionaries mapping codons to their usage frequencies.
     add_stop_codon : bool
         Whether to add a stop codon at the end
+    skip_unknown : bool
+        If True, skip unknown amino acids instead of raising an error.
+        If False (default), raise ValueError for unknown amino acids.
 
     Returns
     -------
@@ -92,6 +96,8 @@ def convert_aa_to_nt_probabilistic(
     nt_seq = ""
     for residue in aa_seq:
         if residue not in vendor_codon_table:
+            if skip_unknown:
+                continue
             raise ValueError(f"Unknown amino acid residue '{residue}' not found in vendor codon table")
 
         try:
@@ -101,6 +107,8 @@ def convert_aa_to_nt_probabilistic(
             codon = random.choices(available_codons, weights=probabilities, k=1)[0]
 
         except (KeyError, IndexError) as e:
+            if skip_unknown:
+                continue
             raise Exception(f"Error processing residue '{residue}': {e}") from e
 
         nt_seq += codon

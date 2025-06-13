@@ -318,7 +318,11 @@ class AminoAcidToNucleotidePairTransform(Transform):
     output_modalities = (Modality.NUCLEOTIDE,)
 
     def __init__(
-        self, max_input_length: int | None = None, vendor_table_path: str | None = None, add_stop_codon: bool = True
+        self,
+        max_input_length: int | None = None,
+        vendor_table_path: str | None = None,
+        add_stop_codon: bool = True,
+        skip_unknown: bool = False,
     ) -> None:
         """
         Parameters
@@ -331,6 +335,9 @@ class AminoAcidToNucleotidePairTransform(Transform):
             If None, uses the default CODON_TABLE_PATH_VENDOR.
         add_stop_codon : bool
             Whether to add a stop codon at the end of the nucleotide sequence.
+        skip_unknown : bool
+            If True, skip unknown amino acids instead of raising an error.
+            If False (default), raise ValueError for unknown amino acids.
         """
         super().__init__()
 
@@ -339,6 +346,7 @@ class AminoAcidToNucleotidePairTransform(Transform):
 
         self._max_input_length = max_input_length
         self._add_stop_codon = add_stop_codon
+        self._skip_unknown = skip_unknown
 
         # Set default vendor table path if None
         if vendor_table_path is None:
@@ -383,7 +391,7 @@ class AminoAcidToNucleotidePairTransform(Transform):
         try:
             # Use probabilistic sampling with vendor codon usage frequencies
             nucleotide_sequence = convert_aa_to_nt_probabilistic(
-                input, self._vendor_codon_table, add_stop_codon=self._add_stop_codon
+                input, self._vendor_codon_table, add_stop_codon=self._add_stop_codon, skip_unknown=self._skip_unknown
             )
 
             return input, nucleotide_sequence
@@ -412,6 +420,7 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
         codon_vendor_table_path: str | None = None,
         add_stop_codon: bool = True,
         randomize_smiles: bool = False,
+        skip_unknown: bool = False,
     ) -> None:
         """
         Parameters
@@ -426,6 +435,9 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
             Whether to add a stop codon at the end of the nucleotide sequence.
         randomize_smiles : bool
             If True, the SMILES string will be randomized (non-canonical).
+        skip_unknown : bool
+            If True, skip unknown amino acids instead of raising an error.
+            If False (default), raise ValueError for unknown amino acids.
         """
         super().__init__()
 
@@ -435,6 +447,7 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
         self._max_input_length = max_input_length
         self._add_stop_codon = add_stop_codon
         self._randomize_smiles = randomize_smiles
+        self._skip_unknown = skip_unknown
 
         # Set default vendor table path if None
         if codon_vendor_table_path is None:
@@ -483,7 +496,7 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
         try:
             # Convert to nucleotide
             nucleotide_sequence = convert_aa_to_nt_probabilistic(
-                input, self._vendor_codon_table, add_stop_codon=self._add_stop_codon
+                input, self._vendor_codon_table, add_stop_codon=self._add_stop_codon, skip_unknown=self._skip_unknown
             )
         except (KeyError, ValueError) as e:
             nucleotide_sequence = None
