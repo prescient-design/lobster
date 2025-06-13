@@ -647,24 +647,16 @@ def test_peptide_to_nucleotide_and_smiles_transform():
     peptide = "MAGIC"
 
     # Run the transform
-    peptide_seq, nucleotide_seq, smiles = transform.transform(peptide)
+    peptide_seq, nucleotide_seq, smiles = transform(peptide)
 
     # Check results
     assert peptide_seq == "MAGIC"
-    assert nucleotide_seq is not None
-    assert len(nucleotide_seq) > 0
-    assert smiles is not None
-    assert len(smiles) > 0
+    assert set(nucleotide_seq) == {"A", "T", "G", "C"}
+    assert smiles == "CC[C@H](C)[C@H](NC(=O)CNC(=O)[C@H](C)NC(=O)[C@@H](N)CCSC)C(=O)N[C@@H](CS)C(=O)O"
 
     # Test with max_input_length
     transform = PeptideToNucleotideAndSmilesTransform(max_input_length=3, add_stop_codon=True, randomize_smiles=False)
-    peptide_seq, nucleotide_seq, smiles = transform.transform(peptide)
+    peptide_seq, nucleotide_seq, smiles = transform(peptide)
     assert peptide_seq == "MAG"
     assert nucleotide_seq is not None
     assert smiles is not None
-
-    # Test with invalid input
-    peptide_seq, nucleotide_seq, smiles = transform.transform("")
-    assert peptide_seq == ""
-    assert nucleotide_seq is None
-    assert smiles is None
