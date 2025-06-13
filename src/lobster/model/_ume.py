@@ -449,8 +449,26 @@ class Ume(L.LightningModule):
     def configure_optimizers(self) -> dict[str, object]:
         return super().configure_optimizers()
 
-    def _get_mlm_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        """Process inputs with different modalities and get logits and labels for training."""
+    def _compute_mlm_loss(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
+        """Compute the masked language modeling loss for a batch.
+
+        This method processes inputs with different modalities, computes logits and labels,
+        and returns the MLM loss along with logging perplexity metrics.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            The batch containing input_ids, attention_mask, and modality information.
+        stage : Literal["train", "val"]
+            The current stage (training or validation).
+
+        Returns
+        -------
+        Tensor
+            The computed MLM loss.
+        """
+        batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
+
         # New shape: (batch_size * seq_len)
         input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
 
@@ -469,50 +487,6 @@ class Ume(L.LightningModule):
         # Reshape for loss calculation
         logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * sequence_length, vocab_size)
         labels = labels.view(-1)  # (batch_size * sequence_length)
-
-        return logits, labels
-
-    def _split_batch_by_index(
-        self, batch: dict[str, Tensor | list[Modality]], index: int
-    ) -> dict[str, Tensor | list[Modality]]:
-        """Split a batch by extracting a specific index from the input tensors.
-
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The input batch containing input_ids, attention_mask, and modality information.
-        index : int
-            The index to extract from the batch tensors.
-
-        Returns
-        -------
-        dict[str, Tensor | list[Modality]]
-            A new batch dictionary containing only the specified index.
-        """
-        return {
-            "input_ids": batch["input_ids"][:, index, :].unsqueeze(1).contiguous(),
-            "attention_mask": batch["attention_mask"][:, index, :].unsqueeze(1).contiguous(),
-            "modality": [m[index] for m in batch["modality"]] if "modality" in batch else None,
-        }
-
-    def _mlm_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
-        """Perform a masked language model step.
-
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The batch to perform the masked language model step on.
-        stage : Literal["train", "val"]
-            The stage to perform the masked language model step on.
-
-        Returns
-        -------
-        Tensor
-            The loss for the masked language model step.
-        """
-        batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
-
-        logits, labels = self._get_mlm_logits_and_labels(batch)
 
         # Compute loss
         loss = self.model.loss_fn(logits, labels)
@@ -543,13 +517,16 @@ class Ume(L.LightningModule):
 
         return loss
 
-    def _infonce_step(
+    def _compute_infonce_loss(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
         batch_b: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a contrastive step using either standard or DisCo-CLIP InfoNCE loss.
+        """Compute the InfoNCE contrastive loss between two batches.
+
+        This method computes the InfoNCE loss between embeddings from two different batches,
+        supporting both standard and distributed (DisCo-CLIP) computation.
 
         Parameters
         ----------
@@ -558,12 +535,12 @@ class Ume(L.LightningModule):
         batch_b : dict[str, Tensor | list[Modality]]
             Second batch for contrastive learning.
         stage : Literal["train", "val"]
-            The stage to perform the contrastive step on.
+            The current stage (training or validation).
 
         Returns
         -------
         Tensor
-            The loss for the contrastive step.
+            The computed InfoNCE loss.
         """
         # Embed both sides separately
         embeddings_a = self.embed(batch_a, aggregate=True)
@@ -617,12 +594,15 @@ class Ume(L.LightningModule):
 
         return loss
 
-    def _symile_step(
+    def _compute_symile_loss(
         self,
         batches: list[dict[str, Tensor | list[Modality]]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a Symile contrastive step for multiple modalities.
+        """Compute the Symile contrastive loss for multiple modalities.
+
+        This method computes the Symile loss between embeddings from multiple batches,
+        supporting contrastive learning across unlimited modalities.
 
         Reference
         ----------
@@ -638,12 +618,12 @@ class Ume(L.LightningModule):
         batches : list[dict[str, Tensor | list[Modality]]]
             List of batches for each modality.
         stage : Literal["train", "val"]
-            The stage to perform the contrastive step on.
+            The current stage (training or validation).
 
         Returns
         -------
         Tensor
-            The Symile loss for the contrastive step.
+            The computed Symile loss.
         """
         embeddings = [self.embed(batch, aggregate=True) for batch in batches]
         embeddings = [F.normalize(emb, p=2.0, dim=1) for emb in embeddings]
@@ -654,40 +634,91 @@ class Ume(L.LightningModule):
 
         return loss
 
-    def _compute_mlm_clip_loss(
-        self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]
-    ) -> Tensor:
-        """Compute loss for dual input (MLM + InfoNCE/CLIP)."""
+    def _split_batch_by_index(
+        self, batch: dict[str, Tensor | list[Modality]], index: int
+    ) -> dict[str, Tensor | list[Modality]]:
+        """Split a batch by input index for contrastive learning.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            The input batch containing input_ids, attention_mask, and modality information.
+        index : int
+            The index of the input to extract.
+
+        Returns
+        -------
+        dict[str, Tensor | list[Modality]]
+            A new batch containing only the specified input.
+        """
+        return {
+            "input_ids": batch["input_ids"][:, index],
+            "attention_mask": batch["attention_mask"][:, index],
+            "modality": [modalities[index] for modalities in batch["modality"]],
+        }
+
+    def _mlm_infonce_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
+        """Combine MLM and InfoNCE losses for dual input training.
+
+        This method combines masked language modeling and InfoNCE contrastive losses
+        for training with two input modalities, weighted by contrastive_loss_weight.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            The batch containing two input modalities.
+        stage : Literal["train", "val"]
+            The current stage (training or validation).
+
+        Returns
+        -------
+        Tensor
+            The combined loss: (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * InfoNCE_loss
+        """
         batch_a = self._split_batch_by_index(batch, 0)
         batch_b = self._split_batch_by_index(batch, 1)
 
         # Compute losses based on weights
         mlm_loss = (
-            self._mlm_step(batch_a, stage)
+            self._compute_mlm_loss(batch_a, stage)
             if self.contrastive_loss_weight != 1.0
             else torch.tensor(0.0, device=self.device)
         )
         contrastive_loss = (
-            self._infonce_step(batch_a, batch_b, stage)
+            self._compute_infonce_loss(batch_a, batch_b, stage)
             if self.contrastive_loss_weight > 0
             else torch.tensor(0.0, device=self.device)
         )
 
         return (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
 
-    def _compute_mlm_symile_loss(
-        self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]
-    ) -> Tensor:
-        """Compute loss for > 2 input modalities (MLM + Symile)."""
+    def _mlm_symile_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
+        """Combine MLM and Symile losses for multi-modal training.
+
+        This method combines masked language modeling and Symile contrastive losses
+        for training with more than two input modalities, weighted by contrastive_loss_weight.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            The batch containing multiple input modalities.
+        stage : Literal["train", "val"]
+            The current stage (training or validation).
+
+        Returns
+        -------
+        Tensor
+            The combined loss: (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * Symile_loss
+        """
         batches = [self._split_batch_by_index(batch, i) for i in range(batch["input_ids"].shape[1])]
 
         mlm_loss = (
-            self._mlm_step(batches[0], stage)
+            self._compute_mlm_loss(batches[0], stage)
             if self.contrastive_loss_weight != 1.0
             else torch.tensor(0.0, device=self.device)
         )
         symile_loss = (
-            self._symile_step(batches, stage)
+            self._compute_symile_loss(batches, stage)
             if self.contrastive_loss_weight > 0
             else torch.tensor(0.0, device=self.device)
         )
@@ -719,11 +750,11 @@ class Ume(L.LightningModule):
         num_inputs = batch["input_ids"].shape[1]
 
         if num_inputs == 1:
-            return self._compute_mlm_only_loss(batch, stage)
+            return self._compute_mlm_loss(batch, stage)
         elif num_inputs == 2:
-            return self._compute_mlm_clip_loss(batch, stage)
+            return self._mlm_infonce_step(batch, stage)
         elif num_inputs > 2:
-            return self._compute_mlm_symile_loss(batch, stage)
+            return self._mlm_symile_step(batch, stage)
         else:
             raise ValueError(f"Unsupported batch shape: {batch['input_ids'].shape}")
 

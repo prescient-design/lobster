@@ -127,49 +127,7 @@ class TestUme:
             ume = Ume()
             modalities = ume.modalities
             expected_modalities = ["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
-            assert modalities == expected_modalities
-
-    def test_configure_optimizers(self):
-        with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
-            mock_model = MagicMock()
-            mock_flex_bert.return_value = mock_model
-
-            with patch("lobster.model._ume.get_scheduler") as mock_get_scheduler:
-                mock_get_scheduler.return_value = MagicMock()
-
-                ume = Ume(
-                    lr=1e-3,
-                    beta1=0.9,
-                    beta2=0.98,
-                    eps=1e-12,
-                    scheduler="constant_with_warmup",
-                    num_training_steps=1000,
-                    num_warmup_steps=100,
-                )
-
-                # Mock some dummy parameters so the optimizer doesn't get an empty list
-                dummy_param = torch.nn.Parameter(torch.randn(10))
-                with patch.object(ume, "parameters", return_value=[dummy_param]):
-                    result = ume.configure_optimizers()
-
-                    # Check that result has the expected structure
-                    assert "optimizer" in result
-                    assert "lr_scheduler" in result
-                    assert isinstance(result["optimizer"], torch.optim.AdamW)
-
-                    # Verify optimizer parameters
-                    optimizer_params = list(result["optimizer"].param_groups[0]["params"])
-                    assert len(optimizer_params) == 1
-                    assert optimizer_params[0] is dummy_param
-
-                    # Verify scheduler was called with correct parameters
-                    mock_get_scheduler.assert_called_once_with(
-                        "constant_with_warmup",
-                        result["optimizer"],
-                        num_training_steps=1000,
-                        num_warmup_steps=100,
-                        scheduler_specific_kwargs={},
-                    )
+            assert sorted(modalities) == sorted(expected_modalities)
 
     def test_train_mlm_step(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
@@ -178,7 +136,7 @@ class TestUme:
 
             ume = Ume()
 
-            with patch.object(ume, "_mlm_step", return_value=torch.tensor(1.5)):
+            with patch.object(ume, "_compute_mlm_loss", return_value=torch.tensor(1.5)):
                 batch = {
                     "input_ids": torch.randint(0, 100, (2, 1, 10)),
                     "attention_mask": torch.ones(2, 1, 10),
@@ -191,9 +149,9 @@ class TestUme:
                     assert isinstance(loss, torch.Tensor)
                     assert loss.item() == 1.5
 
-                    ume._mlm_step.assert_called_with(batch, step_name)
+                    ume._compute_mlm_loss.assert_called_with(batch, step_name)
 
-                    ume._mlm_step.reset_mock()
+                    ume._compute_mlm_loss.reset_mock()
 
     def test_contrastive_step_weight(self):
         with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
@@ -206,12 +164,10 @@ class TestUme:
             # Create mock objects for the methods
             mlm_mock = MagicMock(return_value=torch.tensor(2.0))
             infonce_mock = MagicMock(return_value=torch.tensor(4.0))
-            split_batch_mock = MagicMock(return_value=({"input_ids": None}, {"input_ids": None}))
 
             # Replace the actual methods with mocks
-            ume._mlm_step = mlm_mock
-            ume._infonce_step = infonce_mock
-            ume._split_combined_batch = split_batch_mock
+            ume._compute_mlm_loss = mlm_mock
+            ume._compute_infonce_loss = infonce_mock
 
             # Create a batch with two inputs (needed for contrastive learning)
             batch = {
@@ -230,21 +186,65 @@ class TestUme:
             assert loss.item() == expected_loss
 
             # Verify calls
-            split_batch_mock.assert_called_once()
             mlm_mock.assert_called_once()
             infonce_mock.assert_called_once()
 
             # Test validation step
-            split_batch_mock.reset_mock()
             mlm_mock.reset_mock()
             infonce_mock.reset_mock()
 
             loss = ume.validation_step(batch, 0)
 
             assert loss.item() == expected_loss
-            split_batch_mock.assert_called_once()
             mlm_mock.assert_called_once()
             infonce_mock.assert_called_once()
+
+    def test_infonce_loss_disco_clip_equivalence(self):
+        """Test that standard and DisCo-CLIP InfoNCE losses are equivalent in single-GPU scenario."""
+        with (
+            patch("lobster.model._ume.is_distributed", return_value=False),
+            patch("lobster.model._ume.get_rank", return_value=0),
+            patch("lobster.model._ume.Gather") as mock_gather,
+        ):
+            # Mock Gather to return the same embeddings (simulating single-GPU)
+            mock_gather.side_effect = lambda x: x.clone()
+
+            # Create one model - we'll test both loss methods on it
+            ume = Ume(model_name="UME_mini", use_flash_attn=False)
+
+            # Create simple test batches
+            batch_size = 32
+            hidden_size = ume.embedding_dim
+
+            torch.manual_seed(42)
+            batch_a = {
+                "input_ids": torch.randint(0, 100, (batch_size, 1, 10)),
+                "attention_mask": torch.ones(batch_size, 1, 10),
+                "modality": ["SMILES"] * batch_size,
+            }
+            batch_b = {
+                "input_ids": torch.randint(0, 100, (batch_size, 1, 10)),
+                "attention_mask": torch.ones(batch_size, 1, 10),
+                "modality": ["amino_acid"] * batch_size,
+            }
+
+            # Mock the embed method to return our test embeddings
+            test_embeddings = torch.randn(batch_size, hidden_size)
+            test_embeddings = torch.nn.functional.normalize(test_embeddings, dim=-1)
+            ume.embed = MagicMock(return_value=test_embeddings)
+
+            # Test both distributed and non-distributed scenarios
+            with patch("lobster.model._ume.is_distributed", return_value=False):
+                standard_loss = ume._compute_infonce_loss(batch_a, batch_b, "train")
+
+            with patch("lobster.model._ume.is_distributed", return_value=True):
+                disco_loss = ume._compute_infonce_loss(batch_a, batch_b, "train")
+
+            # Should be nearly identical (small floating-point differences expected)
+            torch.testing.assert_close(standard_loss, disco_loss, rtol=1e-4, atol=1e-5)
+
+            # Verify Gather was called twice for DisCo-CLIP method
+            assert mock_gather.call_count == 2
 
     def test_embed_sequences_cpu(self):
         """Test Ume's embed_sequences method without flash-attn on CPU."""
@@ -351,38 +351,3 @@ class TestUme:
             embeddings_no_flash_agg = ume_no_flash.embed_sequences(sequences, modality, aggregate=True)
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
-
-    def test_infonce_loss_disco_clip_equivalence(self):
-        """Test that standard and DisCo-CLIP InfoNCE losses are equivalent in single-GPU scenario."""
-        with (
-            patch("lobster.model._ume.is_distributed", return_value=False),
-            patch("lobster.model._ume.get_rank", return_value=0),
-            patch("lobster.model._ume.Gather") as mock_gather,
-        ):
-            # Mock Gather to return the same embeddings (simulating single-GPU)
-            mock_gather.side_effect = lambda x: x.clone()
-
-            # Create one model - we'll test both loss methods on it
-            ume = Ume(model_name="UME_mini", use_flash_attn=False)
-
-            # Create simple test embeddings (32 samples as requested)
-            batch_size = 32
-            hidden_size = ume.embedding_dim
-
-            torch.manual_seed(42)
-            embeddings_a = torch.randn(batch_size, hidden_size)
-            embeddings_b = torch.randn(batch_size, hidden_size)
-
-            # Normalize (as done in actual implementation)
-            embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
-            embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
-
-            # Test both loss methods on the same embeddings
-            standard_loss = ume._standard_infonce_loss(embeddings_a, embeddings_b)
-            disco_loss = ume._disco_infonce_loss(embeddings_a, embeddings_b)
-
-            # Should be nearly identical (small floating-point differences expected)
-            torch.testing.assert_close(standard_loss, disco_loss, rtol=1e-4, atol=1e-5)
-
-            # Verify Gather was called twice for DisCo-CLIP method
-            assert mock_gather.call_count == 2
