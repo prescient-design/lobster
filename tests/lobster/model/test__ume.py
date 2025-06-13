@@ -149,7 +149,14 @@ class TestUme:
                     assert isinstance(loss, torch.Tensor)
                     assert loss.item() == 1.5
 
-                    ume._compute_mlm_loss.assert_called_with(batch, step_name)
+                    calls = ume._compute_mlm_loss.call_args_list
+                    assert len(calls) == 1
+
+                    call_args = calls[0][0][0]  # Get the first argument of the first call
+                    assert call_args["input_ids"].shape == (2, 10)
+                    assert call_args["attention_mask"].shape == (2, 10)
+                    assert call_args["modality"] == ["SMILES", "amino_acid"]
+                    assert calls[0][0][1] == step_name
 
                     ume._compute_mlm_loss.reset_mock()
 

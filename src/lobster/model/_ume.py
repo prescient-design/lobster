@@ -639,6 +639,27 @@ class Ume(L.LightningModule):
     ) -> dict[str, Tensor | list[Modality]]:
         """Split a batch by input index for contrastive learning.
 
+        Two types of batches are supported:
+        - Batch with samples with one representation
+            e.g. {
+                "input_ids": shape (batch_size, 1, seq_len)
+                "attention_mask": shape (batch_size, 1, seq_len)
+                "modality": ["amino_acid", "nucleotide"]
+            }
+            Contains two independent samples with one representation each.
+
+        - Batch with samples with multiple representations
+            e.g. {
+                "input_ids": shape (batch_size, num_modalities, seq_len)
+                "attention_mask": shape (batch_size, num_modalities, seq_len)
+                "modality": [
+                    ("amino_acid", "nucleotide"),
+                    ("SMILES", "nucleotide"),
+                    ("amino_acid", "SMILES"),
+                ]
+            }
+            Contains three independent samples with 2 representations each.
+
         Parameters
         ----------
         batch : dict[str, Tensor | list[Modality]]
@@ -651,10 +672,21 @@ class Ume(L.LightningModule):
         dict[str, Tensor | list[Modality]]
             A new batch containing only the specified input.
         """
+        print(f"Modality: {batch['modality']}")
+        print(
+            {
+                "input_ids": batch["input_ids"][:, index],
+                "attention_mask": batch["attention_mask"][:, index],
+                "modality": [modalities[index] for modalities in batch["modality"]],
+            }
+        )
         return {
             "input_ids": batch["input_ids"][:, index],
             "attention_mask": batch["attention_mask"][:, index],
-            "modality": [modalities[index] for modalities in batch["modality"]],
+            "modality": [
+                modalities[index] if isinstance(modalities, (list, tuple)) else modalities
+                for modalities in batch["modality"]
+            ],
         }
 
     def _mlm_infonce_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
