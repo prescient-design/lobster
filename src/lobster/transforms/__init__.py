@@ -10,6 +10,7 @@ from ._binarize import BinarizeTransform
 from ._equivalence_transforms import (
     NucleotideToProteinPairTransform,
     NucleotideToSmilesPairTransform,
+    PeptideToNucleotideAndSmilesTransform,
     PeptideToSmilesPairTransform,
     ProteinToNucleotidePairTransform,
     SmilesToSmilesPairTransform,
@@ -27,6 +28,7 @@ __all__ = [
     "PeptideToSmilesPairTransform",
     "ProteinToNucleotidePairTransform",
     "SmilesToSmilesPairTransform",
+    "PeptideToNucleotideAndSmilesTransform",
     "Lambda",
     "StructureFeaturizer",
     "TokenizerTransform",

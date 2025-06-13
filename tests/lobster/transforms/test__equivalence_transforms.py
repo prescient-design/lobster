@@ -7,6 +7,7 @@ from rdkit import Chem
 from lobster.transforms._equivalence_transforms import (
     NucleotideToProteinPairTransform,
     NucleotideToSmilesPairTransform,
+    PeptideToNucleotideAndSmilesTransform,
     PeptideToSmilesPairTransform,
     ProteinToNucleotidePairTransform,
     SmilesToSmilesPairTransform,
@@ -633,3 +634,37 @@ class TestProteinToNucleotidePairTransform:
         valid_leucine_codons = {"TTA", "TTG", "CTT", "CTC", "CTA", "CTG"}
         for result in results:
             assert result in valid_leucine_codons
+
+
+def test_peptide_to_nucleotide_and_smiles_transform():
+    """Test the PeptideToNucleotideAndSmilesTransform with a simple peptide sequence."""
+    # Create the transform
+    transform = PeptideToNucleotideAndSmilesTransform(
+        max_input_length=1000, add_stop_codon=True, randomize_smiles=False
+    )
+
+    # Example peptide sequence
+    peptide = "MAGIC"
+
+    # Run the transform
+    peptide_seq, nucleotide_seq, smiles = transform.transform(peptide)
+
+    # Check results
+    assert peptide_seq == "MAGIC"
+    assert nucleotide_seq is not None
+    assert len(nucleotide_seq) > 0
+    assert smiles is not None
+    assert len(smiles) > 0
+
+    # Test with max_input_length
+    transform = PeptideToNucleotideAndSmilesTransform(max_input_length=3, add_stop_codon=True, randomize_smiles=False)
+    peptide_seq, nucleotide_seq, smiles = transform.transform(peptide)
+    assert peptide_seq == "MAG"
+    assert nucleotide_seq is not None
+    assert smiles is not None
+
+    # Test with invalid input
+    peptide_seq, nucleotide_seq, smiles = transform.transform("")
+    assert peptide_seq == ""
+    assert nucleotide_seq is None
+    assert smiles is None
