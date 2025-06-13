@@ -467,7 +467,7 @@ class Ume(L.LightningModule):
         Tensor
             The computed MLM loss.
         """
-        batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
+        batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[1]
 
         # New shape: (batch_size * seq_len)
         input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
@@ -750,6 +750,7 @@ class Ume(L.LightningModule):
         num_inputs = batch["input_ids"].shape[1]
 
         if num_inputs == 1:
+            batch = self._split_batch_by_index(batch, 0)
             return self._compute_mlm_loss(batch, stage)
         elif num_inputs == 2:
             return self._mlm_infonce_step(batch, stage)
