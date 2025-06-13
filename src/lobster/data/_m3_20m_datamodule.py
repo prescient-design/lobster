@@ -8,7 +8,7 @@ from lightning import LightningDataModule
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
-from lobster.datasets import M320MDataset
+from lobster.datasets import M320MIterableDataset
 from lobster.transforms import Transform
 
 T = TypeVar("T")
@@ -105,11 +105,11 @@ class M320MLightningDataModule(LightningDataModule):
         self._transform_fn = transform_fn
 
     def prepare_data(self) -> None:
-        dataset = M320MDataset(
+        dataset = M320MIterableDataset(
             root=self._root,
             download=self._download,
             transform=self._transform_fn,
-            columns=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
+            keys=["smiles", "Description"] if self._use_text_descriptions else ["smiles"],
         )
         self._dataset = dataset
 

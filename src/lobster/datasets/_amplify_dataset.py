@@ -2,8 +2,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar, Literal
 
-from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
+from lobster.constants import Modality
 from lobster.transforms import Transform
+
+from ._huggingface_iterable_dataset import HuggingFaceIterableDataset
 
 
 class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
@@ -60,6 +62,8 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
     """
 
     SUPPORTED_SPLITS: ClassVar[list[str]] = ["train", "test"]
+    MODALITY: ClassVar[Modality] = Modality.AMINO_ACID
+    SEQUENCE_KEY: ClassVar[str] = "sequence"
 
     def __init__(
         self,
@@ -70,6 +74,7 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
         shuffle: bool = False,
         split: str = "train",
         data_dir: Literal["UniProt", "OAS", "SCOP"] | None = None,
+        keys: list[str] | None = None,
         shuffle_buffer_size: int = 1000,
         limit: int | None = None,
     ):
@@ -98,6 +103,8 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
             - "OAS": Antibody sequences from the OAS database
             - "SCOP": Protein structure sequences
             If None, uses all available sources.
+        keys : list[str] | None, optional
+            Keys to use for the dataset. If None, uses the default keys.
         shuffle_buffer_size : int, optional
             Buffer size for shuffling streaming datasets. Default is 1000.
         limit : int or None, optional
@@ -107,7 +114,7 @@ class AMPLIFYIterableDataset(HuggingFaceIterableDataset):
             dataset_name="chandar-lab/UR100P",
             root=root,
             transform=transform,
-            keys=["sequence"],
+            keys=keys or [self.SEQUENCE_KEY],
             split=split,
             shuffle=shuffle,
             data_dir=data_dir,
