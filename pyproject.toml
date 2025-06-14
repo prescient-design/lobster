@@ -39,6 +39,7 @@ dependencies = [
     "beignet[datasets]",
     "deepspeed",
     "dotenv>=0.9.9",
+    "symile>=0.1.0",
 ]
 
 [build-system]

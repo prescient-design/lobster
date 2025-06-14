@@ -6,6 +6,7 @@ from typing import Literal
 import lightning as L
 import torch
 import torch.nn as nn
+from symile import Symile
 from torch import Tensor
 from torchmetrics.text import Perplexity
 from transformers import get_scheduler
@@ -201,6 +202,8 @@ class Ume(L.LightningModule):
         self.num_warmup_steps = num_warmup_steps
         self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
+
+        self.symile_loss_fn = Symile()
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -499,43 +502,44 @@ class Ume(L.LightningModule):
 
         return logits, labels
 
-    def _split_combined_batch(self, combined_batch: dict[str, Tensor | list[Modality]]) -> tuple[Tensor, Tensor]:
-        """Split a combined batch of two inputs into two separate batches.
+    def _split_combined_batch(
+        self, combined_batch: dict[str, Tensor | list[Modality]]
+    ) -> tuple[dict[str, Tensor | list[Modality]], ...]:
+        """Split a combined batch of N inputs into N separate batches.
 
         Parameters
         ----------
         combined_batch : dict[str, Tensor | list[Modality]]
-            The combined batch to split.
+            The combined batch to split. Input tensors should have shape (batch_size, N, sequence_length)
+            where N is the number of splits.
 
         Returns
         -------
-        tuple[dict[str, Tensor | list[Modality]], dict[str, Tensor | list[Modality]]]
-            A tuple of two dictionaries, each containing the input ID, attention masks,
-            and modality for the two separate batches.
+        tuple[dict[str, Tensor | list[Modality]], ...]
+            A tuple of N dictionaries, each containing the input ID, attention masks,
+            and modality for each split.
         """
-        input_ids_a = combined_batch["input_ids"][:, 0, :].unsqueeze(1).contiguous()
-        input_ids_b = combined_batch["input_ids"][:, 1, :].unsqueeze(1).contiguous()
-        attention_mask_a = combined_batch["attention_mask"][:, 0, :].unsqueeze(1).contiguous()
-        attention_mask_b = combined_batch["attention_mask"][:, 1, :].unsqueeze(1).contiguous()
+        num_splits = combined_batch["input_ids"].shape[1]
+        splits = []
 
-        modality_list = (
-            combined_batch["metadata"]["modality"] if "metadata" in combined_batch else combined_batch["modality"]
-        )
-        modality_a = [t[0] for t in modality_list]
-        modality_b = [t[1] for t in modality_list]
+        for i in range(num_splits):
+            input_ids = combined_batch["input_ids"][:, i, :].unsqueeze(1).contiguous()
+            attention_mask = combined_batch["attention_mask"][:, i, :].unsqueeze(1).contiguous()
 
-        return (
-            {
-                "input_ids": input_ids_a,
-                "attention_mask": attention_mask_a,
-                "modality": modality_a,
-            },
-            {
-                "input_ids": input_ids_b,
-                "attention_mask": attention_mask_b,
-                "modality": modality_b,
-            },
-        )
+            modality_list = (
+                combined_batch["metadata"]["modality"] if "metadata" in combined_batch else combined_batch["modality"]
+            )
+            modality = [t[i] for t in modality_list]
+
+            splits.append(
+                {
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask,
+                    "modality": modality,
+                }
+            )
+
+        return tuple(splits)
 
     def _standard_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
         """Compute InfoNCE loss using the standard approach with full similarity matrix.
@@ -609,6 +613,32 @@ class Ume(L.LightningModule):
 
         return (loss_a + loss_b) / 2
 
+    def _symile_loss(self, *batches: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
+        """Compute Symile loss for a batch of N views of the same entity.
+
+        Parameters
+        ----------
+        *batches : dict[str, Tensor | list[Modality]]
+            The batches to compute the Symile loss for.
+        stage : Literal["train", "val"]
+            The stage to compute the Symile loss for.
+
+        Returns
+        -------
+        Tensor
+            The Symile loss.
+        """
+        embeddings = [self.embed(batch, aggregate=True) for batch in batches]
+
+        # Normalize embeddings once for both implementations
+        embeddings = [nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
+
+        loss = self.symile_loss_fn(embeddings, self.contrastive_temperature)
+
+        self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
+
+        return loss
+
     def _infonce_step(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -647,9 +677,6 @@ class Ume(L.LightningModule):
             loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
 
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-
-        # Log the current temperature for monitoring
-        self.log("contrastive_temperature", self.contrastive_temperature, rank_zero_only=True, sync_dist=True)
 
         return loss
 
@@ -727,8 +754,25 @@ class Ume(L.LightningModule):
 
             return (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
 
-        else:
-            raise ValueError(f"Not sure what '{stage}' step to run with inputs of shape: {batch['input_ids'].shape}")
+        # Symile loss when there is more than 2 views (representations) of the same entity
+        elif batch["input_ids"].shape[1] > 2:
+            # symile loss
+
+            batches = self._split_combined_batch(batch)
+
+            # See if we can skip Symile
+            if self.contrastive_loss_weight > 0:
+                contrastive_loss = self._symile_loss(*batches, stage)
+            else:
+                contrastive_loss = torch.tensor(0.0, device=self.device)
+
+            # See if we can skip MLM
+            if self.contrastive_loss_weight != 1.0:
+                mlm_loss = self._mlm_step(batches[0], stage)
+            else:
+                mlm_loss = torch.tensor(0.0, device=self.device)
+
+            return (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
 
     def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
         loss = self._delegate_step_by_batch_shape(batch, "train")
