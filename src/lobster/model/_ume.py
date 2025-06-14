@@ -473,7 +473,7 @@ class Ume(L.LightningModule):
         batch = {
             "input_ids": batch["input_ids"].unsqueeze(1).contiguous(),
             "attention_mask": batch["attention_mask"].unsqueeze(1).contiguous(),
-            "modality": batch["modality"].unsqueeze(1).contiguous(),
+            "modality": batch["modality"],
         }
 
         # New shape: (batch_size * seq_len)
