@@ -378,6 +378,11 @@ class Ume(L.LightningModule):
             if x[key].dim() == 2:
                 x[key] = x[key].unsqueeze(1)
 
+        assert x["input_ids"].ndim == 3
+        assert x["input_ids"].shape[1] == 1, (
+            f"Input IDs must have shape (batch_size, 1, length), got {x['input_ids'].shape}"
+        )
+
         if self.frozen:
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
@@ -762,13 +767,14 @@ class Ume(L.LightningModule):
 
             # See if we can skip Symile
             if self.contrastive_loss_weight > 0:
-                contrastive_loss = self._symile_loss(*batches, stage)
+                contrastive_loss = self._symile_loss(*batches, stage=stage)
             else:
                 contrastive_loss = torch.tensor(0.0, device=self.device)
 
             # See if we can skip MLM
             if self.contrastive_loss_weight != 1.0:
                 mlm_loss = self._mlm_step(batches[0], stage)
+
             else:
                 mlm_loss = torch.tensor(0.0, device=self.device)
 
