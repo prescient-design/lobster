@@ -358,7 +358,7 @@ class Ume(L.LightningModule):
         # Ensure input_ids and attention_mask are 3D (batch_size, 1, length)
         for key in ["input_ids", "attention_mask"]:
             if x[key].dim() == 2:
-                x[key] = x[key].unsqueeze(1)
+                x[key] = x[key].unsqueeze(1).contiguous()
 
         if self.frozen:
             with torch.no_grad():
