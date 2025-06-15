@@ -40,6 +40,8 @@ dependencies = [
     "deepspeed",
     "dotenv>=0.9.9",
     "symile>=0.1.0",
+    "litdata>=0.2.49",
+    "polars>=1.30.0",
 ]
 
 [build-system]
