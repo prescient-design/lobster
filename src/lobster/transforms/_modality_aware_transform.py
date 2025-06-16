@@ -33,13 +33,13 @@ class ModalityAwareTransform:
         return self.transform_fn(x)
 
 
-class ComposedTransform(ModalityAwareTransform):
+class ComposedModalityAwareTransform(ModalityAwareTransform):
     """A transform that composes multiple modality-aware transforms.
     This class is necessary because simple function composition (e.g., using lambda)
     loses the modality information that UmeStreamingDataset requires. When transforms
     are composed using lambda functions, the resulting function doesn't have the
     required input_modality and output_modalities attributes.
-    ComposedTransform properly maintains modality information through the composition
+    ComposedModalityAwareTransform properly maintains modality information through the composition
     chain, ensuring that the dataset can still access the necessary modality
     information even when multiple transforms are applied.
     Parameters
@@ -60,7 +60,7 @@ class ComposedTransform(ModalityAwareTransform):
     ...     lambda x: x.strip(),
     ...     input_modality=Modality.AMINO_ACID
     ... )
-    >>> composed = ComposedTransform(sanitize, clean)
+    >>> composed = ComposedModalityAwareTransform(sanitize, clean)
     >>> composed.input_modality  # Modality.AMINO_ACID
     >>> composed.output_modalities  # (Modality.AMINO_ACID,)
     """
