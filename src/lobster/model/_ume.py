@@ -203,9 +203,10 @@ class Ume(L.LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
 
-        # Initialize Symile loss with proper configuration
-        self.symile_loss_fn = SymileLoss(negative_sampling="n")
-        self.logit_scale = torch.nn.Parameter(torch.ones([]) * torch.log(torch.tensor(1 / contrastive_temperature)))
+        # Initialize logit scale
+        self.register_buffer("logit_scale", torch.tensor(1.0 / contrastive_temperature))
+
+        self.symile_loss_fn = SymileLoss()
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -466,12 +467,6 @@ class Ume(L.LightningModule):
         dict[str, object]
             Dictionary containing optimizer and learning rate scheduler.
         """
-        print("Configuring optimizers...")
-        print(f"Learning rate: {self.lr}")
-        print(f"Beta1: {self.beta1}")
-        print(f"Beta2: {self.beta2}")
-        print(f"Scheduler: {self.scheduler}")
-
         # Use all parameters from the Ume model, not just the FlexBERT sub-model
         optimizer = torch.optim.AdamW(
             self.parameters(),
@@ -490,9 +485,7 @@ class Ume(L.LightningModule):
 
         scheduler_config = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
-        config = {"optimizer": optimizer, "lr_scheduler": scheduler_config}
-        print(f"Returning optimizer config: {config}")
-        return config
+        return {"optimizer": optimizer, "lr_scheduler": scheduler_config}
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs with different modalities and get logits and labels for training."""
@@ -571,8 +564,8 @@ class Ume(L.LightningModule):
         Tensor
             InfoNCE loss
         """
-        # Compute similarity matrix using fixed temperature
-        similarities = embeddings_a @ embeddings_b.T / self.contrastive_temperature
+        # Compute similarity matrix using logit scale
+        similarities = embeddings_a @ embeddings_b.T * self.logit_scale
 
         # Create labels (diagonal should be positive)
         labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
@@ -611,12 +604,12 @@ class Ume(L.LightningModule):
         logits_a = (
             all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_b.T
-            / self.contrastive_temperature
+            * self.logit_scale
         )
         logits_b = (
             all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_a.T
-            / self.contrastive_temperature
+            * self.logit_scale
         )
 
         # Create labels - positive pairs are at positions offset by rank * local_batch_size
