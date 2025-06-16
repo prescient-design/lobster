@@ -412,7 +412,7 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
     """
 
     input_modality = Modality.AMINO_ACID
-    output_modalities = (Modality.NUCLEOTIDE, Modality.SMILES)
+    output_modalities = (Modality.AMINO_ACID, Modality.NUCLEOTIDE, Modality.SMILES)
 
     def __init__(
         self,

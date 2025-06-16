@@ -203,7 +203,9 @@ class Ume(L.LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
 
-        self.symile_loss_fn = SymileLoss()
+        # Initialize Symile loss with proper configuration
+        self.symile_loss_fn = SymileLoss(negative_sampling="n")
+        self.logit_scale = torch.nn.Parameter(torch.ones([]) * torch.log(torch.tensor(1 / contrastive_temperature)))
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -464,6 +466,12 @@ class Ume(L.LightningModule):
         dict[str, object]
             Dictionary containing optimizer and learning rate scheduler.
         """
+        print("Configuring optimizers...")
+        print(f"Learning rate: {self.lr}")
+        print(f"Beta1: {self.beta1}")
+        print(f"Beta2: {self.beta2}")
+        print(f"Scheduler: {self.scheduler}")
+
         # Use all parameters from the Ume model, not just the FlexBERT sub-model
         optimizer = torch.optim.AdamW(
             self.parameters(),
@@ -482,7 +490,9 @@ class Ume(L.LightningModule):
 
         scheduler_config = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
-        return {"optimizer": optimizer, "lr_scheduler": scheduler_config}
+        config = {"optimizer": optimizer, "lr_scheduler": scheduler_config}
+        print(f"Returning optimizer config: {config}")
+        return config
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs with different modalities and get logits and labels for training."""
@@ -633,35 +643,13 @@ class Ume(L.LightningModule):
         Tensor
             The Symile loss.
         """
-        # DEBUG: Print batch information
-        print("\n=== DEBUG: _symile_loss in Ume ===")
-        print(f"Number of batches: {len(batches)}")
-        for i, batch in enumerate(batches):
-            print(f"\nBatch {i} keys: {batch.keys()}")
-            for key, value in batch.items():
-                if isinstance(value, Tensor):
-                    print(f"{key} shape: {value.shape}, requires_grad: {value.requires_grad}")
-
         embeddings = [self.embed(batch, aggregate=True) for batch in batches]
-
-        # DEBUG: Print embedding information
-        print("\n=== DEBUG: Embeddings before normalization ===")
-        for i, emb in enumerate(embeddings):
-            print(f"embedding[{i}] shape: {emb.shape}, requires_grad: {emb.requires_grad}")
 
         # Normalize embeddings once for both implementations
         embeddings = [nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
 
-        # DEBUG: Print normalized embedding information
-        print("\n=== DEBUG: Embeddings after normalization ===")
-        for i, emb in enumerate(embeddings):
-            print(f"normalized_embedding[{i}] shape: {emb.shape}, requires_grad: {emb.requires_grad}")
-
-        loss = self.symile_loss_fn(embeddings, self.contrastive_temperature)
-
-        # DEBUG: Print final loss information
-        print("\n=== DEBUG: Final loss ===")
-        print(f"loss value: {loss.item()}, requires_grad: {loss.requires_grad}")
+        # Use the learnable logit scale parameter
+        loss = self.symile_loss_fn(embeddings, torch.exp(self.logit_scale))
 
         self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 

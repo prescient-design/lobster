@@ -37,12 +37,6 @@ class SymileLoss:
         Returns:
             logits (torch.Tensor): Logits for anchor_rep of size (bsz, bsz).
         """
-        # DEBUG: Print tensor properties
-        print("\n=== DEBUG: compute_logits_n ===")
-        print(f"anchor_rep shape: {anchor_rep.shape}, requires_grad: {anchor_rep.requires_grad}")
-        for i, rep in enumerate(non_anchor_reps):
-            print(f"non_anchor_rep[{i}] shape: {rep.shape}, requires_grad: {rep.requires_grad}")
-
         # shuffle rows of each tensor in non_anchor_reps and element-wise multiply
         non_anchor_shuff = torch.ones_like(anchor_rep)
         for r in non_anchor_reps:
@@ -56,12 +50,6 @@ class SymileLoss:
             # cannot use inplace operations like *= because of autograd
             MIP_of_positive_samples = MIP_of_positive_samples * r
         MIP_of_positive_samples = MIP_of_positive_samples.sum(axis=1)  # (bsz)
-
-        # DEBUG: Print intermediate tensor properties
-        print(f"logits shape: {logits.shape}, requires_grad: {logits.requires_grad}")
-        print(
-            f"MIP_of_positive_samples shape: {MIP_of_positive_samples.shape}, requires_grad: {MIP_of_positive_samples.requires_grad}"
-        )
 
         # insert positive samples along diagonal of shuffled logits
         return torch.where(
@@ -145,15 +133,6 @@ class SymileLoss:
             (torch.Tensor): Symile loss, which is an average over the losses where each modality is
                             treated as the anchor in turn.
         """
-        # DEBUG: Print input properties
-        print("\n=== DEBUG: SymileLoss forward ===")
-        print(f"Number of representations: {len(representations)}")
-        for i, rep in enumerate(representations):
-            print(f"representation[{i}] shape: {rep.shape}, requires_grad: {rep.requires_grad}")
-        print(
-            f"logit_scale: {logit_scale}, requires_grad: {logit_scale.requires_grad if isinstance(logit_scale, torch.Tensor) else 'N/A'}"
-        )
-
         labels = torch.arange(representations[0].shape[0]).to(representations[0].device)
         losses = []
 
@@ -169,14 +148,7 @@ class SymileLoss:
             else:
                 raise ValueError("Invalid value for negative_sampling. Expected 'n' or 'n_squared'.")
 
-            # DEBUG: Print logits properties before loss computation
-            print(f"\n=== DEBUG: Loss computation for representation {i} ===")
-            print(f"logits shape: {logits.shape}, requires_grad: {logits.requires_grad}")
-            print(f"labels shape: {labels.shape}, requires_grad: {labels.requires_grad}")
-
             loss = F.cross_entropy(logits, labels)
-            print(f"loss value: {loss.item()}, requires_grad: {loss.requires_grad}")
-
             losses.append(loss)
 
         return sum(losses) / len(losses)
