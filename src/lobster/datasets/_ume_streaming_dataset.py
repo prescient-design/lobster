@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 class UmeStreamingDataset(StreamingDataset):
     """
-    Base class for Ume streaming datasets that handles tokenization and data loading.
+    Base class for Ume streaming datasets that handles tokenization and data loading
+    with litdata.
 
     This dataset is designed to work with different biological sequence modalities
     and provides functionality for tokenizing sequences for model input. It supports
@@ -369,13 +370,10 @@ class UmeStreamingDataset(StreamingDataset):
                 input_ids, attention_mask, modality = self._tokenize_single(sequence[0])
             else:
                 # Multiple sequences case
-                if hasattr(self.transform_fn, "output_modalities"):
-                    # Transform specifies output modalities
-                    modalities = (self.transform_fn.input_modality.value,) + tuple(
-                        m.value for m in self.transform_fn.output_modalities
-                    )
+                if hasattr(self.transform_fn, "OUTPUT_MODALITIES"):
+                    modalities = self.transform_fn.OUTPUT_MODALITIES
                 else:
-                    raise ValueError(f"Transform {self.transform_fn} does not specify output modalities")
+                    raise ValueError(f"Transform {self.transform_fn} does not specify OUTPUT_MODALITIES")
 
                 input_ids, attention_mask, modality = self._tokenize_multiple(sequence, modalities)
         else:
