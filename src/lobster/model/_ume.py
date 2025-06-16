@@ -6,7 +6,6 @@ from typing import Literal
 import lightning as L
 import torch
 import torch.nn as nn
-from symile import Symile
 from torch import Tensor
 from torchmetrics.text import Perplexity
 from transformers import get_scheduler
@@ -16,6 +15,7 @@ from lobster.tokenization import UmeTokenizerTransform
 
 from ._disco_clip import Gather
 from ._distributed_utils import get_rank, is_distributed
+from ._symile_loss import SymileLoss
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
@@ -203,7 +203,7 @@ class Ume(L.LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
 
-        self.symile_loss_fn = Symile()
+        self.symile_loss_fn = SymileLoss()
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -633,12 +633,35 @@ class Ume(L.LightningModule):
         Tensor
             The Symile loss.
         """
+        # DEBUG: Print batch information
+        print("\n=== DEBUG: _symile_loss in Ume ===")
+        print(f"Number of batches: {len(batches)}")
+        for i, batch in enumerate(batches):
+            print(f"\nBatch {i} keys: {batch.keys()}")
+            for key, value in batch.items():
+                if isinstance(value, Tensor):
+                    print(f"{key} shape: {value.shape}, requires_grad: {value.requires_grad}")
+
         embeddings = [self.embed(batch, aggregate=True) for batch in batches]
+
+        # DEBUG: Print embedding information
+        print("\n=== DEBUG: Embeddings before normalization ===")
+        for i, emb in enumerate(embeddings):
+            print(f"embedding[{i}] shape: {emb.shape}, requires_grad: {emb.requires_grad}")
 
         # Normalize embeddings once for both implementations
         embeddings = [nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
 
+        # DEBUG: Print normalized embedding information
+        print("\n=== DEBUG: Embeddings after normalization ===")
+        for i, emb in enumerate(embeddings):
+            print(f"normalized_embedding[{i}] shape: {emb.shape}, requires_grad: {emb.requires_grad}")
+
         loss = self.symile_loss_fn(embeddings, self.contrastive_temperature)
+
+        # DEBUG: Print final loss information
+        print("\n=== DEBUG: Final loss ===")
+        print(f"loss value: {loss.item()}, requires_grad: {loss.requires_grad}")
 
         self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 
