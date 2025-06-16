@@ -1,1 +1,0 @@
-{"chunks": [{"chunk_bytes": 1494, "chunk_size": 5, "dim": null, "filename": "dummy_proteins.parquet"}], "config": {"chunk_bytes": null, "chunk_size": null, "compression": null, "data_format": ["string"], "data_spec": null, "encryption": null, "item_loader": "ParquetLoader"}, "updated_at": "1749920230.634084"}
