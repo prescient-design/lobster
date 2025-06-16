@@ -81,8 +81,8 @@ class AminoAcidToSmilesPairTransform(Transform):
     If the conversion to SMILES fails, the SMILES string will be None.
     """
 
-    INPUT_MODALITY = Modality.AMINO_ACID
-    OUTPUT_MODALITIES = (
+    input_modality = Modality.AMINO_ACID
+    output_modalities = (
         Modality.AMINO_ACID,
         Modality.SMILES,
     )
@@ -146,8 +146,8 @@ class NucleotideToSmilesPairTransform(Transform):
     If the conversion to SMILES fails, the SMILES string will be None.
     """
 
-    INPUT_MODALITY = Modality.NUCLEOTIDE
-    OUTPUT_MODALITIES = (
+    input_modality = Modality.NUCLEOTIDE
+    output_modalities = (
         Modality.NUCLEOTIDE,
         Modality.SMILES,
     )
@@ -227,8 +227,8 @@ class NucleotideToAminoAcidPairTransform(Transform):
     By default, translation starts from the beginning of the sequence (frame 0).
     """
 
-    INPUT_MODALITY = Modality.NUCLEOTIDE
-    OUTPUT_MODALITIES = (
+    input_modality = Modality.NUCLEOTIDE
+    output_modalities = (
         Modality.NUCLEOTIDE,
         Modality.AMINO_ACID,
     )
@@ -326,8 +326,8 @@ class AminoAcidToNucleotidePairTransform(Transform):
     uses probabilistic sampling based on codon usage frequencies.
     """
 
-    INPUT_MODALITY = Modality.AMINO_ACID
-    OUTPUT_MODALITIES = (
+    input_modality = Modality.AMINO_ACID
+    output_modalities = (
         Modality.AMINO_ACID,
         Modality.NUCLEOTIDE,
     )
@@ -426,8 +426,8 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
     uses probabilistic sampling based on codon usage frequencies.
     """
 
-    INPUT_MODALITY = Modality.AMINO_ACID
-    OUTPUT_MODALITIES = (
+    input_modality = Modality.AMINO_ACID
+    output_modalities = (
         Modality.AMINO_ACID,
         Modality.NUCLEOTIDE,
         Modality.SMILES,
