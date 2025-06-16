@@ -25,7 +25,10 @@ class SmilesToSmilesPairTransform(Transform):
     """
 
     input_modality = Modality.SMILES
-    output_modalities = (Modality.SMILES,)
+    output_modalities = (
+        Modality.SMILES,
+        Modality.SMILES,
+    )
 
     def __init__(self, randomize_smiles: bool = False) -> None:
         """
@@ -79,7 +82,10 @@ class AminoAcidToSmilesPairTransform(Transform):
     """
 
     input_modality = Modality.AMINO_ACID
-    output_modalities = (Modality.SMILES,)
+    output_modalities = (
+        Modality.AMINO_ACID,
+        Modality.SMILES,
+    )
 
     def __init__(self, randomize_smiles: bool = False, max_input_length: int | None = None) -> None:
         """
@@ -141,7 +147,10 @@ class NucleotideToSmilesPairTransform(Transform):
     """
 
     input_modality = Modality.NUCLEOTIDE
-    output_modalities = (Modality.SMILES,)
+    output_modalities = (
+        Modality.NUCLEOTIDE,
+        Modality.SMILES,
+    )
 
     def __init__(
         self, randomize_smiles: bool = False, randomize_cap: bool = False, max_input_length: int | None = None
@@ -219,7 +228,10 @@ class NucleotideToAminoAcidPairTransform(Transform):
     """
 
     input_modality = Modality.NUCLEOTIDE
-    output_modalities = (Modality.AMINO_ACID,)
+    output_modalities = (
+        Modality.NUCLEOTIDE,
+        Modality.AMINO_ACID,
+    )
 
     def __init__(
         self, reading_frame: int = 0, max_input_length: int | None = None, codon_table_path: str | None = None
@@ -315,7 +327,10 @@ class AminoAcidToNucleotidePairTransform(Transform):
     """
 
     input_modality = Modality.AMINO_ACID
-    output_modalities = (Modality.NUCLEOTIDE,)
+    output_modalities = (
+        Modality.AMINO_ACID,
+        Modality.NUCLEOTIDE,
+    )
 
     def __init__(
         self,
@@ -412,7 +427,11 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
     """
 
     input_modality = Modality.AMINO_ACID
-    output_modalities = (Modality.AMINO_ACID, Modality.NUCLEOTIDE, Modality.SMILES)
+    output_modalities = (
+        Modality.AMINO_ACID,
+        Modality.NUCLEOTIDE,
+        Modality.SMILES,
+    )
 
     def __init__(
         self,
