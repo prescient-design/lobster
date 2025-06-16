@@ -203,10 +203,8 @@ class Ume(L.LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
 
-        # Initialize logit scale
-        self.register_buffer("logit_scale", torch.tensor(1.0 / contrastive_temperature))
-
-        self.symile_loss_fn = SymileLoss()
+        # Initialize SymileLoss with the correct logit scale
+        self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -565,7 +563,7 @@ class Ume(L.LightningModule):
             InfoNCE loss
         """
         # Compute similarity matrix using logit scale
-        similarities = embeddings_a @ embeddings_b.T * self.logit_scale
+        similarities = embeddings_a @ embeddings_b.T * self.contrastive_temperature
 
         # Create labels (diagonal should be positive)
         labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
@@ -604,12 +602,12 @@ class Ume(L.LightningModule):
         logits_a = (
             all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_b.T
-            * self.logit_scale
+            * self.contrastive_temperature
         )
         logits_b = (
             all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_a.T
-            * self.logit_scale
+            * self.contrastive_temperature
         )
 
         # Create labels - positive pairs are at positions offset by rank * local_batch_size
@@ -642,7 +640,7 @@ class Ume(L.LightningModule):
         embeddings = [nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
 
         # Use the learnable logit scale parameter
-        loss = self.symile_loss_fn(embeddings, torch.exp(self.logit_scale))
+        loss = self.symile_loss_fn(embeddings)
 
         self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
 

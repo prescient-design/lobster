@@ -1,21 +1,40 @@
+"""Adapted from https://github.com/rajesh-lab/symile
+
+Reference:
+    @inproceedings{saporta2024symile,
+    title = {Contrasting with Symile: Simple Model-Agnostic Representation Learning for Unlimited Modalities}
+    author = {Saporta, Adriel and Puli, Aahlad and Goldstein, Mark and Ranganath, Rajesh}
+    booktitle = {Advances in Neural Information Processing Systems},
+    year = {2024}
+    }
+"""
+
+from typing import Literal
+
 import torch
 import torch.nn.functional as F
 
 
 class SymileLoss:
-    def __init__(self, negative_sampling: str = "n"):
-        """
-        Initialize the Symile loss function.
+    def __init__(self, negative_sampling: Literal["n", "n_squared"] = "n", logit_scale: float = 1.0) -> None:
+        """Initialize the Symile loss function.
 
-        Args:
-            negative_sampling (str, optional): Specifies the negative sampling strategy.
-                                               Must be either 'n' (for O(n)) or 'n_squared' (for O(n^2)).
-                                               Defaults to 'n'.
+        Parameters
+        ----------
+        negative_sampling : str, optional
+            Specifies the negative sampling strategy.
+            Must be either 'n' (for O(n)) or 'n_squared' (for O(n^2)).
+            By default "n".
+        logit_scale : float, optional
+            Value for the logit scale parameter.
+            By default 1.0.
         """
         self.negative_sampling = negative_sampling
+        self.logit_scale = torch.tensor(logit_scale)
 
-    def compute_logits_n(self, anchor_rep, non_anchor_reps):
-        """
+    def compute_logits_n(self, anchor_rep: torch.Tensor, non_anchor_reps: list[torch.Tensor]) -> torch.Tensor:
+        """Compute logits for anchor modality with O(n) negative sampling.
+
         Computes the logits for anchor modality anchor_rep with bsz - 1 negatives for
         each positive - or (bsz^2 - bsz) total negatives. Returned logits have size
         (bsz, bsz) with bsz positive multilinear inner products (MIPs) and (bsz^2 - bsz)
@@ -29,13 +48,18 @@ class SymileLoss:
         Notice that only the second element is the positive MIP; all others are negative.
         There is a small chance of a false negative MIP.
 
-        Args:
-            anchor_rep (torch.Tensor): Representation vector for anchor modality (bsz, d).
-            non_anchor_reps (list[torch.Tensor]): List of representation tensors for non-anchor
-                                                  modalities, each of size (bsz, d). This list
-                                                  can contain any number of tensors.
-        Returns:
-            logits (torch.Tensor): Logits for anchor_rep of size (bsz, bsz).
+        Parameters
+        ----------
+        anchor_rep : torch.Tensor
+            Representation vector for anchor modality of shape (bsz, d).
+        non_anchor_reps : List[torch.Tensor]
+            List of representation tensors for non-anchor modalities,
+            each of shape (bsz, d). This list can contain any number of tensors.
+
+        Returns
+        -------
+        torch.Tensor
+            Logits for anchor_rep of shape (bsz, bsz).
         """
         # shuffle rows of each tensor in non_anchor_reps and element-wise multiply
         non_anchor_shuff = torch.ones_like(anchor_rep)
@@ -56,18 +80,22 @@ class SymileLoss:
             torch.eye(n=anchor_rep.shape[0]).to(anchor_rep.device) > 0.5, MIP_of_positive_samples, logits
         )
 
-    def compute_non_anchor_products(self, tensors):
-        """
+    def compute_non_anchor_products(self, tensors: list[torch.Tensor]) -> list[torch.Tensor]:
+        """Recursively generate all possible element-wise products by shifting rows.
+
         Recursively generates all possible element-wise products by shifting the rows
         of each tensor in the `tensors` list and computing products across tensors.
 
-        Args:
-            tensors (list[torch.Tensor]): List of tensors with size (bsz, d).
+        Parameters
+        ----------
+        tensors : List[torch.Tensor]
+            List of tensors with shape (bsz, d).
 
-        Returns:
-            all_products (list[torch.Tensor]): List of all possible element-wise products of the input
-                                               tensors with shifted rows. The length of the list is
-                                               bsz^len(tensors).
+        Returns
+        -------
+        List[torch.Tensor]
+            List of all possible element-wise products of the input tensors with shifted rows.
+            The length of the list is bsz^len(tensors).
         """
         # base case
         if len(tensors) == 2:
@@ -90,8 +118,9 @@ class SymileLoss:
 
         return all_products
 
-    def compute_logits_n_squared(self, anchor_rep, non_anchor_reps):
-        """
+    def compute_logits_n_squared(self, anchor_rep: torch.Tensor, non_anchor_reps: list[torch.Tensor]) -> torch.Tensor:
+        """Compute logits for anchor modality with O(n^2) negative sampling.
+
         Computes the logits for anchor modality anchor_rep with (bsz^len(non_anchor_reps)) - 1
         negatives for each positive. Returned logits have size (bsz, bsz^len(non_anchor_reps))
         with bsz positive multilinear inner products (MIPs) and (bsz^(len(non_anchor_reps)+1) - bsz)
@@ -107,13 +136,18 @@ class SymileLoss:
 
         Notice that only the second element is the positive MIP; all others are negative.
 
-        Args:
-            anchor_rep (torch.Tensor): Representation vector for anchor modality (bsz, d).
-            non_anchor_reps (list[torch.Tensor]): List of representation tensors for non-anchor
-                                                  modalities, each of size (bsz, d). This list
-                                                  can contain any number of tensors.
-        Returns:
-            logits (torch.Tensor): Logits for anchor_rep of size (bsz, bsz^len(non_anchor_reps)).
+        Parameters
+        ----------
+        anchor_rep : torch.Tensor
+            Representation vector for anchor modality of shape (bsz, d).
+        non_anchor_reps : List[torch.Tensor]
+            List of representation tensors for non-anchor modalities,
+            each of shape (bsz, d). This list can contain any number of tensors.
+
+        Returns
+        -------
+        torch.Tensor
+            Logits for anchor_rep of shape (bsz, bsz^len(non_anchor_reps)).
         """
         non_anchor_products = self.compute_non_anchor_products(non_anchor_reps)
 
@@ -123,26 +157,34 @@ class SymileLoss:
 
         return logits
 
-    def forward(self, representations, logit_scale):
-        """
-        Computes the Symile loss for a batch of representation vectors.
+    def forward(self, representations: list[torch.Tensor], logit_scale: torch.Tensor | None = None) -> torch.Tensor:
+        """Compute the Symile loss for a batch of representation vectors.
 
-        Args:
-            representations (list[torch.Tensor]): List of representation vectors, each of size (bsz, d).
-        Returns:
-            (torch.Tensor): Symile loss, which is an average over the losses where each modality is
-                            treated as the anchor in turn.
+        Parameters
+        ----------
+        representations : List[torch.Tensor]
+            List of representation vectors, each of shape (bsz, d).
+        logit_scale : Optional[torch.Tensor], optional
+            Logit scale parameter. If None, uses the instance's logit_scale.
+            By default None.
+
+        Returns
+        -------
+        torch.Tensor
+            Symile loss, which is an average over the losses where each modality is
+            treated as the anchor in turn.
         """
         labels = torch.arange(representations[0].shape[0]).to(representations[0].device)
         losses = []
 
+        # Use provided logit_scale if given, otherwise use the instance's logit_scale
+        scale = logit_scale if logit_scale is not None else self.logit_scale.to(representations[0].device)
+
         for i, r in enumerate(representations):
             if self.negative_sampling == "n":
-                logits = logit_scale * self.compute_logits_n(
-                    r, [rep for j, rep in enumerate(representations) if i != j]
-                )
+                logits = scale * self.compute_logits_n(r, [rep for j, rep in enumerate(representations) if i != j])
             elif self.negative_sampling == "n_squared":
-                logits = logit_scale * self.compute_logits_n_squared(
+                logits = scale * self.compute_logits_n_squared(
                     r, [rep for j, rep in enumerate(representations) if i != j]
                 )
             else:
@@ -153,5 +195,21 @@ class SymileLoss:
 
         return sum(losses) / len(losses)
 
-    def __call__(self, representations, logit_scale):
+    def __call__(self, representations: list[torch.Tensor], logit_scale: torch.Tensor | None = None) -> torch.Tensor:
+        """Call the forward method.
+
+        Parameters
+        ----------
+        representations : List[torch.Tensor]
+            List of representation vectors, each of shape (bsz, d).
+        logit_scale : Optional[torch.Tensor], optional
+            Logit scale parameter. If None, uses the instance's logit_scale.
+            By default None.
+
+        Returns
+        -------
+        torch.Tensor
+            Symile loss, which is an average over the losses where each modality is
+            treated as the anchor in turn.
+        """
         return self.forward(representations, logit_scale)
