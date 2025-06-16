@@ -70,10 +70,10 @@ class ComposedModalityAwareTransform(ModalityAwareTransform):
             raise ValueError("At least one transform must be provided")
 
         # The input modality of the first transform
-        self.input_modality = transforms[0].input_modality
+        self.input_modality = transforms[0].INPUT_MODALITY
 
         # The output modalities of the last transform
-        self.output_modalities = transforms[-1].output_modalities
+        self.output_modalities = transforms[-1].OUTPUT_MODALITIES
 
         self.transforms = transforms
 
