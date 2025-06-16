@@ -89,6 +89,9 @@ def convert_aa_to_nt_probabilistic(
     str
         The nucleotide sequence
     """
+    if not aa_seq.isupper():
+        aa_seq = aa_seq.upper()
+
     nt_seq = ""
     for residue in aa_seq:
         if residue not in vendor_codon_table:
@@ -108,7 +111,7 @@ def convert_aa_to_nt_probabilistic(
 
         nt_seq += codon
 
-    if add_stop_codon:
+    if add_stop_codon and aa_seq:  # Only add stop codon if sequence is not empty
         nt_seq += "TAA"
 
     return nt_seq

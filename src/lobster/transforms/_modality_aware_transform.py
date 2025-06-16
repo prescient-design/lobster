@@ -27,7 +27,7 @@ class ModalityAwareTransform:
     ):
         self.transform_fn = transform_fn
         self.input_modality = input_modality
-        self.output_modalities = output_modalities or (input_modality,)
+        self.output_modalities = tuple(output_modalities) if output_modalities is not None else (input_modality,)
 
     def __call__(self, x: Any) -> Any:
         return self.transform_fn(x)
@@ -73,7 +73,7 @@ class ComposedModalityAwareTransform(ModalityAwareTransform):
         self.input_modality = transforms[0].input_modality
 
         # The output modalities of the last transform
-        self.output_modalities = transforms[-1].output_modalities
+        self.output_modalities = tuple(transforms[-1].output_modalities)
 
         self.transforms = transforms
 
