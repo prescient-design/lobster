@@ -370,7 +370,7 @@ class UmeStreamingDataset(StreamingDataset):
                 input_ids, attention_mask, modality = self._tokenize_single(sequence[0])
             else:
                 # Multiple sequences case
-                if hasattr(self.transform_fn, "output_modalities    "):
+                if hasattr(self.transform_fn, "output_modalities"):
                     modalities = self.transform_fn.output_modalities
                 else:
                     raise ValueError(f"Transform {self.transform_fn} does not specify output_modalities")
