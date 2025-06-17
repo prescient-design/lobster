@@ -41,6 +41,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "litdata>=0.2.49",
     "polars>=1.30.0",
+    "rotary-embedding-torch>=0.8.6",
 ]
 
 [build-system]
@@ -64,6 +65,8 @@ mgm = [
 ]
 flash = [
     "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
+    "rotary-embedding-torch",
+
 ]
 mcp = [
     "mcp[cli]"
