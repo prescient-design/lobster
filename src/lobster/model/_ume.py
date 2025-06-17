@@ -182,6 +182,7 @@ class Ume(L.LightningModule):
         self.contrastive_loss_type = contrastive_loss_type
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
+        self.use_flash_attn = use_flash_attn
 
         # Initialize loss functions
         self.symile_loss_fn = SymileLoss(temperature=contrastive_temperature)
