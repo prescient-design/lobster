@@ -1160,6 +1160,7 @@ eval = [
 ]
 flash = [
     { name = "flash-attn", marker = "sys_platform == 'linux'" },
+    { name = "rotary-embedding-torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 mcp = [
     { name = "mcp", extra = ["cli"], marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1206,6 +1207,7 @@ requires-dist = [
     { name = "pyarrow" },
     { name = "python-dotenv" },
     { name = "rdkit", marker = "extra == 'mgm'", specifier = ">=2024.9.4" },
+    { name = "rotary-embedding-torch", marker = "extra == 'flash'" },
     { name = "s3fs", extras = ["boto3"] },
     { name = "scikit-learn" },
     { name = "scipy" },
@@ -2524,6 +2526,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/53/830aa4c3066a8ab0ae9a9955976fb770fe9c6102117c8ec4ab3ea62d89e8/rich-14.0.0.tar.gz", hash = "sha256:82f1bc23a6a21ebca4ae0c45af9bdbc492ed20231dcb63f297d6d1021a9d5725", size = 224078, upload-time = "2025-03-30T14:15:14.23Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0d/9b/63f4c7ebc259242c89b3acafdb37b41d1185c07ff0011164674e9076b491/rich-14.0.0-py3-none-any.whl", hash = "sha256:1c9491e1951aac09caffd42f448ee3d04e58923ffe14993f6e83068dc395d7e0", size = 243229, upload-time = "2025-03-30T14:15:12.283Z" },
+]
+
+[[package]]
+name = "rotary-embedding-torch"
+version = "0.8.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/fd/00a8b8f5d3e6aafbd10d76ea2cd64529a6d98e6daf2485722bf63836294c/rotary_embedding_torch-0.8.6.tar.gz", hash = "sha256:691753c846b87f719a6a1394bd5a16137b8f8b57c1bccb2dff2975f6bb142a6c", size = 7279, upload-time = "2024-11-27T13:19:21.777Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/5f/f6e4bbc9819e525c48cf8a3c2aca02ef79b8cbf1816be93d2d5167ba6a17/rotary_embedding_torch-0.8.6-py3-none-any.whl", hash = "sha256:1e92c09401af861dca768026af771885d51309ddf13a6028fce53e11801016de", size = 5616, upload-time = "2024-11-27T13:19:20.862Z" },
 ]
 
 [[package]]

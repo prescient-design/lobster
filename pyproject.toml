@@ -65,6 +65,8 @@ mgm = [
 flash = [
     "triton<=3.1.0; sys_platform == 'linux'",
     "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
+    "rotary-embedding-torch",
+
 ]
 mcp = [
     "mcp[cli]"
