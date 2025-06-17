@@ -28,23 +28,7 @@ def test_sdpa_unpadded_attention_mask():
     for device in devices:
         print(f"\n=== Testing on {device.upper()} ===")
 
-        # # Configure model based on device
-        # use_flash_attn = device == 'cuda'
-        # model_kwargs = {
-        #     "use_fa2": use_flash_attn,
-        #     "padding": "unpadded" if use_flash_attn else "padded",
-        #     "use_sdpa_attn_mask": not use_flash_attn
-        # }
-
-        # model = Ume.load_from_checkpoint(
-        #     s3_checkpoint_path,
-        #     model_name="UME_small",
-        #     use_flash_attn=use_flash_attn,
-        #     max_length=32,
-        #     strict=False,
-        #     model_kwargs=model_kwargs
-        # )
-
+# Removed commented-out block for cleaner and more maintainable code.
         model = Ume.load_from_checkpoint(s3_checkpoint_path, device=device)
 
         model = model.to(device)
