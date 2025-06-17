@@ -39,7 +39,6 @@ dependencies = [
     "beignet[datasets]",
     "deepspeed",
     "dotenv>=0.9.9",
-    "triton<=3.1.0",
     "litdata>=0.2.49",
     "polars>=1.30.0",
 ]
@@ -64,6 +63,7 @@ mgm = [
     "selfies>=2.1.2",
 ]
 flash = [
+    "triton<=3.1.0; sys_platform == 'linux'",
     "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
 ]
 mcp = [
