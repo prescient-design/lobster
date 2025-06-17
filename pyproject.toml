@@ -63,6 +63,7 @@ mgm = [
     "selfies>=2.1.2",
 ]
 flash = [
+    "triton<=3.1.0; sys_platform == 'linux'",
     "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
 ]
 mcp = [
@@ -91,6 +92,7 @@ line-length = 120
 exclude = [
   "scripts",
   "notebooks",
+  "examples",
   "src/lobster/extern/openfold_utils",
   "src/lobster/model/openfold_utils",
   "src/lobster/model/modern_bert"

@@ -1,6 +1,7 @@
 # Copyright 2022 MosaicML Examples authors
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import Literal
 import warnings
 
 #from transformers import BertConfig as TransformersBertConfig
@@ -43,7 +44,7 @@ class BertConfig:
 class FlexBertConfig:
     def __init__(
         self,
-        attention_layer: str = "base",
+        attention_layer: Literal["base", "rope", "parallel"] = "base",
         attention_probs_dropout_prob: float = 0.0,
         attn_out_bias: bool = False,
         attn_out_dropout_prob: float = 0.0,
@@ -63,7 +64,7 @@ class FlexBertConfig:
         mlp_out_bias: bool = False,
         norm_kwargs: dict = {},
         normalization: str = "rmsnorm",
-        padding: str = "unpadded",
+        padding: Literal["unpadded", "padded"] = "unpadded",
         head_class_act: str = "silu",
         head_class_bias: bool = False,
         head_class_dropout: float = 0.0,

@@ -160,11 +160,17 @@ class Ume(L.LightningModule):
             # Always use unpadded architecture when loading from checkpoint
             # The individual attention layers will respect the use_fa2 setting
             model_kwargs["padding"] = "unpadded"
-        elif not use_flash_attn:
-            # For checkpoint compatibility, default to unpadded architecture
-            # This allows loading flash attention checkpoints with disabled flash attention
-            # Only use padded architecture if explicitly requested
-            model_kwargs["padding"] = model_kwargs.get("padding", "unpadded")
+            if not use_flash_attn:
+                model_kwargs["use_sdpa_attn_mask"] = True
+        else:
+            # When creating a new model, choose the appropriate architecture
+            if use_flash_attn:
+                # Flash attention works with unpadded architecture
+                model_kwargs["padding"] = "unpadded"
+            else:
+                # SDPA requires padded architecture to work correctly
+                model_kwargs["padding"] = "padded"
+                model_kwargs["use_sdpa_attn_mask"] = True
 
         # Instantiate the model
         self.model = FlexBERT(
@@ -793,3 +799,74 @@ class Ume(L.LightningModule):
         self.log("val_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
+
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: str,
+        *args,
+        use_flash_attn: bool | None = None,
+        device: str | None = None,
+        **kwargs,
+    ) -> "Ume":
+        """Load a model from a checkpoint with device-specific configuration.
+
+        This method configures the model based on the specified or available device:
+        - For CPU: Uses padded architecture with SDPA attention mask
+        - For GPU: Uses unpadded architecture with Flash Attention
+
+        Parameters
+        ----------
+        checkpoint_path : str
+            Path to the checkpoint file.
+        use_flash_attn : bool | None, optional
+            Whether to use flash attention. If None, will be determined based on device.
+        device : str | None, optional
+            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
+        *args
+            Additional positional arguments to pass to the parent class's load_from_checkpoint.
+        **kwargs
+            Additional keyword arguments to pass to the parent class's load_from_checkpoint.
+
+        Returns
+        -------
+        Ume
+            The loaded model with appropriate device-specific configuration.
+
+        Raises
+        ------
+        ValueError
+            If an invalid device is specified.
+        """
+        # Determine device
+        if device is not None:
+            if device not in ["cpu", "cuda"]:
+                raise ValueError(f"Invalid device: {device}. Must be one of ['cpu', 'cuda']")
+            if device == "cuda" and not torch.cuda.is_available():
+                raise ValueError("CUDA device requested but not available")
+        else:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Determine flash attention setting
+        if use_flash_attn is None:
+            use_flash_attn = device == "cuda"
+
+        # Configure model based on device
+        model_kwargs = kwargs.pop("model_kwargs", {})
+        model_kwargs.update(
+            {
+                "use_fa2": use_flash_attn,
+                "padding": "unpadded" if use_flash_attn else "padded",
+                "use_sdpa_attn_mask": not use_flash_attn,
+            }
+        )
+        kwargs["model_kwargs"] = model_kwargs
+        kwargs["use_flash_attn"] = use_flash_attn
+
+        # Load the model using the parent class's method
+        model = super().load_from_checkpoint(checkpoint_path, *args, **kwargs)
+
+        # Move model to specified device
+        model = model.to(device)
+
+        return model
