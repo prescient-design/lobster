@@ -1142,7 +1142,6 @@ dependencies = [
     { name = "s3fs", extra = ["boto3"], marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "scikit-learn", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "symile", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tokenizers", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torchdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1211,7 +1210,6 @@ requires-dist = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "selfies", marker = "extra == 'mgm'", specifier = ">=2.1.2" },
-    { name = "symile", specifier = ">=0.1.0" },
     { name = "tokenizers" },
     { name = "torch" },
     { name = "torchdata" },
@@ -2781,19 +2779,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8b/d0/0332bd8a25779a0e2082b0e179805ad39afad642938b371ae0882e7f880d/starlette-0.47.0.tar.gz", hash = "sha256:1f64887e94a447fed5f23309fb6890ef23349b7e478faa7b24a851cd4eb844af", size = 2582856, upload-time = "2025-05-29T15:45:27.628Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/81/c60b35fe9674f63b38a8feafc414fca0da378a9dbd5fa1e0b8d23fcc7a9b/starlette-0.47.0-py3-none-any.whl", hash = "sha256:9d052d4933683af40ffd47c7465433570b4949dc937e20ad1d73b34e72f10c37", size = 72796, upload-time = "2025-05-29T15:45:26.305Z" },
-]
-
-[[package]]
-name = "symile"
-version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/28/d7/10b93b377bc60ad50b9c7556262de8385b98ea971c5cba8229b7a61698ea/symile-0.1.0.tar.gz", hash = "sha256:8dbc508d29245a0d569de816a9d74b3b5c1f40921b0f36f5589fadac0692cf60", size = 7766, upload-time = "2024-11-05T19:25:20.102Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/6d/d705e7a38c6000732680903c2a43b73c2e1d1e58c77100f9f7b553f77248/symile-0.1.0-py3-none-any.whl", hash = "sha256:0ad23250df56d6069d253c842f30cc8854d24ea30bbd774d613d91dae04c06b2", size = 8581, upload-time = "2024-11-05T19:25:18.596Z" },
 ]
 
 [[package]]
