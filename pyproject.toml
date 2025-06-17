@@ -40,6 +40,8 @@ dependencies = [
     "deepspeed",
     "dotenv>=0.9.9",
     "triton<=3.1.0",
+    "litdata>=0.2.49",
+    "polars>=1.30.0",
 ]
 
 [build-system]
@@ -113,6 +115,7 @@ ignore = [
     "B007",  # unused-loop-control-variable
     "E741",  # ambiguous-variable-name
     "E902",  # file not found error
+    "UP038",  # Use X | Y in isinstance call instead of (X, Y)
 ]
 
 [tool.ruff.lint.per-file-ignores]
