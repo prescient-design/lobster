@@ -24,8 +24,8 @@ class SmilesToSmilesPairTransform(Transform):
     If the conversion fails, the output SMILES string will be None.
     """
 
-    INPUT_MODALITY = Modality.SMILES
-    OUTPUT_MODALITIES = (
+    input_modality = Modality.SMILES
+    output_modalities = (
         Modality.SMILES,
         Modality.SMILES,
     )
