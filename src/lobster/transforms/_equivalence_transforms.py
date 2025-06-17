@@ -324,6 +324,8 @@ class AminoAcidToNucleotidePairTransform(Transform):
     Note: This transformation is inherently ambiguous due to codon degeneracy.
     Multiple codons can code for the same amino acid, so the reverse translation
     uses probabilistic sampling based on codon usage frequencies.
+
+    Default vendor codon table is from https://www.genscript.com/tools/codon-frequency-table.
     """
 
     input_modality = Modality.AMINO_ACID
