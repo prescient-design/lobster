@@ -364,7 +364,7 @@ class UmeStreamingDataset(StreamingDataset):
                 **item,
             }
 
-        if isinstance(sequence, tuple | list):
+        if isinstance(sequence, (tuple, list)):
             if len(sequence) == 1:
                 # Single sequence case
                 input_ids, attention_mask, modality = self._tokenize_single(sequence[0])
