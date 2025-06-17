@@ -27,6 +27,6 @@ export TOKENIZERS_PARALLELISM=true
 # access for newly created files. Remove if not needed
 umask g+w 
 
-srun python examples/compare_flash_attention_embeddings.py
+srun python examples/test_sdpa_unpadded_attention_mask.py
 
 
