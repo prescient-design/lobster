@@ -11,6 +11,7 @@ from ._peer_tasks import (
     PEERTask,
     PEERTaskCategory,
 )
+from ._scheduler_type import SchedulerType
 from ._split import Split
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
 
@@ -27,6 +28,7 @@ __all__ = [
     "GPUType",
     "ModelType",
     "PEERTask",
+    "SchedulerType",
     "PEER_TASK_CATEGORIES",
     "PEER_TASKS",
     "PEER_TASK_SPLITS",

@@ -8,19 +8,18 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torchmetrics.text import Perplexity
-from transformers import get_scheduler
 
-from lobster.constants import Modality, ModalityType
+from lobster.constants import Modality, ModalityType, SchedulerType
 from lobster.tokenization import UmeTokenizerTransform
 
-from ._disco_clip import Gather
-from ._distributed_utils import get_rank, is_distributed
-from ._symile_loss import SymileLoss
+from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
 
 logger = logging.getLogger(__name__)
+
+ContrastiveLossType = Literal[None, "symile", "clip", "disco_clip"]
 
 
 class Ume(L.LightningModule):
@@ -46,20 +45,21 @@ class Ume(L.LightningModule):
         Epsilon parameter for Adam optimizer.
     mask_percentage : float, default=0.25
         Percentage of tokens to mask during training.
+    contrastive_loss_type : ContrastiveLossType, default=None
+        Type of contrastive loss to use. Options:
+        - None: Only use MLM loss
+        - "symile": Use Symile loss for multiple modality views of the same input (>= 2 views)
+        - "clip": Use standard CLIP-style InfoNCE loss (2 views)
+        - "disco_clip": Use distributed CLIP loss for memory efficiency (2 views)
     contrastive_loss_weight : float, default=0.0
-        Weight for the contrastive loss. Only relevant if the batch contains two inputs.
-        Is used to balance the MLM and InfoNCE losses:
-        (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * InfoNCE_loss
+        Weight for the contrastive loss. Only relevant if contrastive_loss_type is not None.
+        Is used to balance the MLM and contrastive losses:
+        (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * contrastive_loss
         - If contrastive_loss_weight is 0, only MLM is used (default)
-        - If contrastive_loss_weight is 1, only InfoNCE is used
+        - If contrastive_loss_weight is 1, only contrastive loss is used
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
-    use_disco_clip : bool, default=False
-        Whether to use DisCo-CLIP distributed contrastive loss for memory efficiency.
-        Disco-CLIP enables gathering embeddings across all GPUs which results in
-        more memory-efficient training (because we share only embeddings across not
-        full activations). This way we get more negative examples.
     scheduler : str, default="constant_with_warmup"
         Type of learning rate scheduler to use.
     num_training_steps : int | None, default=None
@@ -113,21 +113,10 @@ class Ume(L.LightningModule):
         beta2: float = 0.98,
         eps: float = 1e-12,
         mask_percentage: float = 0.25,
+        contrastive_loss_type: ContrastiveLossType = None,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
-        use_disco_clip: bool = False,
-        scheduler: Literal[
-            "linear",
-            "cosine",
-            "cosine_with_restarts",
-            "polynomial",
-            "constant",
-            "constant_with_warmup",
-            "inverse_sqrt",
-            "reduce_lr_on_plateau",
-            "cosine_with_min_lr",
-            "warmup_stable_decay",
-        ] = "constant_with_warmup",
+        scheduler: SchedulerType = "constant_with_warmup",
         num_training_steps: int | None = None,
         num_warmup_steps: int | None = 1_000,
         model_kwargs: dict | None = None,
@@ -190,21 +179,16 @@ class Ume(L.LightningModule):
         self.max_length = max_length
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
+        self.contrastive_loss_type = contrastive_loss_type
         self.contrastive_loss_weight = contrastive_loss_weight
-        self.use_disco_clip = use_disco_clip
-        self.use_flash_attn = use_flash_attn
-        self.lr = lr
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.eps = eps
-        self.scheduler = scheduler
-        self.num_training_steps = num_training_steps
-        self.num_warmup_steps = num_warmup_steps
-        self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
 
-        # Initialize SymileLoss with the correct logit scale
-        self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
+        # Initialize loss functions
+        self.symile_loss_fn = SymileLoss(temperature=contrastive_temperature)
+        self.infonce_loss_fn = InfoNCELoss(
+            temperature=contrastive_temperature,
+            use_disco=contrastive_loss_type == "disco_clip",
+        )
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -353,21 +337,76 @@ class Ume(L.LightningModule):
         self.model.train()
         self.frozen = False
 
-    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True) -> Tensor:
-        """Get embeddings for encoded inputs.
+    def _extract_batch_components(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        index: int,
+    ) -> dict[str, Tensor | list[Modality]]:
+        """Extract components for a specific view from a combined batch.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Combined batch containing multiple views
+        index : int
+            Index of the view to extract
+
+        Returns
+        -------
+        dict[str, Tensor | list[Modality]]
+            Dictionary containing the extracted view components
+        """
+        input_ids = batch["input_ids"][:, index, :].unsqueeze(1).contiguous()
+        attention_mask = batch["attention_mask"][:, index, :].unsqueeze(1).contiguous()
+
+        modality_list = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
+        modality = [t[index] for t in modality_list]
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "modality": modality,
+        }
+
+    def _split_combined_batch(
+        self,
+        combined_batch: dict[str, Tensor | list[Modality]],
+    ) -> tuple[dict[str, Tensor | list[Modality]], ...]:
+        """Split a combined batch of N inputs into N separate batches.
+
+        Parameters
+        ----------
+        combined_batch : dict[str, Tensor | list[Modality]]
+            The combined batch to split. Input tensors should have shape (batch_size, N, sequence_length)
+            where N is the number of splits.
+
+        Returns
+        -------
+        tuple[dict[str, Tensor | list[Modality]], ...]
+            A tuple of N dictionaries, each containing the input ID, attention masks,
+            and modality for each split.
+        """
+        num_splits = combined_batch["input_ids"].shape[1]
+        return tuple(self._extract_batch_components(combined_batch, i) for i in range(num_splits))
+
+    def _prepare_embeddings(
+        self,
+        inputs: dict[str, Tensor],
+        aggregate: bool = True,
+    ) -> Tensor:
+        """Prepare and normalize embeddings for input tensors.
 
         Parameters
         ----------
         inputs : dict[str, Tensor]
-            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
+            Dictionary containing input tensors
         aggregate : bool, default=True
-            Whether to average pool over the sequence length dimension.
+            Whether to aggregate embeddings
 
         Returns
         -------
         Tensor
-            Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
-            Otherwise, shape is (batch_size, seq_len, hidden_size).
+            Normalized embeddings
         """
         if not all(k in inputs for k in {"input_ids", "attention_mask"}):
             raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
@@ -388,7 +427,6 @@ class Ume(L.LightningModule):
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
         else:
-            # Use tokens_to_latents which now handles architecture differences properly
             embeddings = self.model.tokens_to_latents(x["input_ids"], x["attention_mask"])
 
         # Reshape to (batch_size, seq_len, hidden_size)
@@ -396,15 +434,35 @@ class Ume(L.LightningModule):
         seq_len = x["input_ids"].size(-1)
 
         if self.model.config.padding == "unpadded":
-            # For unpadded models, tokens_to_latents returns flattened output
             embeddings = embeddings.view(batch_size, seq_len, -1)
-        # For padded models, embeddings are already in the correct shape (batch_size, seq_len, hidden_size)
 
         if aggregate:
-            # Simple mean pooling over sequence length dimension
-            return embeddings.mean(dim=1)
-        else:
-            return embeddings
+            # Use mean pooling over sequence length dimension
+            embeddings = embeddings.mean(dim=1)
+
+        return embeddings
+
+    def embed(
+        self,
+        inputs: dict[str, Tensor],
+        aggregate: bool = True,
+    ) -> Tensor:
+        """Get embeddings for encoded inputs.
+
+        Parameters
+        ----------
+        inputs : dict[str, Tensor]
+            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
+        aggregate : bool, default=True
+            Whether to average pool over the sequence length dimension.
+
+        Returns
+        -------
+        Tensor
+            Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
+            Otherwise, shape is (batch_size, seq_len, hidden_size).
+        """
+        return self._prepare_embeddings(inputs, aggregate=aggregate)
 
     def embed_sequences(
         self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
@@ -458,32 +516,7 @@ class Ume(L.LightningModule):
         return self.embed(encoded, aggregate=aggregate)
 
     def configure_optimizers(self) -> dict[str, object]:
-        """Configure optimizers and learning rate schedulers.
-
-        Returns
-        -------
-        dict[str, object]
-            Dictionary containing optimizer and learning rate scheduler.
-        """
-        # Use all parameters from the Ume model, not just the FlexBERT sub-model
-        optimizer = torch.optim.AdamW(
-            self.parameters(),
-            lr=self.lr,
-            betas=(self.beta1, self.beta2),
-            eps=self.eps,
-        )
-
-        scheduler = get_scheduler(
-            self.scheduler,
-            optimizer,
-            num_training_steps=self.num_training_steps,
-            num_warmup_steps=self.num_warmup_steps,
-            scheduler_specific_kwargs=self.scheduler_kwargs,
-        )
-
-        scheduler_config = {"scheduler": scheduler, "interval": "step", "frequency": 1}
-
-        return {"optimizer": optimizer, "lr_scheduler": scheduler_config}
+        return super().configure_optimizers()
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs with different modalities and get logits and labels for training."""
@@ -508,143 +541,83 @@ class Ume(L.LightningModule):
 
         return logits, labels
 
-    def _split_combined_batch(
-        self, combined_batch: dict[str, Tensor | list[Modality]]
-    ) -> tuple[dict[str, Tensor | list[Modality]], ...]:
-        """Split a combined batch of N inputs into N separate batches.
-
-        Parameters
-        ----------
-        combined_batch : dict[str, Tensor | list[Modality]]
-            The combined batch to split. Input tensors should have shape (batch_size, N, sequence_length)
-            where N is the number of splits.
-
-        Returns
-        -------
-        tuple[dict[str, Tensor | list[Modality]], ...]
-            A tuple of N dictionaries, each containing the input ID, attention masks,
-            and modality for each split.
-        """
-        num_splits = combined_batch["input_ids"].shape[1]
-        splits = []
-
-        for i in range(num_splits):
-            input_ids = combined_batch["input_ids"][:, i, :].unsqueeze(1).contiguous()
-            attention_mask = combined_batch["attention_mask"][:, i, :].unsqueeze(1).contiguous()
-
-            modality_list = (
-                combined_batch["metadata"]["modality"] if "metadata" in combined_batch else combined_batch["modality"]
-            )
-            modality = [t[i] for t in modality_list]
-
-            splits.append(
-                {
-                    "input_ids": input_ids,
-                    "attention_mask": attention_mask,
-                    "modality": modality,
-                }
-            )
-
-        return tuple(splits)
-
-    def _standard_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
-        """Compute InfoNCE loss using the standard approach with full similarity matrix.
+    def _compute_contrastive_loss(
+        self,
+        embeddings_a: Tensor,
+        embeddings_b: Tensor,
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Compute contrastive loss between two sets of embeddings.
 
         Parameters
         ----------
         embeddings_a : Tensor
-            First set of normalized embeddings, shape (batch_size, hidden_size)
+            First set of normalized embeddings
         embeddings_b : Tensor
-            Second set of normalized embeddings, shape (batch_size, hidden_size)
-
-        Returns
-        -------
-        Tensor
-            InfoNCE loss
-        """
-        # Compute similarity matrix using logit scale
-        similarities = embeddings_a @ embeddings_b.T * self.contrastive_temperature
-
-        # Create labels (diagonal should be positive)
-        labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
-
-        # InfoNCE loss in both directions
-        loss_a = nn.functional.cross_entropy(similarities, labels)
-        loss_b = nn.functional.cross_entropy(similarities.T, labels)
-
-        return (loss_a + loss_b) / 2
-
-    def _disco_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
-        """Compute InfoNCE loss using DisCo-CLIP distributed approach for memory efficiency.
-
-        Parameters
-        ----------
-        embeddings_a : Tensor
-            First set of normalized embeddings, shape (local_batch_size, hidden_size)
-        embeddings_b : Tensor
-            Second set of normalized embeddings, shape (local_batch_size, hidden_size)
-
-        Returns
-        -------
-        Tensor
-            InfoNCE loss
-        """
-        # Gather embeddings from all GPUs using DisCo-CLIP
-        all_embeddings_a = Gather(embeddings_a)
-        all_embeddings_b = Gather(embeddings_b)
-
-        # Get local batch size and rank for label calculation
-        local_batch_size = embeddings_a.shape[0]
-        rank = get_rank()
-
-        # Compute local similarities using DisCo-CLIP approach with slicing
-        # This is more memory-efficient: we only compute (local_batch x total_batch) instead of (total_batch x total_batch)
-        logits_a = (
-            all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
-            @ all_embeddings_b.T
-            * self.contrastive_temperature
-        )
-        logits_b = (
-            all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
-            @ all_embeddings_a.T
-            * self.contrastive_temperature
-        )
-
-        # Create labels - positive pairs are at positions offset by rank * local_batch_size
-        labels = torch.arange(local_batch_size, device=embeddings_a.device) + rank * local_batch_size
-
-        # InfoNCE loss in both directions
-        loss_a = nn.functional.cross_entropy(logits_a, labels)
-        loss_b = nn.functional.cross_entropy(logits_b, labels)
-
-        return (loss_a + loss_b) / 2
-
-    def _symile_loss(self, *batches: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
-        """Compute Symile loss for a batch of N views of the same entity.
-
-        Parameters
-        ----------
-        *batches : dict[str, Tensor | list[Modality]]
-            The batches to compute the Symile loss for.
+            Second set of normalized embeddings
         stage : Literal["train", "val"]
-            The stage to compute the Symile loss for.
+            Current training stage
 
         Returns
         -------
         Tensor
-            The Symile loss.
+            The computed contrastive loss
         """
-        embeddings = [self.embed(batch, aggregate=True) for batch in batches]
-
-        # Normalize embeddings once for both implementations
-        embeddings = [nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
-
-        # Use the learnable logit scale parameter
-        loss = self.symile_loss_fn(embeddings)
-
-        self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-
+        loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
+        self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
         return loss
+
+    def _get_embeddings_for_batch(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        aggregate: bool = True,
+    ) -> Tensor:
+        """Get normalized embeddings for a batch.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Input batch
+        aggregate : bool, default=True
+            Whether to aggregate embeddings
+
+        Returns
+        -------
+        Tensor
+            Normalized embeddings
+        """
+        embeddings = self.embed(batch, aggregate=aggregate)
+        return nn.functional.normalize(embeddings, dim=-1)
+
+    def _compute_infonce_loss(
+        self,
+        batch_a: dict[str, Tensor | list[Modality]],
+        batch_b: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Compute contrastive loss between two batches.
+
+        Parameters
+        ----------
+        batch_a : dict[str, Tensor | list[Modality]]
+            First batch for contrastive loss computation
+        batch_b : dict[str, Tensor | list[Modality]]
+            Second batch for contrastive loss computation
+        stage : Literal["train", "val"]
+            Current training stage
+
+        Returns
+        -------
+        Tensor
+            The contrastive loss
+        """
+        embeddings_a = self._get_embeddings_for_batch(batch_a)
+        embeddings_b = self._get_embeddings_for_batch(batch_b)
+
+        assert embeddings_a.shape == embeddings_b.shape
+        assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
+
+        return self._compute_contrastive_loss(embeddings_a, embeddings_b, stage)
 
     def _infonce_step(
         self,
@@ -652,143 +625,323 @@ class Ume(L.LightningModule):
         batch_b: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a contrastive step.
+        """Perform a contrastive step with optional MLM mixing.
 
         Parameters
         ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The batch to perform the contrastive step on.
+        batch_a : dict[str, Tensor | list[Modality]]
+            First batch for contrastive loss computation
+        batch_b : dict[str, Tensor | list[Modality]]
+            Second batch for contrastive loss computation
         stage : Literal["train", "val"]
-            The stage to perform the contrastive step on.
+            Current training stage
 
         Returns
         -------
         Tensor
-            The loss for the contrastive step.
+            The combined loss for the contrastive step
         """
-        # Embed both sides separately (could merge for more efficiency but I don't think it matters)
-        embeddings_a = self.embed(batch_a, aggregate=True)
-        embeddings_b = self.embed(batch_b, aggregate=True)
+        contrastive_loss = (
+            self._compute_infonce_loss(batch_a, batch_b, stage)
+            if self.contrastive_loss_weight > 0
+            else torch.tensor(0.0, device=self.device)
+        )
 
-        assert embeddings_a.shape == embeddings_b.shape
-        assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
+        mlm_loss = (
+            self._compute_mlm_loss(batch_a, stage)
+            if self.contrastive_loss_weight != 1.0
+            else torch.tensor(0.0, device=self.device)
+        )
 
-        # Normalize embeddings once for both implementations
-        embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
-        embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
+        return self._compute_loss_with_weighting(
+            contrastive_loss=contrastive_loss,
+            mlm_loss=mlm_loss,
+            stage=stage,
+        )
 
-        # Choose loss computation method based on configuration
-        if self.use_disco_clip and is_distributed():
-            loss = self._disco_infonce_loss(embeddings_a, embeddings_b)
-        else:
-            loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
-
-        self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-
-        return loss
-
-    def _mlm_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
-        """Perform a masked language model step.
+    def _process_batch_for_modality_metrics(
+        self,
+        logits: Tensor,
+        labels: Tensor,
+        modalities: list[Modality],
+        stage: Literal["train", "val"],
+    ) -> None:
+        """Process batch to compute per-modality metrics.
 
         Parameters
         ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The batch to perform the masked language model step on.
+        logits : Tensor
+            Model output logits
+        labels : Tensor
+            Target labels
+        modalities : list[Modality]
+            List of modalities for each sample
         stage : Literal["train", "val"]
-            The stage to perform the masked language model step on.
-
-        Returns
-        -------
-        Tensor
-            The loss for the masked language model step.
+            Current training stage
         """
-        batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
+        # Calculate batch size from modalities length
+        batch_size = len(modalities)
+        seq_length = logits.shape[0] // batch_size
 
-        logits, labels = self._get_logits_and_labels(batch)
-
-        # Compute loss
-        loss = self.model.loss_fn(logits, labels)
-        self.log(f"mlm_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-
-        # Compute overall perplextiy
-        perplexity = torch.exp(loss)
-        self.log(f"{stage}_perplexity", perplexity, rank_zero_only=True, sync_dist=True)
-
-        # Compute perplexity for each modality separately
-        modalities: list[Modality] = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
-
-        logits_reshaped = logits.view(batch_size, length, self.model.vocab_size)
-        labels_reshaped = labels.view(batch_size, length)
+        # Reshape logits and labels to (batch_size, seq_length, vocab_size) and (batch_size, seq_length)
+        logits_reshaped = logits.view(batch_size, seq_length, -1)
+        labels_reshaped = labels.view(batch_size, seq_length)
 
         for modality in set(modalities):
             mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
-
             if not mask.any():
                 continue
 
             metric_name = f"{stage}_perplexity/{modality}"
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
-
-            # Do not specify on_step since Lightning will handle this automatically
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
+
+    def _compute_loss_with_weighting(
+        self,
+        mlm_loss: Tensor,
+        contrastive_loss: Tensor,
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Compute weighted loss combining MLM and contrastive losses.
+
+        Parameters
+        ----------
+        mlm_loss : Tensor
+            The masked language model loss
+        contrastive_loss : Tensor
+            The contrastive loss
+        stage : Literal["train", "val"]
+            Current training stage
+
+        Returns
+        -------
+        Tensor
+            The combined weighted loss
+        """
+        # Log individual losses
+        self.log(f"mlm_{stage}_loss", mlm_loss, rank_zero_only=True, sync_dist=True)
+        self.log(f"contrastive_{stage}_loss", contrastive_loss, rank_zero_only=True, sync_dist=True)
+
+        # Compute weighted loss
+        total_loss = (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
+        self.log(f"{stage}_loss", total_loss, rank_zero_only=True, sync_dist=True)
+
+        return total_loss
+
+    def _compute_mlm_loss(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Compute masked language model loss.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            The batch to compute the masked language model loss for
+        stage : Literal["train", "val"]
+            Current training stage
+
+        Returns
+        -------
+        Tensor
+            The masked language model loss
+        """
+        # Prepare inputs for the model
+        input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
+        masked_input_ids, labels = self.model._mask_inputs(input_ids)
+
+        # Get model outputs
+        hidden_states = self.model.model(
+            input_ids=masked_input_ids,
+            attention_mask=attention_mask,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=self.max_length,
+        )
+
+        # Get logits from decoder and reshape for loss calculation
+        logits = self.model.decoder(hidden_states)
+        logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * sequence_length, vocab_size)
+        labels = labels.view(-1)  # (batch_size * sequence_length)
+
+        # Compute loss
+        loss = self.model.loss_fn(logits, labels)
+
+        # Log overall metrics
+        perplexity = torch.exp(loss)
+        self.log(f"{stage}_perplexity", perplexity, rank_zero_only=True, sync_dist=True)
+
+        # Process per-modality metrics
+        modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
+        self._process_batch_for_modality_metrics(logits, labels, modalities, stage)
 
         return loss
 
-    def _delegate_step_by_batch_shape(
-        self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]
+    def _compute_symile_loss(
+        self,
+        *batches: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
     ) -> Tensor:
-        # If the batch contains only one input, we can only run MLM
-        if batch["input_ids"].shape[1] == 1:
-            return self._mlm_step(batch, stage)
+        """Compute Symile loss for a batch of N views of the same entity.
 
-        # If there are two items in the batch, we run MLM on the first item and InfoNCE on the second item
-        # (the first item is the original modality and the second item is the converted modality)
-        elif batch["input_ids"].shape[1] == 2:
-            batch_a, batch_b = self._split_combined_batch(batch)
+        Parameters
+        ----------
+        *batches : dict[str, Tensor | list[Modality]]
+            The batches to compute the Symile loss for
+        stage : Literal["train", "val"]
+            Current training stage
 
-            # See if we can skip InfoNCE
-            if self.contrastive_loss_weight > 0:
-                contrastive_loss = self._infonce_step(batch_a, batch_b, stage)
-            else:
-                contrastive_loss = torch.tensor(0.0, device=self.device)
+        Returns
+        -------
+        Tensor
+            The Symile loss
+        """
+        embeddings = [self._get_embeddings_for_batch(batch) for batch in batches]
+        loss = self.symile_loss_fn(embeddings)
+        self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
+        return loss
 
-            # See if we can skip MLM
-            if self.contrastive_loss_weight != 1.0:
-                mlm_loss = self._mlm_step(batch_a, stage)
-            else:
-                mlm_loss = torch.tensor(0.0, device=self.device)
+    def _symile_step(
+        self,
+        *batches: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Perform a Symile step with optional MLM mixing.
 
-            return (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
+        Parameters
+        ----------
+        *batches : dict[str, Tensor | list[Modality]]
+            The batches to compute the Symile loss for
+        stage : Literal["train", "val"]
+            Current training stage
 
-        # Symile loss when there is more than 2 views (representations) of the same entity
-        elif batch["input_ids"].shape[1] > 2:
-            # symile loss
+        Returns
+        -------
+        Tensor
+            The combined loss for the Symile step
+        """
+        contrastive_loss = (
+            self._compute_symile_loss(*batches, stage=stage)
+            if self.contrastive_loss_weight > 0
+            else torch.tensor(0.0, device=self.device)
+        )
 
-            batches = self._split_combined_batch(batch)
+        mlm_loss = (
+            self._compute_mlm_loss(batches[0], stage)
+            if self.contrastive_loss_weight != 1.0
+            else torch.tensor(0.0, device=self.device)
+        )
 
-            # See if we can skip Symile
-            if self.contrastive_loss_weight > 0:
-                contrastive_loss = self._symile_loss(*batches, stage=stage)
-            else:
-                contrastive_loss = torch.tensor(0.0, device=self.device)
+        return self._compute_loss_with_weighting(
+            contrastive_loss=contrastive_loss,
+            mlm_loss=mlm_loss,
+            stage=stage,
+        )
 
-            # See if we can skip MLM
-            if self.contrastive_loss_weight != 1.0:
-                mlm_loss = self._mlm_step(batches[0], stage)
+    def _delegate_step_by_batch_shape(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Delegate to appropriate loss computation based on batch shape.
 
-            else:
-                mlm_loss = torch.tensor(0.0, device=self.device)
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Input batch
+        stage : Literal["train", "val"]
+            Current training stage
 
-            return (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
+        Returns
+        -------
+        Tensor
+            Computed loss
 
-    def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
+        Raises
+        ------
+        ValueError
+            If batch is missing required keys or has invalid shape
+            If contrastive loss type is invalid for the given number of views
+        """
+        # Validate batch structure
+        assert batch["input_ids"].ndim == 3, (
+            f"Batch must have shape (batch_size, num_views, sequence_length) but got {batch['input_ids'].shape}"
+        )
+        assert batch["input_ids"].shape[1] > 0, "Number of views must be positive"
+
+        num_views = batch["input_ids"].shape[1]
+
+        # If no contrastive loss is specified, only use MLM
+        if self.contrastive_loss_type is None:
+            if num_views > 1:
+                raise ValueError("Contrastive loss type is None but num_views > 1")
+
+            return self._compute_mlm_loss(batch, stage)
+
+        # Handle different contrastive loss types
+        if num_views == 1:
+            raise ValueError("Contrastive loss type is not None but num_views is 1")
+
+        batches = self._split_combined_batch(batch)
+
+        if self.contrastive_loss_type == "symile":
+            if num_views < 2:
+                raise ValueError("Symile loss requires at least 2 views")
+
+            return self._symile_step(*batches, stage=stage)
+
+        if self.contrastive_loss_type in ["clip", "disco_clip"]:
+            if num_views != 2:
+                raise ValueError(f"InfoNCE loss requires exactly 2 views, got {num_views}")
+
+            return self._infonce_step(*batches, stage=stage)
+
+        raise ValueError(f"Invalid contrastive loss type: {self.contrastive_loss_type}")
+
+    def training_step(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        batch_idx: int,
+    ) -> Tensor:
+        """Perform a single training step.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Input batch
+        batch_idx : int
+            Index of the current batch
+
+        Returns
+        -------
+        Tensor
+            Computed loss
+        """
         loss = self._delegate_step_by_batch_shape(batch, "train")
         self.log("train_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
 
-    def validation_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
+    def validation_step(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        batch_idx: int,
+    ) -> Tensor:
+        """Perform a single validation step.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Input batch
+        batch_idx : int
+            Index of the current batch
+
+        Returns
+        -------
+        Tensor
+            Computed loss
+        """
         loss = self._delegate_step_by_batch_shape(batch, "val")
         self.log("val_loss", loss, rank_zero_only=True, sync_dist=True)
 
