@@ -19,8 +19,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.tex
 
 logger = logging.getLogger(__name__)
 
-ContrastiveLossType = Literal[None, "symile", "clip", "disco_clip"]
-
 
 class Ume(L.LightningModule):
     """Universal Molecular Encoder.
@@ -113,7 +111,7 @@ class Ume(L.LightningModule):
         beta2: float = 0.98,
         eps: float = 1e-12,
         mask_percentage: float = 0.25,
-        contrastive_loss_type: ContrastiveLossType = None,
+        contrastive_loss_type: Literal[None, "symile", "clip", "disco_clip"] = None,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
         scheduler: SchedulerType = "constant_with_warmup",
@@ -343,20 +341,7 @@ class Ume(L.LightningModule):
         batch: dict[str, Tensor | list[Modality]],
         index: int,
     ) -> dict[str, Tensor | list[Modality]]:
-        """Extract components for a specific view from a combined batch.
-
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            Combined batch containing multiple views
-        index : int
-            Index of the view to extract
-
-        Returns
-        -------
-        dict[str, Tensor | list[Modality]]
-            Dictionary containing the extracted view components
-        """
+        """Extract components for a specific view from a combined batch."""
         input_ids = batch["input_ids"][:, index, :].unsqueeze(1).contiguous()
         attention_mask = batch["attention_mask"][:, index, :].unsqueeze(1).contiguous()
 
@@ -373,41 +358,29 @@ class Ume(L.LightningModule):
         self,
         combined_batch: dict[str, Tensor | list[Modality]],
     ) -> tuple[dict[str, Tensor | list[Modality]], ...]:
-        """Split a combined batch of N inputs into N separate batches.
-
-        Parameters
-        ----------
-        combined_batch : dict[str, Tensor | list[Modality]]
-            The combined batch to split. Input tensors should have shape (batch_size, N, sequence_length)
-            where N is the number of splits.
-
-        Returns
-        -------
-        tuple[dict[str, Tensor | list[Modality]], ...]
-            A tuple of N dictionaries, each containing the input ID, attention masks,
-            and modality for each split.
-        """
+        """Split a combined batch of N inputs into N separate batches."""
         num_splits = combined_batch["input_ids"].shape[1]
         return tuple(self._extract_batch_components(combined_batch, i) for i in range(num_splits))
 
-    def _prepare_embeddings(
+    def embed(
         self,
         inputs: dict[str, Tensor],
         aggregate: bool = True,
     ) -> Tensor:
-        """Prepare and normalize embeddings for input tensors.
+        """Get embeddings for encoded inputs.
 
         Parameters
         ----------
         inputs : dict[str, Tensor]
-            Dictionary containing input tensors
+            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
         aggregate : bool, default=True
-            Whether to aggregate embeddings
+            Whether to average pool over the sequence length dimension.
 
         Returns
         -------
         Tensor
-            Normalized embeddings
+            Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
+            Otherwise, shape is (batch_size, seq_len, hidden_size).
         """
         if not all(k in inputs for k in {"input_ids", "attention_mask"}):
             raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
@@ -442,28 +415,6 @@ class Ume(L.LightningModule):
             embeddings = embeddings.mean(dim=1)
 
         return embeddings
-
-    def embed(
-        self,
-        inputs: dict[str, Tensor],
-        aggregate: bool = True,
-    ) -> Tensor:
-        """Get embeddings for encoded inputs.
-
-        Parameters
-        ----------
-        inputs : dict[str, Tensor]
-            Dictionary of encoded inputs. Must contain 'input_ids' and 'attention_mask'.
-        aggregate : bool, default=True
-            Whether to average pool over the sequence length dimension.
-
-        Returns
-        -------
-        Tensor
-            Tensor of embeddings. If aggregate=True, shape is (batch_size, hidden_size).
-            Otherwise, shape is (batch_size, seq_len, hidden_size).
-        """
-        return self._prepare_embeddings(inputs, aggregate=aggregate)
 
     def embed_sequences(
         self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
@@ -520,7 +471,7 @@ class Ume(L.LightningModule):
         return super().configure_optimizers()
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        """Process inputs with different modalities and get logits and labels for training."""
+        """Process inputs and get logits and labels for training."""
         # New shape: (batch_size * seq_len)
         input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
 
@@ -548,22 +499,7 @@ class Ume(L.LightningModule):
         embeddings_b: Tensor,
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Compute contrastive loss between two sets of embeddings.
-
-        Parameters
-        ----------
-        embeddings_a : Tensor
-            First set of normalized embeddings
-        embeddings_b : Tensor
-            Second set of normalized embeddings
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            The computed contrastive loss
-        """
+        """Compute contrastive loss between two sets of embeddings."""
         loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
         return loss
@@ -573,20 +509,7 @@ class Ume(L.LightningModule):
         batch: dict[str, Tensor | list[Modality]],
         aggregate: bool = True,
     ) -> Tensor:
-        """Get normalized embeddings for a batch.
-
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            Input batch
-        aggregate : bool, default=True
-            Whether to aggregate embeddings
-
-        Returns
-        -------
-        Tensor
-            Normalized embeddings
-        """
+        """Get normalized embeddings for a batch."""
         embeddings = self.embed(batch, aggregate=aggregate)
         return nn.functional.normalize(embeddings, dim=-1)
 
@@ -596,22 +519,7 @@ class Ume(L.LightningModule):
         batch_b: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Compute contrastive loss between two batches.
-
-        Parameters
-        ----------
-        batch_a : dict[str, Tensor | list[Modality]]
-            First batch for contrastive loss computation
-        batch_b : dict[str, Tensor | list[Modality]]
-            Second batch for contrastive loss computation
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            The contrastive loss
-        """
+        """Compute contrastive loss between two batches."""
         embeddings_a = self._get_embeddings_for_batch(batch_a)
         embeddings_b = self._get_embeddings_for_batch(batch_b)
 
@@ -626,22 +534,7 @@ class Ume(L.LightningModule):
         batch_b: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a contrastive step with optional MLM mixing.
-
-        Parameters
-        ----------
-        batch_a : dict[str, Tensor | list[Modality]]
-            First batch for contrastive loss computation
-        batch_b : dict[str, Tensor | list[Modality]]
-            Second batch for contrastive loss computation
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            The combined loss for the contrastive step
-        """
+        """Perform a contrastive step with optional MLM mixing."""
         contrastive_loss = (
             self._compute_infonce_loss(batch_a, batch_b, stage)
             if self.contrastive_loss_weight > 0
@@ -667,19 +560,7 @@ class Ume(L.LightningModule):
         modalities: list[Modality],
         stage: Literal["train", "val"],
     ) -> None:
-        """Process batch to compute per-modality metrics.
-
-        Parameters
-        ----------
-        logits : Tensor
-            Model output logits
-        labels : Tensor
-            Target labels
-        modalities : list[Modality]
-            List of modalities for each sample
-        stage : Literal["train", "val"]
-            Current training stage
-        """
+        """Process batch to compute per-modality metrics."""
         # Calculate batch size from modalities length
         batch_size = len(modalities)
         seq_length = logits.shape[0] // batch_size
@@ -704,22 +585,7 @@ class Ume(L.LightningModule):
         contrastive_loss: Tensor,
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Compute weighted loss combining MLM and contrastive losses.
-
-        Parameters
-        ----------
-        mlm_loss : Tensor
-            The masked language model loss
-        contrastive_loss : Tensor
-            The contrastive loss
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            The combined weighted loss
-        """
+        """Compute weighted loss combining MLM and contrastive losses."""
         # Log individual losses
         self.log(f"mlm_{stage}_loss", mlm_loss, rank_zero_only=True, sync_dist=True)
         self.log(f"contrastive_{stage}_loss", contrastive_loss, rank_zero_only=True, sync_dist=True)
@@ -735,20 +601,7 @@ class Ume(L.LightningModule):
         batch: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Compute masked language model loss.
-
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The batch to compute the masked language model loss for
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            The masked language model loss
-        """
+        """Compute masked language model loss."""
         # Prepare inputs for the model
         input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
         masked_input_ids, labels = self.model._mask_inputs(input_ids)
@@ -784,20 +637,7 @@ class Ume(L.LightningModule):
         *batches: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Compute Symile loss for a batch of N views of the same entity.
-
-        Parameters
-        ----------
-        *batches : dict[str, Tensor | list[Modality]]
-            The batches to compute the Symile loss for
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            The Symile loss
-        """
+        """Compute Symile loss for a batch of N views of the same entity."""
         embeddings = [self._get_embeddings_for_batch(batch) for batch in batches]
         loss = self.symile_loss_fn(embeddings)
         self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
@@ -808,20 +648,7 @@ class Ume(L.LightningModule):
         *batches: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a Symile step with optional MLM mixing.
-
-        Parameters
-        ----------
-        *batches : dict[str, Tensor | list[Modality]]
-            The batches to compute the Symile loss for
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            The combined loss for the Symile step
-        """
+        """Perform a Symile step with optional MLM mixing."""
         contrastive_loss = (
             self._compute_symile_loss(*batches, stage=stage)
             if self.contrastive_loss_weight > 0
@@ -845,26 +672,7 @@ class Ume(L.LightningModule):
         batch: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Delegate to appropriate loss computation based on batch shape.
-
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            Input batch
-        stage : Literal["train", "val"]
-            Current training stage
-
-        Returns
-        -------
-        Tensor
-            Computed loss
-
-        Raises
-        ------
-        ValueError
-            If batch is missing required keys or has invalid shape
-            If contrastive loss type is invalid for the given number of views
-        """
+        """Delegate to appropriate loss computation based on batch shape."""
         # Validate batch structure
         assert batch["input_ids"].ndim == 3, (
             f"Batch must have shape (batch_size, num_views, sequence_length) but got {batch['input_ids'].shape}"

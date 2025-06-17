@@ -17,6 +17,20 @@ from torch import Tensor
 class SymileLoss(nn.Module):
     """Symile loss for contrastive learning with multiple views.
 
+    Symile uses the multilinear inner product (MIP),
+    a simple generalization of the dot product to more than two vectors
+    that allows for the simultaneous contrasting of all modalities and
+    enables zero-shot applications such as classification and retrieval.
+
+    Reference
+    ---------
+    @inproceedings{saporta2024symile,
+        title = {Contrasting with Symile: Simple Model-Agnostic Representation Learning for Unlimited Modalities}
+        author = {Saporta, Adriel and Puli, Aahlad and Goldstein, Mark and Ranganath, Rajesh}
+        booktitle = {Advances in Neural Information Processing Systems},
+        year = {2024}
+    }
+
     Parameters
     ----------
     temperature : float, default=0.07
