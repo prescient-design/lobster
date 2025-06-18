@@ -896,6 +896,13 @@ class Ume(L.LightningModule):
         >>> model = Ume.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
 
+        # Warning that you're using pre-release checkpoints which
+        # are just placeholder checkpoints for now.
+        warnings.warn(
+            "You're using pre-release UME checkpoints which are just placeholder checkpoints for now. Stay tuned for UME release.",
+            stacklevel=2,
+        )
+
         checkpoint_path = UME_PRETRAINED_CHECKPOINTS.get(model_name)
         if checkpoint_path is None:
             available_models = [
