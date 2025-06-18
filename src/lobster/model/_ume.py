@@ -194,6 +194,8 @@ class Ume(L.LightningModule):
         self._eps = eps
         self._num_training_steps = num_training_steps
         self._num_warmup_steps = num_warmup_steps
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
 
         # Initialize loss functions
         self.symile_loss_fn = SymileLoss(temperature=contrastive_temperature)

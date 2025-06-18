@@ -109,7 +109,7 @@ class UmeStreamingDataset(StreamingDataset):
             s3_uri,
             item_loader=ParquetLoader() if not use_optimized else None,
             subsample=subsample,
-            drop_last=split == Split.TRAIN,
+            drop_last=True,
             shuffle=split == Split.TRAIN,
             seed=seed,
             cache_dir=cache_dir,
