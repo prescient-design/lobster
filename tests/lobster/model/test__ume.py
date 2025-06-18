@@ -329,3 +329,33 @@ class TestUme:
             embeddings_no_flash_agg = ume_no_flash.embed_sequences(sequences, modality, aggregate=True)
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
+
+    @patch("lobster.model._ume.load_checkpoint_with_retry")
+    @patch("lobster.model._ume.get_ume_checkpoints")
+    @patch("lobster.model._ume.os.path.join")
+    @patch("lobster.model._ume.os.getcwd")
+    def test_from_pretrained(self, mock_getcwd, mock_join, mock_get_checkpoints, mock_load_checkpoint):
+        """Test from_pretrained method with mocked dependencies."""
+        mock_get_checkpoints.return_value = {"ume-mini-base-12M": "s3://bucket/ume-mini-base-12M.ckpt"}
+        mock_getcwd.return_value = "/current/working/dir"
+        mock_join.return_value = "/current/working/dir/models/ume"
+
+        mock_model = MagicMock()
+        mock_load_checkpoint.return_value = mock_model
+
+        result = Ume.from_pretrained("ume-mini-base-12M")
+
+        mock_get_checkpoints.assert_called_once()
+
+        mock_join.assert_called_once_with("/current/working/dir", "models", "ume")
+
+        mock_load_checkpoint.assert_called_once_with(
+            checkpoint_path="s3://bucket/ume-mini-base-12M.ckpt",
+            local_directory="/current/working/dir/models/ume",
+            local_filename="ume-mini-base-12M.ckpt",
+            load_func=Ume.load_from_checkpoint,
+            device=None,
+            use_flash_attn=None,
+        )
+
+        assert result == mock_model
