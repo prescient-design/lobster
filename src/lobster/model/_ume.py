@@ -6,6 +6,7 @@ from typing import Literal
 import lightning as L
 import torch
 import torch.nn as nn
+import transformers
 from torch import Tensor
 from torchmetrics.text import Perplexity
 
@@ -187,6 +188,12 @@ class Ume(L.LightningModule):
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
         self.use_flash_attn = use_flash_attn
+        self._lr = lr
+        self._beta1 = beta1
+        self._beta2 = beta2
+        self._eps = eps
+        self._num_training_steps = num_training_steps
+        self._num_warmup_steps = num_warmup_steps
 
         # Initialize loss functions
         self.symile_loss_fn = SymileLoss(temperature=contrastive_temperature)
@@ -473,8 +480,25 @@ class Ume(L.LightningModule):
 
         return self.embed(encoded, aggregate=aggregate)
 
-    def configure_optimizers(self) -> dict[str, object]:
-        return super().configure_optimizers()
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
+        )
+
+        scheduler = transformers.get_scheduler(
+            self.scheduler,
+            optimizer,
+            num_training_steps=self._num_training_steps,
+            num_warmup_steps=self._num_warmup_steps,
+            scheduler_specific_kwargs=self.scheduler_kwargs,
+        )
+
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Process inputs and get logits and labels for training."""
