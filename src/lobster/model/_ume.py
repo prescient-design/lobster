@@ -6,7 +6,6 @@ from typing import Literal
 
 import lightning as L
 import torch
-import torch.nn as nn
 from torch import Tensor
 from torchmetrics.text import Perplexity
 
@@ -520,15 +519,6 @@ class Ume(L.LightningModule):
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
         return loss
 
-    def _get_embeddings_for_batch(
-        self,
-        batch: dict[str, Tensor | list[Modality]],
-        aggregate: bool = True,
-    ) -> Tensor:
-        """Get normalized embeddings for a batch."""
-        embeddings = self.embed(batch, aggregate=aggregate)
-        return nn.functional.normalize(embeddings, dim=-1)
-
     def _compute_infonce_loss(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -536,8 +526,8 @@ class Ume(L.LightningModule):
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute contrastive loss between two batches."""
-        embeddings_a = self._get_embeddings_for_batch(batch_a)
-        embeddings_b = self._get_embeddings_for_batch(batch_b)
+        embeddings_a = self.embed(batch_a)
+        embeddings_b = self.embed(batch_b)
 
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
@@ -654,7 +644,7 @@ class Ume(L.LightningModule):
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute Symile loss for a batch of N views of the same entity."""
-        embeddings = [self._get_embeddings_for_batch(batch) for batch in batches]
+        embeddings = [self.embed(batch) for batch in batches]
         loss = self.symile_loss_fn(embeddings)
         self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
         return loss
