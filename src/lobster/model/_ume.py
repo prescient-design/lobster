@@ -846,7 +846,7 @@ class Ume(L.LightningModule):
     @classmethod
     def from_pretrained(
         cls,
-        model_name: str,
+        model_name: Literal["ume-mini-base-12M", "ume-medium-base-480M", "ume-large-base-740M"],
         *,
         device: str | None = None,
         use_flash_attn: bool | None = None,
