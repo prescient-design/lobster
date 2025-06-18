@@ -485,29 +485,6 @@ class Ume(L.LightningModule):
     def configure_optimizers(self) -> dict[str, object]:
         return super().configure_optimizers()
 
-    def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        """Process inputs and get logits and labels for training."""
-        # New shape: (batch_size * seq_len)
-        input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
-
-        masked_input_ids, labels = self.model._mask_inputs(input_ids)
-
-        hidden_states = self.model.model(
-            input_ids=masked_input_ids,
-            attention_mask=attention_mask,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=self.max_length,
-        )
-
-        # Get logits from decoder
-        logits = self.model.decoder(hidden_states)
-
-        # Reshape for loss calculation
-        logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * sequence_length, vocab_size)
-        labels = labels.view(-1)  # (batch_size * sequence_length)
-
-        return logits, labels
-
     def _compute_contrastive_loss(
         self,
         embeddings_a: Tensor,
