@@ -331,12 +331,12 @@ class TestUme:
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
 
     @patch("lobster.model._ume.load_checkpoint_with_retry")
-    @patch("lobster.model._ume.UME_PRETRAINED_CHECKPOINTS")
+    @patch("lobster.model._ume.get_ume_checkpoints")
     @patch("lobster.model._ume.os.path.join")
     @patch("lobster.model._ume.os.getcwd")
-    def test_from_pretrained(self, mock_getcwd, mock_join, mock_checkpoints, mock_load_checkpoint):
+    def test_from_pretrained(self, mock_getcwd, mock_join, mock_get_checkpoints, mock_load_checkpoint):
         """Test from_pretrained method with mocked dependencies."""
-        mock_checkpoints.get.return_value = "s3://bucket/ume-mini-base-12M.ckpt"
+        mock_get_checkpoints.return_value = {"ume-mini-base-12M": "s3://bucket/ume-mini-base-12M.ckpt"}
         mock_getcwd.return_value = "/current/working/dir"
         mock_join.return_value = "/current/working/dir/models/ume"
 
@@ -345,7 +345,7 @@ class TestUme:
 
         result = Ume.from_pretrained("ume-mini-base-12M")
 
-        mock_checkpoints.get.assert_called_once_with("ume-mini-base-12M")
+        mock_get_checkpoints.assert_called_once()
 
         mock_join.assert_called_once_with("/current/working/dir", "models", "ume")
 
