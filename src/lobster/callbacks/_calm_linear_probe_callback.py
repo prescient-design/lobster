@@ -58,6 +58,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         Fraction of data to use for testing.
     max_samples : int, default=3000
         Maximum number of samples to use from each dataset.
+    random_seed : int, default=42
+        Random seed for reproducibility of train/test splits.
 
     Attributes
     ----------
@@ -78,6 +80,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         run_every_n_epochs: int | None = None,
         test_size: float = 0.2,
         max_samples: int = 3000,
+        random_seed: int = 42,
     ):
         tokenizer_transform = UMETokenizerTransform(
             modality="nucleotide",
@@ -96,6 +99,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         self.test_size = test_size
         self.max_samples = max_samples
+        self.random_seed = random_seed
 
         self.dataset_splits = {}
         self.aggregate_metrics = defaultdict(list)
@@ -121,6 +125,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         split_key = f"{task}_{species}" if species else task
         if split_key in self.dataset_splits:
             return self.dataset_splits[split_key]
+
+        # Set random seed for reproducibility
+        np.random.seed(self.random_seed)
 
         dataset = CalmPropertyDataset(task=task, species=species, transform_fn=self.transform_fn)
 
