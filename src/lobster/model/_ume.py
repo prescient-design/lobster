@@ -10,14 +10,13 @@ from torch import Tensor
 from torchmetrics.text import Perplexity
 
 from lobster.constants import (
-    UME_PRETRAINED_CHECKPOINTS,
     Modality,
     ModalityType,
     SchedulerType,
 )
 from lobster.tokenization import UmeTokenizerTransform
 
-from ._utils_checkpoint import load_checkpoint_with_retry
+from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
@@ -869,13 +868,12 @@ class Ume(L.LightningModule):
             "You're using pre-release UME checkpoints which are just placeholder checkpoints for now. Stay tuned for UME release.",
             stacklevel=2,
         )
+        checkpoint_dict = get_ume_checkpoints()
 
-        checkpoint_path = UME_PRETRAINED_CHECKPOINTS.get(model_name)
+        checkpoint_path = checkpoint_dict.get(model_name)
         if checkpoint_path is None:
             available_models = [
-                model_name
-                for model_name in UME_PRETRAINED_CHECKPOINTS.keys()
-                if UME_PRETRAINED_CHECKPOINTS[model_name] is not None
+                model_name for model_name in checkpoint_dict.keys() if checkpoint_dict[model_name] is not None
             ]
             raise ValueError(f"Unknown model name: {model_name}. Currently available models: {available_models}")
 

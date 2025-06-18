@@ -13,7 +13,7 @@ from ._peer_tasks import (
 )
 from ._scheduler_type import SchedulerType
 from ._split import Split
-from ._ume_models import UME_CHECKPOINT_DICT_S3_URI, UME_PRETRAINED_CHECKPOINTS
+from ._ume_models import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT_S3_KEY, UME_CHECKPOINT_DICT_S3_URI
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
 
 __all__ = [
@@ -36,6 +36,7 @@ __all__ = [
     "PEER_TASK_COLUMNS",
     "CODON_TABLE_PATH",
     "CODON_TABLE_PATH_VENDOR",
-    "UME_PRETRAINED_CHECKPOINTS",
     "UME_CHECKPOINT_DICT_S3_URI",
+    "UME_CHECKPOINT_DICT_S3_BUCKET",
+    "UME_CHECKPOINT_DICT_S3_KEY",
 ]

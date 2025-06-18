@@ -1,12 +1,24 @@
+import json
 import logging
 import os
 from collections.abc import Callable
 
+import boto3
 from botocore.exceptions import ClientError, CredentialRetrievalError, NoCredentialsError
 
+from lobster.constants import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT_S3_KEY
 from lobster.data._utils import download_from_s3
 
 logger = logging.getLogger(__name__)
+
+
+def get_ume_checkpoints() -> dict[str, str]:
+    """Get the UME checkpoints from S3."""
+    client = boto3.client("s3")
+    response = client.get_object(Bucket=UME_CHECKPOINT_DICT_S3_BUCKET, Key=UME_CHECKPOINT_DICT_S3_KEY)
+    decoded_body = response["Body"].read().decode("utf-8")
+
+    return json.loads(decoded_body)
 
 
 def download_checkpoint(
