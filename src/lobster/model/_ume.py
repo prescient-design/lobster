@@ -1,4 +1,5 @@
 import logging
+import os
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
@@ -9,9 +10,15 @@ import torch.nn as nn
 from torch import Tensor
 from torchmetrics.text import Perplexity
 
-from lobster.constants import Modality, ModalityType, SchedulerType
+from lobster.constants import (
+    UME_PRETRAINED_CHECKPOINTS,
+    Modality,
+    ModalityType,
+    SchedulerType,
+)
 from lobster.tokenization import UmeTokenizerTransform
 
+from ._utils_checkpoint import load_checkpoint_with_retry
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
@@ -94,6 +101,9 @@ class Ume(L.LightningModule):
     >>>
     >>> # Initialize and load from a checkpoint
     >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+    >>>
+    >>> # Load a pretrained model using the convenient from_pretrained method
+    >>> encoder = Ume.from_pretrained("ume-mini")
     >>>
     >>> # Get embeddings for protein sequences
     >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
@@ -832,3 +842,83 @@ class Ume(L.LightningModule):
         model = model.to(device)
 
         return model
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_name: str,
+        *,
+        device: str | None = None,
+        use_flash_attn: bool | None = None,
+        cache_dir: str | None = None,
+        **kwargs,
+    ) -> "Ume":
+        """Load a pretrained UME model from a model name.
+
+        Currently, we support the following model names:
+        - "ume-mini-base-12M"
+        - "ume-small-base-90M"
+        - "ume-medium-base-480M"
+        - "ume-large-base-740M"
+
+        Note: These models are only available to members of Prescient Design for now. Stay
+        tuned for UME release.
+
+        Parameters
+        ----------
+        model_name : str
+            Model name from registry.
+            Examples:
+            - "ume-mini-base-12M" -> loads UME_mini with default checkpoint
+        device : str | None, optional
+            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
+        use_flash_attn : bool | None, optional
+            Whether to use flash attention. If None, will be determined based on device.
+        cache_dir : str | None, optional
+            Directory to cache downloaded models. If None, uses 'models/ume' in current directory.
+        **kwargs
+            Additional keyword arguments to pass to load_from_checkpoint.
+
+        Returns
+        -------
+        Ume
+            The loaded pretrained model.
+
+        Examples
+        --------
+        >>> # Load UME-mini with default checkpoint
+        >>> model = Ume.from_pretrained("ume-mini-base-12M")
+        >>>
+        >>> # Load UME-mini with specific device
+        >>> model = Ume.from_pretrained("ume-mini-base-12M", device="cpu")
+        >>>
+        >>> # Load with custom cache directory
+        >>> model = Ume.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
+        """
+
+        checkpoint_path = UME_PRETRAINED_CHECKPOINTS.get(model_name)
+        if checkpoint_path is None:
+            available_models = [
+                model_name
+                for model_name in UME_PRETRAINED_CHECKPOINTS.keys()
+                if UME_PRETRAINED_CHECKPOINTS[model_name] is not None
+            ]
+            raise ValueError(f"Unknown model name: {model_name}. Currently available models: {available_models}")
+
+        # Determine cache directory
+        if cache_dir is None:
+            cache_dir = os.path.join(os.getcwd(), "models", "ume")
+
+        local_filename = f"{model_name}.ckpt"
+
+        # Load the model with automatic retry on corruption
+        # happens if previous download was stopped, for example
+        return load_checkpoint_with_retry(
+            checkpoint_path=checkpoint_path,
+            local_directory=cache_dir,
+            local_filename=local_filename,
+            load_func=cls.load_from_checkpoint,
+            device=device,
+            use_flash_attn=use_flash_attn,
+            **kwargs,
+        )
