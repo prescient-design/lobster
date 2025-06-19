@@ -510,17 +510,6 @@ class Ume(L.LightningModule):
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
-    def _compute_contrastive_loss(
-        self,
-        embeddings_a: Tensor,
-        embeddings_b: Tensor,
-        stage: Literal["train", "val"],
-    ) -> Tensor:
-        """Compute contrastive loss between two sets of embeddings."""
-        loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
-        self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-        return loss
-
     def _compute_infonce_loss(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -534,7 +523,10 @@ class Ume(L.LightningModule):
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
 
-        return self._compute_contrastive_loss(embeddings_a, embeddings_b, stage)
+        embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
+        embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
+
+        return self.infonce_loss_fn(embeddings_a, embeddings_b)
 
     def _infonce_step(
         self,
@@ -555,7 +547,7 @@ class Ume(L.LightningModule):
             else torch.tensor(0.0, device=self.device)
         )
 
-        return self._compute_loss_with_weighting(
+        return self._compute_weighted_loss(
             contrastive_loss=contrastive_loss,
             mlm_loss=mlm_loss,
             stage=stage,
@@ -587,7 +579,7 @@ class Ume(L.LightningModule):
             metric(logits_reshaped[mask], labels_reshaped[mask])
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
 
-    def _compute_loss_with_weighting(
+    def _compute_weighted_loss(
         self,
         mlm_loss: Tensor,
         contrastive_loss: Tensor,
@@ -647,9 +639,9 @@ class Ume(L.LightningModule):
     ) -> Tensor:
         """Compute Symile loss for a batch of N views of the same entity."""
         embeddings = [self.embed(batch) for batch in batches]
-        loss = self.symile_loss_fn(embeddings)
-        self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-        return loss
+        embeddings = [torch.nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
+
+        return self.symile_loss_fn(embeddings)
 
     def _symile_step(
         self,
@@ -669,7 +661,7 @@ class Ume(L.LightningModule):
             else torch.tensor(0.0, device=self.device)
         )
 
-        return self._compute_loss_with_weighting(
+        return self._compute_weighted_loss(
             contrastive_loss=contrastive_loss,
             mlm_loss=mlm_loss,
             stage=stage,
