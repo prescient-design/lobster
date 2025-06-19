@@ -177,7 +177,7 @@ class TestUme:
             assert batches[1]["attention_mask"].shape == (2, 1, 10)
             assert batches[1]["modality"] == ["amino_acid", "SMILES"]
 
-    def test_compute_loss_with_weighting(self):
+    def test_compute_weighted_loss(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
             ume = Ume(contrastive_loss_weight=0.5)
 
@@ -186,7 +186,7 @@ class TestUme:
             contrastive_loss = torch.tensor(4.0)
 
             # Test loss computation
-            total_loss = ume._compute_loss_with_weighting(mlm_loss, contrastive_loss, "train")
+            total_loss = ume._compute_weighted_loss(mlm_loss, contrastive_loss, "train")
             expected_loss = 0.5 * mlm_loss + 0.5 * contrastive_loss
             assert torch.allclose(total_loss, expected_loss)
 
