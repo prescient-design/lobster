@@ -1,18 +1,23 @@
 import logging
+import os
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
 
 import lightning as L
 import torch
-import torch.nn as nn
 import transformers
 from torch import Tensor
 from torchmetrics.text import Perplexity
 
-from lobster.constants import Modality, ModalityType, SchedulerType
+from lobster.constants import (
+    Modality,
+    ModalityType,
+    SchedulerType,
+)
 from lobster.tokenization import UmeTokenizerTransform
 
+from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
@@ -95,6 +100,9 @@ class Ume(L.LightningModule):
     >>>
     >>> # Initialize and load from a checkpoint
     >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+    >>>
+    >>> # Load a pretrained model using the convenient from_pretrained method
+    >>> encoder = Ume.from_pretrained("ume-mini")
     >>>
     >>> # Get embeddings for protein sequences
     >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
@@ -502,29 +510,6 @@ class Ume(L.LightningModule):
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
-    def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        """Process inputs and get logits and labels for training."""
-        # New shape: (batch_size * seq_len)
-        input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
-
-        masked_input_ids, labels = self.model._mask_inputs(input_ids)
-
-        hidden_states = self.model.model(
-            input_ids=masked_input_ids,
-            attention_mask=attention_mask,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=self.max_length,
-        )
-
-        # Get logits from decoder
-        logits = self.model.decoder(hidden_states)
-
-        # Reshape for loss calculation
-        logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * sequence_length, vocab_size)
-        labels = labels.view(-1)  # (batch_size * sequence_length)
-
-        return logits, labels
-
     def _compute_contrastive_loss(
         self,
         embeddings_a: Tensor,
@@ -536,15 +521,6 @@ class Ume(L.LightningModule):
         self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
         return loss
 
-    def _get_embeddings_for_batch(
-        self,
-        batch: dict[str, Tensor | list[Modality]],
-        aggregate: bool = True,
-    ) -> Tensor:
-        """Get normalized embeddings for a batch."""
-        embeddings = self.embed(batch, aggregate=aggregate)
-        return nn.functional.normalize(embeddings, dim=-1)
-
     def _compute_infonce_loss(
         self,
         batch_a: dict[str, Tensor | list[Modality]],
@@ -552,8 +528,8 @@ class Ume(L.LightningModule):
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute contrastive loss between two batches."""
-        embeddings_a = self._get_embeddings_for_batch(batch_a)
-        embeddings_b = self._get_embeddings_for_batch(batch_b)
+        embeddings_a = self.embed(batch_a)
+        embeddings_b = self.embed(batch_b)
 
         assert embeddings_a.shape == embeddings_b.shape
         assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
@@ -670,7 +646,7 @@ class Ume(L.LightningModule):
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute Symile loss for a batch of N views of the same entity."""
-        embeddings = [self._get_embeddings_for_batch(batch) for batch in batches]
+        embeddings = [self.embed(batch) for batch in batches]
         loss = self.symile_loss_fn(embeddings)
         self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
         return loss
@@ -858,3 +834,89 @@ class Ume(L.LightningModule):
         model = model.to(device)
 
         return model
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_name: Literal["ume-mini-base-12M", "ume-medium-base-480M", "ume-large-base-740M"],
+        *,
+        device: str | None = None,
+        use_flash_attn: bool | None = None,
+        cache_dir: str | None = None,
+        **kwargs,
+    ) -> "Ume":
+        """Load a pretrained UME model from a model name.
+
+        Currently, we support the following model names:
+        - "ume-mini-base-12M"
+        - "ume-small-base-90M"
+        - "ume-medium-base-480M"
+        - "ume-large-base-740M"
+
+        Note: These models are only available to members of Prescient Design for now. Stay
+        tuned for UME release.
+
+        Parameters
+        ----------
+        model_name : str
+            Model name from registry.
+            Examples:
+            - "ume-mini-base-12M" -> loads UME_mini with default checkpoint
+        device : str | None, optional
+            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
+        use_flash_attn : bool | None, optional
+            Whether to use flash attention. If None, will be determined based on device.
+        cache_dir : str | None, optional
+            Directory to cache downloaded models. If None, uses 'models/ume' in current directory.
+        **kwargs
+            Additional keyword arguments to pass to load_from_checkpoint.
+
+        Returns
+        -------
+        Ume
+            The loaded pretrained model.
+
+        Examples
+        --------
+        >>> # Load UME-mini with default checkpoint
+        >>> model = Ume.from_pretrained("ume-mini-base-12M")
+        >>>
+        >>> # Load UME-mini with specific device
+        >>> model = Ume.from_pretrained("ume-mini-base-12M", device="cpu")
+        >>>
+        >>> # Load with custom cache directory
+        >>> model = Ume.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
+        """
+
+        # Warning that you're using pre-release checkpoints which
+        # are just placeholder checkpoints for now.
+        warnings.warn(
+            "You're using pre-release UME checkpoints which are just placeholder checkpoints for now. Stay tuned for UME release.",
+            stacklevel=2,
+        )
+        checkpoint_dict = get_ume_checkpoints()
+
+        checkpoint_path = checkpoint_dict.get(model_name)
+        if checkpoint_path is None:
+            available_models = [
+                model_name for model_name in checkpoint_dict.keys() if checkpoint_dict[model_name] is not None
+            ]
+            raise ValueError(f"Unknown model name: {model_name}. Currently available models: {available_models}")
+
+        # Determine cache directory
+        if cache_dir is None:
+            cache_dir = os.path.join(os.getcwd(), "models", "ume")
+
+        local_filename = f"{model_name}.ckpt"
+
+        # Load the model with automatic retry on corruption
+        # happens if previous download was stopped, for example
+        return load_checkpoint_with_retry(
+            checkpoint_path=checkpoint_path,
+            local_directory=cache_dir,
+            local_filename=local_filename,
+            load_func=cls.load_from_checkpoint,
+            device=device,
+            use_flash_attn=use_flash_attn,
+            **kwargs,
+        )
