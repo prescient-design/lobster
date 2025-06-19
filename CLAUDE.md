@@ -115,6 +115,17 @@ Datasets implement PyTorch's Dataset/IterableDataset interface with support for 
 - Distributed training supported via Lightning
 - Integration with Weights & Biases for experiment tracking
 
+## Git Commit Guidelines
+
+When creating git commits, DO NOT include the following text in commit messages:
+```
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+Keep commit messages concise and focused on the actual changes made.
+
 ## Updating This File
 
 Keep CLAUDE.md updated when making changes to:
