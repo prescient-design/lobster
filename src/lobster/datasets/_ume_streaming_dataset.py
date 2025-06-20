@@ -64,7 +64,6 @@ class UmeStreamingDataset(StreamingDataset):
         tokenize: bool = True,
         use_optimized: bool = False,
         max_length: int | None = 8192,
-        **kwargs: Any,
     ) -> None:
         """
         Initialize the UmeStreamingDataset.
@@ -114,7 +113,6 @@ class UmeStreamingDataset(StreamingDataset):
             seed=seed,
             cache_dir=cache_dir,
             force_override_state_dict=True,
-            **kwargs,
         )
 
         self.transform_fn = transform_fn
@@ -344,8 +342,6 @@ class UmeStreamingDataset(StreamingDataset):
 
         if sequence is None:
             return self.__next__()
-
-        print(sequence)
 
         if self.transform_fn:
             sequence: str | tuple[str | None, ...] | list[str | None] | None = self.transform_fn(sequence)
