@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UME Architecture Diagram</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #2d3748;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #f7fafc;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .diagram-container {
+            padding: 60px 40px;
+            background: #f7fafc;
+        }
+
+        .layer {
+            margin-bottom: 60px;
+            position: relative;
+        }
+
+        .layer-title {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 30px;
+            color: #2d3748;
+        }
+
+        .input-modalities {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .modality-card {
+            background: linear-gradient(135deg, #e8edff, #f0f4ff);
+            border: 3px solid #667eea;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.1);
+        }
+
+        .modality-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.2);
+        }
+
+        .modality-card h3 {
+            color: #667eea;
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .modality-card .example {
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: #4a5568;
+            margin-top: 10px;
+        }
+
+        .tokenizer-section {
+            background: linear-gradient(135deg, #fdebff, #fef5ff);
+            border: 3px solid #f093fb;
+            border-radius: 20px;
+            padding: 40px;
+            margin: 40px 0;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(240, 147, 251, 0.1);
+        }
+
+        .tokenizer-section h3 {
+            color: #f093fb;
+            font-size: 1.8rem;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }
+
+        .tokenizer-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        .tokenizer-detail {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .backbone-section {
+            background: linear-gradient(135deg, #e1f3ff, #f0f8ff);
+            border: 4px solid #4facfe;
+            border-radius: 25px;
+            padding: 50px;
+            margin: 50px 0;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 15px 40px rgba(79, 172, 254, 0.15);
+        }
+
+        .backbone-section h3 {
+            color: #4facfe;
+            font-size: 2rem;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+
+        .backbone-components {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .backbone-component {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 25px;
+            text-align: left;
+            border-left: 4px solid #4facfe;
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.1);
+        }
+
+        .training-objectives {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin: 50px 0;
+        }
+
+        .training-card {
+            background: linear-gradient(135deg, #ffe8e8, #fff0f0);
+            border: 3px solid #ff6b6b;
+            border-radius: 20px;
+            padding: 35px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .training-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(255, 107, 107, 0.2);
+        }
+
+        .training-card h4 {
+            color: #ff6b6b;
+            font-size: 1.4rem;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .training-features {
+            list-style: none;
+            text-align: left;
+        }
+
+        .training-features li {
+            padding: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .training-features li::before {
+            content: "•";
+            color: #ff6b6b;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+
+        .output-section {
+            background: linear-gradient(135deg, #e8fff0, #f0fff4);
+            border: 3px solid #43e97b;
+            border-radius: 20px;
+            padding: 40px;
+            margin: 40px 0;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(67, 233, 123, 0.1);
+        }
+
+        .output-section h3 {
+            color: #43e97b;
+            font-size: 1.8rem;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }
+
+        .output-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        .output-detail {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .datasets-section {
+            background: linear-gradient(135deg, #fff8e1, #fffbf0);
+            border: 3px solid #fec84b;
+            border-radius: 20px;
+            padding: 40px;
+            margin: 40px 0;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(254, 200, 75, 0.1);
+        }
+
+        .datasets-section h3 {
+            color: #ed8936;
+            font-size: 1.8rem;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }
+
+        .dataset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        .dataset-item {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: left;
+            border-left: 4px solid #fec84b;
+        }
+
+        .key-features {
+            background: #2d3748;
+            color: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .key-features h3 {
+            color: #fec84b;
+            font-size: 1.6rem;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .features-list {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .feature-tag {
+            background: rgba(254, 200, 75, 0.2);
+            color: #fec84b;
+            border: 2px solid #fec84b;
+            border-radius: 25px;
+            padding: 10px 20px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .feature-tag:hover {
+            background: #fec84b;
+            color: #2d3748;
+        }
+
+        .flow-arrow {
+            width: 100%;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+        }
+
+        .arrow {
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 25px solid #667eea;
+            position: relative;
+        }
+
+        .arrow::before {
+            content: '';
+            position: absolute;
+            top: -35px;
+            left: -2px;
+            width: 4px;
+            height: 20px;
+            background: #667eea;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            border-top: 4px solid #667eea;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #718096;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .training-objectives {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .diagram-container {
+                padding: 40px 20px;
+            }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>UME Architecture</h1>
+            <p>Universal Molecular Encoder</p>
+        </div>
+
+        <div class="diagram-container">
+            <!-- Input Modalities -->
+            <div class="layer">
+                <h2 class="layer-title">Input Modalities</h2>
+                <div class="input-modalities">
+                    <div class="modality-card">
+                        <h3>Amino Acid Sequences</h3>
+                        <p>Protein sequences with standard amino acid alphabet</p>
+                        <div class="example">MKTVRQERLKSIVRIL...</div>
+                    </div>
+                    <div class="modality-card">
+                        <h3>SMILES Strings</h3>
+                        <p>Chemical structure representations</p>
+                        <div class="example">CC(=O)OC1=CC=CC=C1C(=O)O</div>
+                    </div>
+                    <div class="modality-card">
+                        <h3>Nucleotide Sequences</h3>
+                        <p>DNA/RNA sequences with nucleotide alphabet</p>
+                        <div class="example">ATGCATGCTAGCTAGCTAGCTAG</div>
+                    </div>
+                    <div class="modality-card">
+                        <h3>3D Coordinates</h3>
+                        <p>Spatial molecular structure data</p>
+                        <div class="example">[x,y,z] coordinate matrices</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-arrow">
+                <div class="arrow"></div>
+            </div>
+
+            <!-- Tokenization -->
+            <div class="tokenizer-section">
+                <h3>Unified Tokenization System</h3>
+                <p>Modality-aware tokenization with shared vocabulary space</p>
+                <div class="tokenizer-details">
+                    <div class="tokenizer-detail">
+                        <strong>Modality-Specific CLS Tokens:</strong><br>
+                        &lt;cls_amino_acid&gt;, &lt;cls_smiles&gt;, &lt;cls_nucleotide&gt;
+                    </div>
+                    <div class="tokenizer-detail">
+                        <strong>Shared Special Tokens:</strong><br>
+                        &lt;cls&gt;, &lt;eos&gt;, &lt;mask&gt;, &lt;pad&gt;, &lt;unk&gt;, &lt;sep&gt;
+                    </div>
+                    <div class="tokenizer-detail">
+                        <strong>Unified Vocabulary:</strong><br>
+                        ~1,280 tokens aligned across all modalities
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-arrow">
+                <div class="arrow"></div>
+            </div>
+
+            <!-- FlexBERT Backbone -->
+            <div class="backbone-section pulse">
+                <h3>FlexBERT Transformer Backbone</h3>
+                <p>Shared parameters across all biological modalities</p>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number">12M</div>
+                        <div class="stat-label">UME Mini</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">740M</div>
+                        <div class="stat-label">UME Large</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">768+</div>
+                        <div class="stat-label">Embedding Dim</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">8192</div>
+                        <div class="stat-label">Max Seq Length</div>
+                    </div>
+                </div>
+
+                <div class="backbone-components">
+                    <div class="backbone-component">
+                        <strong>Multi-Head Self-Attention</strong><br>
+                        Enhanced with Flash Attention 2 for efficient processing
+                    </div>
+                    <div class="backbone-component">
+                        <strong>Shared Parameters</strong><br>
+                        Universal representations across all modalities
+                    </div>
+                    <div class="backbone-component">
+                        <strong>Scalable Architecture</strong><br>
+                        From 12M to 740M parameters with consistent performance
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Objectives -->
+            <div class="layer">
+                <h2 class="layer-title">Training Objectives</h2>
+                <div class="training-objectives">
+                    <div class="training-card">
+                        <h4>Masked Language Modeling (MLM)</h4>
+                        <ul class="training-features">
+                            <li>25% Token Masking Strategy</li>
+                            <li>Cross-Entropy Loss Function</li>
+                            <li>Per-Modality Performance Metrics</li>
+                            <li>Self-Supervised Learning</li>
+                        </ul>
+                    </div>
+                    <div class="training-card">
+                        <h4>Contrastive Learning</h4>
+                        <ul class="training-features">
+                            <li>InfoNCE Loss for Alignment</li>
+                            <li>Symile Loss for Similarity</li>
+                            <li>DisCo Loss for Discrimination</li>
+                            <li>Cross-Modal Representation Learning</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-arrow">
+                <div class="arrow"></div>
+            </div>
+
+            <!-- Output -->
+            <div class="output-section">
+                <h3>Unified Embedding Space</h3>
+                <p>Cross-modal compatible representations</p>
+                <div class="output-details">
+                    <div class="output-detail">
+                        <strong>Sequence-Level Embeddings:</strong><br>
+                        (batch_size, embedding_dim)
+                    </div>
+                    <div class="output-detail">
+                        <strong>Token-Level Embeddings:</strong><br>
+                        (batch_size, seq_len, embedding_dim)
+                    </div>
+                    <div class="output-detail">
+                        <strong>Cross-Modal Compatibility:</strong><br>
+                        All modalities share the same embedding space
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Datasets -->
+            <div class="datasets-section">
+                <h3>Training Datasets</h3>
+                <div class="dataset-grid">
+                    <div class="dataset-item">
+                        <strong>M320M:</strong> 19.4M SMILES strings for chemical understanding
+                    </div>
+                    <div class="dataset-item">
+                        <strong>CALM:</strong> 7.9M nucleotide sequences for genomic learning
+                    </div>
+                    <div class="dataset-item">
+                        <strong>AMPLIFY:</strong> 448M amino acid sequences for protein modeling
+                    </div>
+                    <div class="dataset-item">
+                        <strong>Pinder:</strong> 267K 3D coordinate structures
+                    </div>
+                    <div class="dataset-item">
+                        <strong>OpenGenome2:</strong> 28.8B nucleotides for large-scale genomics
+                    </div>
+                    <div class="dataset-item">
+                        <strong>ZINC:</strong> 1.54B SMILES for comprehensive chemical coverage
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Features -->
+            <div class="key-features">
+                <h3>Key Features</h3>
+                <div class="features-list">
+                    <div class="feature-tag">Unified Vocabulary</div>
+                    <div class="feature-tag">Modality-Aware Tokenization</div>
+                    <div class="feature-tag">Shared Transformer Parameters</div>
+                    <div class="feature-tag">Intra-Modality Alignment</div>
+                    <div class="feature-tag">Inter-Modality Alignment</div>
+                    <div class="feature-tag">Flash Attention 2</div>
+                    <div class="feature-tag">Scalable Architecture</div>
+                    <div class="feature-tag">Cross-Modal Embeddings</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add some interactive elements
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add hover effects to cards
+            const cards = document.querySelectorAll('.modality-card, .training-card');
+            cards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-5px) scale(1.02)';
+                });
+                card.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0) scale(1)';
+                });
+            });
+
+            // Add click effect to feature tags
+            const featureTags = document.querySelectorAll('.feature-tag');
+            featureTags.forEach(tag => {
+                tag.addEventListener('click', function() {
+                    this.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        this.style.transform = 'scale(1)';
+                    }, 150);
+                });
+            });
+
+            // Animate arrows on scroll
+            const arrows = document.querySelectorAll('.arrow');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.animation = 'pulse 1s ease-in-out';
+                    }
+                });
+            });
+
+            arrows.forEach(arrow => {
+                observer.observe(arrow);
+            });
+        });
+    </script>
+</body>
+</html>

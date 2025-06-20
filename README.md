@@ -148,6 +148,25 @@ Check out this [jupyter notebook tutorial](notebooks/01-inference.ipynb) for an 
 
 Check out this [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for an example on how to intervene on different concepts for our concept-bottleneck models class.
 
+## MCP Integration
+
+Lobster supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for seamless integration with Claude Desktop and other AI tools:
+
+```bash
+# Install with MCP support
+uv sync --extra mcp
+
+# Setup Claude Desktop integration
+uv run lobster_mcp_setup
+```
+
+After setup, you can use Lobster models directly in Claude Desktop with natural language commands like:
+- "Get embeddings for this protein sequence using lobster_24M"
+- "What concepts are supported by the cb_lobster_24M model?"
+- "Intervene on this sequence to reduce hydrophobicity"
+
+See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation.
+
 ## Example scripts
 
 Check out [examples](examples/) for scripts showing how to perform inference and interventions.

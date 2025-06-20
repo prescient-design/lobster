@@ -10,3 +10,11 @@ repos:
     hooks:
       - id: check-toml
       - id: check-yaml
+  - repo: local
+    hooks:
+      - id: check-claude-md
+        name: Check CLAUDE.md is up to date
+        entry: bash -c 'echo "⚠️  Remember to update CLAUDE.md if you changed project structure, commands, or major features"'
+        language: system
+        pass_filenames: false
+        always_run: true
