@@ -137,6 +137,7 @@ class DyAbModel(pl.LightningModule):
         num_feats = self.resnet.fc.in_features
         self.resnet.fc = nn.Linear(num_feats, 1)  # regression
         self.loss = nn.MSELoss(reduction="sum")
+        self.save_hyperparameters(logger=False)
 
     def training_step(self, batch, batch_idx):
         loss, preds, targets = self._compute_loss(batch)
