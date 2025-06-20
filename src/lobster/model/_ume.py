@@ -206,7 +206,7 @@ class Ume(L.LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
 
         # Initialize loss functions
-        self.symile_loss_fn = SymileLoss(temperature=contrastive_temperature)
+        self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
         self.infonce_loss_fn = InfoNCELoss(
             temperature=contrastive_temperature,
             use_disco=contrastive_loss_type == "disco_clip",
@@ -528,7 +528,9 @@ class Ume(L.LightningModule):
         embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
         embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
 
-        return self.infonce_loss_fn(embeddings_a, embeddings_b)
+        loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
+
+        return loss
 
     def _infonce_step(
         self,
