@@ -234,9 +234,6 @@ class UmeStreamingDataset(StreamingDataset):
             Modality.NUCLEOTIDE: UmeTokenizerTransform(
                 modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
             ),
-            Modality.COORDINATES_3D: UmeTokenizerTransform(
-                modality=Modality.COORDINATES_3D, max_length=max_length, return_modality=False
-            ),
         }
 
     def _tokenize_single(self, sequence: str) -> tuple[torch.Tensor, torch.Tensor, str]:
@@ -347,6 +344,8 @@ class UmeStreamingDataset(StreamingDataset):
 
         if sequence is None:
             return self.__next__()
+
+        print(sequence)
 
         if self.transform_fn:
             sequence: str | tuple[str | None, ...] | list[str | None] | None = self.transform_fn(sequence)

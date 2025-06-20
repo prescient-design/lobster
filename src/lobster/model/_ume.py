@@ -383,6 +383,7 @@ class Ume(L.LightningModule):
     ) -> tuple[dict[str, Tensor | list[Modality]], ...]:
         """Split a combined batch of N inputs into N separate batches."""
         num_splits = combined_batch["input_ids"].shape[1]
+
         return tuple(self._extract_batch_components(combined_batch, i) for i in range(num_splits))
 
     def embed(
@@ -512,16 +513,17 @@ class Ume(L.LightningModule):
 
     def _compute_infonce_loss(
         self,
-        batch_a: dict[str, Tensor | list[Modality]],
-        batch_b: dict[str, Tensor | list[Modality]],
+        embeddings: list[Tensor],
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute contrastive loss between two batches."""
-        embeddings_a = self.embed(batch_a)
-        embeddings_b = self.embed(batch_b)
+        if len(embeddings) != 2:
+            raise ValueError(
+                f"{self.__class__.__name__} with InfoNCE loss requires exactly 2 views, got {len(embeddings)}"
+            )
 
+        embeddings_a, embeddings_b = embeddings
         assert embeddings_a.shape == embeddings_b.shape
-        assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
 
         embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
         embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
@@ -535,8 +537,11 @@ class Ume(L.LightningModule):
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Perform a contrastive step with optional MLM mixing."""
+        # Compute embeddings for both batches
+        embeddings = [self.embed(batch) for batch in [batch_a, batch_b]]
+
         contrastive_loss = (
-            self._compute_infonce_loss(batch_a, batch_b, stage)
+            self._compute_infonce_loss(embeddings, stage)
             if self.contrastive_loss_weight > 0
             else torch.tensor(0.0, device=self.device)
         )
@@ -634,11 +639,10 @@ class Ume(L.LightningModule):
 
     def _compute_symile_loss(
         self,
-        *batches: dict[str, Tensor | list[Modality]],
+        embeddings: list[Tensor],
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute Symile loss for a batch of N views of the same entity."""
-        embeddings = [self.embed(batch) for batch in batches]
         embeddings = [torch.nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
 
         return self.symile_loss_fn(embeddings)
@@ -649,8 +653,11 @@ class Ume(L.LightningModule):
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Perform a Symile step with optional MLM mixing."""
+        # Compute embeddings for all batches
+        embeddings = [self.embed(batch) for batch in batches]
+
         contrastive_loss = (
-            self._compute_symile_loss(*batches, stage=stage)
+            self._compute_symile_loss(embeddings, stage=stage)
             if self.contrastive_loss_weight > 0
             else torch.tensor(0.0, device=self.device)
         )
