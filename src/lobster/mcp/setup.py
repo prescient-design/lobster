@@ -7,7 +7,6 @@ or other MCP clients.
 """
 
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -16,7 +15,7 @@ from pathlib import Path
 def get_lobster_path():
     """Get the absolute path to the Lobster repository"""
     # From src/lobster/mcp/setup.py -> lobster root
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    return Path(__file__).resolve().parents[3]
 
 
 def get_claude_desktop_config_path():
