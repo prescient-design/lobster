@@ -647,17 +647,27 @@ class Ume(L.LightningModule):
 
         return self.symile_loss_fn(embeddings)
 
-    def _symile_step(
+    def _contrastive_step(
         self,
         *batches: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a Symile step with optional MLM mixing."""
-        # Compute embeddings for all batches
+        """Perform a contrastive step with optional MLM mixing."""
+        if len(batches) < 2:
+            raise ValueError("Contrastive loss requires at least 2 views")
+
+        if self.contrastive_loss_type in ["clip", "disco_clip"]:
+            if len(batches) != 2:
+                raise ValueError("InfoNCE loss requires exactly 2 views")
+
         embeddings = [self.embed(batch) for batch in batches]
 
+        contrastive_loss_fn = (
+            self._compute_symile_loss if self.contrastive_loss_type == "symile" else self._compute_infonce_loss
+        )
+
         contrastive_loss = (
-            self._compute_symile_loss(embeddings, stage=stage)
+            contrastive_loss_fn(embeddings, stage=stage)
             if self.contrastive_loss_weight > 0
             else torch.tensor(0.0, device=self.device)
         )
@@ -692,28 +702,11 @@ class Ume(L.LightningModule):
         if self.contrastive_loss_type is None:
             if num_views > 1:
                 raise ValueError("Contrastive loss type is None but num_views > 1")
-
             return self._compute_mlm_loss(batch, stage)
-
-        # Handle different contrastive loss types
-        if num_views == 1:
-            raise ValueError("Contrastive loss type is not None but num_views is 1")
 
         batches = self._split_combined_batch(batch)
 
-        if self.contrastive_loss_type == "symile":
-            if num_views < 2:
-                raise ValueError("Symile loss requires at least 2 views")
-
-            return self._symile_step(*batches, stage=stage)
-
-        if self.contrastive_loss_type in ["clip", "disco_clip"]:
-            if num_views != 2:
-                raise ValueError(f"InfoNCE loss requires exactly 2 views, got {num_views}")
-
-            return self._infonce_step(*batches, stage=stage)
-
-        raise ValueError(f"Invalid contrastive loss type: {self.contrastive_loss_type}")
+        return self._contrastive_step(*batches, stage=stage)
 
     def training_step(
         self,
