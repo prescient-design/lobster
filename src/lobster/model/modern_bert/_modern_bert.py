@@ -9,6 +9,7 @@ from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, get_sched
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
 from ._modern_bert_configuration import FLEXBERT_CONFIG_ARGS
+from lobster.constants import SchedulerType
 
 _FLASH_ATTN_AVAILABLE = False
 
@@ -39,18 +40,7 @@ class FlexBERT(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         mask_percentage: float = 0.25,
         max_length: int = 8192,
-        scheduler: Literal[
-            "linear",
-            "cosine",
-            "cosine_with_restarts",
-            "polynomial",
-            "constant",
-            "constant_with_warmup",
-            "inverse_sqrt",
-            "reduce_lr_on_plateau",
-            "cosine_with_min_lr",
-            "warmup_stable_decay",
-        ] = "constant_with_warmup",
+        scheduler: SchedulerType = "constant_with_warmup",
         model_kwargs: dict = None,
         scheduler_kwargs: dict = None,
         ckpt_path: str = None,

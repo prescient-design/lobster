@@ -129,122 +129,104 @@ class TestUme:
             expected_modalities = ["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
             assert modalities == expected_modalities
 
-    def test_configure_optimizers(self):
-        with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
-            mock_model = MagicMock()
-            mock_flex_bert.return_value = mock_model
-
-            with patch("lobster.model._ume.get_scheduler") as mock_get_scheduler:
-                mock_get_scheduler.return_value = MagicMock()
-
-                ume = Ume(
-                    lr=1e-3,
-                    beta1=0.9,
-                    beta2=0.98,
-                    eps=1e-12,
-                    scheduler="constant_with_warmup",
-                    num_training_steps=1000,
-                    num_warmup_steps=100,
-                )
-
-                # Mock some dummy parameters so the optimizer doesn't get an empty list
-                dummy_param = torch.nn.Parameter(torch.randn(10))
-                with patch.object(ume, "parameters", return_value=[dummy_param]):
-                    result = ume.configure_optimizers()
-
-                    # Check that result has the expected structure
-                    assert "optimizer" in result
-                    assert "lr_scheduler" in result
-                    assert isinstance(result["optimizer"], torch.optim.AdamW)
-
-                    # Verify optimizer parameters
-                    optimizer_params = list(result["optimizer"].param_groups[0]["params"])
-                    assert len(optimizer_params) == 1
-                    assert optimizer_params[0] is dummy_param
-
-                    # Verify scheduler was called with correct parameters
-                    mock_get_scheduler.assert_called_once_with(
-                        "constant_with_warmup",
-                        result["optimizer"],
-                        num_training_steps=1000,
-                        num_warmup_steps=100,
-                        scheduler_specific_kwargs={},
-                    )
-
-    def test_train_mlm_step(self):
-        with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
-            mock_model = MagicMock()
-            mock_flex_bert.return_value = mock_model
-
+    def test_extract_batch_components(self):
+        with patch("lobster.model._ume.FlexBERT", MagicMock()):
             ume = Ume()
 
-            with patch.object(ume, "_mlm_step", return_value=torch.tensor(1.5)):
-                batch = {
-                    "input_ids": torch.randint(0, 100, (2, 1, 10)),
-                    "attention_mask": torch.ones(2, 1, 10),
-                    "modality": ["SMILES", "amino_acid"],
-                }
-
-                for step_method, step_name in [(ume.training_step, "train"), (ume.validation_step, "val")]:
-                    loss = step_method(batch, 0)
-
-                    assert isinstance(loss, torch.Tensor)
-                    assert loss.item() == 1.5
-
-                    ume._mlm_step.assert_called_with(batch, step_name)
-
-                    ume._mlm_step.reset_mock()
-
-    def test_contrastive_step_weight(self):
-        with patch("lobster.model._ume.FlexBERT") as mock_flex_bert:
-            mock_model = MagicMock()
-            mock_flex_bert.return_value = mock_model
-
-            # Initialize Ume with contrastive_loss_weight=0.5
-            ume = Ume(contrastive_loss_weight=0.5)
-
-            # Create mock objects for the methods
-            mlm_mock = MagicMock(return_value=torch.tensor(2.0))
-            infonce_mock = MagicMock(return_value=torch.tensor(4.0))
-            split_batch_mock = MagicMock(return_value=({"input_ids": None}, {"input_ids": None}))
-
-            # Replace the actual methods with mocks
-            ume._mlm_step = mlm_mock
-            ume._infonce_step = infonce_mock
-            ume._split_combined_batch = split_batch_mock
-
-            # Create a batch with two inputs (needed for contrastive learning)
+            # Create a sample batch with 2 views
             batch = {
-                "input_ids": torch.randint(0, 100, (2, 2, 10)),  # 2 batch items, 2 inputs each
+                "input_ids": torch.randint(0, 100, (2, 2, 10)),  # (batch_size, num_views, seq_len)
                 "attention_mask": torch.ones(2, 2, 10),
                 "modality": [["SMILES", "amino_acid"], ["amino_acid", "SMILES"]],
             }
 
-            # Test training step
-            loss = ume.training_step(batch, 0)
+            # Test extracting first view
+            view_0 = ume._extract_batch_components(batch, 0)
+            assert view_0["input_ids"].shape == (2, 1, 10)
+            assert view_0["attention_mask"].shape == (2, 1, 10)
+            assert view_0["modality"] == ["SMILES", "amino_acid"]
 
-            # Expected combined loss: 0.5 * mlm_loss + 0.5 * contrastive_loss = 3.0
-            expected_loss = 3.0
+            # Test extracting second view
+            view_1 = ume._extract_batch_components(batch, 1)
+            assert view_1["input_ids"].shape == (2, 1, 10)
+            assert view_1["attention_mask"].shape == (2, 1, 10)
+            assert view_1["modality"] == ["amino_acid", "SMILES"]
 
-            assert isinstance(loss, torch.Tensor)
-            assert loss.item() == expected_loss
+    def test_split_combined_batch(self):
+        with patch("lobster.model._ume.FlexBERT", MagicMock()):
+            ume = Ume()
 
-            # Verify calls
-            split_batch_mock.assert_called_once()
-            mlm_mock.assert_called_once()
-            infonce_mock.assert_called_once()
+            # Create a sample batch with 2 views
+            batch = {
+                "input_ids": torch.randint(0, 100, (2, 2, 10)),
+                "attention_mask": torch.ones(2, 2, 10),
+                "modality": [["SMILES", "amino_acid"], ["amino_acid", "SMILES"]],
+            }
 
-            # Test validation step
-            split_batch_mock.reset_mock()
-            mlm_mock.reset_mock()
-            infonce_mock.reset_mock()
+            # Split the batch
+            batches = ume._split_combined_batch(batch)
+            assert len(batches) == 2
 
-            loss = ume.validation_step(batch, 0)
+            # Check first view
+            assert batches[0]["input_ids"].shape == (2, 1, 10)
+            assert batches[0]["attention_mask"].shape == (2, 1, 10)
+            assert batches[0]["modality"] == ["SMILES", "amino_acid"]
 
-            assert loss.item() == expected_loss
-            split_batch_mock.assert_called_once()
-            mlm_mock.assert_called_once()
-            infonce_mock.assert_called_once()
+            # Check second view
+            assert batches[1]["input_ids"].shape == (2, 1, 10)
+            assert batches[1]["attention_mask"].shape == (2, 1, 10)
+            assert batches[1]["modality"] == ["amino_acid", "SMILES"]
+
+    def test_compute_loss_with_weighting(self):
+        with patch("lobster.model._ume.FlexBERT", MagicMock()):
+            ume = Ume(contrastive_loss_weight=0.5)
+
+            # Create sample losses
+            mlm_loss = torch.tensor(2.0)
+            contrastive_loss = torch.tensor(4.0)
+
+            # Test loss computation
+            total_loss = ume._compute_loss_with_weighting(mlm_loss, contrastive_loss, "train")
+            expected_loss = 0.5 * mlm_loss + 0.5 * contrastive_loss
+            assert torch.allclose(total_loss, expected_loss)
+
+    def test_delegate_step_by_batch_shape(self):
+        with patch("lobster.model._ume.FlexBERT", MagicMock()):
+            # Test MLM only mode
+            ume_mlm = Ume(contrastive_loss_type=None)
+            batch_mlm = {
+                "input_ids": torch.randint(0, 100, (2, 1, 10)),
+                "attention_mask": torch.ones(2, 1, 10),
+                "modality": ["SMILES", "amino_acid"],
+            }
+
+            with patch.object(ume_mlm, "_compute_mlm_loss", return_value=torch.tensor(1.0)):
+                loss = ume_mlm._delegate_step_by_batch_shape(batch_mlm, "train")
+                assert loss.item() == 1.0
+
+            # Test InfoNCE mode
+            ume_infonce = Ume(contrastive_loss_type="clip")
+            batch_infonce = {
+                "input_ids": torch.randint(0, 100, (2, 2, 10)),
+                "attention_mask": torch.ones(2, 2, 10),
+                "modality": [["SMILES", "amino_acid"], ["amino_acid", "SMILES"]],
+            }
+
+            with patch.object(ume_infonce, "_infonce_step", return_value=torch.tensor(2.0)):
+                loss = ume_infonce._delegate_step_by_batch_shape(batch_infonce, "train")
+                assert loss.item() == 2.0
+
+            # Test Symile mode
+            ume_symile = Ume(contrastive_loss_type="symile")
+            batch_symile = {
+                "input_ids": torch.randint(0, 100, (2, 3, 10)),  # 3 views for Symile
+                "attention_mask": torch.ones(2, 3, 10),
+                "modality": [["SMILES", "amino_acid", "nucleotide"], ["amino_acid", "SMILES", "nucleotide"]],
+            }
+
+            with patch.object(ume_symile, "_symile_step", return_value=torch.tensor(3.0)):
+                loss = ume_symile._delegate_step_by_batch_shape(batch_symile, "train")
+                assert loss.item() == 3.0
 
     def test_embed_sequences_cpu(self):
         """Test Ume's embed_sequences method without flash-attn on CPU."""
@@ -330,11 +312,7 @@ class TestUme:
 
             # Verify shapes and values
             assert embeddings_flash.shape == embeddings_no_flash.shape
-            print(f"{embeddings_flash.dtype=}")
-            print(f"{embeddings_no_flash.dtype=}")
-            torch.testing.assert_close(
-                embeddings_flash, embeddings_no_flash, rtol=1e-2, atol=1e-2
-            )  # TODO investigate this tolerance
+            torch.testing.assert_close(embeddings_flash, embeddings_no_flash, rtol=1e-2, atol=1e-2)
 
             # Log performance difference
             speedup = no_flash_time / flash_time
@@ -352,37 +330,32 @@ class TestUme:
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
 
-    def test_infonce_loss_disco_clip_equivalence(self):
-        """Test that standard and DisCo-CLIP InfoNCE losses are equivalent in single-GPU scenario."""
-        with (
-            patch("lobster.model._ume.is_distributed", return_value=False),
-            patch("lobster.model._ume.get_rank", return_value=0),
-            patch("lobster.model._ume.Gather") as mock_gather,
-        ):
-            # Mock Gather to return the same embeddings (simulating single-GPU)
-            mock_gather.side_effect = lambda x: x.clone()
+    @patch("lobster.model._ume.load_checkpoint_with_retry")
+    @patch("lobster.model._ume.get_ume_checkpoints")
+    @patch("lobster.model._ume.os.path.join")
+    @patch("lobster.model._ume.os.getcwd")
+    def test_from_pretrained(self, mock_getcwd, mock_join, mock_get_checkpoints, mock_load_checkpoint):
+        """Test from_pretrained method with mocked dependencies."""
+        mock_get_checkpoints.return_value = {"ume-mini-base-12M": "s3://bucket/ume-mini-base-12M.ckpt"}
+        mock_getcwd.return_value = "/current/working/dir"
+        mock_join.return_value = "/current/working/dir/models/ume"
 
-            # Create one model - we'll test both loss methods on it
-            ume = Ume(model_name="UME_mini", use_flash_attn=False)
+        mock_model = MagicMock()
+        mock_load_checkpoint.return_value = mock_model
 
-            # Create simple test embeddings (32 samples as requested)
-            batch_size = 32
-            hidden_size = ume.embedding_dim
+        result = Ume.from_pretrained("ume-mini-base-12M")
 
-            torch.manual_seed(42)
-            embeddings_a = torch.randn(batch_size, hidden_size)
-            embeddings_b = torch.randn(batch_size, hidden_size)
+        mock_get_checkpoints.assert_called_once()
 
-            # Normalize (as done in actual implementation)
-            embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
-            embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
+        mock_join.assert_called_once_with("/current/working/dir", "models", "ume")
 
-            # Test both loss methods on the same embeddings
-            standard_loss = ume._standard_infonce_loss(embeddings_a, embeddings_b)
-            disco_loss = ume._disco_infonce_loss(embeddings_a, embeddings_b)
+        mock_load_checkpoint.assert_called_once_with(
+            checkpoint_path="s3://bucket/ume-mini-base-12M.ckpt",
+            local_directory="/current/working/dir/models/ume",
+            local_filename="ume-mini-base-12M.ckpt",
+            load_func=Ume.load_from_checkpoint,
+            device=None,
+            use_flash_attn=None,
+        )
 
-            # Should be nearly identical (small floating-point differences expected)
-            torch.testing.assert_close(standard_loss, disco_loss, rtol=1e-4, atol=1e-5)
-
-            # Verify Gather was called twice for DisCo-CLIP method
-            assert mock_gather.call_count == 2
+        assert result == mock_model

@@ -11,7 +11,9 @@ from ._peer_tasks import (
     PEERTask,
     PEERTaskCategory,
 )
+from ._scheduler_type import SchedulerType
 from ._split import Split
+from ._ume_models import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT_S3_KEY, UME_CHECKPOINT_DICT_S3_URI
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
 
 __all__ = [
@@ -27,10 +29,14 @@ __all__ = [
     "GPUType",
     "ModelType",
     "PEERTask",
+    "SchedulerType",
     "PEER_TASK_CATEGORIES",
     "PEER_TASKS",
     "PEER_TASK_SPLITS",
     "PEER_TASK_COLUMNS",
     "CODON_TABLE_PATH",
     "CODON_TABLE_PATH_VENDOR",
+    "UME_CHECKPOINT_DICT_S3_URI",
+    "UME_CHECKPOINT_DICT_S3_BUCKET",
+    "UME_CHECKPOINT_DICT_S3_KEY",
 ]
