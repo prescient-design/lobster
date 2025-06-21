@@ -64,7 +64,6 @@ class UmeStreamingDataset(StreamingDataset):
         tokenize: bool = True,
         use_optimized: bool = False,
         max_length: int | None = 8192,
-        **kwargs: Any,
     ) -> None:
         """
         Initialize the UmeStreamingDataset.
@@ -109,12 +108,11 @@ class UmeStreamingDataset(StreamingDataset):
             s3_uri,
             item_loader=ParquetLoader() if not use_optimized else None,
             subsample=subsample,
-            drop_last=split == Split.TRAIN,
+            drop_last=True,
             shuffle=split == Split.TRAIN,
             seed=seed,
             cache_dir=cache_dir,
             force_override_state_dict=True,
-            **kwargs,
         )
 
         self.transform_fn = transform_fn
@@ -233,9 +231,6 @@ class UmeStreamingDataset(StreamingDataset):
             ),
             Modality.NUCLEOTIDE: UmeTokenizerTransform(
                 modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
-            ),
-            Modality.COORDINATES_3D: UmeTokenizerTransform(
-                modality=Modality.COORDINATES_3D, max_length=max_length, return_modality=False
             ),
         }
 
