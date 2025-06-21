@@ -656,7 +656,7 @@ class Ume(L.LightningModule):
     ) -> Tensor:
         """Perform a contrastive step with optional MLM mixing."""
         if len(batches) < 2:
-            raise ValueError("Contrastive loss requires at least 2 views")
+            raise ValueError(f"Contrastive loss requires at least 2 views but got {len(batches)}: {batches}")
 
         if self.contrastive_loss_type in ["clip", "disco_clip"]:
             if len(batches) != 2:
@@ -703,7 +703,7 @@ class Ume(L.LightningModule):
         # If no contrastive loss is specified, only use MLM
         if self.contrastive_loss_type is None:
             if num_views > 1:
-                raise ValueError("Contrastive loss type is None but num_views > 1")
+                raise ValueError(f"Contrastive loss type is None but num_views > 1 ({num_views})")
             return self._compute_mlm_loss(batch, stage)
 
         batches = self._split_combined_batch(batch)
