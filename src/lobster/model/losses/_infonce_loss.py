@@ -40,7 +40,7 @@ class InfoNCELoss(nn.Module):
             InfoNCE loss
         """
         # Compute similarity matrix using temperature
-        similarities = embeddings_a @ embeddings_b.T * self.temperature
+        similarities = embeddings_a @ embeddings_b.T / self.temperature
 
         # Create labels (diagonal should be positive)
         labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
@@ -80,12 +80,12 @@ class InfoNCELoss(nn.Module):
         logits_a = (
             all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_b.T
-            * self.temperature
+            / self.temperature
         )
         logits_b = (
             all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
             @ all_embeddings_a.T
-            * self.temperature
+            / self.temperature
         )
 
         # Create labels - positive pairs are at positions offset by rank * local_batch_size
