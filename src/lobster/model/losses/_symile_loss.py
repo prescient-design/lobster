@@ -47,7 +47,7 @@ class SymileLoss(nn.Module):
     def __init__(self, negative_sampling: Literal["n", "n_squared"] = "n", logit_scale: float = 1.0) -> None:
         super().__init__()
         self.negative_sampling = negative_sampling
-        self.logit_scale = nn.Parameter(torch.tensor(logit_scale))
+        self.logit_scale = logit_scale
 
     def compute_logits_n(self, anchor_rep: torch.Tensor, non_anchor_reps: list[torch.Tensor]) -> torch.Tensor:
         """Compute logits for anchor modality with O(n) negative sampling.
