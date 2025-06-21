@@ -191,11 +191,11 @@ class SymileLoss(nn.Module):
             Symile loss, which is an average over the losses where each modality is
             treated as the anchor in turn.
         """
-        labels = torch.arange(representations[0].shape[0]).to(representations[0].device)
+        labels = torch.arange(representations[0].shape[0])
         losses = []
 
         # Use provided logit_scale if given, otherwise use the instance's logit_scale
-        scale = logit_scale if logit_scale is not None else self.logit_scale.to(representations[0].device)
+        scale = logit_scale if logit_scale is not None else self.logit_scale
 
         for i, r in enumerate(representations):
             if self.negative_sampling == "n":
