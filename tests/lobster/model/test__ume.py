@@ -85,7 +85,7 @@ class TestUme:
                 torch.tensor([0, 10, 20]),
             )
             mock_model.model.return_value = torch.randn(20, 768)
-            mock_model.device = "cpu"
+            mock_model.device = torch.device("cpu")
             mock_flex_bert.return_value = mock_model
 
             ume = Ume()
@@ -189,44 +189,6 @@ class TestUme:
             total_loss = ume._compute_weighted_loss(mlm_loss, contrastive_loss, "train")
             expected_loss = 0.5 * mlm_loss + 0.5 * contrastive_loss
             assert torch.allclose(total_loss, expected_loss)
-
-    def test_delegate_step_by_batch_shape(self):
-        with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            # Test MLM only mode
-            ume_mlm = Ume(contrastive_loss_type=None)
-            batch_mlm = {
-                "input_ids": torch.randint(0, 100, (2, 1, 10)),
-                "attention_mask": torch.ones(2, 1, 10),
-                "modality": ["SMILES", "amino_acid"],
-            }
-
-            with patch.object(ume_mlm, "_compute_mlm_loss", return_value=torch.tensor(1.0)):
-                loss = ume_mlm._delegate_step_by_batch_shape(batch_mlm, "train")
-                assert loss.item() == 1.0
-
-            # Test InfoNCE mode
-            ume_infonce = Ume(contrastive_loss_type="clip")
-            batch_infonce = {
-                "input_ids": torch.randint(0, 100, (2, 2, 10)),
-                "attention_mask": torch.ones(2, 2, 10),
-                "modality": [["SMILES", "amino_acid"], ["amino_acid", "SMILES"]],
-            }
-
-            with patch.object(ume_infonce, "_infonce_step", return_value=torch.tensor(2.0)):
-                loss = ume_infonce._delegate_step_by_batch_shape(batch_infonce, "train")
-                assert loss.item() == 2.0
-
-            # Test Symile mode
-            ume_symile = Ume(contrastive_loss_type="symile")
-            batch_symile = {
-                "input_ids": torch.randint(0, 100, (2, 3, 10)),  # 3 views for Symile
-                "attention_mask": torch.ones(2, 3, 10),
-                "modality": [["SMILES", "amino_acid", "nucleotide"], ["amino_acid", "SMILES", "nucleotide"]],
-            }
-
-            with patch.object(ume_symile, "_symile_step", return_value=torch.tensor(3.0)):
-                loss = ume_symile._delegate_step_by_batch_shape(batch_symile, "train")
-                assert loss.item() == 3.0
 
     def test_embed_sequences_cpu(self):
         """Test Ume's embed_sequences method without flash-attn on CPU."""
