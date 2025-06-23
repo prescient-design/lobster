@@ -18,7 +18,7 @@ from transformers.tokenization_utils_base import BatchEncoding
 
 from lobster.constants import PEER_TASK_CATEGORIES, PEER_TASK_SPLITS, PEER_TASKS, PEERTask, PEERTaskCategory
 from lobster.datasets import PEERDataset
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -69,7 +69,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         Protein Sequence Understanding"
         https://arxiv.org/abs/2206.02096
 
-    Supports both tokenizer-based models (using UmeTokenizerTransform) and
+    Supports both tokenizer-based models (using UMETokenizerTransform) and
     sequence-based models like ESM.
     """
 
@@ -95,11 +95,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
         run_every_n_epochs : int | None, default=None
             Run this callback every n epochs. If None, runs every validation epoch.
         requires_tokenization : bool, default=True
-            Whether the model requires tokenized inputs (via UmeTokenizerTransform) or
+            Whether the model requires tokenized inputs (via UMETokenizerTransform) or
             can accept raw sequences directly.
         transform_fn : Callable | None, default=None
             Custom transform function to apply to inputs. If None and requires_tokenization
-            is True, UmeTokenizerTransform will be used.
+            is True, UMETokenizerTransform will be used.
         """
         self.requires_tokenization = requires_tokenization
 
@@ -107,7 +107,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             if max_length is None:
                 raise ValueError("max_length must be provided if requires_tokenization is True")
 
-            transform_fn = UmeTokenizerTransform(
+            transform_fn = UMETokenizerTransform(
                 modality="amino_acid",
                 max_length=max_length,
             )

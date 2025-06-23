@@ -17,4 +17,4 @@ model_name: null
 checkpoint_path: null
 
 # Optional: Dry run mode (don't actually make changes)
-dry_run: true
+dry_run: false

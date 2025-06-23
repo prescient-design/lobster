@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from lobster.constants import CALM_TASKS
 from lobster.datasets import CalmPropertyDataset
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -27,7 +27,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     extracts embeddings from the model, trains linear probes on these embeddings, and evaluates
     their performance.
 
-    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
+    Currently only supports UME embeddings and uses UMETokenizerTransform.
 
     Parameters
     ----------
@@ -79,7 +79,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_size: float = 0.2,
         max_samples: int = 3000,
     ):
-        tokenizer_transform = UmeTokenizerTransform(
+        tokenizer_transform = UMETokenizerTransform(
             modality="nucleotide",
             max_length=max_length,
         )

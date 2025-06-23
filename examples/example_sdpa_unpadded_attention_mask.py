@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Test SDPA with unpadded architecture and attention mask propagation in Ume.
+Test SDPA with unpadded architecture and attention mask propagation in UME.
 
-This test initializes a Ume mini model with flash attention disabled (SDPA fallback),
+This test initializes a UME mini model with flash attention disabled (SDPA fallback),
 runs embed_sequences on short amino acid sequences, and prints the attention mask
 used in the batch to verify correct creation and propagation.
 """
@@ -10,7 +10,7 @@ used in the batch to verify correct creation and propagation.
 import torch
 import torch.nn.functional as F
 
-from lobster.model import Ume
+from lobster.model import UME
 
 
 def test_sdpa_unpadded_attention_mask():
@@ -29,7 +29,7 @@ def test_sdpa_unpadded_attention_mask():
         print(f"\n=== Testing on {device.upper()} ===")
 
 # Removed commented-out block for cleaner and more maintainable code.
-        model = Ume.load_from_checkpoint(s3_checkpoint_path, device=device)
+        model = UME.load_from_checkpoint(s3_checkpoint_path, device=device)
 
         model = model.to(device)
         model.eval()

@@ -6,6 +6,7 @@ from typing import Literal
 
 import lightning as L
 import torch
+import transformers
 from torch import Tensor
 from torchmetrics.text import Perplexity
 
@@ -14,7 +15,7 @@ from lobster.constants import (
     ModalityType,
     SchedulerType,
 )
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
 from .losses import InfoNCELoss, SymileLoss
@@ -25,7 +26,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.tex
 logger = logging.getLogger(__name__)
 
 
-class Ume(L.LightningModule):
+class UME(L.LightningModule):
     """Universal Molecular Encoder.
 
     A light wrapper around FlexBert model with useful high-level functions
@@ -83,7 +84,7 @@ class Ume(L.LightningModule):
     ----------
     model : FlexBERT
         The underlying FlexBERT model for encoding.
-    tokenizer_transforms : dict[Modality, UmeTokenizerTransform]
+    tokenizer_transforms : dict[Modality, UMETokenizerTransform]
         Dictionary mapping modality enums to their respective
         tokenizer transforms.
     embedding_dim : int
@@ -95,13 +96,13 @@ class Ume(L.LightningModule):
     Examples
     --------
     >>> # Initialize a new model
-    >>> encoder = Ume(model_name="UME_mini", max_length=256)
+    >>> encoder = UME(model_name="UME_mini", max_length=256)
     >>>
     >>> # Initialize and load from a checkpoint
-    >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+    >>> encoder = UME.load_from_checkpoint("path/to/checkpoint.ckpt")
     >>>
     >>> # Load a pretrained model using the convenient from_pretrained method
-    >>> encoder = Ume.from_pretrained("ume-mini")
+    >>> encoder = UME.from_pretrained("ume-mini")
     >>>
     >>> # Get embeddings for protein sequences
     >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
@@ -137,7 +138,7 @@ class Ume(L.LightningModule):
 
         # Instantiate tokenizer transforms for each modality
         self.tokenizer_transforms = {
-            modality: UmeTokenizerTransform(modality, max_length=max_length, return_modality=True)
+            modality: UMETokenizerTransform(modality, max_length=max_length, return_modality=True)
             for modality in [Modality.AMINO_ACID, Modality.SMILES, Modality.NUCLEOTIDE]
         }
 
@@ -195,9 +196,17 @@ class Ume(L.LightningModule):
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
         self.use_flash_attn = use_flash_attn
+        self._lr = lr
+        self._beta1 = beta1
+        self._beta2 = beta2
+        self._eps = eps
+        self._num_training_steps = num_training_steps
+        self._num_warmup_steps = num_warmup_steps
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
 
         # Initialize loss functions
-        self.symile_loss_fn = SymileLoss(temperature=contrastive_temperature)
+        self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
         self.infonce_loss_fn = InfoNCELoss(
             temperature=contrastive_temperature,
             use_disco=contrastive_loss_type == "disco_clip",
@@ -219,7 +228,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> print(encoder.modalities)
         ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
         """
@@ -241,7 +250,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>>
         >>> # Get tokenizer for amino acid sequences
         >>> tokenizer = encoder.get_tokenizer("amino_acid")
@@ -283,7 +292,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> vocab = encoder.get_vocab()
         >>> print(len(vocab))  # Size of vocabulary
         1536  # Example size
@@ -307,7 +316,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> # Check if model is trainable
         >>> print(f"Before freezing - Parameter grad enabled: {next(encoder.model.parameters()).requires_grad}")
         Before freezing - Parameter grad enabled: True
@@ -335,7 +344,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> # First freeze the model
         >>> encoder.freeze()
         >>> print(f"Model is frozen: {encoder.frozen}")
@@ -374,6 +383,7 @@ class Ume(L.LightningModule):
     ) -> tuple[dict[str, Tensor | list[Modality]], ...]:
         """Split a combined batch of N inputs into N separate batches."""
         num_splits = combined_batch["input_ids"].shape[1]
+
         return tuple(self._extract_batch_components(combined_batch, i) for i in range(num_splits))
 
     def embed(
@@ -459,7 +469,7 @@ class Ume(L.LightningModule):
         Examples
         --------
         >>> # Get protein embeddings
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> sequences = ["MKTVQRERL", "ACDEFGHIKL"]
         >>> embeddings = encoder.embed_sequences(sequences, "amino_acid")
         >>> print(embeddings.shape)
@@ -481,34 +491,43 @@ class Ume(L.LightningModule):
 
         return self.embed(encoded, aggregate=aggregate)
 
-    def configure_optimizers(self) -> dict[str, object]:
-        return super().configure_optimizers()
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
+        )
 
-    def _compute_contrastive_loss(
-        self,
-        embeddings_a: Tensor,
-        embeddings_b: Tensor,
-        stage: Literal["train", "val"],
-    ) -> Tensor:
-        """Compute contrastive loss between two sets of embeddings."""
-        loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
-        self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-        return loss
+        scheduler = transformers.get_scheduler(
+            self.scheduler,
+            optimizer,
+            num_training_steps=self._num_training_steps,
+            num_warmup_steps=self._num_warmup_steps,
+            scheduler_specific_kwargs=self.scheduler_kwargs,
+        )
+
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     def _compute_infonce_loss(
         self,
-        batch_a: dict[str, Tensor | list[Modality]],
-        batch_b: dict[str, Tensor | list[Modality]],
+        embeddings: list[Tensor],
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute contrastive loss between two batches."""
-        embeddings_a = self.embed(batch_a)
-        embeddings_b = self.embed(batch_b)
+        if len(embeddings) != 2:
+            raise ValueError(
+                f"{self.__class__.__name__} with InfoNCE loss requires exactly 2 views, got {len(embeddings)}"
+            )
 
+        embeddings_a, embeddings_b = embeddings
         assert embeddings_a.shape == embeddings_b.shape
-        assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
 
-        return self._compute_contrastive_loss(embeddings_a, embeddings_b, stage)
+        loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
+
+        return loss
 
     def _infonce_step(
         self,
@@ -517,8 +536,11 @@ class Ume(L.LightningModule):
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Perform a contrastive step with optional MLM mixing."""
+        # Compute embeddings for both batches
+        embeddings = [self.embed(batch) for batch in [batch_a, batch_b]]
+
         contrastive_loss = (
-            self._compute_infonce_loss(batch_a, batch_b, stage)
+            self._compute_infonce_loss(embeddings, stage)
             if self.contrastive_loss_weight > 0
             else torch.tensor(0.0, device=self.device)
         )
@@ -529,7 +551,7 @@ class Ume(L.LightningModule):
             else torch.tensor(0.0, device=self.device)
         )
 
-        return self._compute_loss_with_weighting(
+        return self._compute_weighted_loss(
             contrastive_loss=contrastive_loss,
             mlm_loss=mlm_loss,
             stage=stage,
@@ -557,11 +579,17 @@ class Ume(L.LightningModule):
                 continue
 
             metric_name = f"{stage}_perplexity/{modality}"
+
+            if not hasattr(self, metric_name):
+                logger.warning(f"Metric {metric_name} not found in {self.__class__.__name__}. Skipping.")
+                continue
+
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
+
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
 
-    def _compute_loss_with_weighting(
+    def _compute_weighted_loss(
         self,
         mlm_loss: Tensor,
         contrastive_loss: Tensor,
@@ -616,23 +644,35 @@ class Ume(L.LightningModule):
 
     def _compute_symile_loss(
         self,
-        *batches: dict[str, Tensor | list[Modality]],
+        embeddings: list[Tensor],
         stage: Literal["train", "val"],
     ) -> Tensor:
         """Compute Symile loss for a batch of N views of the same entity."""
-        embeddings = [self.embed(batch) for batch in batches]
-        loss = self.symile_loss_fn(embeddings)
-        self.log(f"symile_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-        return loss
+        embeddings = [torch.nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
 
-    def _symile_step(
+        return self.symile_loss_fn(embeddings)
+
+    def _contrastive_step(
         self,
         *batches: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a Symile step with optional MLM mixing."""
+        """Perform a contrastive step with optional MLM mixing."""
+        if len(batches) < 2:
+            raise ValueError(f"Contrastive loss requires at least 2 views but got {len(batches)}: {batches}")
+
+        if self.contrastive_loss_type in ["clip", "disco_clip"]:
+            if len(batches) != 2:
+                raise ValueError("InfoNCE loss requires exactly 2 views")
+
+        embeddings = [self.embed(batch) for batch in batches]
+
+        contrastive_loss_fn = (
+            self._compute_symile_loss if self.contrastive_loss_type == "symile" else self._compute_infonce_loss
+        )
+
         contrastive_loss = (
-            self._compute_symile_loss(*batches, stage=stage)
+            contrastive_loss_fn(embeddings, stage=stage)
             if self.contrastive_loss_weight > 0
             else torch.tensor(0.0, device=self.device)
         )
@@ -643,7 +683,7 @@ class Ume(L.LightningModule):
             else torch.tensor(0.0, device=self.device)
         )
 
-        return self._compute_loss_with_weighting(
+        return self._compute_weighted_loss(
             contrastive_loss=contrastive_loss,
             mlm_loss=mlm_loss,
             stage=stage,
@@ -666,29 +706,12 @@ class Ume(L.LightningModule):
         # If no contrastive loss is specified, only use MLM
         if self.contrastive_loss_type is None:
             if num_views > 1:
-                raise ValueError("Contrastive loss type is None but num_views > 1")
-
+                raise ValueError(f"Contrastive loss type is None but num_views > 1 ({num_views})")
             return self._compute_mlm_loss(batch, stage)
-
-        # Handle different contrastive loss types
-        if num_views == 1:
-            raise ValueError("Contrastive loss type is not None but num_views is 1")
 
         batches = self._split_combined_batch(batch)
 
-        if self.contrastive_loss_type == "symile":
-            if num_views < 2:
-                raise ValueError("Symile loss requires at least 2 views")
-
-            return self._symile_step(*batches, stage=stage)
-
-        if self.contrastive_loss_type in ["clip", "disco_clip"]:
-            if num_views != 2:
-                raise ValueError(f"InfoNCE loss requires exactly 2 views, got {num_views}")
-
-            return self._infonce_step(*batches, stage=stage)
-
-        raise ValueError(f"Invalid contrastive loss type: {self.contrastive_loss_type}")
+        return self._contrastive_step(*batches, stage=stage)
 
     def training_step(
         self,
@@ -746,7 +769,7 @@ class Ume(L.LightningModule):
         use_flash_attn: bool | None = None,
         device: str | None = None,
         **kwargs,
-    ) -> "Ume":
+    ) -> "UME":
         """Load a model from a checkpoint with device-specific configuration.
 
         This method configures the model based on the specified or available device:
@@ -768,7 +791,7 @@ class Ume(L.LightningModule):
 
         Returns
         -------
-        Ume
+        UME
             The loaded model with appropriate device-specific configuration.
 
         Raises
@@ -818,7 +841,7 @@ class Ume(L.LightningModule):
         use_flash_attn: bool | None = None,
         cache_dir: str | None = None,
         **kwargs,
-    ) -> "Ume":
+    ) -> "UME":
         """Load a pretrained UME model from a model name.
 
         Currently, we support the following model names:
@@ -847,19 +870,19 @@ class Ume(L.LightningModule):
 
         Returns
         -------
-        Ume
+        UME
             The loaded pretrained model.
 
         Examples
         --------
         >>> # Load UME-mini with default checkpoint
-        >>> model = Ume.from_pretrained("ume-mini-base-12M")
+        >>> model = UME.from_pretrained("ume-mini-base-12M")
         >>>
         >>> # Load UME-mini with specific device
-        >>> model = Ume.from_pretrained("ume-mini-base-12M", device="cpu")
+        >>> model = UME.from_pretrained("ume-mini-base-12M", device="cpu")
         >>>
         >>> # Load with custom cache directory
-        >>> model = Ume.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
+        >>> model = UME.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
 
         # Warning that you're using pre-release checkpoints which

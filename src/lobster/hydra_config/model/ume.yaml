@@ -1,4 +1,4 @@
-_target_: lobster.model.Ume
+_target_: lobster.model.UME
 model_name: UME_small
 lr: 4e-4
 beta1: 0.9

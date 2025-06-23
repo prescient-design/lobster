@@ -19,7 +19,7 @@ export WANDB_INSECURE_DISABLE_SSL=true
 export HYDRA_FULL_ERROR=1
 export PYTHONUNBUFFERED=1
 
-# Tokenizer calls prior in Ume callbacks prior to training
+# Tokenizer calls prior in UME callbacks prior to training
 # cause issues. Disable if using callbacks, enable if not
 export TOKENIZERS_PARALLELISM=true
 
