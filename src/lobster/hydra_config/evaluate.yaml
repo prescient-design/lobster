@@ -6,11 +6,11 @@
 output_dir: ${hydra:runtime.cwd}/evaluation_results/${now:%Y-%m-%d_%H-%M-%S}
 
 datamodule:
-  _target_: lobster.data.UmeLightningDataModule
+  _target_: lobster.data.UMELightningDataModule
   tokenizer_max_length: 8192
 
 model:
-  _target_: lobster.model.Ume
+  _target_: lobster.model.UME
   ckpt_path: ???
 
 callbacks:

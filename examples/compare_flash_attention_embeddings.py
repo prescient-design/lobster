@@ -20,7 +20,7 @@ This should eliminate warnings and ensure consistent embeddings between modes.
 import torch
 import torch.nn.functional as F
 
-from lobster.model import Ume
+from lobster.model import UME
 
 
 def compute_embedding_metrics(embeddings_fa, embeddings_no_fa):
@@ -70,7 +70,7 @@ def compare_flash_attention_embeddings():
     # Step 1: Load model with flash attention enabled on GPU
     print("🚀 Step 1: Loading model with Flash Attention ENABLED on GPU...")
     try:
-        model_fa = Ume.load_from_checkpoint(
+        model_fa = UME.load_from_checkpoint(
             s3_checkpoint_path,
             model_name="UME_small",
             use_flash_attn=True,  # Flash attention enabled
@@ -112,7 +112,7 @@ def compare_flash_attention_embeddings():
     # Step 3: Load model with flash attention disabled on CPU
     print("\n🔄 Step 2: Loading model with Flash Attention DISABLED on CPU...")
     try:
-        model_no_fa = Ume.load_from_checkpoint(
+        model_no_fa = UME.load_from_checkpoint(
             s3_checkpoint_path,
             model_name="UME_small",
             use_flash_attn=False,  # Flash attention disabled

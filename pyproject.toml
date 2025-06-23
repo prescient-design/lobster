@@ -66,7 +66,7 @@ mgm = [
 ]
 flash = [
     "triton<=3.1.0; sys_platform == 'linux'",
-    "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
+    "flash-attn>=2.8.0.post2; sys_platform == 'linux'",
     "rotary-embedding-torch",
 
 ]
@@ -138,7 +138,7 @@ environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 no-build-isolation-package = ["flash-attn"]
 constraint-dependencies = [
     "torch>=2.0.0; extra != 'flash'",
-    "torch==2.6.0; extra == 'flash'"
+    "torch==2.7.0; extra == 'flash'"
 ] # flash-attn wheels available
 
 [tool.uv.sources]

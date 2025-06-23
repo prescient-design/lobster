@@ -3,10 +3,10 @@ import torch
 
 from lobster.constants import Modality
 from lobster.tokenization._ume_tokenizers import (
-    UmeAminoAcidTokenizerFast,
-    UmeNucleotideTokenizerFast,
-    UmeSmilesTokenizerFast,
-    UmeTokenizerTransform,
+    UMEAminoAcidTokenizerFast,
+    UMENucleotideTokenizerFast,
+    UMESmilesTokenizerFast,
+    UMETokenizerTransform,
     _add_reserved_tokens,
 )
 
@@ -65,7 +65,7 @@ def test_add_reserved_tokens():
 
 
 def test_ume_amino_acid_tokenizer():
-    tokenizer = UmeAminoAcidTokenizerFast()
+    tokenizer = UMEAminoAcidTokenizerFast()
     encoded = [1, 30, 42, 41, 4]
 
     assert tokenizer.tokenize("VYF") == ["V", "Y", "F"]
@@ -74,7 +74,7 @@ def test_ume_amino_acid_tokenizer():
 
 
 def test_ume_smiles_tokenizer():
-    tokenizer = UmeSmilesTokenizerFast()
+    tokenizer = UMESmilesTokenizerFast()
     encoded = [2, 54, 54, 58, 4]
 
     assert tokenizer.tokenize("CCO") == ["C", "C", "O"]
@@ -84,21 +84,21 @@ def test_ume_smiles_tokenizer():
 
 
 def test_ume_nucleotide_tokenizer():
-    tokenizer = UmeNucleotideTokenizerFast()
+    tokenizer = UMENucleotideTokenizerFast()
     encoded = [3, 1274, 1275, 1276, 1277, 4]
     assert tokenizer.tokenize("acGT") == ["a", "c", "g", "t"]
     assert tokenizer.encode("acGT", padding="do_not_pad", add_special_tokens=True) == encoded
     assert tokenizer.decode(encoded) == "<cls_nucleotide> a c g t <eos>"
 
 
-class TestUmeTokenizerTransform:
+class TestUMETokenizerTransform:
     def test__init__(self):
-        with pytest.warns(UserWarning, match="UmeTokenizerTransform did not receive `max_length` parameter"):
-            transform = UmeTokenizerTransform(modality="SMILES", max_length=None, return_modality=False)
+        with pytest.warns(UserWarning, match="UMETokenizerTransform did not receive `max_length` parameter"):
+            transform = UMETokenizerTransform(modality="SMILES", max_length=None, return_modality=False)
 
         assert transform.modality == Modality.SMILES
         assert transform.max_length is None
-        assert isinstance(transform.tokenizer, UmeSmilesTokenizerFast)
+        assert isinstance(transform.tokenizer, UMESmilesTokenizerFast)
 
     @pytest.mark.parametrize(
         "modality,input_text,max_length,expected_input_ids,expected_attention_mask,expected_modality",
@@ -121,7 +121,7 @@ class TestUmeTokenizerTransform:
     def test_single_modalities(
         self, modality, input_text, max_length, expected_input_ids, expected_attention_mask, expected_modality
     ):
-        transform = UmeTokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
+        transform = UMETokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
         out = transform(input_text)
 
         assert out["input_ids"].tolist()[0] == expected_input_ids
@@ -151,6 +151,6 @@ class TestUmeTokenizerTransform:
         ],
     )
     def test_single_modalities_batch_input(self, modality, input_batch, max_length, expected_input_ids):
-        transform = UmeTokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
+        transform = UMETokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
         out = transform(input_batch)
         assert torch.equal(out["input_ids"], expected_input_ids)

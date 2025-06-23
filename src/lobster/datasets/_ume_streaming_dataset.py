@@ -10,14 +10,14 @@ from litdata.streaming.item_loader import ParquetLoader
 from upath import UPath
 
 from lobster.constants import Modality, Split
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 logger = logging.getLogger(__name__)
 
 
-class UmeStreamingDataset(StreamingDataset):
+class UMEStreamingDataset(StreamingDataset):
     """
-    Base class for Ume streaming datasets that handles tokenization and data loading
+    Base class for UME streaming datasets that handles tokenization and data loading
     with litdata.
 
     This dataset is designed to work with different biological sequence modalities
@@ -64,10 +64,9 @@ class UmeStreamingDataset(StreamingDataset):
         tokenize: bool = True,
         use_optimized: bool = False,
         max_length: int | None = 8192,
-        **kwargs: Any,
     ) -> None:
         """
-        Initialize the UmeStreamingDataset.
+        Initialize the UMEStreamingDataset.
 
         This constructor sets up the dataset with the specified configuration, including
         tokenization settings, data transformation, and caching options. It handles both
@@ -109,12 +108,11 @@ class UmeStreamingDataset(StreamingDataset):
             s3_uri,
             item_loader=ParquetLoader() if not use_optimized else None,
             subsample=subsample,
-            drop_last=split == Split.TRAIN,
+            drop_last=True,
             shuffle=split == Split.TRAIN,
             seed=seed,
             cache_dir=cache_dir,
             force_override_state_dict=True,
-            **kwargs,
         )
 
         self.transform_fn = transform_fn
@@ -225,17 +223,14 @@ class UmeStreamingDataset(StreamingDataset):
             raise ValueError("max_length must be provided when tokenize is True")
 
         self.tokenizer_registry = {
-            Modality.AMINO_ACID: UmeTokenizerTransform(
+            Modality.AMINO_ACID: UMETokenizerTransform(
                 modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
             ),
-            Modality.SMILES: UmeTokenizerTransform(
+            Modality.SMILES: UMETokenizerTransform(
                 modality=Modality.SMILES, max_length=max_length, return_modality=False
             ),
-            Modality.NUCLEOTIDE: UmeTokenizerTransform(
+            Modality.NUCLEOTIDE: UMETokenizerTransform(
                 modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
-            ),
-            Modality.COORDINATES_3D: UmeTokenizerTransform(
-                modality=Modality.COORDINATES_3D, max_length=max_length, return_modality=False
             ),
         }
 

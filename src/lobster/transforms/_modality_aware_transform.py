@@ -6,7 +6,7 @@ from lobster.constants import Modality
 
 class ModalityAwareTransform:
     """A wrapper that makes any transform function modality-aware.
-    This class is necessary because the UmeStreamingDataset requires transform functions
+    This class is necessary because the UMEStreamingDataset requires transform functions
     to specify their input and output modalities when handling multiple sequences. Without
     this information, the dataset cannot properly handle sequences of different modalities
     in the same batch.
@@ -36,7 +36,7 @@ class ModalityAwareTransform:
 class ComposedModalityAwareTransform(ModalityAwareTransform):
     """A transform that composes multiple modality-aware transforms.
     This class is necessary because simple function composition (e.g., using lambda)
-    loses the modality information that UmeStreamingDataset requires. When transforms
+    loses the modality information that UMEStreamingDataset requires. When transforms
     are composed using lambda functions, the resulting function doesn't have the
     required input_modality and output_modalities attributes.
     ComposedModalityAwareTransform properly maintains modality information through the composition
