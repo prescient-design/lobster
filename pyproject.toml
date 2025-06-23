@@ -39,6 +39,8 @@ dependencies = [
     "beignet[datasets]",
     "deepspeed",
     "dotenv>=0.9.9",
+    "litdata>=0.2.49",
+    "polars>=1.30.0",
 ]
 
 [build-system]
@@ -54,6 +56,8 @@ lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval_embed = "lobster.cmdline:eval_embed"
 lobster_eval = "lobster.cmdline:evaluate"
+lobster_mcp_server = "lobster.mcp.inference_server:main"
+lobster_mcp_setup = "lobster.mcp.setup:main"
 
 [project.optional-dependencies]
 mgm = [
@@ -61,10 +65,16 @@ mgm = [
     "selfies>=2.1.2",
 ]
 flash = [
-    "flash-attn>=2.7.4.post1; sys_platform == 'linux'",
+    "triton<=3.1.0; sys_platform == 'linux'",
+    "flash-attn>=2.8.0.post2; sys_platform == 'linux'",
+    "rotary-embedding-torch",
+
 ]
 mcp = [
-    "mcp[cli]"
+    "mcp[cli]>=1.0.0",
+    "fastmcp>=0.2.0",
+    "python-Levenshtein>=0.20.0",
+    "pydantic>=2.0.0",
 ]
 eval = [
      "umap-learn>=0.5.7"
@@ -89,6 +99,7 @@ line-length = 120
 exclude = [
   "scripts",
   "notebooks",
+  "examples",
   "src/lobster/extern/openfold_utils",
   "src/lobster/model/openfold_utils",
   "src/lobster/model/modern_bert"
@@ -111,6 +122,7 @@ ignore = [
     "B007",  # unused-loop-control-variable
     "E741",  # ambiguous-variable-name
     "E902",  # file not found error
+    "UP038",  # Use X | Y in isinstance call instead of (X, Y)
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -126,7 +138,7 @@ environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 no-build-isolation-package = ["flash-attn"]
 constraint-dependencies = [
     "torch>=2.0.0; extra != 'flash'",
-    "torch==2.6.0; extra == 'flash'"
+    "torch==2.7.0; extra == 'flash'"
 ] # flash-attn wheels available
 
 [tool.uv.sources]

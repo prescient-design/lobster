@@ -1,0 +1,20 @@
+# Configuration for managing UME model checkpoints in S3
+# Usage examples:
+#   uv run python src/lobster/cmdline/manage_ume_checkpoints.py action=list
+#   uv run python src/lobster/cmdline/manage_ume_checkpoints.py action=add model_name=ume-small-base-12M-test checkpoint_path=s3://prescient-lobster/ume/runs/2025-06-17T13-45-59/epoch=0-step=2500-val_loss=0.8203.ckpt
+#   uv run python src/lobster/cmdline/manage_ume_checkpoints.py action=update model_name=ume-mini-base-12M checkpoint_path=s3://prescient-lobster/ume/runs/2025-06-17T13-45-59/epoch=0-step=2500-val_loss=0.8203.ckpt
+#   uv run python src/lobster/cmdline/manage_ume_checkpoints.py action=delete model_name=ume-small-base-12M-test
+#   uv run python src/lobster/cmdline/manage_ume_checkpoints.py action=upload
+#   uv run python src/lobster/cmdline/manage_ume_checkpoints.py action=add model_name=ume-test checkpoint_path=s3://bucket/path.ckpt dry_run=true
+
+# Required: Action to perform (list, add, update, delete, upload)
+action: list
+
+# Required for add/update/delete: Model name
+model_name: null
+
+# Required for add/update: Checkpoint path
+checkpoint_path: null
+
+# Optional: Dry run mode (don't actually make changes)
+dry_run: false

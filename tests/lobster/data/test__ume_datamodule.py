@@ -7,17 +7,17 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 
 from lobster.constants import Modality
-from lobster.data import UmeLightningDataModule
+from lobster.data import UMELightningDataModule
 from lobster.datasets import MultiplexedSamplingDataset
 
 
 @pytest.fixture
 def dm(tmp_path):
-    dm = UmeLightningDataModule(root=tmp_path, datasets=["AMPLIFY"], batch_size=8, tokenizer_max_length=512)
+    dm = UMELightningDataModule(root=tmp_path, datasets=["AMPLIFY"], batch_size=8, tokenizer_max_length=512)
     return dm
 
 
-class TestUmeLightningDataModule:
+class TestUMELightningDataModule:
     def test__init__(self, dm):
         assert dm._batch_size == 8
         assert dm._tokenizer_max_length == 512
@@ -63,7 +63,7 @@ class TestUmeLightningDataModule:
 
         mock_load_dataset.return_value = Dataset.from_list(mock_data)
 
-        dm = UmeLightningDataModule(
+        dm = UMELightningDataModule(
             root=tmp_path,
             datasets=["AMPLIFY", "Calm"],
             batch_size=8,

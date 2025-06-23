@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from lobster.model import Ume
-from lobster.server._server import UmeServer
+from lobster.model import UME
+from lobster.server._server import UMEServer
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def sample_sequences():
 
 @pytest.fixture
 def mock_ume_model():
-    model = MagicMock(spec=Ume)
+    model = MagicMock(spec=UME)
 
     # Mock the embed_sequences method to return dummy tensors
     def mock_embed_sequences(sequences, modality, aggregate=True):
@@ -35,7 +35,7 @@ def mock_ume_model():
 
 @pytest.fixture
 def ume_server(mock_ume_model):
-    return UmeServer(mock_ume_model)
+    return UMEServer(mock_ume_model)
 
 
 def test_ume_mcp_server(ume_server, sample_sequences):

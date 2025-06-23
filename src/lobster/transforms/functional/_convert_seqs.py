@@ -1,3 +1,4 @@
+import random
 from collections.abc import Callable
 from importlib.util import find_spec
 from typing import Literal
@@ -59,6 +60,60 @@ def convert_aa_to_nt(
     stop_codons = residue_to_codon["STOP"]
     stop_codon = sample_fn(stop_codons)
     nt_seq += stop_codon
+    return nt_seq
+
+
+def convert_aa_to_nt_probabilistic(
+    aa_seq: str,
+    vendor_codon_table: dict[str, dict[str, float]],
+    add_stop_codon: bool = True,
+    skip_unknown: bool = False,
+) -> str:
+    """
+    Convert amino acid sequence to nucleotide sequence using probabilistic codon sampling.
+
+    Parameters
+    ----------
+    aa_seq : str
+        The amino acid sequence to convert
+    vendor_codon_table : dict[str, dict[str, float]]
+        A dictionary mapping amino acids to dictionaries mapping codons to their usage frequencies.
+    add_stop_codon : bool
+        Whether to add a stop codon at the end
+    skip_unknown : bool
+        If True, skip unknown amino acids instead of raising an error.
+        If False (default), raise ValueError for unknown amino acids.
+
+    Returns
+    -------
+    str
+        The nucleotide sequence
+    """
+    if not aa_seq.isupper():
+        aa_seq = aa_seq.upper()
+
+    nt_seq = ""
+    for residue in aa_seq:
+        if residue not in vendor_codon_table:
+            if skip_unknown:
+                continue
+            raise ValueError(f"Unknown amino acid residue '{residue}' not found in vendor codon table")
+
+        try:
+            available_codons = list(vendor_codon_table[residue].keys())
+            probabilities = list(vendor_codon_table[residue].values())
+            codon = random.choices(available_codons, weights=probabilities, k=1)[0]
+
+        except (KeyError, IndexError) as e:
+            if skip_unknown:
+                continue
+            raise Exception(f"Error processing residue '{residue}': {e}") from e
+
+        nt_seq += codon
+
+    if add_stop_codon and aa_seq:  # Only add stop codon if sequence is not empty
+        nt_seq += "TAA"
+
     return nt_seq
 
 

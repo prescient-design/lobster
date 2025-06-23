@@ -2,7 +2,7 @@ import importlib.resources
 
 import pytest
 
-from lobster.transforms import (
+from lobster.transforms.functional import (
     invert_residue_to_codon_mapping,
     json_load,
     sample_list_with_probs,

@@ -1,20 +1,24 @@
 import logging
+import os
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
 
 import lightning as L
 import torch
-import torch.nn as nn
+import transformers
 from torch import Tensor
 from torchmetrics.text import Perplexity
-from transformers import get_scheduler
 
-from lobster.constants import Modality, ModalityType
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.constants import (
+    Modality,
+    ModalityType,
+    SchedulerType,
+)
+from lobster.tokenization import UMETokenizerTransform
 
-from ._disco_clip import Gather
-from ._distributed_utils import get_rank, is_distributed
+from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
+from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
@@ -22,7 +26,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.tex
 logger = logging.getLogger(__name__)
 
 
-class Ume(L.LightningModule):
+class UME(L.LightningModule):
     """Universal Molecular Encoder.
 
     A light wrapper around FlexBert model with useful high-level functions
@@ -45,20 +49,21 @@ class Ume(L.LightningModule):
         Epsilon parameter for Adam optimizer.
     mask_percentage : float, default=0.25
         Percentage of tokens to mask during training.
+    contrastive_loss_type : ContrastiveLossType, default=None
+        Type of contrastive loss to use. Options:
+        - None: Only use MLM loss
+        - "symile": Use Symile loss for multiple modality views of the same input (>= 2 views)
+        - "clip": Use standard CLIP-style InfoNCE loss (2 views)
+        - "disco_clip": Use distributed CLIP loss for memory efficiency (2 views)
     contrastive_loss_weight : float, default=0.0
-        Weight for the contrastive loss. Only relevant if the batch contains two inputs.
-        Is used to balance the MLM and InfoNCE losses:
-        (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * InfoNCE_loss
+        Weight for the contrastive loss. Only relevant if contrastive_loss_type is not None.
+        Is used to balance the MLM and contrastive losses:
+        (1 - contrastive_loss_weight) * MLM_loss + contrastive_loss_weight * contrastive_loss
         - If contrastive_loss_weight is 0, only MLM is used (default)
-        - If contrastive_loss_weight is 1, only InfoNCE is used
+        - If contrastive_loss_weight is 1, only contrastive loss is used
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
-    use_disco_clip : bool, default=False
-        Whether to use DisCo-CLIP distributed contrastive loss for memory efficiency.
-        Disco-CLIP enables gathering embeddings across all GPUs which results in
-        more memory-efficient training (because we share only embeddings across not
-        full activations). This way we get more negative examples.
     scheduler : str, default="constant_with_warmup"
         Type of learning rate scheduler to use.
     num_training_steps : int | None, default=None
@@ -79,7 +84,7 @@ class Ume(L.LightningModule):
     ----------
     model : FlexBERT
         The underlying FlexBERT model for encoding.
-    tokenizer_transforms : dict[Modality, UmeTokenizerTransform]
+    tokenizer_transforms : dict[Modality, UMETokenizerTransform]
         Dictionary mapping modality enums to their respective
         tokenizer transforms.
     embedding_dim : int
@@ -91,10 +96,13 @@ class Ume(L.LightningModule):
     Examples
     --------
     >>> # Initialize a new model
-    >>> encoder = Ume(model_name="UME_mini", max_length=256)
+    >>> encoder = UME(model_name="UME_mini", max_length=256)
     >>>
     >>> # Initialize and load from a checkpoint
-    >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+    >>> encoder = UME.load_from_checkpoint("path/to/checkpoint.ckpt")
+    >>>
+    >>> # Load a pretrained model using the convenient from_pretrained method
+    >>> encoder = UME.from_pretrained("ume-mini")
     >>>
     >>> # Get embeddings for protein sequences
     >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
@@ -112,21 +120,10 @@ class Ume(L.LightningModule):
         beta2: float = 0.98,
         eps: float = 1e-12,
         mask_percentage: float = 0.25,
+        contrastive_loss_type: Literal[None, "symile", "clip", "disco_clip"] = None,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
-        use_disco_clip: bool = False,
-        scheduler: Literal[
-            "linear",
-            "cosine",
-            "cosine_with_restarts",
-            "polynomial",
-            "constant",
-            "constant_with_warmup",
-            "inverse_sqrt",
-            "reduce_lr_on_plateau",
-            "cosine_with_min_lr",
-            "warmup_stable_decay",
-        ] = "constant_with_warmup",
+        scheduler: SchedulerType = "constant_with_warmup",
         num_training_steps: int | None = None,
         num_warmup_steps: int | None = 1_000,
         model_kwargs: dict | None = None,
@@ -141,7 +138,7 @@ class Ume(L.LightningModule):
 
         # Instantiate tokenizer transforms for each modality
         self.tokenizer_transforms = {
-            modality: UmeTokenizerTransform(modality, max_length=max_length, return_modality=True)
+            modality: UMETokenizerTransform(modality, max_length=max_length, return_modality=True)
             for modality in [Modality.AMINO_ACID, Modality.SMILES, Modality.NUCLEOTIDE]
         }
 
@@ -151,8 +148,25 @@ class Ume(L.LightningModule):
         # Prepare model kwargs with flash-attn setting
         model_kwargs = model_kwargs or {}
         model_kwargs["use_fa2"] = use_flash_attn
-        if not use_flash_attn:
-            model_kwargs["padding"] = "padded"
+
+        # Important: If loading from checkpoint, preserve the original architecture
+        # A checkpoint trained with flash attention has unpadded layers that can't be changed
+        # We can still disable flash attention at the layer level while keeping unpadded architecture
+        if ckpt_path is not None:
+            # Always use unpadded architecture when loading from checkpoint
+            # The individual attention layers will respect the use_fa2 setting
+            model_kwargs["padding"] = "unpadded"
+            if not use_flash_attn:
+                model_kwargs["use_sdpa_attn_mask"] = True
+        else:
+            # When creating a new model, choose the appropriate architecture
+            if use_flash_attn:
+                # Flash attention works with unpadded architecture
+                model_kwargs["padding"] = "unpadded"
+            else:
+                # SDPA requires padded architecture to work correctly
+                model_kwargs["padding"] = "padded"
+                model_kwargs["use_sdpa_attn_mask"] = True
 
         # Instantiate the model
         self.model = FlexBERT(
@@ -178,17 +192,25 @@ class Ume(L.LightningModule):
         self.max_length = max_length
         self.embedding_dim = self.model.config.hidden_size
         self.frozen = False
+        self.contrastive_loss_type = contrastive_loss_type
         self.contrastive_loss_weight = contrastive_loss_weight
-        self.use_disco_clip = use_disco_clip
-        self.lr = lr
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.eps = eps
-        self.scheduler = scheduler
-        self.num_training_steps = num_training_steps
-        self.num_warmup_steps = num_warmup_steps
-        self.scheduler_kwargs = scheduler_kwargs or {}
         self.contrastive_temperature = contrastive_temperature
+        self.use_flash_attn = use_flash_attn
+        self._lr = lr
+        self._beta1 = beta1
+        self._beta2 = beta2
+        self._eps = eps
+        self._num_training_steps = num_training_steps
+        self._num_warmup_steps = num_warmup_steps
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
+
+        # Initialize loss functions
+        self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
+        self.infonce_loss_fn = InfoNCELoss(
+            temperature=contrastive_temperature,
+            use_disco=contrastive_loss_type == "disco_clip",
+        )
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
         for modality in Modality:
@@ -206,7 +228,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> print(encoder.modalities)
         ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
         """
@@ -228,7 +250,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>>
         >>> # Get tokenizer for amino acid sequences
         >>> tokenizer = encoder.get_tokenizer("amino_acid")
@@ -270,7 +292,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> vocab = encoder.get_vocab()
         >>> print(len(vocab))  # Size of vocabulary
         1536  # Example size
@@ -294,7 +316,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> # Check if model is trainable
         >>> print(f"Before freezing - Parameter grad enabled: {next(encoder.model.parameters()).requires_grad}")
         Before freezing - Parameter grad enabled: True
@@ -322,7 +344,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> # First freeze the model
         >>> encoder.freeze()
         >>> print(f"Model is frozen: {encoder.frozen}")
@@ -337,7 +359,38 @@ class Ume(L.LightningModule):
         self.model.train()
         self.frozen = False
 
-    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True) -> Tensor:
+    def _extract_batch_components(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        index: int,
+    ) -> dict[str, Tensor | list[Modality]]:
+        """Extract components for a specific view from a combined batch."""
+        input_ids = batch["input_ids"][:, index, :].unsqueeze(1).contiguous()
+        attention_mask = batch["attention_mask"][:, index, :].unsqueeze(1).contiguous()
+
+        modality_list = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
+        modality = [t[index] for t in modality_list]
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "modality": modality,
+        }
+
+    def _split_combined_batch(
+        self,
+        combined_batch: dict[str, Tensor | list[Modality]],
+    ) -> tuple[dict[str, Tensor | list[Modality]], ...]:
+        """Split a combined batch of N inputs into N separate batches."""
+        num_splits = combined_batch["input_ids"].shape[1]
+
+        return tuple(self._extract_batch_components(combined_batch, i) for i in range(num_splits))
+
+    def embed(
+        self,
+        inputs: dict[str, Tensor],
+        aggregate: bool = True,
+    ) -> Tensor:
         """Get embeddings for encoded inputs.
 
         Parameters
@@ -363,40 +416,29 @@ class Ume(L.LightningModule):
             if x[key].dim() == 2:
                 x[key] = x[key].unsqueeze(1)
 
+        assert x["input_ids"].ndim == 3
+        assert x["input_ids"].shape[1] == 1, (
+            f"Input IDs must have shape (batch_size, 1, length), got {x['input_ids'].shape}"
+        )
+
         if self.frozen:
             with torch.no_grad():
                 embeddings = self.model.tokens_to_latents(**x)
         else:
-            # Copied from tokens_to_latents to remove the inference_mode decorator, allow training
-            if getattr(self.model.config, "padding", "unpadded") == "padded":
-                # For padded attention, just pass as (batch, seqlen)
-                input_ids = (
-                    x["input_ids"].squeeze(1)
-                    if x["input_ids"].dim() == 3 and x["input_ids"].shape[1] == 1
-                    else x["input_ids"]
-                )
-                attention_mask = (
-                    x["attention_mask"].squeeze(1)
-                    if x["attention_mask"].dim() == 3 and x["attention_mask"].shape[1] == 1
-                    else x["attention_mask"]
-                )
-                embeddings = self.model.model(input_ids, attention_mask=attention_mask, max_seqlen=self.max_length)
-            else:
-                input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(x["input_ids"], x["attention_mask"])
-                embeddings = self.model.model(
-                    input_ids, attention_mask=attention_mask, cu_seqlens=cu_seqlens, max_seqlen=self.max_length
-                )
+            embeddings = self.model.tokens_to_latents(x["input_ids"], x["attention_mask"])
 
         # Reshape to (batch_size, seq_len, hidden_size)
         batch_size = x["input_ids"].size(0)
         seq_len = x["input_ids"].size(-1)
-        embeddings = embeddings.view(batch_size, seq_len, -1)
+
+        if self.model.config.padding == "unpadded":
+            embeddings = embeddings.view(batch_size, seq_len, -1)
 
         if aggregate:
-            # Simple mean pooling over sequence length dimension
-            return embeddings.mean(dim=1)
-        else:
-            return embeddings
+            # Use mean pooling over sequence length dimension
+            embeddings = embeddings.mean(dim=1)
+
+        return embeddings
 
     def embed_sequences(
         self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
@@ -427,7 +469,7 @@ class Ume(L.LightningModule):
         Examples
         --------
         >>> # Get protein embeddings
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> sequences = ["MKTVQRERL", "ACDEFGHIKL"]
         >>> embeddings = encoder.embed_sequences(sequences, "amino_acid")
         >>> print(embeddings.shape)
@@ -449,166 +491,43 @@ class Ume(L.LightningModule):
 
         return self.embed(encoded, aggregate=aggregate)
 
-    def configure_optimizers(self) -> dict[str, object]:
-        """Configure optimizers and learning rate schedulers.
-
-        Returns
-        -------
-        dict[str, object]
-            Dictionary containing optimizer and learning rate scheduler.
-        """
-        # Use all parameters from the Ume model, not just the FlexBERT sub-model
+    def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(),
-            lr=self.lr,
-            betas=(self.beta1, self.beta2),
-            eps=self.eps,
+            self.model.parameters(),
+            lr=self._lr,
+            betas=(self._beta1, self._beta2),
+            eps=self._eps,
         )
 
-        scheduler = get_scheduler(
+        scheduler = transformers.get_scheduler(
             self.scheduler,
             optimizer,
-            num_training_steps=self.num_training_steps,
-            num_warmup_steps=self.num_warmup_steps,
+            num_training_steps=self._num_training_steps,
+            num_warmup_steps=self._num_warmup_steps,
             scheduler_specific_kwargs=self.scheduler_kwargs,
         )
 
-        scheduler_config = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
-        return {"optimizer": optimizer, "lr_scheduler": scheduler_config}
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
-    def _get_logits_and_labels(self, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        """Process inputs with different modalities and get logits and labels for training."""
-        # New shape: (batch_size * seq_len)
-        input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
+    def _compute_infonce_loss(
+        self,
+        embeddings: list[Tensor],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Compute contrastive loss between two batches."""
+        if len(embeddings) != 2:
+            raise ValueError(
+                f"{self.__class__.__name__} with InfoNCE loss requires exactly 2 views, got {len(embeddings)}"
+            )
 
-        masked_input_ids, labels = self.model._mask_inputs(input_ids)
+        embeddings_a, embeddings_b = embeddings
+        assert embeddings_a.shape == embeddings_b.shape
 
-        hidden_states = self.model.model(
-            input_ids=masked_input_ids,
-            attention_mask=attention_mask,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=self.max_length,
-        )
+        loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
 
-        # Get logits from decoder
-        logits = self.model.decoder(hidden_states)
-
-        # Reshape for loss calculation
-        logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * sequence_length, vocab_size)
-        labels = labels.view(-1)  # (batch_size * sequence_length)
-
-        return logits, labels
-
-    def _split_combined_batch(self, combined_batch: dict[str, Tensor | list[Modality]]) -> tuple[Tensor, Tensor]:
-        """Split a combined batch of two inputs into two separate batches.
-
-        Parameters
-        ----------
-        combined_batch : dict[str, Tensor | list[Modality]]
-            The combined batch to split.
-
-        Returns
-        -------
-        tuple[dict[str, Tensor | list[Modality]], dict[str, Tensor | list[Modality]]]
-            A tuple of two dictionaries, each containing the input ID, attention masks,
-            and modality for the two separate batches.
-        """
-        input_ids_a = combined_batch["input_ids"][:, 0, :].unsqueeze(1).contiguous()
-        input_ids_b = combined_batch["input_ids"][:, 1, :].unsqueeze(1).contiguous()
-        attention_mask_a = combined_batch["attention_mask"][:, 0, :].unsqueeze(1).contiguous()
-        attention_mask_b = combined_batch["attention_mask"][:, 1, :].unsqueeze(1).contiguous()
-
-        modality_list = (
-            combined_batch["metadata"]["modality"] if "metadata" in combined_batch else combined_batch["modality"]
-        )
-        modality_a = [t[0] for t in modality_list]
-        modality_b = [t[1] for t in modality_list]
-
-        return (
-            {
-                "input_ids": input_ids_a,
-                "attention_mask": attention_mask_a,
-                "modality": modality_a,
-            },
-            {
-                "input_ids": input_ids_b,
-                "attention_mask": attention_mask_b,
-                "modality": modality_b,
-            },
-        )
-
-    def _standard_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
-        """Compute InfoNCE loss using the standard approach with full similarity matrix.
-
-        Parameters
-        ----------
-        embeddings_a : Tensor
-            First set of normalized embeddings, shape (batch_size, hidden_size)
-        embeddings_b : Tensor
-            Second set of normalized embeddings, shape (batch_size, hidden_size)
-
-        Returns
-        -------
-        Tensor
-            InfoNCE loss
-        """
-        # Compute similarity matrix using fixed temperature
-        similarities = embeddings_a @ embeddings_b.T / self.contrastive_temperature
-
-        # Create labels (diagonal should be positive)
-        labels = torch.arange(embeddings_a.shape[0], device=embeddings_a.device)
-
-        # InfoNCE loss in both directions
-        loss_a = nn.functional.cross_entropy(similarities, labels)
-        loss_b = nn.functional.cross_entropy(similarities.T, labels)
-
-        return (loss_a + loss_b) / 2
-
-    def _disco_infonce_loss(self, embeddings_a: Tensor, embeddings_b: Tensor) -> Tensor:
-        """Compute InfoNCE loss using DisCo-CLIP distributed approach for memory efficiency.
-
-        Parameters
-        ----------
-        embeddings_a : Tensor
-            First set of normalized embeddings, shape (local_batch_size, hidden_size)
-        embeddings_b : Tensor
-            Second set of normalized embeddings, shape (local_batch_size, hidden_size)
-
-        Returns
-        -------
-        Tensor
-            InfoNCE loss
-        """
-        # Gather embeddings from all GPUs using DisCo-CLIP
-        all_embeddings_a = Gather(embeddings_a)
-        all_embeddings_b = Gather(embeddings_b)
-
-        # Get local batch size and rank for label calculation
-        local_batch_size = embeddings_a.shape[0]
-        rank = get_rank()
-
-        # Compute local similarities using DisCo-CLIP approach with slicing
-        # This is more memory-efficient: we only compute (local_batch x total_batch) instead of (total_batch x total_batch)
-        logits_a = (
-            all_embeddings_a[local_batch_size * rank : local_batch_size * (rank + 1)]
-            @ all_embeddings_b.T
-            / self.contrastive_temperature
-        )
-        logits_b = (
-            all_embeddings_b[local_batch_size * rank : local_batch_size * (rank + 1)]
-            @ all_embeddings_a.T
-            / self.contrastive_temperature
-        )
-
-        # Create labels - positive pairs are at positions offset by rank * local_batch_size
-        labels = torch.arange(local_batch_size, device=embeddings_a.device) + rank * local_batch_size
-
-        # InfoNCE loss in both directions
-        loss_a = nn.functional.cross_entropy(logits_a, labels)
-        loss_b = nn.functional.cross_entropy(logits_b, labels)
-
-        return (loss_a + loss_b) / 2
+        return loss
 
     def _infonce_step(
         self,
@@ -616,129 +535,385 @@ class Ume(L.LightningModule):
         batch_b: dict[str, Tensor | list[Modality]],
         stage: Literal["train", "val"],
     ) -> Tensor:
-        """Perform a contrastive step.
+        """Perform a contrastive step with optional MLM mixing."""
+        # Compute embeddings for both batches
+        embeddings = [self.embed(batch) for batch in [batch_a, batch_b]]
 
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The batch to perform the contrastive step on.
-        stage : Literal["train", "val"]
-            The stage to perform the contrastive step on.
+        contrastive_loss = (
+            self._compute_infonce_loss(embeddings, stage)
+            if self.contrastive_loss_weight > 0
+            else torch.tensor(0.0, device=self.device)
+        )
 
-        Returns
-        -------
-        Tensor
-            The loss for the contrastive step.
-        """
-        # Embed both sides separately (could merge for more efficiency but I don't think it matters)
-        embeddings_a = self.embed(batch_a, aggregate=True)
-        embeddings_b = self.embed(batch_b, aggregate=True)
+        mlm_loss = (
+            self._compute_mlm_loss(batch_a, stage)
+            if self.contrastive_loss_weight != 1.0
+            else torch.tensor(0.0, device=self.device)
+        )
 
-        assert embeddings_a.shape == embeddings_b.shape
-        assert embeddings_a.shape == (batch_a["input_ids"].shape[0], self.model.config.hidden_size)
+        return self._compute_weighted_loss(
+            contrastive_loss=contrastive_loss,
+            mlm_loss=mlm_loss,
+            stage=stage,
+        )
 
-        # Normalize embeddings once for both implementations
-        embeddings_a = nn.functional.normalize(embeddings_a, dim=-1)
-        embeddings_b = nn.functional.normalize(embeddings_b, dim=-1)
+    def _process_batch_for_modality_metrics(
+        self,
+        logits: Tensor,
+        labels: Tensor,
+        modalities: list[Modality],
+        stage: Literal["train", "val"],
+    ) -> None:
+        """Process batch to compute per-modality metrics."""
+        # Calculate batch size from modalities length
+        batch_size = len(modalities)
+        seq_length = logits.shape[0] // batch_size
 
-        # Choose loss computation method based on configuration
-        if self.use_disco_clip and is_distributed():
-            loss = self._disco_infonce_loss(embeddings_a, embeddings_b)
-        else:
-            loss = self._standard_infonce_loss(embeddings_a, embeddings_b)
-
-        self.log(f"contrastive_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-
-        # Log the current temperature for monitoring
-        self.log("contrastive_temperature", self.contrastive_temperature, rank_zero_only=True, sync_dist=True)
-
-        return loss
-
-    def _mlm_step(self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]) -> Tensor:
-        """Perform a masked language model step.
-
-        Parameters
-        ----------
-        batch : dict[str, Tensor | list[Modality]]
-            The batch to perform the masked language model step on.
-        stage : Literal["train", "val"]
-            The stage to perform the masked language model step on.
-
-        Returns
-        -------
-        Tensor
-            The loss for the masked language model step.
-        """
-        batch_size, length = batch["input_ids"].shape[0], batch["input_ids"].shape[2]
-
-        logits, labels = self._get_logits_and_labels(batch)
-
-        # Compute loss
-        loss = self.model.loss_fn(logits, labels)
-        self.log(f"mlm_{stage}_loss", loss, rank_zero_only=True, sync_dist=True)
-
-        # Compute overall perplextiy
-        perplexity = torch.exp(loss)
-        self.log(f"{stage}_perplexity", perplexity, rank_zero_only=True, sync_dist=True)
-
-        # Compute perplexity for each modality separately
-        modalities: list[Modality] = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
-
-        logits_reshaped = logits.view(batch_size, length, self.model.vocab_size)
-        labels_reshaped = labels.view(batch_size, length)
+        # Reshape logits and labels to (batch_size, seq_length, vocab_size) and (batch_size, seq_length)
+        logits_reshaped = logits.view(batch_size, seq_length, -1)
+        labels_reshaped = labels.view(batch_size, seq_length)
 
         for modality in set(modalities):
             mask = torch.tensor([m == modality for m in modalities], device=self.device, dtype=torch.bool)
-
             if not mask.any():
                 continue
 
             metric_name = f"{stage}_perplexity/{modality}"
+
+            if not hasattr(self, metric_name):
+                logger.warning(f"Metric {metric_name} not found in {self.__class__.__name__}. Skipping.")
+                continue
+
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
 
-            # Do not specify on_step since Lightning will handle this automatically
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
+
+    def _compute_weighted_loss(
+        self,
+        mlm_loss: Tensor,
+        contrastive_loss: Tensor,
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Compute weighted loss combining MLM and contrastive losses."""
+        # Log individual losses
+        self.log(f"mlm_{stage}_loss", mlm_loss, rank_zero_only=True, sync_dist=True)
+        self.log(f"contrastive_{stage}_loss", contrastive_loss, rank_zero_only=True, sync_dist=True)
+
+        # Compute weighted loss
+        total_loss = (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
+        self.log(f"{stage}_loss", total_loss, rank_zero_only=True, sync_dist=True)
+
+        return total_loss
+
+    def _compute_mlm_loss(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Compute masked language model loss."""
+        # Prepare inputs for the model
+        input_ids, attention_mask, cu_seqlens = self.model._prepare_inputs(batch["input_ids"], batch["attention_mask"])
+        masked_input_ids, labels = self.model._mask_inputs(input_ids)
+
+        # Get model outputs
+        hidden_states = self.model.model(
+            input_ids=masked_input_ids,
+            attention_mask=attention_mask,
+            cu_seqlens=cu_seqlens,
+            max_seqlen=self.max_length,
+        )
+
+        # Get logits from decoder and reshape for loss calculation
+        logits = self.model.decoder(hidden_states)
+        logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * sequence_length, vocab_size)
+        labels = labels.view(-1)  # (batch_size * sequence_length)
+
+        # Compute loss
+        loss = self.model.loss_fn(logits, labels)
+
+        # Log overall metrics
+        perplexity = torch.exp(loss)
+        self.log(f"{stage}_perplexity", perplexity, rank_zero_only=True, sync_dist=True)
+
+        # Process per-modality metrics
+        modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
+        self._process_batch_for_modality_metrics(logits, labels, modalities, stage)
 
         return loss
 
-    def _delegate_step_by_batch_shape(
-        self, batch: dict[str, Tensor | list[Modality]], stage: Literal["train", "val"]
+    def _compute_symile_loss(
+        self,
+        embeddings: list[Tensor],
+        stage: Literal["train", "val"],
     ) -> Tensor:
-        # If the batch contains only one input, we can only run MLM
-        if batch["input_ids"].shape[1] == 1:
-            return self._mlm_step(batch, stage)
+        """Compute Symile loss for a batch of N views of the same entity."""
+        embeddings = [torch.nn.functional.normalize(embedding, dim=-1) for embedding in embeddings]
 
-        # If there are two items in the batch, we run MLM on the first item and InfoNCE on the second item
-        # (the first item is the original modality and the second item is the converted modality)
-        elif batch["input_ids"].shape[1] == 2:
-            batch_a, batch_b = self._split_combined_batch(batch)
+        return self.symile_loss_fn(embeddings)
 
-            # See if we can skip InfoNCE
-            if self.contrastive_loss_weight > 0:
-                contrastive_loss = self._infonce_step(batch_a, batch_b, stage)
-            else:
-                contrastive_loss = torch.tensor(0.0, device=self.device)
+    def _contrastive_step(
+        self,
+        *batches: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Perform a contrastive step with optional MLM mixing."""
+        if len(batches) < 2:
+            raise ValueError(f"Contrastive loss requires at least 2 views but got {len(batches)}: {batches}")
 
-            # See if we can skip MLM
-            if self.contrastive_loss_weight != 1.0:
-                mlm_loss = self._mlm_step(batch_a, stage)
-            else:
-                mlm_loss = torch.tensor(0.0, device=self.device)
+        if self.contrastive_loss_type in ["clip", "disco_clip"]:
+            if len(batches) != 2:
+                raise ValueError("InfoNCE loss requires exactly 2 views")
 
-            return (1 - self.contrastive_loss_weight) * mlm_loss + self.contrastive_loss_weight * contrastive_loss
+        embeddings = [self.embed(batch) for batch in batches]
 
-        else:
-            raise ValueError(f"Not sure what '{stage}' step to run with inputs of shape: {batch['input_ids'].shape}")
+        contrastive_loss_fn = (
+            self._compute_symile_loss if self.contrastive_loss_type == "symile" else self._compute_infonce_loss
+        )
 
-    def training_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
+        contrastive_loss = (
+            contrastive_loss_fn(embeddings, stage=stage)
+            if self.contrastive_loss_weight > 0
+            else torch.tensor(0.0, device=self.device)
+        )
+
+        mlm_loss = (
+            self._compute_mlm_loss(batches[0], stage)
+            if self.contrastive_loss_weight != 1.0
+            else torch.tensor(0.0, device=self.device)
+        )
+
+        return self._compute_weighted_loss(
+            contrastive_loss=contrastive_loss,
+            mlm_loss=mlm_loss,
+            stage=stage,
+        )
+
+    def _delegate_step_by_batch_shape(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        stage: Literal["train", "val"],
+    ) -> Tensor:
+        """Delegate to appropriate loss computation based on batch shape."""
+        # Validate batch structure
+        assert batch["input_ids"].ndim == 3, (
+            f"Batch must have shape (batch_size, num_views, sequence_length) but got {batch['input_ids'].shape}"
+        )
+        assert batch["input_ids"].shape[1] > 0, "Number of views must be positive"
+
+        num_views = batch["input_ids"].shape[1]
+
+        # If no contrastive loss is specified, only use MLM
+        if self.contrastive_loss_type is None:
+            if num_views > 1:
+                raise ValueError(f"Contrastive loss type is None but num_views > 1 ({num_views})")
+            return self._compute_mlm_loss(batch, stage)
+
+        batches = self._split_combined_batch(batch)
+
+        return self._contrastive_step(*batches, stage=stage)
+
+    def training_step(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        batch_idx: int,
+    ) -> Tensor:
+        """Perform a single training step.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Input batch
+        batch_idx : int
+            Index of the current batch
+
+        Returns
+        -------
+        Tensor
+            Computed loss
+        """
         loss = self._delegate_step_by_batch_shape(batch, "train")
         self.log("train_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
 
-    def validation_step(self, batch: dict[str, Tensor | list[Modality]], batch_idx: int) -> Tensor:
+    def validation_step(
+        self,
+        batch: dict[str, Tensor | list[Modality]],
+        batch_idx: int,
+    ) -> Tensor:
+        """Perform a single validation step.
+
+        Parameters
+        ----------
+        batch : dict[str, Tensor | list[Modality]]
+            Input batch
+        batch_idx : int
+            Index of the current batch
+
+        Returns
+        -------
+        Tensor
+            Computed loss
+        """
         loss = self._delegate_step_by_batch_shape(batch, "val")
         self.log("val_loss", loss, rank_zero_only=True, sync_dist=True)
 
         return loss
+
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: str,
+        *args,
+        use_flash_attn: bool | None = None,
+        device: str | None = None,
+        **kwargs,
+    ) -> "UME":
+        """Load a model from a checkpoint with device-specific configuration.
+
+        This method configures the model based on the specified or available device:
+        - For CPU: Uses padded architecture with SDPA attention mask
+        - For GPU: Uses unpadded architecture with Flash Attention
+
+        Parameters
+        ----------
+        checkpoint_path : str
+            Path to the checkpoint file.
+        use_flash_attn : bool | None, optional
+            Whether to use flash attention. If None, will be determined based on device.
+        device : str | None, optional
+            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
+        *args
+            Additional positional arguments to pass to the parent class's load_from_checkpoint.
+        **kwargs
+            Additional keyword arguments to pass to the parent class's load_from_checkpoint.
+
+        Returns
+        -------
+        UME
+            The loaded model with appropriate device-specific configuration.
+
+        Raises
+        ------
+        ValueError
+            If an invalid device is specified.
+        """
+        # Determine device
+        if device is not None:
+            if device not in ["cpu", "cuda"]:
+                raise ValueError(f"Invalid device: {device}. Must be one of ['cpu', 'cuda']")
+            if device == "cuda" and not torch.cuda.is_available():
+                raise ValueError("CUDA device requested but not available")
+        else:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Determine flash attention setting
+        if use_flash_attn is None:
+            use_flash_attn = device == "cuda"
+
+        # Configure model based on device
+        model_kwargs = kwargs.pop("model_kwargs", {})
+        model_kwargs.update(
+            {
+                "use_fa2": use_flash_attn,
+                "padding": "unpadded" if use_flash_attn else "padded",
+                "use_sdpa_attn_mask": not use_flash_attn,
+            }
+        )
+        kwargs["model_kwargs"] = model_kwargs
+        kwargs["use_flash_attn"] = use_flash_attn
+
+        # Load the model using the parent class's method
+        model = super().load_from_checkpoint(checkpoint_path, *args, **kwargs)
+
+        # Move model to specified device
+        model = model.to(device)
+
+        return model
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_name: Literal["ume-mini-base-12M", "ume-medium-base-480M", "ume-large-base-740M"],
+        *,
+        device: str | None = None,
+        use_flash_attn: bool | None = None,
+        cache_dir: str | None = None,
+        **kwargs,
+    ) -> "UME":
+        """Load a pretrained UME model from a model name.
+
+        Currently, we support the following model names:
+        - "ume-mini-base-12M"
+        - "ume-small-base-90M"
+        - "ume-medium-base-480M"
+        - "ume-large-base-740M"
+
+        Note: These models are only available to members of Prescient Design for now. Stay
+        tuned for UME release.
+
+        Parameters
+        ----------
+        model_name : str
+            Model name from registry.
+            Examples:
+            - "ume-mini-base-12M" -> loads UME_mini with default checkpoint
+        device : str | None, optional
+            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
+        use_flash_attn : bool | None, optional
+            Whether to use flash attention. If None, will be determined based on device.
+        cache_dir : str | None, optional
+            Directory to cache downloaded models. If None, uses 'models/ume' in current directory.
+        **kwargs
+            Additional keyword arguments to pass to load_from_checkpoint.
+
+        Returns
+        -------
+        UME
+            The loaded pretrained model.
+
+        Examples
+        --------
+        >>> # Load UME-mini with default checkpoint
+        >>> model = UME.from_pretrained("ume-mini-base-12M")
+        >>>
+        >>> # Load UME-mini with specific device
+        >>> model = UME.from_pretrained("ume-mini-base-12M", device="cpu")
+        >>>
+        >>> # Load with custom cache directory
+        >>> model = UME.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
+        """
+
+        # Warning that you're using pre-release checkpoints which
+        # are just placeholder checkpoints for now.
+        warnings.warn(
+            "You're using pre-release UME checkpoints which are just placeholder checkpoints for now. Stay tuned for UME release.",
+            stacklevel=2,
+        )
+        checkpoint_dict = get_ume_checkpoints()
+
+        checkpoint_path = checkpoint_dict.get(model_name)
+        if checkpoint_path is None:
+            available_models = [
+                model_name for model_name in checkpoint_dict.keys() if checkpoint_dict[model_name] is not None
+            ]
+            raise ValueError(f"Unknown model name: {model_name}. Currently available models: {available_models}")
+
+        # Determine cache directory
+        if cache_dir is None:
+            cache_dir = os.path.join(os.getcwd(), "models", "ume")
+
+        local_filename = f"{model_name}.ckpt"
+
+        # Load the model with automatic retry on corruption
+        # happens if previous download was stopped, for example
+        return load_checkpoint_with_retry(
+            checkpoint_path=checkpoint_path,
+            local_directory=cache_dir,
+            local_filename=local_filename,
+            load_func=cls.load_from_checkpoint,
+            device=device,
+            use_flash_attn=use_flash_attn,
+            **kwargs,
+        )

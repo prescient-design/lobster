@@ -1,24 +1,24 @@
-# UmeServer
+# UMEServer
 
-The `UmeServer` class provides a FastMCP server implementation for serving UME (Universal Model Embedding) functionality. It allows you to expose embedding capabilities through a standardized MCP (Model Control Protocol) interface.
+The `UMEServer` class provides a FastMCP server implementation for serving UME (Universal Model Embedding) functionality. It allows you to expose embedding capabilities through a standardized MCP (Model Control Protocol) interface.
 
 ## Overview
 
-`UmeServer` wraps a UME model instance and exposes its embedding functionality through a FastMCP server. This enables standardized access to sequence embedding capabilities across different modalities.
+`UMEServer` wraps a UME model instance and exposes its embedding functionality through a FastMCP server. This enables standardized access to sequence embedding capabilities across different modalities.
 
 ## Usage
 
 ### Initialization
 
 ```python
-from lobster.model import Ume
-from lobster.server import UmeServer
+from lobster.model import UME
+from lobster.server import UMEServer
 
 # Initialize your UME model
-model = Ume(...)
+model = UME(...)
 
 # Create the server instance
-server = UmeServer(model)
+server = UMEServer(model)
 ```
 
 ### Available Tools
@@ -48,12 +48,12 @@ mcp_server = server.get_server()
 ## Example
 
 ```python
-from lobster.model import Ume
-from lobster.server import UmeServer
+from lobster.model import UME
+from lobster.server import UMEServer
 
 # Initialize model and server
-model = Ume(...)
-server = UmeServer(model)
+model = UME(...)
+server = UMEServer(model)
 
 # Get the MCP server instance
 mcp_server = server.get_server()
@@ -79,4 +79,4 @@ print(f"Generated embeddings shape: {embeddings.shape}")
 ## Dependencies
 
 - FastMCP: For the MCP server implementation
-- Ume: The underlying embedding model
+- UME: The underlying embedding model

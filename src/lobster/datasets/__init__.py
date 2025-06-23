@@ -13,6 +13,7 @@ from ._peer_dataset import PEERDataset
 from ._random_sequence_dataset import RandomSequenceDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
+from ._ume_streaming_dataset import UMEStreamingDataset
 from ._zinc_dataset import ZINCIterableDataset
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "ZINCIterableDataset",
     "OpenGenome2IterableDataset",
     "RandomSequenceDataset",
+    "UMEStreamingDataset",
 ]

@@ -1,12 +1,12 @@
 import importlib.resources
 from collections.abc import Callable
-from typing import Literal
 
 import lightning.pytorch as pl
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers import LlamaConfig, LlamaForCausalLM, get_scheduler, pipeline
 
+from lobster.constants import SchedulerType
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import Transform
 
@@ -29,18 +29,7 @@ class LobsterPCLM(pl.LightningModule):
         max_length: int = 512,
         num_key_value_heads: int = None,
         attention_bias: bool = False,
-        scheduler: Literal[
-            "linear",
-            "cosine",
-            "cosine_with_restarts",
-            "polynomial",
-            "constant",
-            "constant_with_warmup",
-            "inverse_sqrt",
-            "reduce_lr_on_plateau",
-            "cosine_with_min_lr",
-            "warmup_stable_decay",
-        ] = "constant_with_warmup",
+        scheduler: SchedulerType = "constant_with_warmup",
         model_kwargs: dict = None,
         scheduler_kwargs: dict = None,
     ):
