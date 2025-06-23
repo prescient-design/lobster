@@ -15,7 +15,6 @@ supported-markers = [
 [manifest]
 constraints = [
     { name = "torch", marker = "extra == 'flash'", specifier = "==2.7.0" },
-    { name = "torch", marker = "extra == 'flash'", specifier = "==2.7.0" },
     { name = "torch", marker = "extra != 'flash'", specifier = ">=2.0.0" },
 ]
 
