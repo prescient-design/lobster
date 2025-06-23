@@ -15,7 +15,7 @@ from lobster.constants import (
     ModalityType,
     SchedulerType,
 )
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
 from .losses import InfoNCELoss, SymileLoss
@@ -26,7 +26,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.tex
 logger = logging.getLogger(__name__)
 
 
-class Ume(L.LightningModule):
+class UME(L.LightningModule):
     """Universal Molecular Encoder.
 
     A light wrapper around FlexBert model with useful high-level functions
@@ -84,7 +84,7 @@ class Ume(L.LightningModule):
     ----------
     model : FlexBERT
         The underlying FlexBERT model for encoding.
-    tokenizer_transforms : dict[Modality, UmeTokenizerTransform]
+    tokenizer_transforms : dict[Modality, UMETokenizerTransform]
         Dictionary mapping modality enums to their respective
         tokenizer transforms.
     embedding_dim : int
@@ -96,13 +96,13 @@ class Ume(L.LightningModule):
     Examples
     --------
     >>> # Initialize a new model
-    >>> encoder = Ume(model_name="UME_mini", max_length=256)
+    >>> encoder = UME(model_name="UME_mini", max_length=256)
     >>>
     >>> # Initialize and load from a checkpoint
-    >>> encoder = Ume.load_from_checkpoint("path/to/checkpoint.ckpt")
+    >>> encoder = UME.load_from_checkpoint("path/to/checkpoint.ckpt")
     >>>
     >>> # Load a pretrained model using the convenient from_pretrained method
-    >>> encoder = Ume.from_pretrained("ume-mini")
+    >>> encoder = UME.from_pretrained("ume-mini")
     >>>
     >>> # Get embeddings for protein sequences
     >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
@@ -138,7 +138,7 @@ class Ume(L.LightningModule):
 
         # Instantiate tokenizer transforms for each modality
         self.tokenizer_transforms = {
-            modality: UmeTokenizerTransform(modality, max_length=max_length, return_modality=True)
+            modality: UMETokenizerTransform(modality, max_length=max_length, return_modality=True)
             for modality in [Modality.AMINO_ACID, Modality.SMILES, Modality.NUCLEOTIDE]
         }
 
@@ -228,7 +228,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> print(encoder.modalities)
         ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
         """
@@ -250,7 +250,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>>
         >>> # Get tokenizer for amino acid sequences
         >>> tokenizer = encoder.get_tokenizer("amino_acid")
@@ -292,7 +292,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> vocab = encoder.get_vocab()
         >>> print(len(vocab))  # Size of vocabulary
         1536  # Example size
@@ -316,7 +316,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> # Check if model is trainable
         >>> print(f"Before freezing - Parameter grad enabled: {next(encoder.model.parameters()).requires_grad}")
         Before freezing - Parameter grad enabled: True
@@ -344,7 +344,7 @@ class Ume(L.LightningModule):
 
         Examples
         --------
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> # First freeze the model
         >>> encoder.freeze()
         >>> print(f"Model is frozen: {encoder.frozen}")
@@ -469,7 +469,7 @@ class Ume(L.LightningModule):
         Examples
         --------
         >>> # Get protein embeddings
-        >>> encoder = Ume(model_name="UME_mini")
+        >>> encoder = UME(model_name="UME_mini")
         >>> sequences = ["MKTVQRERL", "ACDEFGHIKL"]
         >>> embeddings = encoder.embed_sequences(sequences, "amino_acid")
         >>> print(embeddings.shape)
@@ -769,7 +769,7 @@ class Ume(L.LightningModule):
         use_flash_attn: bool | None = None,
         device: str | None = None,
         **kwargs,
-    ) -> "Ume":
+    ) -> "UME":
         """Load a model from a checkpoint with device-specific configuration.
 
         This method configures the model based on the specified or available device:
@@ -791,7 +791,7 @@ class Ume(L.LightningModule):
 
         Returns
         -------
-        Ume
+        UME
             The loaded model with appropriate device-specific configuration.
 
         Raises
@@ -841,7 +841,7 @@ class Ume(L.LightningModule):
         use_flash_attn: bool | None = None,
         cache_dir: str | None = None,
         **kwargs,
-    ) -> "Ume":
+    ) -> "UME":
         """Load a pretrained UME model from a model name.
 
         Currently, we support the following model names:
@@ -870,19 +870,19 @@ class Ume(L.LightningModule):
 
         Returns
         -------
-        Ume
+        UME
             The loaded pretrained model.
 
         Examples
         --------
         >>> # Load UME-mini with default checkpoint
-        >>> model = Ume.from_pretrained("ume-mini-base-12M")
+        >>> model = UME.from_pretrained("ume-mini-base-12M")
         >>>
         >>> # Load UME-mini with specific device
-        >>> model = Ume.from_pretrained("ume-mini-base-12M", device="cpu")
+        >>> model = UME.from_pretrained("ume-mini-base-12M", device="cpu")
         >>>
         >>> # Load with custom cache directory
-        >>> model = Ume.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
+        >>> model = UME.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
 
         # Warning that you're using pre-release checkpoints which

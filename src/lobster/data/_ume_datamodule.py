@@ -20,7 +20,7 @@ from lobster.datasets import (
     RoundRobinConcatIterableDataset,
     ZINCIterableDataset,
 )
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 
 @dataclass
@@ -96,7 +96,7 @@ SUPPORTED_DATASETS_INFO = [
 ]
 
 
-class UmeLightningDataModule(LightningDataModule):
+class UMELightningDataModule(LightningDataModule):
     def __init__(
         self,
         tokenizer_max_length: int,
@@ -113,7 +113,7 @@ class UmeLightningDataModule(LightningDataModule):
         sample: bool = False,
         weights: Sequence[float | int] | None = None,
     ) -> None:
-        """Initialize a UmeLightningDataModule.
+        """Initialize a UMELightningDataModule.
 
         Parameters
         ----------
@@ -182,7 +182,7 @@ class UmeLightningDataModule(LightningDataModule):
 
         # Initialize tokenizer transforms for each modality
         self._tokenizer_transforms = {
-            modality: UmeTokenizerTransform(modality, max_length=tokenizer_max_length, return_modality=True)
+            modality: UMETokenizerTransform(modality, max_length=tokenizer_max_length, return_modality=True)
             for modality in Modality
         }
 

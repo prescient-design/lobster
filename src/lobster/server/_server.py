@@ -1,14 +1,14 @@
 from mcp.server.fastmcp import FastMCP
 
-from lobster.model import Ume
+from lobster.model import UME
 
 
-class UmeServer:
-    def __init__(self, model: Ume):
+class UMEServer:
+    def __init__(self, model: UME):
         """Initialize the UME MCP server with a model.
 
         Args:
-            model: A Ume model instance to use for embeddings
+            model: A UME model instance to use for embeddings
         """
         self.model = model
         self.server = FastMCP()

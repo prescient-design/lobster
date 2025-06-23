@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from lobster.constants import Modality
-from lobster.model import Ume
+from lobster.model import UME
 
 
 @pytest.fixture
@@ -16,10 +16,10 @@ def sample_sequences():
     }
 
 
-class TestUme:
+class TestUME:
     def test_initialization(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            ume = Ume(
+            ume = UME(
                 model_name="UME_mini",
                 max_length=10,
                 scheduler="warmup_stable_decay",
@@ -39,7 +39,7 @@ class TestUme:
             mock_model.parameters.return_value = [mock_param]
             mock_flex_bert.return_value = mock_model
 
-            ume = Ume()
+            ume = UME()
 
             # Test freeze
             ume.freeze()
@@ -67,7 +67,7 @@ class TestUme:
             mock_model.device = "cpu"
             mock_flex_bert.return_value = mock_model
 
-            ume = Ume(max_length=10)
+            ume = UME(max_length=10)
 
             # Test each modality
             for modality, sequences in sample_sequences.items():
@@ -88,7 +88,7 @@ class TestUme:
             mock_model.device = torch.device("cpu")
             mock_flex_bert.return_value = mock_model
 
-            ume = Ume()
+            ume = UME()
 
             # Test embed with aggregation
             inputs = {
@@ -104,7 +104,7 @@ class TestUme:
 
     def test_get_tokenizer(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            ume = Ume()
+            ume = UME()
 
             # Test with string modality
             tokenizer = ume.get_tokenizer("SMILES")
@@ -116,7 +116,7 @@ class TestUme:
 
     def test_get_vocab(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            ume = Ume()
+            ume = UME()
             vocab = ume.get_vocab()
             assert isinstance(vocab, dict)
             # Vocab should be non-empty
@@ -124,14 +124,14 @@ class TestUme:
 
     def test_modalities_property(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            ume = Ume()
+            ume = UME()
             modalities = ume.modalities
             expected_modalities = ["SMILES", "amino_acid", "nucleotide", "3d_coordinates"]
             assert modalities == expected_modalities
 
     def test_extract_batch_components(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            ume = Ume()
+            ume = UME()
 
             # Create a sample batch with 2 views
             batch = {
@@ -154,7 +154,7 @@ class TestUme:
 
     def test_split_combined_batch(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            ume = Ume()
+            ume = UME()
 
             # Create a sample batch with 2 views
             batch = {
@@ -179,7 +179,7 @@ class TestUme:
 
     def test_compute_weighted_loss(self):
         with patch("lobster.model._ume.FlexBERT", MagicMock()):
-            ume = Ume(contrastive_loss_weight=0.5)
+            ume = UME(contrastive_loss_weight=0.5)
 
             # Create sample losses
             mlm_loss = torch.tensor(2.0)
@@ -191,9 +191,9 @@ class TestUme:
             assert torch.allclose(total_loss, expected_loss)
 
     def test_embed_sequences_cpu(self):
-        """Test Ume's embed_sequences method without flash-attn on CPU."""
-        # Initialize Ume with a small model and flash-attn disabled
-        ume = Ume(
+        """Test UME's embed_sequences method without flash-attn on CPU."""
+        # Initialize UME with a small model and flash-attn disabled
+        ume = UME(
             model_name="UME_mini",
             max_length=10,
             use_flash_attn=False,  # Disable flash-attn
@@ -222,7 +222,7 @@ class TestUme:
             assert embeddings.shape[0] == len(sequences)
 
     def test_embed_sequences_gpu_flash_attn(self):
-        """Test Ume's embed_sequences method with and without flash-attn on GPU."""
+        """Test UME's embed_sequences method with and without flash-attn on GPU."""
         # Skip if not on GPU
         if not torch.cuda.is_available():
             pytest.skip("This test requires a GPU")
@@ -234,8 +234,8 @@ class TestUme:
             "nucleotide": ["ATGCATGC"],
         }
 
-        # Initialize Ume with flash-attn enabled
-        ume_flash = Ume(
+        # Initialize UME with flash-attn enabled
+        ume_flash = UME(
             model_name="UME_mini",
             max_length=10,
             use_flash_attn=True,
@@ -243,8 +243,8 @@ class TestUme:
         ume_flash = ume_flash.cuda()
         ume_flash.eval()
 
-        # Initialize Ume with flash-attn disabled
-        ume_no_flash = Ume(
+        # Initialize UME with flash-attn disabled
+        ume_no_flash = UME(
             model_name="UME_mini",
             max_length=10,
             use_flash_attn=False,
@@ -305,7 +305,7 @@ class TestUme:
         mock_model = MagicMock()
         mock_load_checkpoint.return_value = mock_model
 
-        result = Ume.from_pretrained("ume-mini-base-12M")
+        result = UME.from_pretrained("ume-mini-base-12M")
 
         mock_get_checkpoints.assert_called_once()
 
@@ -315,7 +315,7 @@ class TestUme:
             checkpoint_path="s3://bucket/ume-mini-base-12M.ckpt",
             local_directory="/current/working/dir/models/ume",
             local_filename="ume-mini-base-12M.ckpt",
-            load_func=Ume.load_from_checkpoint,
+            load_func=UME.load_from_checkpoint,
             device=None,
             use_flash_attn=None,
         )

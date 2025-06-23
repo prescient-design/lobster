@@ -1,4 +1,4 @@
-_target_: lobster.data.UmeLightningDataModule
+_target_: lobster.data.UMELightningDataModule
 tokenizer_max_length: ???
 
 

@@ -10,7 +10,7 @@ import tempfile
 
 import torch
 
-from lobster.model import Ume
+from lobster.model import UME
 
 
 def test_checkpoint_compatibility():
@@ -25,7 +25,7 @@ def test_checkpoint_compatibility():
     try:
         # Step 1: Create and save a model with flash attention enabled
         print("\n📦 Creating model with flash attention enabled...")
-        model_with_fa = Ume(
+        model_with_fa = UME(
             model_name="UME_mini",
             use_flash_attn=True,  # Flash attention enabled
             max_length=128,  # Smaller for testing
@@ -51,7 +51,7 @@ def test_checkpoint_compatibility():
 
         # Step 2: Load the checkpoint with flash attention disabled
         print("\n🔄 Loading checkpoint with flash attention disabled...")
-        model_without_fa = Ume.load_from_checkpoint(
+        model_without_fa = UME.load_from_checkpoint(
             temp_ckpt_path,
             model_name="UME_mini",
             use_flash_attn=False,  # Flash attention disabled!
@@ -121,7 +121,7 @@ def test_real_s3_checkpoint_cpu_inference():
 
         # Load the model with flash attention disabled and from S3 checkpoint
         # Use UME_small since we know that's the correct size for this checkpoint
-        model = Ume.load_from_checkpoint(
+        model = UME.load_from_checkpoint(
             s3_checkpoint_path,
             model_name="UME_small",  # This checkpoint is from UME_small
             use_flash_attn=False,  # Flash attention disabled for CPU inference

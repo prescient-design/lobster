@@ -1,6 +1,6 @@
-from lobster.model import Ume
+from lobster.model import UME
 
-ume = Ume().to("cuda")
+ume = UME().to("cuda")
 ume.eval()
 
 # Example protein sequences

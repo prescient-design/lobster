@@ -1,4 +1,4 @@
-"""Ume tokenizers for amino acids, SMILES, and nucleotides.
+"""UME tokenizers for amino acids, SMILES, and nucleotides.
 
 Creates tokenizers with shared special tokens and reserved tokens to make sure there are
 no overlapping tokens between different modalities.
@@ -16,17 +16,17 @@ To create the tokenizers, run
 ```python
     from lobster.tokenization._ume_tokenizers import (
         _make_ume_tokenizers,
-        UmeAminoAcidTokenizerFast,
-        UmeSmilesTokenizerFast,
-        UmeNucleotideTokenizerFast,
+        UMEAminoAcidTokenizerFast,
+        UMESmilesTokenizerFast,
+        UMENucleotideTokenizerFast,
     )
     # Create and save tokenizers
     _make_ume_tokenizers()
 
     tokenizers = [
-            UmeAminoAcidTokenizerFast(),
-            UmeSmilesTokenizerFast(),
-            UmeNucleotideTokenizerFast(),
+            UMEAminoAcidTokenizerFast(),
+            UMESmilesTokenizerFast(),
+            UMENucleotideTokenizerFast(),
     ]
 
     # Compute the total vocabulary size
@@ -337,7 +337,7 @@ def _make_ume_tokenizers() -> None:
     _make_nucleotide_tokenizer_fast(complete_vocabs[NUCLEOTIDE_TOKENIZER])
 
 
-class UmeAminoAcidTokenizerFast(PreTrainedTokenizerFast):
+class UMEAminoAcidTokenizerFast(PreTrainedTokenizerFast):
     padding_side = "right"
     truncation_side = "right"
     model_input_names = ["input_ids", "attention_mask"]
@@ -355,7 +355,7 @@ class UmeAminoAcidTokenizerFast(PreTrainedTokenizerFast):
         )
 
 
-class UmeSmilesTokenizerFast(PreTrainedTokenizerFast):
+class UMESmilesTokenizerFast(PreTrainedTokenizerFast):
     padding_side = "right"
     truncation_side = "right"
     model_input_names = ["input_ids", "attention_mask"]
@@ -373,7 +373,7 @@ class UmeSmilesTokenizerFast(PreTrainedTokenizerFast):
         )
 
 
-class UmeNucleotideTokenizerFast(PreTrainedTokenizerFast):
+class UMENucleotideTokenizerFast(PreTrainedTokenizerFast):
     padding_side = "right"
     truncation_side = "right"
     model_input_names = ["input_ids", "attention_mask"]
@@ -391,16 +391,16 @@ class UmeNucleotideTokenizerFast(PreTrainedTokenizerFast):
         )
 
 
-class UmeTokenizerTransform(Module):
+class UMETokenizerTransform(Module):
     """
-    Ume tokenizer transform for single modality inputs.
+    UME tokenizer transform for single modality inputs.
 
     Tokenizes inputs using the specified modality tokenizer
     with vocabulary that's aware of reserved tokens.
 
     Examples
     --------
-    >>> tokenizer = UmeTokenizerTransform(
+    >>> tokenizer = UMETokenizerTransform(
     ...     modality="amino_acid",
     ...     max_length=12,
     ...     return_modality=True,
@@ -438,7 +438,7 @@ class UmeTokenizerTransform(Module):
 
         if max_length is None:
             warnings.warn(
-                "UmeTokenizerTransform did not receive `max_length` parameter. Padding and truncation will not be applied.",
+                "UMETokenizerTransform did not receive `max_length` parameter. Padding and truncation will not be applied.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -455,11 +455,11 @@ class UmeTokenizerTransform(Module):
 
         match modality:
             case Modality.AMINO_ACID:
-                self.tokenizer = UmeAminoAcidTokenizerFast()
+                self.tokenizer = UMEAminoAcidTokenizerFast()
             case Modality.SMILES:
-                self.tokenizer = UmeSmilesTokenizerFast()
+                self.tokenizer = UMESmilesTokenizerFast()
             case Modality.NUCLEOTIDE:
-                self.tokenizer = UmeNucleotideTokenizerFast()
+                self.tokenizer = UMENucleotideTokenizerFast()
 
     def _encode(self, item: str | list[str]) -> dict[str, Tensor]:
         """Tokenize and encode input."""

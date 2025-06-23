@@ -19,8 +19,8 @@ from ._pmlm_tokenizer_transform import (
 )
 from ._smiles_tokenizer import SmilesTokenizerFast
 from ._ume_tokenizers import (
-    UmeAminoAcidTokenizerFast,
-    UmeNucleotideTokenizerFast,
-    UmeSmilesTokenizerFast,
-    UmeTokenizerTransform,
+    UMEAminoAcidTokenizerFast,
+    UMENucleotideTokenizerFast,
+    UMESmilesTokenizerFast,
+    UMETokenizerTransform,
 )
