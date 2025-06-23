@@ -525,9 +525,6 @@ class Ume(L.LightningModule):
         embeddings_a, embeddings_b = embeddings
         assert embeddings_a.shape == embeddings_b.shape
 
-        embeddings_a = torch.nn.functional.normalize(embeddings_a, dim=-1)
-        embeddings_b = torch.nn.functional.normalize(embeddings_b, dim=-1)
-
         loss = self.infonce_loss_fn(embeddings_a, embeddings_b)
 
         return loss
@@ -582,8 +579,14 @@ class Ume(L.LightningModule):
                 continue
 
             metric_name = f"{stage}_perplexity/{modality}"
+
+            if not hasattr(self, metric_name):
+                logger.warning(f"Metric {metric_name} not found in {self.__class__.__name__}. Skipping.")
+                continue
+
             metric = getattr(self, metric_name)
             metric(logits_reshaped[mask], labels_reshaped[mask])
+
             self.log(metric_name, metric, rank_zero_only=True, sync_dist=True)
 
     def _compute_weighted_loss(
