@@ -79,6 +79,10 @@ mcp = [
 eval = [
      "umap-learn>=0.5.7"
 ]
+trl = [
+    "trl",
+    "accelerate",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

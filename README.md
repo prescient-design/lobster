@@ -24,7 +24,9 @@ image credit: Amy Wang
 - [Install instructions](#install)
 - [Models](#main-models)
 - [Notebooks](#notebooks)
+- [MCP Server](#mcp-integration)
 - [Training and inference](#training)
+- [Reinforcement Learning with UME](#rl-training)
 - [Contributing](#contributing)
 </details>
 
@@ -160,7 +162,11 @@ uv sync --extra mcp
 uv run lobster_mcp_setup
 ```
 
-After setup, you can use Lobster models directly in Claude Desktop with natural language commands like:
+<!-- ### One-click install for Cursor -->
+<!-- TODO -->
+<!-- [![Add Lobster MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsIi0tZXh0cmEiLCJtY3AiLCJsb2JzdGVyX21jcF9zZXJ2ZXIiXX0=) -->
+
+After setup, you can use Lobster models directly in Cursor or Claude Desktop with natural language commands like:
 - "Get embeddings for this protein sequence using lobster_24M"
 - "What concepts are supported by the cb_lobster_24M model?"
 - "Intervene on this sequence to reduce hydrophobicity"
@@ -201,6 +207,28 @@ To train an MLM on a fasta file of sequences on an interactive GPU node, cd into
 ```bash
 lobster_train data.path_to_fasta="test_data/query.fasta" logger=csv paths.root_dir="."
 ```
+
+### Reinforcement Learning with UME Reward Functions <a name="rl-training"></a>
+
+Lobster supports reinforcement learning training using UME-based reward functions for post-training language models. This approach uses UME pseudo-likelihood scores as rewards to guide model behavior toward generating more biologically plausible sequences.
+
+**Quick Start:**
+```bash
+# Step 1: Generate synthetic dataset
+cd examples
+python generate_synthetic_dataset.py
+
+# Step 2: Run UME-based GRPO training
+python train_ume_grpo.py
+```
+
+**Key Features:**
+- **Automatic modality detection** for SMILES, amino acid, and DNA sequences
+- **UME-based reward functions** using pseudo-likelihood scores
+- **GRPO training** with TRL integration
+- **Modular design** with reusable components
+
+For detailed instructions and advanced usage, see the [RL Training Guide](docs/RL_TRAINING.md).
 
 ## Contributing <a name="contributing"></a>
 Contributions are welcome! We ask that all users and contributors remember that the LBSTER team are all full-time drug hunters, and our open-source efforts are a labor of love because we care deeply about open science and scientific progress.
