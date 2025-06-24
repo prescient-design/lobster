@@ -12,14 +12,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def get_class_manual(config):
-    """Manual implementation of hydra.utils.get_class to work around a bug."""
-    target = config._target_
-    module_name, class_name = target.rsplit('.', 1)
-    module = importlib.import_module(module_name)
-    return getattr(module, class_name)
-
-
 @hydra.main(config_path="../hydra_config", config_name="evaluate", version_base=None)
 def evaluate(cfg: DictConfig) -> None:
     """Run model evaluation with specified callbacks."""
