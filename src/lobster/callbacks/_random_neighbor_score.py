@@ -189,7 +189,7 @@ class RandomNeighborScoreCallback(Callback):
         # Create dataset with only the sequence column using the dataset's SEQUENCE_KEY
         biological_dataset = dataset_class(
             root=self.root,
-            download=True,
+            download=False,
             shuffle=False,
             limit=self.biological_dataset_limit,
             split=self.split,
