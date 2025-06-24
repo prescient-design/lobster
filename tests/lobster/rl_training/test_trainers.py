@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import pytest
 from datasets import Dataset
 
-from lobster.model import Ume
+from lobster.model import UME
 from lobster.rl_training.trainers import create_ume_grpo_trainer, train_ume_grpo
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class TestCreateUmeGrpoTrainer:
     @pytest.fixture
     def mock_ume_model(self):
         """Create a mock UME model."""
-        model = Mock(spec=Ume)
+        model = Mock(spec=UME)
         model.eval.return_value = None
         model.freeze.return_value = None
         return model
@@ -160,7 +160,7 @@ class TestTrainUmeGrpo:
     @pytest.fixture
     def mock_ume_model(self):
         """Create a mock UME model."""
-        model = Mock(spec=Ume)
+        model = Mock(spec=UME)
         model.eval.return_value = None
         model.freeze.return_value = None
         return model
@@ -170,7 +170,7 @@ class TestTrainUmeGrpo:
         """Create a mock training dataset."""
         return Mock(spec=Dataset)
 
-    @patch("lobster.rl_training.trainers.Ume.from_pretrained")
+    @patch("lobster.rl_training.trainers.UME.from_pretrained")
     @patch("lobster.rl_training.trainers.create_ume_grpo_trainer")
     def test_train_ume_grpo_basic(self, mock_create_trainer, mock_from_pretrained, mock_ume_model, mock_train_dataset):
         """Test basic training pipeline."""
@@ -212,7 +212,7 @@ class TestTrainUmeGrpo:
         # Verify result
         assert result == mock_trainer
 
-    @patch("lobster.rl_training.trainers.Ume.from_pretrained")
+    @patch("lobster.rl_training.trainers.UME.from_pretrained")
     @patch("lobster.rl_training.trainers.create_ume_grpo_trainer")
     def test_train_ume_grpo_with_eval_dataset(
         self, mock_create_trainer, mock_from_pretrained, mock_ume_model, mock_train_dataset

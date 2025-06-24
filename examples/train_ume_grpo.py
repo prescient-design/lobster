@@ -8,7 +8,6 @@ a language model using GRPO with UME-based rewards.
 
 import logging
 from datasets import load_from_disk
-from lobster.model import Ume
 from lobster.rl_training import train_ume_grpo
 
 # Set up logging

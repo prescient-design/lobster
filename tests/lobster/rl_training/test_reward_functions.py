@@ -10,8 +10,8 @@ import pytest
 import torch
 
 from lobster.constants import Modality
-from lobster.model import Ume
-from lobster.rl_training.reward_functions import UmeRewardFunction, compute_pseudo_likelihood, detect_modality
+from lobster.model import UME
+from lobster.rl_training.reward_functions import UMERewardFunction, compute_pseudo_likelihood, detect_modality
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +75,14 @@ class TestModalityDetection:
             assert detected.value == expected, f"Expected {expected}, got {detected.value} for {sequence}"
 
 
-class TestUmeRewardFunction:
+class TestUMERewardFunction:
     """Test the UME reward function."""
 
     @pytest.fixture
-    def mock_ume_model(self):
+    def mock_UME_model(self):
         """Create a comprehensive mock UME model for testing."""
         # Create mock model
-        mock_model = Mock(spec=Ume)
+        mock_model = Mock(spec=UME)
 
         # Mock the model's internal components
         mock_model.model = Mock()
@@ -142,26 +142,26 @@ class TestUmeRewardFunction:
 
         return mock_model
 
-    def test_reward_function_initialization(self, mock_ume_model):
+    def test_reward_function_initialization(self, mock_UME_model):
         """Test that the reward function can be initialized."""
-        reward_func = UmeRewardFunction(mock_ume_model, temperature=0.1, batch_size=4)
-        assert reward_func.ume_model == mock_ume_model
+        reward_func = UMERewardFunction(mock_UME_model, temperature=0.1, batch_size=4)
+        assert reward_func.UME_model == mock_UME_model
         assert reward_func.temperature == 0.1
         assert reward_func.batch_size == 4
 
         # Verify that the model was put in eval mode and frozen
-        mock_ume_model.eval.assert_called_once()
-        mock_ume_model.freeze.assert_called_once()
+        mock_UME_model.eval.assert_called_once()
+        mock_UME_model.freeze.assert_called_once()
 
-    def test_empty_completions(self, mock_ume_model):
+    def test_empty_completions(self, mock_UME_model):
         """Test reward function with empty completions."""
-        reward_func = UmeRewardFunction(mock_ume_model)
+        reward_func = UMERewardFunction(mock_UME_model)
         rewards = reward_func([])
         assert rewards == []
 
-    def test_single_completion(self, mock_ume_model):
+    def test_single_completion(self, mock_UME_model):
         """Test reward function with a single completion."""
-        reward_func = UmeRewardFunction(mock_ume_model)
+        reward_func = UMERewardFunction(mock_UME_model)
         completions = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]  # Ibuprofen
         rewards = reward_func(completions)
 
@@ -171,9 +171,9 @@ class TestUmeRewardFunction:
         assert not (rewards[0] != rewards[0])  # Not NaN
         assert rewards[0] != float("inf")  # Not inf
 
-    def test_multiple_completions(self, mock_ume_model):
+    def test_multiple_completions(self, mock_UME_model):
         """Test reward function with multiple completions."""
-        reward_func = UmeRewardFunction(mock_ume_model)
+        reward_func = UMERewardFunction(mock_UME_model)
         completions = [
             "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",  # Ibuprofen (SMILES)
             "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG",  # Amino acid
@@ -186,10 +186,10 @@ class TestUmeRewardFunction:
         assert all(not (r != r) for r in rewards)  # No NaN values
         assert all(r != float("inf") for r in rewards)  # No inf values
 
-    def test_temperature_scaling(self, mock_ume_model):
+    def test_temperature_scaling(self, mock_UME_model):
         """Test that temperature scaling affects rewards."""
-        reward_func_low = UmeRewardFunction(mock_ume_model, temperature=0.1)
-        reward_func_high = UmeRewardFunction(mock_ume_model, temperature=1.0)
+        reward_func_low = UMERewardFunction(mock_UME_model, temperature=0.1)
+        reward_func_high = UMERewardFunction(mock_UME_model, temperature=1.0)
 
         completions = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]
 
@@ -204,10 +204,10 @@ class TestComputePseudoLikelihood:
     """Test the pseudo-likelihood computation function."""
 
     @pytest.fixture
-    def mock_ume_model(self):
+    def mock_UME_model(self):
         """Create a comprehensive mock UME model for testing."""
         # Create mock model
-        mock_model = Mock(spec=Ume)
+        mock_model = Mock(spec=UME)
 
         # Mock the model's internal components
         mock_model.model = Mock()
@@ -267,19 +267,19 @@ class TestComputePseudoLikelihood:
 
         return mock_model
 
-    def test_empty_sequences(self, mock_ume_model):
+    def test_empty_sequences(self, mock_UME_model):
         """Test with empty sequences."""
         sequences = []
-        likelihoods = compute_pseudo_likelihood(mock_ume_model, sequences, Modality.SMILES)
+        likelihoods = compute_pseudo_likelihood(mock_UME_model, sequences, Modality.SMILES)
         assert likelihoods == []
 
-    def test_single_sequence(self, mock_ume_model):
+    def test_single_sequence(self, mock_UME_model):
         """Test with a single sequence."""
         sequences = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]
 
         # Add debugging to see what's happening
         try:
-            likelihoods = compute_pseudo_likelihood(mock_ume_model, sequences, Modality.SMILES)
+            likelihoods = compute_pseudo_likelihood(mock_UME_model, sequences, Modality.SMILES)
             print(f"Debug: likelihoods = {likelihoods}")
             print(f"Debug: len(likelihoods) = {len(likelihoods)}")
             print(f"Debug: type(likelihoods) = {type(likelihoods)}")
@@ -296,13 +296,13 @@ class TestComputePseudoLikelihood:
         assert isinstance(likelihoods[0], (float, np.floating))  # Allow numpy types
         assert not (likelihoods[0] != likelihoods[0])  # Not NaN
 
-    def test_multiple_sequences(self, mock_ume_model):
+    def test_multiple_sequences(self, mock_UME_model):
         """Test with multiple sequences."""
         sequences = [
             "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
             "CC(=O)OC1=CC=CC=C1C(=O)O",
         ]
-        likelihoods = compute_pseudo_likelihood(mock_ume_model, sequences, Modality.SMILES)
+        likelihoods = compute_pseudo_likelihood(mock_UME_model, sequences, Modality.SMILES)
 
         assert len(likelihoods) == 2
         assert all(isinstance(l, (float, np.floating)) for l in likelihoods)  # Allow numpy types
