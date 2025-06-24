@@ -7,9 +7,9 @@ except PackageNotFoundError:
     __version__ = None
 
 # Define modules that are part of the public API
-__all__ = ["callbacks", "cmdline", "data", "evaluation", "hydra_config", "model"]
+__all__ = ["callbacks", "cmdline", "data", "evaluation", "hydra_config", "model", "rl_training"]
 
 # Import submodules to make them available through the package
-from . import callbacks, cmdline, data, evaluation, hydra_config, model
+from . import callbacks, cmdline, data, evaluation, hydra_config, model, rl_training
 
 # from . import cmdline, data, hydra_config, model, utils

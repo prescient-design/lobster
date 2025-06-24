@@ -66,7 +66,7 @@ def setup_claude_desktop():
         "mcpServers": {
             "lobster-inference": {
                 "command": uv_path,
-                "args": ["run", "--project", lobster_path, "--extra", "mcp", "lobster_mcp_server"],
+                "args": ["run", "--project", str(lobster_path), "--extra", "mcp", "lobster_mcp_server"],
             }
         }
     }
@@ -111,7 +111,7 @@ def setup_cursor():
         "mcpServers": {
             "lobster-inference": {
                 "command": uv_path,
-                "args": ["run", "--project", lobster_path, "--extra", "mcp", "lobster_mcp_server"],
+                "args": ["run", "--project", str(lobster_path), "--extra", "mcp", "lobster_mcp_server"],
             }
         }
     }
