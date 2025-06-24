@@ -1,5 +1,4 @@
 import logging
-import importlib
 
 import hydra
 import hydra.utils
@@ -27,7 +26,7 @@ def evaluate(cfg: DictConfig) -> None:
         logger.info(f"✓ Loading model from checkpoint: {cfg.model.ckpt_path}")
         model_cls = hydra.utils.get_class(cfg.model._target_)
         model = model_cls.load_from_checkpoint(cfg.model.ckpt_path)
-        logger.info(f"✓ Successfully loaded model from checkpoint")
+        logger.info("✓ Successfully loaded model from checkpoint")
     else:
         logger.info("⚠️  No checkpoint path found, instantiating fresh model")
         model = hydra.utils.instantiate(cfg.model)
