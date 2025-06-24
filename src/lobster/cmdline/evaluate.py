@@ -1,4 +1,5 @@
 import logging
+import importlib
 
 import hydra
 import hydra.utils
@@ -9,6 +10,14 @@ from lobster.evaluation import evaluate_model_with_callbacks
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def get_class_manual(config):
+    """Manual implementation of hydra.utils.get_class to work around a bug."""
+    target = config._target_
+    module_name, class_name = target.rsplit('.', 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
 
 
 @hydra.main(config_path="../hydra_config", config_name="evaluate", version_base=None)
@@ -22,11 +31,15 @@ def evaluate(cfg: DictConfig) -> None:
     callbacks = [hydra.utils.instantiate(callback) for callback in cfg.callbacks]
 
     logger.info("Instantiating model...")
-    if hasattr(cfg, "ckpt_path") and cfg.ckpt_path is not None:
-        model_cls = hydra.utils.get_class(cfg.model)
-        model = model_cls.load_from_checkpoint(cfg.ckpt_path)
+    if hasattr(cfg.model, "ckpt_path") and cfg.model.ckpt_path is not None:
+        logger.info(f"✓ Loading model from checkpoint: {cfg.model.ckpt_path}")
+        model_cls = hydra.utils.get_class(cfg.model._target_)
+        model = model_cls.load_from_checkpoint(cfg.model.ckpt_path)
+        logger.info(f"✓ Successfully loaded model from checkpoint")
     else:
+        logger.info("⚠️  No checkpoint path found, instantiating fresh model")
         model = hydra.utils.instantiate(cfg.model)
+        logger.info("⚠️  Using randomly initialized model weights")
 
     model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
