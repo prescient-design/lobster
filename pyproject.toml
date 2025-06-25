@@ -127,6 +127,7 @@ ignore = [
     "E741",  # ambiguous-variable-name
     "E902",  # file not found error
     "UP038",  # Use X | Y in isinstance call instead of (X, Y)
+    "I001",  # Import block is un-sorted or un-formatted
 ]
 
 [tool.ruff.lint.per-file-ignores]

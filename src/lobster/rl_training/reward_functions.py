@@ -157,32 +157,12 @@ class UMERewardFunction:
                     )
 
         # Update statistics
-        self._update_statistics(rewards, modalities)
-
-        # Log to wandb if enabled
-        if self.enable_wandb_logging and wandb.run is not None:
-            try:
-                self._log_to_wandb(rewards, modalities, sample_examples)
-            except Exception as e:
-                logger.warning(f"Failed to log to wandb: {e}")
-                # Continue without wandb logging
-
-        logger.info(
-            f"Computed rewards: min={min(rewards):.3f}, max={max(rewards):.3f}, mean={sum(rewards) / len(rewards):.3f}"
-        )
-        return rewards
-
-    def _update_statistics(self, rewards: list[float], modalities: list[str]) -> None:
-        """Update internal statistics for logging."""
-        if not rewards:
-            return
-
-        # Update global statistics
-        self.total_completions_processed += len(rewards)
-        self.reward_statistics["min"] = min(self.reward_statistics["min"], min(rewards))
-        self.reward_statistics["max"] = max(self.reward_statistics["max"], max(rewards))
-        self.reward_statistics["sum"] += sum(rewards)
-        self.reward_statistics["count"] += len(rewards)
+        self.total_completions_processed += len(completions)
+        for reward in rewards:
+            self.reward_statistics["min"] = min(self.reward_statistics["min"], reward)
+            self.reward_statistics["max"] = max(self.reward_statistics["max"], reward)
+            self.reward_statistics["sum"] += reward
+            self.reward_statistics["count"] += 1
 
         # Update modality counts
         for modality in modalities:
@@ -190,52 +170,65 @@ class UMERewardFunction:
                 self.reward_statistics["modality_counts"][modality] = 0
             self.reward_statistics["modality_counts"][modality] += 1
 
-    def _log_to_wandb(self, rewards: list[float], modalities: list[str], sample_examples: list[dict]) -> None:
-        """Log detailed metrics to wandb."""
-        if not rewards:
-            return
+        # Log to wandb if enabled
+        if self.enable_wandb_logging and sample_examples:
+            self._log_to_wandb(sample_examples, rewards, modalities)
 
-        # Basic reward statistics
-        metrics = {
-            "reward/mean": sum(rewards) / len(rewards),
-            "reward/min": min(rewards),
-            "reward/max": max(rewards),
-            "reward/std": torch.std(torch.tensor(rewards)).item(),
-            "reward/count": len(rewards),
-            "reward/total_processed": self.total_completions_processed,
-        }
+        logger.info(f"Computed rewards for {len(completions)} completions")
+        return rewards
 
-        # Modality breakdown
-        modality_rewards = {}
-        for reward, modality in zip(rewards, modalities):
-            if modality not in modality_rewards:
-                modality_rewards[modality] = []
-            modality_rewards[modality].append(reward)
-
-        for modality, modality_reward_list in modality_rewards.items():
-            if modality_reward_list:
-                metrics.update(
+    def _log_to_wandb(self, sample_examples: list[dict], rewards: list[float], modalities: list[str]) -> None:
+        """Log sample examples and statistics to wandb."""
+        try:
+            # Log sample examples
+            if sample_examples:
+                wandb.log(
                     {
-                        f"reward/modality_{modality}/mean": sum(modality_reward_list) / len(modality_reward_list),
-                        f"reward/modality_{modality}/min": min(modality_reward_list),
-                        f"reward/modality_{modality}/max": max(modality_reward_list),
-                        f"reward/modality_{modality}/count": len(modality_reward_list),
+                        "sample_examples": wandb.Table(
+                            dataframe=wandb.Table.from_list(
+                                ["completion", "reward", "modality", "length"],
+                                [
+                                    [ex["completion"], ex["reward"], ex["modality"], ex["length"]]
+                                    for ex in sample_examples
+                                ],
+                            )
+                        )
                     }
                 )
 
-        # Log metrics
-        wandb.log(metrics)
+            # Log reward statistics
+            if rewards:
+                wandb.log(
+                    {
+                        "reward_statistics/mean": sum(rewards) / len(rewards),
+                        "reward_statistics/min": min(rewards),
+                        "reward_statistics/max": max(rewards),
+                        "reward_statistics/std": torch.std(torch.tensor(rewards)).item(),
+                        "reward_statistics/count": len(rewards),
+                    }
+                )
 
-        # Log sample examples as table
-        if sample_examples:
-            table = wandb.Table(
-                columns=["completion", "reward", "modality", "length"],
-                data=[[ex["completion"], ex["reward"], ex["modality"], ex["length"]] for ex in sample_examples],
-            )
-            wandb.log({"reward/sample_examples": table})
+            # Log modality breakdown
+            modality_counts = {}
+            for modality in modalities:
+                if modality not in modality_counts:
+                    modality_counts[modality] = 0
+                modality_counts[modality] += 1
 
-        # Log reward histogram
-        wandb.log({"reward/histogram": wandb.Histogram(rewards, num_bins=20)})
+            for modality, count in modality_counts.items():
+                wandb.log({f"modality_counts/{modality}": count})
+
+        except Exception as e:
+            logger.warning(f"Failed to log to wandb: {e}")
+
+    def get_statistics(self) -> dict:
+        """Get current reward statistics."""
+        stats = self.reward_statistics.copy()
+        if stats["count"] > 0:
+            stats["mean"] = stats["sum"] / stats["count"]
+        else:
+            stats["mean"] = 0.0
+        return stats
 
 
 def create_ume_reward_wrapper(
