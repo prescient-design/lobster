@@ -185,7 +185,7 @@ def compute_pseudo_likelihood(ume_model: UME, sequences: list[str], modality: Mo
             return [0.0] * len(sequences)
 
 
-class UmeRewardFunction:
+class UMERewardFunction:
     """
     Reward function that uses UME to reward completions that are high likelihood.
 
@@ -300,7 +300,7 @@ def create_ume_reward_wrapper(ume_model: UME, temperature: float = 0.1, batch_si
     callable
         A reward function with signature (completions, **kwargs) -> List[float]
     """
-    reward_function = UmeRewardFunction(ume_model, temperature, batch_size)
+    reward_function = UMERewardFunction(ume_model, temperature, batch_size)
 
     def reward_wrapper(completions, **kwargs):
         return reward_function(completions, **kwargs)

@@ -145,7 +145,7 @@ class TestUMERewardFunction:
     def test_reward_function_initialization(self, mock_UME_model):
         """Test that the reward function can be initialized."""
         reward_func = UMERewardFunction(mock_UME_model, temperature=0.1, batch_size=4)
-        assert reward_func.UME_model == mock_UME_model
+        assert reward_func.ume_model == mock_UME_model
         assert reward_func.temperature == 0.1
         assert reward_func.batch_size == 4
 
