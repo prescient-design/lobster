@@ -35,6 +35,7 @@ class TestCreateUmeGrpoTrainer:
         """Create a mock evaluation dataset."""
         return Mock(spec=Dataset)
 
+    @patch("lobster.rl_training.trainers.wandb")
     @patch("lobster.rl_training.trainers.create_ume_reward_wrapper")
     @patch("lobster.rl_training.trainers.GRPOConfig")
     @patch("lobster.rl_training.trainers.GRPOTrainer")
@@ -43,12 +44,14 @@ class TestCreateUmeGrpoTrainer:
         mock_trainer_class,
         mock_config_class,
         mock_reward_wrapper,
+        mock_wandb,
         mock_ume_model,
         mock_train_dataset,
         mock_eval_dataset,
     ):
         """Test basic trainer creation."""
         # Setup mocks
+        mock_wandb.run = None  # Simulate no active wandb session
         mock_reward_func = Mock()
         mock_reward_wrapper.return_value = mock_reward_func
         mock_config = Mock()
@@ -86,14 +89,16 @@ class TestCreateUmeGrpoTrainer:
 
         assert trainer == mock_trainer
 
+    @patch("lobster.rl_training.trainers.wandb")
     @patch("lobster.rl_training.trainers.create_ume_reward_wrapper")
     @patch("lobster.rl_training.trainers.GRPOConfig")
     @patch("lobster.rl_training.trainers.GRPOTrainer")
     def test_create_trainer_without_eval_dataset(
-        self, mock_trainer_class, mock_config_class, mock_reward_wrapper, mock_ume_model, mock_train_dataset
+        self, mock_trainer_class, mock_config_class, mock_reward_wrapper, mock_wandb, mock_ume_model, mock_train_dataset
     ):
         """Test trainer creation without evaluation dataset."""
         # Setup mocks
+        mock_wandb.run = None  # Simulate no active wandb session
         mock_reward_func = Mock()
         mock_reward_wrapper.return_value = mock_reward_func
         mock_config = Mock()
@@ -120,14 +125,16 @@ class TestCreateUmeGrpoTrainer:
 
         assert trainer == mock_trainer
 
+    @patch("lobster.rl_training.trainers.wandb")
     @patch("lobster.rl_training.trainers.create_ume_reward_wrapper")
     @patch("lobster.rl_training.trainers.GRPOConfig")
     @patch("lobster.rl_training.trainers.GRPOTrainer")
     def test_create_trainer_with_additional_kwargs(
-        self, mock_trainer_class, mock_config_class, mock_reward_wrapper, mock_ume_model, mock_train_dataset
+        self, mock_trainer_class, mock_config_class, mock_reward_wrapper, mock_wandb, mock_ume_model, mock_train_dataset
     ):
         """Test trainer creation with additional GRPO kwargs."""
         # Setup mocks
+        mock_wandb.run = None  # Simulate no active wandb session
         mock_reward_func = Mock()
         mock_reward_wrapper.return_value = mock_reward_func
         mock_config = Mock()

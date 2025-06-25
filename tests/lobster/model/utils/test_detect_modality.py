@@ -53,7 +53,7 @@ class TestModalityDetection:
             ("A", r"Sequence too short \(length 1\)\. Minimum length required is 3 characters\."),
             ("AT", r"Sequence too short \(length 2\)\. Minimum length required is 3 characters\."),
             ("invalid sequence", r"Unable to determine modality for sequence: INVALID SEQUENCE"),
-            ("12345", r"Unable to determine modality for sequence: 12345"),
+            ("12345", r"Sequence appears to be SMILES but failed validation: 12345"),
         ]
 
         for sequence, expected_error in error_cases:

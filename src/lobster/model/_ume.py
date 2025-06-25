@@ -473,7 +473,11 @@ class UME(L.LightningModule):
         attention_mask = encoded_batch["attention_mask"]
 
         # Move tensors to the same device as the model
-        device = next(self.parameters()).device
+        try:
+            device = next(self.parameters()).device
+        except StopIteration:
+            # Fallback for testing or when model has no parameters
+            device = getattr(self.model, "device", torch.device("cpu"))
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
 
