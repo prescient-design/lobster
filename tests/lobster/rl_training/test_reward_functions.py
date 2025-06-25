@@ -277,20 +277,7 @@ class TestComputePseudoLikelihood:
         """Test with a single sequence."""
         sequences = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]
 
-        # Add debugging to see what's happening
-        try:
-            likelihoods = compute_pseudo_likelihood(mock_UME_model, sequences, Modality.SMILES)
-            print(f"Debug: likelihoods = {likelihoods}")
-            print(f"Debug: len(likelihoods) = {len(likelihoods)}")
-            print(f"Debug: type(likelihoods) = {type(likelihoods)}")
-            print(f"Debug: type(likelihoods[0]) = {type(likelihoods[0])}")
-        except Exception as e:
-            print(f"Debug: Exception occurred: {e}")
-            import traceback
-
-            print(f"Debug: Traceback: {traceback.format_exc()}")
-            raise
-
+        likelihoods = compute_pseudo_likelihood(mock_UME_model, sequences, Modality.SMILES)
         assert len(likelihoods) == 1
         # Check for both Python float and numpy float types
         assert isinstance(likelihoods[0], (float, np.floating))  # Allow numpy types
