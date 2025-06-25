@@ -174,7 +174,7 @@ def compute_pseudo_likelihood(ume_model: UME, sequences: list[str], modality: Mo
                         valid_idx += 1
                 return result
 
-            return pseudo_likelihoods.cpu().numpy()
+            return pseudo_likelihoods.cpu().numpy().tolist()
 
         except Exception as e:
             logger.error(f"Error computing pseudo-likelihood: {e}")
