@@ -24,11 +24,11 @@ def find_qwen_model_in_cache():
         raise ValueError("HF_HUB_CACHE environment variable is not set")
     
     # Look for Qwen models in the cache
-    qwen_pattern = os.path.join(HF_CACHE, "models--Qwen--*")
+    qwen_pattern = os.path.join(HF_CACHE, "models--Qwen--Qwen3-*")
     qwen_dirs = glob.glob(qwen_pattern)
     
     if not qwen_dirs:
-        raise FileNotFoundError(f"No Qwen models found in {HF_CACHE}")
+        raise FileNotFoundError(f"No Qwen3 models found in {HF_CACHE}")
     
     # Get the most recent snapshot for the first Qwen model found
     model_dir = qwen_dirs[0]
@@ -43,7 +43,7 @@ def find_qwen_model_in_cache():
     
     # Use the first snapshot (you could sort by modification time if needed)
     snapshot_path = os.path.join(snapshots_dir, snapshots[0])
-    logger.info(f"Found Qwen model: {snapshot_path}")
+    logger.info(f"Found Qwen3 model: {snapshot_path}")
     return snapshot_path
 
 

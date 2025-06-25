@@ -3,6 +3,8 @@
 Script to generate a synthetic dataset of molecular and biological sequences.
 Generates 100 SMILES strings, 100 amino acid strings, and 100 DNA strings.
 Saves as a HuggingFace dataset with train/val/test split of 0.9/0.05/0.05.
+
+The completions aren't actually used for training with GRPO.
 """
 
 import random
@@ -85,11 +87,10 @@ def generate_random_dna_sequence(length_range: tuple[int, int] = (50, 200)) -> s
 def generate_smiles_prompts() -> List[str]:
     """Generate prompts for SMILES string generation."""
     prompts = [
-        "Generate a valid SMILES string representing a small organic molecule:",
-        "Create a SMILES string for a drug-like compound:",
-        "Generate a SMILES representation of a chemical structure:",
-        "Create a valid SMILES string for a pharmaceutical compound:",
-        "Generate a SMILES string representing a bioactive molecule:",
+        "Generate a valid SMILES string representing a small organic molecule. \
+            The molecule should be at least 10 characters long. You MUST only use the following atoms: \
+            C, H, O, N, P, S, F, Cl, Br, I. You MUST produce valid SMILES strings. \
+                Generate only one SMILES string and nothing else.",
     ]
     return [random.choice(prompts) for _ in range(100)]
 
@@ -97,11 +98,10 @@ def generate_smiles_prompts() -> List[str]:
 def generate_amino_acid_prompts() -> List[str]:
     """Generate prompts for amino acid sequence generation."""
     prompts = [
-        "Generate a valid amino acid sequence using one-letter codes:",
-        "Create a protein sequence with standard amino acids:",
-        "Generate an amino acid sequence for a peptide:",
-        "Create a protein sequence using one-letter amino acid codes:",
-        "Generate a valid amino acid sequence for a biological peptide:",
+        "Generate a valid amino acid sequence using one-letter codes. \
+            The sequence should be at least 10 characters long. You MUST only use the following amino acids: \
+            A, C, D, E, F, G, H, I, K, L, M, N, P, Q, R, S, T, V, W, Y. There must be no other characters in the sequence. \
+                Generate only one amino acid sequence and nothing else.",
     ]
     return [random.choice(prompts) for _ in range(100)]
 
@@ -109,11 +109,9 @@ def generate_amino_acid_prompts() -> List[str]:
 def generate_dna_prompts() -> List[str]:
     """Generate prompts for DNA sequence generation."""
     prompts = [
-        "Generate a valid DNA sequence using A, T, G, C:",
-        "Create a DNA sequence for a gene fragment:",
-        "Generate a DNA sequence using standard nucleotides:",
-        "Create a DNA sequence for a genetic region:",
-        "Generate a valid DNA sequence for a biological sequence:",
+        "Generate a valid DNA sequence using A, T, G, C. The sequence should be at least 20 characters long. \
+            You MUST only use the following nucleotides: A, T, G, C. There must be no other characters in the sequence. \
+                Generate only one DNA sequence and nothing else.",
     ]
     return [random.choice(prompts) for _ in range(100)]
 

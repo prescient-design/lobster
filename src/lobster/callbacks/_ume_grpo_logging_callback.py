@@ -67,6 +67,8 @@ class UmeGrpoLoggingCallback(TrainerCallback):
         self.recent_samples = []
         self.recent_rewards = []
         self.recent_modalities = []
+        # Add persistent wandb.Table for sample examples
+        self.sample_examples_table = None
 
     def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs) -> None:
         """Initialize wandb logging at the start of training."""
@@ -91,6 +93,9 @@ class UmeGrpoLoggingCallback(TrainerCallback):
         except Exception as e:
             logger.warning(f"Failed to update wandb config: {e}")
             # Continue without config update
+        # Initialize the persistent sample examples table
+        if self.log_sample_examples and self._is_wandb_available():
+            self.sample_examples_table = wandb.Table(columns=["step", "sample", "reward", "modality", "length"])
 
     def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs) -> None:
         """Log training samples and rewards after each step."""
@@ -146,6 +151,10 @@ class UmeGrpoLoggingCallback(TrainerCallback):
             }
 
             wandb.log(final_metrics, step=state.global_step)
+
+        # Log the final sample examples table
+        if self.log_sample_examples and self.sample_examples_table is not None and self._is_wandb_available():
+            wandb.log({"train/sample_examples": self.sample_examples_table}, step=state.global_step)
 
     def _is_wandb_available(self) -> bool:
         """Check if wandb is available and initialized."""
@@ -206,39 +215,22 @@ class UmeGrpoLoggingCallback(TrainerCallback):
     def _log_sample_examples(
         self, state: TrainerState, samples: list[str], rewards: list[float], modalities: list[str]
     ) -> None:
-        """Log sample examples to wandb."""
-        if not samples or not rewards:
+        """Log sample examples to wandb as a persistent table with step column."""
+        if not samples or not rewards or self.sample_examples_table is None:
             return
 
-        # Sample a subset of examples to log
         n_samples = min(self.max_samples_to_log, len(samples))
         indices = random.sample(range(len(samples)), n_samples)
 
-        examples = []
         for idx in indices:
             sample = samples[idx]
             reward = rewards[idx]
             modality = modalities[idx] if idx < len(modalities) else "unknown"
-
-            # Truncate long samples for display
             display_sample = sample[:200] + "..." if len(sample) > 200 else sample
+            self.sample_examples_table.add_data(state.global_step, display_sample, reward, modality, len(sample))
 
-            examples.append(
-                {
-                    "sample": display_sample,
-                    "reward": reward,
-                    "modality": modality,
-                    "length": len(sample),
-                }
-            )
-
-        # Create wandb table
-        table = wandb.Table(
-            columns=["sample", "reward", "modality", "length"],
-            data=[[ex["sample"], ex["reward"], ex["modality"], ex["length"]] for ex in examples],
-        )
-
-        wandb.log({"train/sample_examples": table}, step=state.global_step)
+        # Log the table at each step so it is updated in wandb
+        wandb.log({"train/sample_examples": self.sample_examples_table}, step=state.global_step)
 
     def _log_reward_histogram(self, state: TrainerState, rewards: list[float]) -> None:
         """Log reward histogram to wandb."""
