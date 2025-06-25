@@ -76,9 +76,9 @@ mcp = [
     "python-Levenshtein>=0.20.0",
     "pydantic>=2.0.0",
 ]
-eval = [
-     "umap-learn>=0.5.7"
-]
+# eval = [
+#      "umap-learn<=0.5.6"
+# ]
 trl = [
     "trl",
     "accelerate",
