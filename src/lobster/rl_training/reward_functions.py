@@ -11,7 +11,7 @@ import re
 import torch
 
 from lobster.constants import Modality
-from lobster.model import Ume
+from lobster.model import UME
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +55,13 @@ def detect_modality(text: str) -> Modality:
     return Modality.SMILES
 
 
-def compute_pseudo_likelihood(ume_model: Ume, sequences: list[str], modality: Modality) -> list[float]:
+def compute_pseudo_likelihood(ume_model: UME, sequences: list[str], modality: Modality) -> list[float]:
     """
     Compute pseudo-likelihood for a batch of sequences.
 
     Parameters:
     -----------
-    ume_model : Ume
+    ume_model : UME
         The UME model to use for likelihood computation
     sequences : List[str]
         List of sequences to evaluate
@@ -194,13 +194,13 @@ class UmeRewardFunction:
     to a UME model.
     """
 
-    def __init__(self, ume_model: Ume, temperature: float = 0.1, batch_size: int = 8):
+    def __init__(self, ume_model: UME, temperature: float = 0.1, batch_size: int = 8):
         """
         Initialize the UME reward function.
 
         Parameters:
         -----------
-        ume_model : Ume
+        ume_model : UME
             The UME model to use for reward computation
         temperature : float, optional
             Temperature scaling for rewards (lower = more extreme rewards), default 0.1
@@ -279,7 +279,7 @@ class UmeRewardFunction:
         return rewards
 
 
-def create_ume_reward_wrapper(ume_model: Ume, temperature: float = 0.1, batch_size: int = 8):
+def create_ume_reward_wrapper(ume_model: UME, temperature: float = 0.1, batch_size: int = 8):
     """
     Create a reward function wrapper that captures the ume_model.
 
@@ -288,7 +288,7 @@ def create_ume_reward_wrapper(ume_model: Ume, temperature: float = 0.1, batch_si
 
     Parameters:
     -----------
-    ume_model : Ume
+    ume_model : UME
         The UME model to use for reward computation
     temperature : float, optional
         Temperature scaling for rewards, default 0.1

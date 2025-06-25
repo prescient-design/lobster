@@ -10,7 +10,7 @@ import logging
 from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
 
-from lobster.model import Ume
+from lobster.model import UME
 
 from .reward_functions import create_ume_reward_wrapper
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def create_ume_grpo_trainer(
     model_path: str,
-    ume_model: Ume,
+    ume_model: UME,
     train_dataset: Dataset,
     eval_dataset: Dataset | None = None,
     output_dir: str = "./ume_grpo_runs",
@@ -34,7 +34,7 @@ def create_ume_grpo_trainer(
     -----------
     model_path : str
         Path to the base model (can be HuggingFace model name or local path)
-    ume_model : Ume
+    ume_model : UME
         The UME model to use for reward computation
     train_dataset : Dataset
         Training dataset
@@ -122,7 +122,7 @@ def train_ume_grpo(
     """
     # Load UME model
     logger.info(f"Loading UME model from {ume_model_path}")
-    ume_model = Ume.from_pretrained(ume_model_path, device=device)
+    ume_model = UME.from_pretrained(ume_model_path, device=device)
 
     # Create trainer
     trainer = create_ume_grpo_trainer(
