@@ -130,6 +130,7 @@ class UME(L.LightningModule):
         scheduler_kwargs: dict | None = None,
         use_flash_attn: bool = True,
         ckpt_path: str | None = None,
+        weight_decay: float = 0.0,
     ) -> None:
         """Initialize the Universal Molecular Encoder"""
         super().__init__()
@@ -196,6 +197,7 @@ class UME(L.LightningModule):
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
         self.use_flash_attn = use_flash_attn
+        self._weight_decay = weight_decay
         self._lr = lr
         self._beta1 = beta1
         self._beta2 = beta2
@@ -497,6 +499,7 @@ class UME(L.LightningModule):
             lr=self._lr,
             betas=(self._beta1, self._beta2),
             eps=self._eps,
+            weight_decay=self._weight_decay,
         )
 
         scheduler = transformers.get_scheduler(
