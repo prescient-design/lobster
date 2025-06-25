@@ -24,6 +24,116 @@ examples/
 
 ## Step-by-Step Training Process
 
+## Prerequisites
+
+Before starting the training process, ensure you have lobster installed with the TRL extra:
+
+```bash
+# Install lobster with all extras
+uv sync --all-extras
+
+# Or install lobster with TRL extra using pip
+pip install "lbster[trl]"
+
+# Or if installing from source
+pip install -e ".[trl]"
+
+# Alternative using uv (recommended for development)
+uv pip install -e ".[trl]"
+```
+
+The TRL extra includes:
+- `trl` - Transformer Reinforcement Learning library
+- `accelerate` - HuggingFace Accelerate for distributed training
+
+## Step 0: Download Qwen Model from Hugging Face Hub
+
+Before running the training, you need to download a Qwen model checkpoint. The training script will automatically find and use Qwen models from your Hugging Face cache.
+
+### Set up Hugging Face Cache Directory
+
+First, set the `HF_HUB_CACHE` environment variable to specify where models should be cached:
+
+```bash
+# Set cache directory (adjust path as needed)
+export HF_HUB_CACHE="/path/to/your/hf_cache"
+
+# Or add to your shell profile for persistence
+echo 'export HF_HUB_CACHE="/path/to/your/hf_cache"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Download Qwen Model
+
+Download a Qwen model using the Hugging Face Hub CLI or Python:
+
+```bash
+# Using huggingface-cli
+huggingface-cli download Qwen/Qwen2-0.5B-Instruct --local-dir-use-symlinks False
+
+# Or using Python
+python -c "
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id='Qwen/Qwen2-0.5B-Instruct',
+    local_dir_use_symlinks=False
+)
+"
+```
+
+### Alternative: Download via Python Script
+
+Create a simple download script:
+
+```python
+#!/usr/bin/env python3
+"""Download Qwen model for RL training."""
+
+import os
+from huggingface_hub import snapshot_download
+
+def download_qwen_model():
+    """Download Qwen model to HF_HUB_CACHE."""
+    # Ensure HF_HUB_CACHE is set
+    hf_cache = os.getenv('HF_HUB_CACHE')
+    if not hf_cache:
+        print("Warning: HF_HUB_CACHE not set. Using default cache location.")
+    
+    print("Downloading Qwen2-0.5B-Instruct model...")
+    snapshot_download(
+        repo_id='Qwen/Qwen2-0.5B-Instruct',
+        local_dir_use_symlinks=False,
+        cache_dir=hf_cache
+    )
+    print("Download completed!")
+
+if __name__ == "__main__":
+    download_qwen_model()
+```
+
+Save this as `download_qwen_model.py` and run:
+
+```bash
+python download_qwen_model.py
+```
+
+### Verify Model Download
+
+Check that the model was downloaded correctly:
+
+```bash
+# List contents of cache directory
+ls -la $HF_HUB_CACHE/models--Qwen--Qwen2-0.5B-Instruct/
+
+# Should show something like:
+# drwxr-xr-x 2 user user 4096 date snapshots/
+# -rw-r--r-- 1 user user  123 date config.json
+# -rw-r--r-- 1 user user  456 date README.md
+# ...
+```
+
+The training script will automatically find and use this downloaded model.
+
 ### Step 1: Generate Synthetic Dataset
 
 First, generate a synthetic dataset of molecular and biological sequences:
@@ -64,7 +174,7 @@ This script will:
 ### 1. Reward Functions (`reward_functions.py`)
 
 - **`UmeRewardFunction`**: Main reward function class that computes rewards based on UME pseudo-likelihood
-- **`detect_modality()`**: Automatically detects sequence modality (SMILES, amino acid, DNA)
+- **`_detect_modality()`**: Automatically detects sequence modality (SMILES, amino acid, DNA) - available from `lobster.model.utils`
 - **`compute_pseudo_likelihood()`**: Core function for computing likelihood scores
 - **`create_ume_reward_wrapper()`**: Creates TRL-compatible wrapper functions
 
@@ -134,12 +244,13 @@ trainer = create_ume_grpo_trainer(
 ### Testing Reward Functions
 
 ```python
-from lobster.rl_training import UmeRewardFunction, detect_modality
+from lobster.rl_training import UmeRewardFunction
+from lobster.model.utils import _detect_modality
 from lobster.model import Ume
 
 # Test modality detection
 sequence = "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"
-modality = detect_modality(sequence)  # Returns Modality.SMILES
+modality = _detect_modality(sequence)  # Returns Modality.SMILES
 
 # Test reward function
 ume_model = Ume.from_pretrained("ume-mini-base-12M", device="cuda")

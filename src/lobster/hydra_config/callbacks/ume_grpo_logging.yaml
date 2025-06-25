@@ -1,0 +1,16 @@
+_target_: lobster.callbacks.UmeGrpoLoggingCallback
+
+# Logging frequency
+log_every_n_steps: 100
+
+# Maximum number of sample examples to log per step
+max_samples_to_log: 10
+
+# Whether to log reward histograms
+log_reward_histogram: true
+
+# Whether to log individual sample examples
+log_sample_examples: true
+
+# Whether to log reward breakdown by modality
+log_modality_breakdown: true 

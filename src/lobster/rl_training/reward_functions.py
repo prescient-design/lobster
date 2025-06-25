@@ -6,183 +6,16 @@ like TRL, particularly reward functions based on UME models.
 """
 
 import logging
-import re
+import random
 
 import torch
 
+import wandb
 from lobster.constants import Modality
 from lobster.model import UME
+from lobster.model.utils import _detect_modality
 
 logger = logging.getLogger(__name__)
-
-
-def detect_modality(text: str) -> Modality:
-    """
-    Detect the modality of a sequence based on its content.
-
-    Parameters:
-    -----------
-    text : str
-        The text sequence to analyze
-
-    Returns:
-    --------
-    Modality
-        The detected modality (SMILES, AMINO_ACID, or NUCLEOTIDE)
-    """
-    text = text.strip().upper()
-
-    # Skip empty or very short sequences
-    if len(text) < 3:
-        return Modality.SMILES
-
-    # DNA patterns: contains only A, T, G, C (check this FIRST since it's more specific)
-    dna_pattern = re.compile(r"^[ATGC]+$")
-    if dna_pattern.match(text):
-        return Modality.NUCLEOTIDE
-
-    # Amino acid patterns: contains standard amino acid codes (but not just DNA bases)
-    aa_pattern = re.compile(r"^[ACDEFGHIKLMNPQRSTVWY]+$")
-    if aa_pattern.match(text):
-        return Modality.AMINO_ACID
-
-    # SMILES patterns: contains molecular symbols and structures
-    smiles_pattern = re.compile(r"[CNOSPFIHBrCl()\[\]=#@+\-\.\\\/]")
-    if smiles_pattern.search(text) and any(c in text for c in "()[]=#@"):
-        return Modality.SMILES
-
-    # Default to SMILES if uncertain
-    return Modality.SMILES
-
-
-def compute_pseudo_likelihood(ume_model: UME, sequences: list[str], modality: Modality) -> list[float]:
-    """
-    Compute pseudo-likelihood for a batch of sequences.
-
-    Parameters:
-    -----------
-    ume_model : UME
-        The UME model to use for likelihood computation
-    sequences : List[str]
-        List of sequences to evaluate
-    modality : Modality
-        The modality of the sequences
-
-    Returns:
-    --------
-    List[float]
-        List of pseudo-likelihood scores for each sequence
-    """
-    with torch.no_grad():
-        try:
-            # Filter out empty sequences
-            valid_sequences = [seq for seq in sequences if seq.strip()]
-            if not valid_sequences:
-                return [0.0] * len(sequences)
-
-            logger.debug(f"Processing {len(valid_sequences)} sequences for modality {modality.value}")
-
-            # Tokenize the sequences using the appropriate tokenizer
-            tokenizer_transform = ume_model.tokenizer_transforms[modality]
-            logger.debug(f"Using tokenizer transform: {type(tokenizer_transform)}")
-
-            encoded_batch = tokenizer_transform(valid_sequences)
-            logger.debug(f"Encoded batch keys: {list(encoded_batch.keys())}")
-
-            # Get input_ids and attention_mask
-            input_ids = encoded_batch["input_ids"]  # Shape: (batch_size, 1, seq_len) or (batch_size, seq_len)
-            attention_mask = encoded_batch["attention_mask"]  # Shape: (batch_size, 1, seq_len) or (batch_size, seq_len)
-
-            # Move tensors to the same device as the model
-            device = next(ume_model.parameters()).device
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)
-
-            # Debug: print shapes to understand the actual dimensions
-            logger.debug(f"input_ids shape: {input_ids.shape}")
-            logger.debug(f"attention_mask shape: {attention_mask.shape}")
-            logger.debug(f"Device: {device}")
-
-            # Handle different possible shapes
-            if input_ids.dim() == 3:
-                # Shape is (batch_size, 1, seq_len)
-                batch_size, _, seq_len = input_ids.shape
-                input_ids_3d = input_ids  # Already in correct format
-                attention_mask_3d = attention_mask
-            elif input_ids.dim() == 2:
-                # Shape is (batch_size, seq_len) - need to add middle dimension
-                batch_size, seq_len = input_ids.shape
-                input_ids_3d = input_ids.unsqueeze(1)  # Add middle dimension: (batch_size, 1, seq_len)
-                attention_mask_3d = attention_mask.unsqueeze(1)
-            else:
-                raise ValueError(f"Unexpected input_ids shape: {input_ids.shape}")
-
-            logger.debug(f"After shape handling - batch_size: {batch_size}, seq_len: {seq_len}")
-            logger.debug(f"input_ids_3d shape: {input_ids_3d.shape}")
-
-            # Prepare inputs for the model (similar to _compute_mlm_loss)
-            # _prepare_inputs expects (batch_size, 1, seq_len) format
-            input_ids_flat, attention_mask_flat, cu_seqlens = ume_model.model._prepare_inputs(
-                input_ids_3d, attention_mask_3d
-            )
-
-            logger.debug(f"After _prepare_inputs - input_ids_flat shape: {input_ids_flat.shape}")
-
-            # Get model outputs without masking (we want the full sequence)
-            hidden_states = ume_model.model.model(
-                input_ids=input_ids_flat,
-                attention_mask=attention_mask_flat,
-                cu_seqlens=cu_seqlens,
-                max_seqlen=ume_model.max_length,
-            )
-
-            logger.debug(f"Hidden states shape: {hidden_states.shape}")
-
-            # Get logits from decoder
-            logits = ume_model.model.decoder(hidden_states)
-            logits = logits.view(-1, ume_model.model.config.vocab_size)  # (batch_size * seq_len, vocab_size)
-
-            logger.debug(f"Logits shape: {logits.shape}")
-
-            # Reshape input_ids for probability computation
-            input_ids_reshaped = input_ids_flat.view(-1)  # (batch_size * seq_len)
-
-            # Convert to log probabilities
-            log_probs = torch.log_softmax(logits, dim=-1)
-            token_log_probs = log_probs[torch.arange(len(input_ids_reshaped)), input_ids_reshaped]
-
-            # Reshape back to (batch_size, seq_len)
-            token_log_probs = token_log_probs.view(batch_size, seq_len)
-
-            # Average over sequence length to get per-sequence pseudo-likelihood
-            # Exclude padding tokens (token_id == ume_model.model.pad_token_id)
-            mask = input_ids_3d[:, 0, :] != ume_model.model.pad_token_id
-            masked_log_probs = token_log_probs * mask.float()
-
-            # Compute average log probability per sequence
-            pseudo_likelihoods = masked_log_probs.sum(dim=1) / (mask.float().sum(dim=1) + 1e-8)
-
-            logger.debug(f"Computed pseudo-likelihoods: {pseudo_likelihoods.shape}")
-
-            # Handle case where some sequences were filtered out
-            if len(valid_sequences) < len(sequences):
-                result = [0.0] * len(sequences)
-                valid_idx = 0
-                for i, seq in enumerate(sequences):
-                    if seq.strip():
-                        result[i] = float(pseudo_likelihoods[valid_idx].cpu().numpy())
-                        valid_idx += 1
-                return result
-
-            return pseudo_likelihoods.cpu().numpy().tolist()
-
-        except Exception as e:
-            logger.error(f"Error computing pseudo-likelihood: {e}")
-            import traceback
-
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            # Return zero rewards for failed computations
-            return [0.0] * len(sequences)
 
 
 class UMERewardFunction:
@@ -194,7 +27,9 @@ class UMERewardFunction:
     to a UME model.
     """
 
-    def __init__(self, ume_model: UME, temperature: float = 0.1, batch_size: int = 8):
+    def __init__(
+        self, ume_model: UME, temperature: float = 0.1, batch_size: int = 8, enable_wandb_logging: bool = True
+    ):
         """
         Initialize the UME reward function.
 
@@ -206,14 +41,27 @@ class UMERewardFunction:
             Temperature scaling for rewards (lower = more extreme rewards), default 0.1
         batch_size : int, optional
             Batch size for processing sequences, default 8
+        enable_wandb_logging : bool, optional
+            Whether to enable detailed wandb logging, default True
         """
         self.ume_model = ume_model
         self.temperature = temperature
         self.batch_size = batch_size
+        self.enable_wandb_logging = enable_wandb_logging
 
         # Ensure model is in eval mode and frozen
         self.ume_model.eval()
         self.ume_model.freeze()
+
+        # Track statistics for logging
+        self.total_completions_processed = 0
+        self.reward_statistics = {
+            "min": float("inf"),
+            "max": float("-inf"),
+            "sum": 0.0,
+            "count": 0,
+            "modality_counts": {},
+        }
 
     def __call__(self, completions: list[str], **kwargs) -> list[float]:
         """
@@ -237,17 +85,30 @@ class UMERewardFunction:
         logger.info(f"Computing rewards for {len(completions)} completions")
 
         rewards = []
+        modalities = []
+        sample_examples = []
 
         # Process completions in batches for efficiency
         for i in range(0, len(completions), self.batch_size):
             batch_completions = completions[i : i + self.batch_size]
 
             # Detect modality for each completion in the batch
-            modalities = [detect_modality(comp) for comp in batch_completions]
+            batch_modalities = []
+            for comp in batch_completions:
+                try:
+                    modality = _detect_modality(comp)
+                    batch_modalities.append(modality)
+                except ValueError as e:
+                    logger.warning(
+                        f"Unable to determine modality for sequence '{comp[:50]}...': {e}. Assigning zero reward."
+                    )
+                    # For sequences where we can't determine modality, we'll assign a zero reward
+                    # and use a placeholder modality for grouping
+                    batch_modalities.append(Modality.SMILES)  # Use SMILES as placeholder
 
             # Group by modality for efficient processing
             modality_groups = {}
-            for j, (comp, modality) in enumerate(zip(batch_completions, modalities)):
+            for j, (comp, modality) in enumerate(zip(batch_completions, batch_modalities)):
                 if modality not in modality_groups:
                     modality_groups[modality] = []
                 modality_groups[modality].append((j, comp))
@@ -261,25 +122,125 @@ class UMERewardFunction:
 
                 logger.debug(f"Processing {len(sequences)} {modality.value} sequences")
 
-                # Compute pseudo-likelihoods for this modality group
-                likelihoods = compute_pseudo_likelihood(self.ume_model, sequences, modality)
+                # Compute pseudo-likelihoods for this modality group using the UME model method
+                try:
+                    likelihoods = self.ume_model.compute_pseudo_likelihood(sequences, modality)
 
-                # Apply temperature scaling to make rewards more suitable for RL
-                scaled_likelihoods = [likelihood / self.temperature for likelihood in likelihoods]
+                    # Apply temperature scaling to make rewards more suitable for RL
+                    scaled_likelihoods = [likelihood / self.temperature for likelihood in likelihoods]
 
-                # Assign rewards back to their positions
-                for idx, likelihood in zip(indices, scaled_likelihoods):
-                    batch_rewards[idx] = float(likelihood)
+                    # Assign rewards back to their positions
+                    for idx, likelihood in zip(indices, scaled_likelihoods):
+                        batch_rewards[idx] = float(likelihood)
+
+                except Exception as e:
+                    logger.warning(
+                        f"Error computing likelihoods for {modality.value} sequences: {e}. Assigning zero rewards."
+                    )
+                    # If there's an error computing likelihoods, assign zero rewards
+                    for idx in indices:
+                        batch_rewards[idx] = 0.0
 
             rewards.extend(batch_rewards)
+            modalities.extend([mod.value for mod in batch_modalities])
+
+            # Store sample examples for logging
+            if self.enable_wandb_logging and random.random() < 0.1:  # 10% chance to log samples
+                for comp, reward, modality in zip(batch_completions, batch_rewards, batch_modalities):
+                    sample_examples.append(
+                        {
+                            "completion": comp[:100] + "..." if len(comp) > 100 else comp,
+                            "reward": reward,
+                            "modality": modality.value,
+                            "length": len(comp),
+                        }
+                    )
+
+        # Update statistics
+        self._update_statistics(rewards, modalities)
+
+        # Log to wandb if enabled
+        if self.enable_wandb_logging and wandb.run is not None:
+            try:
+                self._log_to_wandb(rewards, modalities, sample_examples)
+            except Exception as e:
+                logger.warning(f"Failed to log to wandb: {e}")
+                # Continue without wandb logging
 
         logger.info(
             f"Computed rewards: min={min(rewards):.3f}, max={max(rewards):.3f}, mean={sum(rewards) / len(rewards):.3f}"
         )
         return rewards
 
+    def _update_statistics(self, rewards: list[float], modalities: list[str]) -> None:
+        """Update internal statistics for logging."""
+        if not rewards:
+            return
 
-def create_ume_reward_wrapper(ume_model: UME, temperature: float = 0.1, batch_size: int = 8):
+        # Update global statistics
+        self.total_completions_processed += len(rewards)
+        self.reward_statistics["min"] = min(self.reward_statistics["min"], min(rewards))
+        self.reward_statistics["max"] = max(self.reward_statistics["max"], max(rewards))
+        self.reward_statistics["sum"] += sum(rewards)
+        self.reward_statistics["count"] += len(rewards)
+
+        # Update modality counts
+        for modality in modalities:
+            if modality not in self.reward_statistics["modality_counts"]:
+                self.reward_statistics["modality_counts"][modality] = 0
+            self.reward_statistics["modality_counts"][modality] += 1
+
+    def _log_to_wandb(self, rewards: list[float], modalities: list[str], sample_examples: list[dict]) -> None:
+        """Log detailed metrics to wandb."""
+        if not rewards:
+            return
+
+        # Basic reward statistics
+        metrics = {
+            "reward/mean": sum(rewards) / len(rewards),
+            "reward/min": min(rewards),
+            "reward/max": max(rewards),
+            "reward/std": torch.std(torch.tensor(rewards)).item(),
+            "reward/count": len(rewards),
+            "reward/total_processed": self.total_completions_processed,
+        }
+
+        # Modality breakdown
+        modality_rewards = {}
+        for reward, modality in zip(rewards, modalities):
+            if modality not in modality_rewards:
+                modality_rewards[modality] = []
+            modality_rewards[modality].append(reward)
+
+        for modality, modality_reward_list in modality_rewards.items():
+            if modality_reward_list:
+                metrics.update(
+                    {
+                        f"reward/modality_{modality}/mean": sum(modality_reward_list) / len(modality_reward_list),
+                        f"reward/modality_{modality}/min": min(modality_reward_list),
+                        f"reward/modality_{modality}/max": max(modality_reward_list),
+                        f"reward/modality_{modality}/count": len(modality_reward_list),
+                    }
+                )
+
+        # Log metrics
+        wandb.log(metrics)
+
+        # Log sample examples as table
+        if sample_examples:
+            table = wandb.Table(
+                columns=["completion", "reward", "modality", "length"],
+                data=[[ex["completion"], ex["reward"], ex["modality"], ex["length"]] for ex in sample_examples],
+            )
+            wandb.log({"reward/sample_examples": table})
+
+        # Log reward histogram
+        wandb.log({"reward/histogram": wandb.Histogram(rewards, num_bins=20)})
+
+
+def create_ume_reward_wrapper(
+    ume_model: UME, temperature: float = 0.1, batch_size: int = 8, enable_wandb_logging: bool = True
+):
     """
     Create a reward function wrapper that captures the ume_model.
 
@@ -294,13 +255,15 @@ def create_ume_reward_wrapper(ume_model: UME, temperature: float = 0.1, batch_si
         Temperature scaling for rewards, default 0.1
     batch_size : int, optional
         Batch size for processing sequences, default 8
+    enable_wandb_logging : bool, optional
+        Whether to enable detailed wandb logging, default True
 
     Returns:
     --------
     callable
         A reward function with signature (completions, **kwargs) -> List[float]
     """
-    reward_function = UMERewardFunction(ume_model, temperature, batch_size)
+    reward_function = UMERewardFunction(ume_model, temperature, batch_size, enable_wandb_logging)
 
     def reward_wrapper(completions, **kwargs):
         return reward_function(completions, **kwargs)

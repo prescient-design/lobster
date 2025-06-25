@@ -10,6 +10,8 @@ import logging
 from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
 
+import wandb
+from lobster.callbacks import UmeGrpoLoggingCallback
 from lobster.model import UME
 
 from .reward_functions import create_ume_reward_wrapper
@@ -25,6 +27,11 @@ def create_ume_grpo_trainer(
     output_dir: str = "./ume_grpo_runs",
     reward_temperature: float = 0.1,
     reward_batch_size: int = 8,
+    enable_wandb_logging: bool = True,
+    wandb_project: str = "lobster-ume-grpo",
+    wandb_entity: str | None = None,
+    wandb_run_name: str | None = None,
+    callbacks: list | None = None,
     **grpo_kwargs,
 ) -> GRPOTrainer:
     """
@@ -46,6 +53,16 @@ def create_ume_grpo_trainer(
         Temperature scaling for rewards, default 0.1
     reward_batch_size : int, optional
         Batch size for reward computation, default 8
+    enable_wandb_logging : bool, optional
+        Whether to enable wandb logging, default True
+    wandb_project : str, optional
+        Wandb project name, default "lobster-ume-grpo"
+    wandb_entity : str, optional
+        Wandb entity/username, default None
+    wandb_run_name : str, optional
+        Wandb run name, default None
+    callbacks : List, optional
+        Additional callbacks to add, default None
     **grpo_kwargs : dict
         Additional arguments to pass to GRPOConfig
 
@@ -54,11 +71,45 @@ def create_ume_grpo_trainer(
     GRPOTrainer
         Configured GRPO trainer ready for training
     """
-    # Create reward function wrapper
-    reward_func = create_ume_reward_wrapper(ume_model, temperature=reward_temperature, batch_size=reward_batch_size)
+    # Create reward function wrapper with wandb logging
+    reward_func = create_ume_reward_wrapper(
+        ume_model,
+        temperature=reward_temperature,
+        batch_size=reward_batch_size,
+        enable_wandb_logging=enable_wandb_logging,
+    )
+
+    # Initialize callbacks list
+    if callbacks is None:
+        callbacks = []
+
+    # Add wandb logging callback if enabled
+    if enable_wandb_logging:
+        logging_callback = UmeGrpoLoggingCallback(
+            log_every_n_steps=100,
+            max_samples_to_log=10,
+            log_reward_histogram=True,
+            log_sample_examples=True,
+            log_modality_breakdown=True,
+        )
+        callbacks.append(logging_callback)
+
+        # Initialize wandb if not already running
+        if wandb.run is None:
+            wandb.init(
+                project=wandb_project,
+                entity=wandb_entity,
+                name=wandb_run_name,
+                config={
+                    "model_path": model_path,
+                    "reward_temperature": reward_temperature,
+                    "reward_batch_size": reward_batch_size,
+                    "output_dir": output_dir,
+                },
+            )
 
     # Create GRPO configuration
-    training_args = GRPOConfig(output_dir=output_dir, **grpo_kwargs)
+    training_args = GRPOConfig(output_dir=output_dir, run_name=wandb_run_name, **grpo_kwargs)
 
     # Create trainer
     trainer = GRPOTrainer(
@@ -69,11 +120,17 @@ def create_ume_grpo_trainer(
         eval_dataset=eval_dataset,
     )
 
+    # Add callbacks to trainer if any
+    if callbacks:
+        for callback in callbacks:
+            trainer.add_callback(callback)
+
     logger.info("Created GRPO trainer with UME reward function")
     logger.info(f"Model: {model_path}")
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Reward temperature: {reward_temperature}")
     logger.info(f"Reward batch size: {reward_batch_size}")
+    logger.info(f"Wandb logging enabled: {enable_wandb_logging}")
 
     return trainer
 
@@ -87,6 +144,10 @@ def train_ume_grpo(
     reward_temperature: float = 0.1,
     reward_batch_size: int = 8,
     device: str = "cuda",
+    enable_wandb_logging: bool = True,
+    wandb_project: str = "lobster-ume-grpo",
+    wandb_entity: str | None = None,
+    wandb_run_name: str | None = None,
     **grpo_kwargs,
 ) -> GRPOTrainer:
     """
@@ -112,6 +173,14 @@ def train_ume_grpo(
         Batch size for reward computation, default 8
     device : str, optional
         Device to load UME model on, default "cuda"
+    enable_wandb_logging : bool, optional
+        Whether to enable wandb logging, default True
+    wandb_project : str, optional
+        Wandb project name, default "lobster-ume-grpo"
+    wandb_entity : str, optional
+        Wandb entity/username, default None
+    wandb_run_name : str, optional
+        Wandb run name, default None
     **grpo_kwargs : dict
         Additional arguments to pass to GRPOConfig
 
@@ -133,11 +202,19 @@ def train_ume_grpo(
         output_dir=output_dir,
         reward_temperature=reward_temperature,
         reward_batch_size=reward_batch_size,
+        enable_wandb_logging=enable_wandb_logging,
+        wandb_project=wandb_project,
+        wandb_entity=wandb_entity,
+        wandb_run_name=wandb_run_name,
         **grpo_kwargs,
     )
 
     # Start training
     logger.info("Starting GRPO training...")
     trainer.train()
+
+    # Finish wandb run if it was started
+    if enable_wandb_logging and wandb.run is not None:
+        wandb.finish()
 
     return trainer
