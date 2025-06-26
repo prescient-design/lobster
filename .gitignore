@@ -40,3 +40,7 @@ lightning_logs
 
 .env
 dev
+
+web/build
+web/node_modules
+web/.svelte-kit
