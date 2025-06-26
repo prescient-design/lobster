@@ -5,11 +5,11 @@ import hydra
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-import wandb
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 
+import wandb
 from lobster.model._utils import model_typer
 from lobster.tokenization import PmlmConceptTokenizerTransform
 

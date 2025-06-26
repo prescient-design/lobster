@@ -1,11 +1,11 @@
 import dotenv
 import hydra
 import lightning.pytorch as pl
-import wandb
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, OmegaConf
 
+import wandb
 from lobster.cmdline._utils import instantiate_callbacks
 
 dotenv.load_dotenv(".env")

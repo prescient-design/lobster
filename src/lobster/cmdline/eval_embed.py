@@ -1,9 +1,9 @@
 import hydra
 import torch
-import wandb
 from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, OmegaConf
 
+import wandb
 from lobster.cmdline._utils import instantiate_callbacks
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
