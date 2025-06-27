@@ -24,7 +24,6 @@ class DummyModel(L.LightningModule):
         self, sequences: list[str], modality: str = "amino_acid", aggregate: bool = True
     ) -> torch.Tensor:
         """Dummy embed_sequences method that returns deterministic embeddings."""
-        batch_size = len(sequences)
 
         # Create deterministic embeddings based on sequence content
         embeddings = []
