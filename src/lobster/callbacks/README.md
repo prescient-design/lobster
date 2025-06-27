@@ -2,6 +2,55 @@
 
 This guide explains how to create and use callbacks for model evaluation with the `evaluate_model_with_callbacks` function.
 
+## Available Callbacks
+
+### PerturbationAnalysisCallback
+
+Analyzes model robustness through sequence perturbations by measuring cosine distances between original and perturbed embeddings.
+
+**Credits:** Josh Southern for the original perturbation analysis notebook.
+
+**Features:**
+- **Shuffling Analysis**: Measures distance between original and randomly shuffled sequences
+- **Mutation Analysis**: Measures distance between original and single-point mutation sequences  
+- **Visualization**: Generates heatmaps showing mutation sensitivity at each position
+- **Metrics**: Computes average distances and their ratio
+
+**Usage:**
+```python
+from lobster.callbacks import PerturbationAnalysisCallback
+
+# Example sequences
+sequences = ["QVKLQESGAELARPGASVKLSCKASGYTFTNYWMQWVKQRPGQGLDWIGAIYPGDGNTRYTHKFKGKATLTADKSSSTAYMQLSSLASEDSGVYYCARGEGNYAWFAYWGQGTTVTVSS"]
+
+callback = PerturbationAnalysisCallback(
+    output_dir="perturbation_analysis",
+    sequences=sequences,
+    num_shuffles=10,  # Number of shuffled versions per sequence
+    amino_acids=list("RKHDESTNQAVILMFYWGP"),  # Amino acids for mutations
+    modality="amino_acid",
+    aggregate=True
+)
+
+# Run evaluation
+metrics = callback.evaluate(model)
+print(f"Shuffling distance: {metrics['avg_shuffling_distance']:.6f}")
+print(f"Mutation distance: {metrics['avg_mutation_distance']:.6f}")
+print(f"Ratio: {metrics['distance_ratio']:.6f}")
+```
+
+**Requirements:**
+- Model must implement `embed_sequences(sequences, modality, aggregate)` method
+- For training integration, can be added to Lightning Trainer callbacks
+
+### Other Callbacks
+
+- **LinearProbeCallback**: Evaluates embeddings using scikit-learn linear probes
+- **UmapVisualizationCallback**: Creates UMAP visualizations of embeddings
+- **TokensPerSecondCallback**: Measures model inference speed
+- **PEEREvaluationCallback**: Peer evaluation framework
+- **DataLoaderCheckpointCallback**: Saves dataloader checkpoints
+
 ## Creating an Evaluation Callback
 
 Create a new callback by subclassing `lightning.Callback` and implementing an `evaluate` method:
