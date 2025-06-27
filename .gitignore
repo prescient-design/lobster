@@ -40,3 +40,5 @@ lightning_logs
 
 .env
 dev
+
+*.ckpt
