@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from lobster.constants import Modality
-from lobster.metrics import PerturbationScore, get_default_mutation_tokens
+from lobster.metrics._perturbation_score import PerturbationScore, get_default_mutation_tokens
 
 
 class MockModel:

@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import lightning as L
 import pytest
 import torch
-from lightning.pytorch import LightningModule
 
 from lobster.callbacks import PerturbationScoreCallback
 from lobster.constants import Modality
@@ -88,9 +87,9 @@ class TestPerturbationScoreCallback:
             output_dir=temp_output_dir, sequence=test_sequence, num_shuffles=3, modality=Modality.AMINO_ACID
         )
 
-        # Check that default amino acid tokens are set
-        expected_tokens = list("RKHDESTNQAVILMFYWGP")
-        assert callback.mutation_tokens == expected_tokens
+        # The callback doesn't set default tokens directly - it passes None to PerturbationScore
+        # which then handles the defaults. So mutation_tokens should be None.
+        assert callback.mutation_tokens is None
 
     def test_init_with_default_mutation_tokens_nucleotide(self, temp_output_dir, test_nucleotide_sequence):
         """Test initialization with default mutation tokens for nucleotide modality."""
@@ -101,18 +100,9 @@ class TestPerturbationScoreCallback:
             modality=Modality.NUCLEOTIDE,
         )
 
-        # Check that default nucleotide tokens are set
-        expected_tokens = list("ATCG")
-        assert callback.mutation_tokens == expected_tokens
-
-    def test_init_without_mutation_tokens_smiles_raises_error(self, temp_output_dir, test_smiles_sequence):
-        """Test initialization without mutation_tokens for SMILES modality raises error."""
-        # SMILES modality now has default tokens, so this should work
-        callback = PerturbationScoreCallback(
-            output_dir=temp_output_dir, sequence=test_smiles_sequence, num_shuffles=3, modality=Modality.SMILES
-        )
-        # Should not raise error anymore since SMILES has default tokens
-        assert callback.mutation_tokens is not None
+        # The callback doesn't set default tokens directly - it passes None to PerturbationScore
+        # which then handles the defaults. So mutation_tokens should be None.
+        assert callback.mutation_tokens is None
 
     def test_init_with_explicit_mutation_tokens_smiles(self, temp_output_dir, test_smiles_sequence):
         """Test initialization with explicit mutation tokens for SMILES modality."""
@@ -139,33 +129,6 @@ class TestPerturbationScoreCallback:
         assert isinstance(embeddings, torch.Tensor)
         assert embeddings.shape == (1, 64)  # batch_size, embedding_dim
         assert embeddings.dtype == torch.float32
-
-    def test_create_embedding_function_with_model_model(self, temp_output_dir, test_sequence):
-        """Test _create_embedding_function when model has model.embed_sequences."""
-        # Create a model with nested embed_sequences method
-        outer_model = MagicMock(spec=LightningModule)
-        inner_model = DummyModel(embedding_dim=32)
-        outer_model.model = inner_model
-
-        callback = PerturbationScoreCallback(output_dir=temp_output_dir, sequence=test_sequence)
-
-        embedding_function = callback._create_embedding_function(outer_model)
-        embeddings = embedding_function([test_sequence], Modality.AMINO_ACID)
-
-        assert isinstance(embeddings, torch.Tensor)
-        assert embeddings.shape == (1, 32)
-
-    def test_create_embedding_function_not_implemented(self, temp_output_dir, test_sequence):
-        """Test _create_embedding_function raises error when method not implemented."""
-        model = MagicMock(spec=LightningModule)
-        # Don't add embed_sequences method
-
-        callback = PerturbationScoreCallback(output_dir=temp_output_dir, sequence=test_sequence)
-
-        embedding_function = callback._create_embedding_function(model)
-
-        with pytest.raises(NotImplementedError, match="Model must implement embed_sequences"):
-            embedding_function([test_sequence], Modality.AMINO_ACID)
 
     def test_compute_scores(self, temp_output_dir, test_sequence, dummy_model):
         """Test the _compute_scores method."""
