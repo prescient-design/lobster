@@ -35,7 +35,7 @@ class DummyModel(L.LightningModule):
         super().__init__()
         self.embedding_dim = embedding_dim
         
-    def embed_sequences(self, sequences: list[str], modality: str = "amino_acid", aggregate: bool = True) -> torch.Tensor:
+    def embed_sequences(self, sequences: list[str], modality: str = "amino_acid", aggregate: bool = True) -> torch.Tensor: # noqa: F821
         """Dummy embed_sequences method that returns random embeddings."""
         batch_size = len(sequences)
         
