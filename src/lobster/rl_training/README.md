@@ -92,6 +92,34 @@ rewards = reward_func(["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"])
 
 - `reward_temperature`: Controls reward scaling (lower = more extreme rewards, default: 0.1)
 - `reward_batch_size`: Batch size for reward computation (default: 8)
+- `penalty_for_invalid`: Penalty for invalid completions (default: -5.0)
+
+### Penalty Value Considerations for GRPO Training
+
+**Important**: The penalty value is crucial for GRPO training because GRPO normalizes rewards by standard deviation:
+
+```
+Âi,t = (ri - mean(r)) / std(r)
+```
+
+A penalty that's too mild may not provide sufficient negative signal. The default penalty of `-5.0` is suitable for most UME models, but you should verify this for your specific model.
+
+**To determine the right penalty value:**
+
+1. **Use the analysis script**:
+   ```bash
+   python examples/analyze_ume_rewards.py \
+     --ume-model-path your/ume/model \
+     --dataset-path your/dataset \
+     --num-samples 100
+   ```
+
+2. **Manual calculation**: The penalty should be 2-3 standard deviations below the mean of valid rewards.
+
+3. **Rule of thumb**: If your UME likelihoods are typically in range:
+   - `[-10, 10]`: Use penalty `-5.0` to `-10.0`
+   - `[-1, 1]`: Use penalty `-0.5` to `-1.0`  
+   - `[0, 100]`: Use penalty `-50.0` to `-100.0`
 
 ### Training Parameters
 

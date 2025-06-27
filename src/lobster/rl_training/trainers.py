@@ -27,6 +27,7 @@ def create_ume_grpo_trainer(
     output_dir: str = "./ume_grpo_runs",
     reward_temperature: float = 0.1,
     reward_batch_size: int = 8,
+    penalty_for_invalid: float = -5.0,
     enable_wandb_logging: bool = True,
     wandb_project: str = "lobster-ume-grpo",
     wandb_entity: str | None = None,
@@ -53,6 +54,10 @@ def create_ume_grpo_trainer(
         Temperature scaling for rewards, default 0.1
     reward_batch_size : int, optional
         Batch size for reward computation, default 8
+    penalty_for_invalid : float, optional
+        Penalty reward for invalid completions, default -5.0. For GRPO training,
+        this should be significantly lower than typical valid rewards since GRPO
+        normalizes rewards by standard deviation.
     enable_wandb_logging : bool, optional
         Whether to enable wandb logging, default True
     wandb_project : str, optional
@@ -76,6 +81,7 @@ def create_ume_grpo_trainer(
         ume_model,
         temperature=reward_temperature,
         batch_size=reward_batch_size,
+        penalty_for_invalid=penalty_for_invalid,
         enable_wandb_logging=enable_wandb_logging,
     )
 
@@ -130,6 +136,7 @@ def create_ume_grpo_trainer(
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Reward temperature: {reward_temperature}")
     logger.info(f"Reward batch size: {reward_batch_size}")
+    logger.info(f"Penalty for invalid: {penalty_for_invalid}")
     logger.info(f"Wandb logging enabled: {enable_wandb_logging}")
 
     return trainer
@@ -143,6 +150,7 @@ def train_ume_grpo(
     output_dir: str = "./ume_grpo_runs",
     reward_temperature: float = 0.1,
     reward_batch_size: int = 8,
+    penalty_for_invalid: float = -5.0,
     device: str = "cuda",
     enable_wandb_logging: bool = True,
     wandb_project: str = "lobster-ume-grpo",
@@ -171,6 +179,10 @@ def train_ume_grpo(
         Temperature scaling for rewards, default 0.1
     reward_batch_size : int, optional
         Batch size for reward computation, default 8
+    penalty_for_invalid : float, optional
+        Penalty reward for invalid completions, default -5.0. For GRPO training,
+        this should be significantly lower than typical valid rewards since GRPO
+        normalizes rewards by standard deviation.
     device : str, optional
         Device to load UME model on, default "cuda"
     enable_wandb_logging : bool, optional
@@ -202,6 +214,7 @@ def train_ume_grpo(
         output_dir=output_dir,
         reward_temperature=reward_temperature,
         reward_batch_size=reward_batch_size,
+        penalty_for_invalid=penalty_for_invalid,
         enable_wandb_logging=enable_wandb_logging,
         wandb_project=wandb_project,
         wandb_entity=wandb_entity,
