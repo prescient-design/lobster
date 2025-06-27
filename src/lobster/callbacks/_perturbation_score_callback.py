@@ -22,8 +22,6 @@ class PerturbationScoreCallback(Callback):
 
     Parameters
     ----------
-    output_dir : str
-        Directory to save perturbation analysis visualizations
     sequence : str
         Single sequence to analyze
     num_shuffles : int
@@ -38,6 +36,10 @@ class PerturbationScoreCallback(Callback):
     modality : str
         Modality to use for embedding extraction and default tokens.
         Must be one of the modalities defined in lobster.constants.Modality.
+    output_dir : str | None
+        Directory to save perturbation analysis visualizations. If None, no heatmaps will be saved.
+    save_heatmap : bool
+        Whether to save the perturbation heatmap image
 
     Examples
     --------
@@ -45,16 +47,16 @@ class PerturbationScoreCallback(Callback):
     >>> from lobster.constants import Modality
     >>> protein_sequence = "QVKLQESGAELARPGASVKLSCKASGYTFTNYWMQWVKQRPGQGLDWIGAIYPGDGNT"
     >>> callback = PerturbationScoreCallback(
-    ...     output_dir="perturbation_analysis",
     ...     sequence=protein_sequence,
     ...     modality=Modality.AMINO_ACID,
-    ...     num_shuffles=10
+    ...     num_shuffles=10,
+    ...     output_dir="perturbation_analysis",
+    ...     save_heatmap=True,
     ... )
 
     >>> # Analyze SMILES sequence
     >>> smiles_sequence = "CCO"
     >>> callback = PerturbationScoreCallback(
-    ...     output_dir="perturbation_analysis",
     ...     sequence=smiles_sequence,
     ...     modality=Modality.SMILES,
     ...     mutation_tokens=list("CHNOSPFIBrCl()[]=#@+-.1234567890"),
@@ -64,25 +66,32 @@ class PerturbationScoreCallback(Callback):
 
     def __init__(
         self,
-        output_dir: str,
         sequence: str,
         num_shuffles: int = 10,
         mutation_tokens: list[str] | None = None,
         run_every_n_epochs: int | None = None,
         random_state: int = 42,
         modality: str = Modality.AMINO_ACID,
+        save_heatmap: bool = False,
+        output_dir: str | None = None,
     ):
         super().__init__()
-        self.output_dir = UPath(output_dir)
+
+        if save_heatmap and output_dir is None:
+            raise ValueError("output_dir must be provided when save_heatmap is True")
+
+        self.output_dir = UPath(output_dir) if output_dir is not None else None
         self.sequence = sequence
         self.num_shuffles = num_shuffles
         self.modality = modality
         self.run_every_n_epochs = run_every_n_epochs
         self.random_state = random_state
         self.mutation_tokens = mutation_tokens
+        self.save_heatmap = save_heatmap
 
-        # Create output directory
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Create output directory only if save_heatmap is True
+        if self.save_heatmap and self.output_dir is not None:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _skip(self, trainer: L.Trainer) -> bool:
         """Determine if we should skip analysis this epoch."""
@@ -112,14 +121,13 @@ class PerturbationScoreCallback(Callback):
     def _compute_scores(
         self,
         model: L.LightningModule,
-        save_heatmap: bool = True,
         output_dir: UPath | None = None,
         step: int | None = None,
     ) -> dict[str, float]:
         """Run the perturbation analysis and return metrics."""
         # Determine output file for heatmap
         output_file = None
-        if save_heatmap:
+        if self.save_heatmap:
             heatmap_dir = output_dir if output_dir is not None else self.output_dir
             output_file = (
                 heatmap_dir / f"perturbation_heatmap_step_{step}.png"
@@ -138,7 +146,7 @@ class PerturbationScoreCallback(Callback):
             num_shuffles=self.num_shuffles,
             mutation_tokens=self.mutation_tokens,
             random_state=self.random_state,
-            save_heatmap=save_heatmap,
+            save_heatmap=self.save_heatmap,
             output_file=output_file,
         )
 
@@ -151,7 +159,7 @@ class PerturbationScoreCallback(Callback):
         if self._skip(trainer):
             return
 
-        metrics = self._compute_scores(pl_module, save_heatmap=True, step=trainer.global_step)
+        metrics = self._compute_scores(pl_module, step=trainer.global_step)
 
         for key, value in metrics.items():
             trainer.logger.experiment.log(
@@ -161,7 +169,6 @@ class PerturbationScoreCallback(Callback):
     def evaluate(
         self,
         module: L.LightningModule,
-        save_heatmap: bool = True,
         output_dir: str | UPath | None = None,
     ) -> dict[str, float]:
         """Evaluate the model using perturbation analysis.
@@ -170,8 +177,6 @@ class PerturbationScoreCallback(Callback):
         ----------
         module : L.LightningModule
             The model to evaluate
-        save_heatmap : bool
-            Whether to save the perturbation heatmap image
         output_dir : str | UPath | None
             Directory to save the heatmap image. If None, uses the default output_dir
 
@@ -182,6 +187,5 @@ class PerturbationScoreCallback(Callback):
         """
         return self._compute_scores(
             module,
-            save_heatmap=save_heatmap,
             output_dir=UPath(output_dir) if output_dir is not None else None,
         )
