@@ -37,6 +37,9 @@ class DyAbDataFrameLightningDataModule(LightningDataModule):
         drop_last: bool = False,
         max_length: int = 512,
         mlm: bool = True,
+        lead_vh: str | None = None,
+        lead_vl: str | None = None,
+        lead_pkd: float | None = None,
     ) -> None:
         """
         :param transform_fn: A ``Callable`` that maps a sequence to a
@@ -113,6 +116,9 @@ class DyAbDataFrameLightningDataModule(LightningDataModule):
         self._pin_memory = pin_memory
         self._drop_last = drop_last
         self._remove_nulls = remove_nulls
+        self._lead_vh = lead_vh
+        self._lead_vl = lead_vl
+        self._lead_pkd = lead_pkd
 
         self._dataset = None
 
@@ -146,6 +152,19 @@ class DyAbDataFrameLightningDataModule(LightningDataModule):
 
         if stage == "predict":
             self._predict_dataset = self._dataset
+
+        if stage == "rank":
+            if self._lead_pkd is None or self._lead_vh is None or self._lead_vl is None:
+                raise ValueError("cannot rank without a lead design to rank against")
+            self._rank_dataset = DyAbDataFrameDatasetInMemory(
+                data=self._data,
+                columns=["fv_heavy", "fv_light"],
+                target_columns=["pKD"],
+                ranking=True,
+                lead_vh=self._lead_vh,
+                lead_vl=self._lead_vl,
+                lead_pkd=self._lead_pkd,
+            )
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -191,6 +210,17 @@ class DyAbDataFrameLightningDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
+    def rank_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self._rank_dataset,
+            batch_size=self._batch_size,
+            shuffle=False,
+            sampler=self._sampler,
+            num_workers=self._num_workers,
+            collate_fn=self._collate_fn,
+            pin_memory=self._pin_memory,
+        )
+
 
 class DyAbDataFrameDatasetInMemory(DataFrameDatasetInMemory):
     def __init__(
@@ -198,15 +228,33 @@ class DyAbDataFrameDatasetInMemory(DataFrameDatasetInMemory):
         data: DataFrame,
         columns: Sequence[str] | None = None,
         target_columns: Sequence[str] | None = None,
+        ranking: bool = False,
+        lead_vh: str | None = None,
+        lead_vl: str | None = None,
+        lead_pkd: float | None = None,
     ):
         super().__init__(data, columns=columns, target_columns=target_columns)
         self._data = data
         self._columns = columns if columns is not None else None
         self._target_columns = target_columns if target_columns is not None else None
+        self._can_rank = False
+        if ranking:
+            if not lead_vh or not lead_vl or not lead_pkd:
+                raise ValueError("cannot rank without all lead design information")
+            self._lead = DataFrame(
+                {
+                    "fv_heavy": [lead_vh],
+                    "fv_light": [lead_vl],
+                    "pKD": [lead_pkd],
+                }
+            )
+            self._can_rank = True
 
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         item1 = self._data.iloc[index]
         item2 = self._data.sample(n=1).iloc[0]
+        if self._can_rank:
+            item2 = self._lead.iloc[0]
 
         if len(self._columns) > 1:
             x1 = tuple(item1[col] for col in self._columns)

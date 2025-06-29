@@ -2,9 +2,10 @@ import hydra
 import lightning.pytorch as pl
 import pandas as pd
 import torch
-import wandb
 from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, OmegaConf
+
+import wandb
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 

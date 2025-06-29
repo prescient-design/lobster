@@ -35,7 +35,7 @@ jobs:
         with:
           version: latest
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra mgm --extra mcp --dev
+      - run: uv sync --extra mgm --extra mcp --extra trl --dev
       - run: uv run pytest
       - env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -47,11 +47,11 @@ jobs:
       - uses: "astral-sh/ruff-action@v1"
         with:
           args: "check"
-          version: 0.9.1
+          version: 0.11.12
       - uses: "astral-sh/ruff-action@v1"
         with:
           args: "format --check"
-          version: 0.9.1
+          version: 0.11.12
   testpypi:
     environment:
       name: "test.pypi.org"

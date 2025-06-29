@@ -33,6 +33,8 @@ src/lobster/mcp/claude_desktop_config.json
 notebooks/nathan/*
 notebooks/karina/*
 
+models/*
+
 dev
 outputs
 wandb
