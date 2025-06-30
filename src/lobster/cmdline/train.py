@@ -10,6 +10,11 @@ from lobster.cmdline._utils import instantiate_callbacks
 
 dotenv.load_dotenv(".env")
 
+# set logger everywhere to debug
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="train")
 def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, list[pl.Callback]]:

@@ -565,12 +565,22 @@ class UME(L.LightningModule):
                 logger.debug(f"After _prepare_inputs - input_ids_flat shape: {input_ids_flat.shape}")
 
                 # Get model outputs without masking (we want the full sequence)
-                hidden_states = self.model.model(
-                    input_ids=input_ids_flat,
-                    attention_mask=attention_mask_flat,
-                    cu_seqlens=cu_seqlens,
-                    max_seqlen=self.max_length,
-                )
+                try:
+                    hidden_states = self.model.model(
+                        input_ids=input_ids_flat,
+                        attention_mask=attention_mask_flat,
+                        cu_seqlens=cu_seqlens,
+                        max_seqlen=self.max_length,
+                    )
+                except RuntimeError as e:
+                    logger.error(f"""Inputs failed: 
+                                 
+                                 input_ids_flat: {input_ids_flat.shape}
+                                 attention_mask_flat: {attention_mask_flat.shape}
+                                 cu_seqlens: {cu_seqlens.shape}
+                                 max_seqlen: {self.max_length}
+                        """)
+                    raise e
 
                 logger.debug(f"Hidden states shape: {hidden_states.shape}")
 
