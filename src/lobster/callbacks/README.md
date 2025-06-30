@@ -115,7 +115,7 @@ callbacks = [
 dataloader = DataLoader(...)
 
 # Run evaluation
-report_path = evaluate_model_with_callbacks(
+results, report_path = evaluate_model_with_callbacks(
     callbacks=callbacks,
     model=model,
     dataloader=dataloader,
