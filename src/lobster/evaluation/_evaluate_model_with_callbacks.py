@@ -20,7 +20,6 @@ class CallbackResult:
     """Structured result from a callback evaluation."""
 
     class_name: str
-    config: dict[str, Any]
     results: Any
     success: bool
     error_message: str | None = None
@@ -50,41 +49,6 @@ def _format_results_for_markdown(results: Any) -> str:
         return f"```\n{results}\n```"
 
 
-def _extract_callback_config(callback: L.Callback) -> dict[str, Any]:
-    """Extract configuration parameters from a callback.
-    There can be multiple callbacks of the same class, so we need to extract the configuration
-    to make sure we can distinguish between them.
-
-    Parameters
-    ----------
-    callback : L.Callback
-        The callback instance
-
-    Returns
-    -------
-    dict[str, Any]
-        Dictionary of configuration parameters
-    """
-    config = {}
-
-    # Get all public attributes that aren't methods or special
-    for attr_name in dir(callback):
-        if (
-            not attr_name.startswith("_")
-            and not callable(getattr(callback, attr_name, None))
-            and attr_name not in ["state_dict", "load_state_dict"]
-        ):
-            try:
-                value = getattr(callback, attr_name)
-                # Only include simple types that can be serialized
-                if isinstance(value, (str, int, float, bool, list, tuple, dict)):
-                    config[attr_name] = value
-            except (AttributeError, TypeError):
-                continue
-
-    return config
-
-
 def _generate_evaluation_report(
     callback_results: list[CallbackResult],
     output_dir: str | Path,
@@ -112,11 +76,8 @@ def _generate_evaluation_report(
     # Add metadata section if provided
     if metadata:
         markdown_report += "## Metadata\n\n"
-        # Format metadata as a YAML code block
-        markdown_report += "```yaml\n"
-        for key, value in metadata.items():
-            markdown_report += f"{key}: {value}\n"
-        markdown_report += "```\n\n"
+        # Format metadata nicely using the same function as results
+        markdown_report += _format_results_for_markdown(metadata) + "\n\n"
 
     # Add section for each callback's results
     markdown_report += "## Evaluation Results\n\n"
@@ -125,11 +86,6 @@ def _generate_evaluation_report(
         # Use class name with index for the section header
         markdown_report += f"### {result.class_name} #{i + 1}\n\n"
 
-        # Add configuration info if available
-        if result.config:
-            markdown_report += "**Configuration:**\n"
-            markdown_report += _format_results_for_markdown(result.config) + "\n\n"
-
         # Add results or error message
         if result.success:
             # If result is a path, assume it's an image and include it in the markdown
@@ -137,7 +93,6 @@ def _generate_evaluation_report(
                 markdown_report += f"![{result.class_name} Visualization]({result.results})\n\n"
             else:
                 # Format results nicely
-                markdown_report += "**Results:**\n"
                 markdown_report += _format_results_for_markdown(result.results) + "\n\n"
         else:
             markdown_report += f"**Error:** {result.error_message}\n\n"
@@ -195,7 +150,6 @@ def evaluate_model_with_callbacks(
     for callback in callbacks:
         try:
             class_name = callback.__class__.__name__
-            config = _extract_callback_config(callback)
 
             logger.info(f"Evaluating with callback: {class_name}")
 
@@ -203,9 +157,7 @@ def evaluate_model_with_callbacks(
                 error_msg = f"Callback {class_name} does not have an evaluate method"
                 logger.error(error_msg)
                 callback_results.append(
-                    CallbackResult(
-                        class_name=class_name, config=config, results=None, success=False, error_message=error_msg
-                    )
+                    CallbackResult(class_name=class_name, results=None, success=False, error_message=error_msg)
                 )
                 continue
 
@@ -217,9 +169,7 @@ def evaluate_model_with_callbacks(
                     error_msg = f"Callback {class_name} requires a dataloader but none was provided"
                     logger.error(error_msg)
                     callback_results.append(
-                        CallbackResult(
-                            class_name=class_name, config=config, results=None, success=False, error_message=error_msg
-                        )
+                        CallbackResult(class_name=class_name, results=None, success=False, error_message=error_msg)
                     )
                     continue
 
@@ -230,12 +180,12 @@ def evaluate_model_with_callbacks(
             logger.info(f"Successfully evaluated with {class_name}")
             logger.info(f"Callback results: {results}")
 
-            callback_results.append(CallbackResult(class_name=class_name, config=config, results=results, success=True))
+            callback_results.append(CallbackResult(class_name=class_name, results=results, success=True))
 
         except Exception as e:
             logger.exception(f"Error in {class_name}: {e}")
             callback_results.append(
-                CallbackResult(class_name=class_name, config=config, results=None, success=False, error_message=str(e))
+                CallbackResult(class_name=class_name, results=None, success=False, error_message=str(e))
             )
 
     # Generate markdown report
