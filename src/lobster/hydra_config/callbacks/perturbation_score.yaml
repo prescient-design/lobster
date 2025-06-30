@@ -1,0 +1,10 @@
+perturbation_score:
+  _target_: lobster.callbacks.PerturbationScoreCallback
+  sequence: ???
+  output_dir: null
+  num_shuffles: 10
+  mutation_tokens: null  # Will use defaults based on modality
+  run_every_n_epochs: 1
+  random_state: 42
+  modality: amino_acid
+  save_heatmap: false 

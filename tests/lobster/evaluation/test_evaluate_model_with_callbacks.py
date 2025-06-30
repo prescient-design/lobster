@@ -53,7 +53,7 @@ def test_evaluate_model_with_callbacks(dummy_model, dummy_datamodule, tmp_path):
     dummy_datamodule.setup("fit")
     dataloader = dummy_datamodule.train_dataloader()
 
-    report_path = evaluate_model_with_callbacks(
+    _, report_path = evaluate_model_with_callbacks(
         callbacks=callbacks,
         model=dummy_model,
         dataloader=dataloader,
