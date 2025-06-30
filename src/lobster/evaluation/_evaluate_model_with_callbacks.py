@@ -25,6 +25,33 @@ class CallbackResult:
     error_message: str | None = None
 
 
+def _convert_to_yaml_friendly(obj: Any) -> Any:
+    """Convert objects to YAML-friendly types for nice display.
+    Test if YAML displays it nicely by dumping and checking the result
+
+    Parameters
+    ----------
+    obj : Any
+        Object that may not display nicely in YAML
+
+    Returns
+    -------
+    Any
+        Object with non-YAML-friendly types converted to strings
+    """
+    try:
+        yaml_str = yaml.dump(obj, default_flow_style=False)
+
+        # If it contains binary data or complex object markers, convert to string
+        if any(marker in yaml_str for marker in ["!!binary", "!!python/object", "!!python/tuple"]):
+            return str(obj)
+
+        return obj
+
+    except (yaml.representer.RepresenterError, TypeError):
+        return str(obj)
+
+
 def _format_results_for_markdown(results: Any) -> str:
     """Format results nicely for markdown display.
 
@@ -38,6 +65,9 @@ def _format_results_for_markdown(results: Any) -> str:
     str
         Formatted markdown string
     """
+    # Convert non-YAML-friendly objects to strings first
+    results = _convert_to_yaml_friendly(results)
+
     if isinstance(results, dict):
         # Use YAML formatting for dictionaries
         return f"```yaml\n{yaml.dump(results, default_flow_style=False, sort_keys=False)}```"
