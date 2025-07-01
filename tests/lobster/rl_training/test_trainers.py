@@ -72,7 +72,7 @@ class TestCreateUmeGrpoTrainer:
 
         # Verify reward wrapper was called correctly
         mock_reward_wrapper.assert_called_once_with(
-            mock_ume_model, temperature=0.2, batch_size=16, enable_wandb_logging=True
+            mock_ume_model, temperature=0.2, batch_size=16, penalty_for_invalid=-5.0, enable_wandb_logging=True
         )
 
         # Verify config was created correctly
@@ -214,6 +214,7 @@ class TestTrainUmeGrpo:
             output_dir="./test_runs",
             reward_temperature=0.3,
             reward_batch_size=32,
+            penalty_for_invalid=-5.0,
             enable_wandb_logging=True,
             wandb_project="lobster-ume-grpo",
             wandb_entity=None,
@@ -258,6 +259,7 @@ class TestTrainUmeGrpo:
             output_dir="./ume_grpo_runs",
             reward_temperature=0.1,
             reward_batch_size=8,
+            penalty_for_invalid=-5.0,
             enable_wandb_logging=True,
             wandb_project="lobster-ume-grpo",
             wandb_entity=None,
