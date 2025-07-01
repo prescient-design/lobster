@@ -208,7 +208,7 @@ class UME(L.LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
 
         # Initialize loss functions
-        # self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
+        self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
         self.infonce_loss_fn = InfoNCELoss(
             temperature=contrastive_temperature,
             use_disco=contrastive_loss_type == "disco_clip",
