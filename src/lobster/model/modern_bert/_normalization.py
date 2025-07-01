@@ -16,7 +16,7 @@ try:
     from flash_attn.ops.triton.layer_norm import RMSNorm as TritonRMSNorm
     from flash_attn.ops.triton.layer_norm import layer_norm_fn
 
-except ImportError:
+except (ImportError, ModuleNotFoundError, RuntimeError):
     TritonRMSNorm = None
     layer_norm_fn = None
 

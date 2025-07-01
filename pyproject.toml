@@ -41,6 +41,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "litdata>=0.2.49",
     "polars>=1.30.0",
+    "seaborn>=0.13.2",
 ]
 
 [build-system]

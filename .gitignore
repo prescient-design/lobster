@@ -45,3 +45,4 @@ dev
 
 # DXT extensions (large binary files)
 *.dxt
+*.ckpt

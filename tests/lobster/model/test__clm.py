@@ -63,6 +63,7 @@ class TestLobsterPCLM:
                 "attention_mask": {0: "batch", 1: "sequence"},
                 "hidden_states": {0: "batch", 1: "layer", 2: "sequence", 3: "features"},
             },
+            do_constant_folding=False,
             # opset_version=11,
         )
 

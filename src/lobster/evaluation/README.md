@@ -39,7 +39,7 @@ callbacks = [
 ]
 
 # Run evaluation
-report_path = evaluate_model_with_callbacks(
+results, report_path = evaluate_model_with_callbacks(
     callbacks=callbacks, 
     model=model, 
     dataloader=dataloader, 
@@ -48,6 +48,8 @@ report_path = evaluate_model_with_callbacks(
 
 # The report is saved to report_path
 print(f"Evaluation report available at: {report_path}")
+# You can also inspect the results programmatically
+print(results)
 ```
 
 ## Evaluation Report Format
