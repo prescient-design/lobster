@@ -58,7 +58,8 @@ def main():
     qwen_model_path = find_qwen_model_in_cache()
     
     # UME model path
-    ume_model_path = "ume-mini-base-12M"
+    # ume_model_path = "ume-mini-base-12M"  # for debugging
+    ume_model_path = "ume-medium-base-480M"  # for training
     
     # Training configuration
     output_dir = os.path.join(HF_CACHE, "ume_trl_runs")

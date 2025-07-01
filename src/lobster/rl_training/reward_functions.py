@@ -7,15 +7,53 @@ like TRL, particularly reward functions based on UME models.
 
 import logging
 import random
+import re
 
 import torch
 
 import wandb
 from lobster.constants import Modality
 from lobster.model import UME
-from lobster.model.utils import _detect_modality
 
 logger = logging.getLogger(__name__)
+
+
+def extract_tagged_content(text: str) -> tuple[str | None, str | None]:
+    """
+    Extract content from tags and determine the tag type.
+
+    Parameters:
+    -----------
+    text : str
+        The text to extract tagged content from
+
+    Returns:
+    --------
+    tuple[str | None, str | None]
+        A tuple of (tag_type, content) where tag_type is one of 'smiles', 'protein', 'dna'
+        and content is the text within the tags. Returns (None, None) if no valid tags found.
+    """
+    # Define tag patterns
+    tag_patterns = {
+        "smiles": r"<smiles>(.*?)</smiles>",
+        "protein": r"<protein>(.*?)</protein>",
+        "dna": r"<dna>(.*?)</dna>",
+    }
+
+    # Find all matches and their positions
+    matches = []
+    for tag_type, pattern in tag_patterns.items():
+        for match in re.finditer(pattern, text, re.DOTALL):
+            content = match.group(1).strip()
+            if content:  # Only include if content is not empty
+                matches.append((match.start(), tag_type, content))
+
+    # Return the first match (earliest position in text)
+    if matches:
+        matches.sort(key=lambda x: x[0])  # Sort by position
+        return matches[0][1], matches[0][2]  # Return (tag_type, content)
+
+    return None, None
 
 
 class UMERewardFunction:
@@ -24,11 +62,16 @@ class UMERewardFunction:
 
     This class provides a reward function that can be used with RL training frameworks
     like TRL. It computes rewards based on the pseudo-likelihood of sequences according
-    to a UME model.
+    to a UME model. Only content within <smiles>, <protein>, or <dna> tags is evaluated.
     """
 
     def __init__(
-        self, ume_model: UME, temperature: float = 0.1, batch_size: int = 8, enable_wandb_logging: bool = True
+        self,
+        ume_model: UME,
+        temperature: float = 0.1,
+        batch_size: int = 8,
+        enable_wandb_logging: bool = True,
+        penalty_for_invalid: float = -5.0,
     ):
         """
         Initialize the UME reward function.
@@ -43,11 +86,17 @@ class UMERewardFunction:
             Batch size for processing sequences, default 8
         enable_wandb_logging : bool, optional
             Whether to enable detailed wandb logging, default True
+        penalty_for_invalid : float, optional
+            Penalty reward for invalid completions (no valid tag or empty content), default -5.0.
+            For GRPO training, this should be significantly lower than typical valid rewards
+            since GRPO normalizes rewards by standard deviation. A penalty that's too mild
+            may not provide sufficient negative signal for the advantage computation.
         """
         self.ume_model = ume_model
         self.temperature = temperature
         self.batch_size = batch_size
         self.enable_wandb_logging = enable_wandb_logging
+        self.penalty_for_invalid = penalty_for_invalid
 
         # Ensure model is in eval mode and frozen
         self.ume_model.eval()
@@ -61,6 +110,8 @@ class UMERewardFunction:
             "sum": 0.0,
             "count": 0,
             "modality_counts": {},
+            "no_tag_count": 0,
+            "empty_content_count": 0,
         }
 
     def __call__(self, completions: list[str], **kwargs) -> list[float]:
@@ -77,44 +128,68 @@ class UMERewardFunction:
         Returns:
         --------
         List[float]
-            List of reward scores for each completion
+            List of reward scores for each completion. Returns penalty_for_invalid if no valid tags found
+            or content is empty.
         """
         if not completions:
             return []
 
         logger.info(f"Computing rewards for {len(completions)} completions")
 
-        rewards = []
-        modalities = []
+        rewards = [self.penalty_for_invalid] * len(completions)  # Initialize all rewards as penalty
         sample_examples = []
 
         # Process completions in batches for efficiency
         for i in range(0, len(completions), self.batch_size):
             batch_completions = completions[i : i + self.batch_size]
 
-            # Detect modality for each completion in the batch
+            # Extract tagged content and determine modality for each completion
+            batch_tagged_content = []
             batch_modalities = []
-            for comp in batch_completions:
-                try:
-                    modality = _detect_modality(comp)
-                    batch_modalities.append(modality)
-                except ValueError as e:
+            batch_original_indices = []
+
+            for j, comp in enumerate(batch_completions):
+                tag_type, content = extract_tagged_content(comp)
+
+                if tag_type is None or content is None:
+                    # No valid tags found or empty content
+                    if tag_type is None:
+                        self.reward_statistics["no_tag_count"] += 1
+                    else:
+                        self.reward_statistics["empty_content_count"] += 1
+                    # Penalty is already set in rewards[j]
+                    continue
+
+                # Map tag type to modality
+                tag_to_modality = {
+                    "smiles": Modality.SMILES,
+                    "protein": Modality.AMINO_ACID,
+                    "dna": Modality.NUCLEOTIDE,
+                }
+
+                modality = tag_to_modality.get(tag_type)
+                if modality is None:
                     logger.warning(
-                        f"Unable to determine modality for sequence '{comp[:50]}...': {e}. Assigning zero reward."
+                        f"Unknown tag type '{tag_type}' for completion '{comp[:50]}...'. Assigning penalty reward."
                     )
-                    # For sequences where we can't determine modality, we'll assign a zero reward
-                    # and use a placeholder modality for grouping
-                    batch_modalities.append(Modality.SMILES)  # Use SMILES as placeholder
+                    self.reward_statistics["no_tag_count"] += 1
+                    # Penalty is already set in rewards[j]
+                    continue
+
+                batch_tagged_content.append(content)
+                batch_modalities.append(modality)
+                batch_original_indices.append(j)
+
+            # If no valid content found in this batch, continue to next batch
+            if not batch_tagged_content:
+                continue
 
             # Group by modality for efficient processing
             modality_groups = {}
-            for j, (comp, modality) in enumerate(zip(batch_completions, batch_modalities)):
+            for k, (content, modality) in enumerate(zip(batch_tagged_content, batch_modalities)):
                 if modality not in modality_groups:
                     modality_groups[modality] = []
-                modality_groups[modality].append((j, comp))
-
-            # Initialize batch rewards
-            batch_rewards = [0.0] * len(batch_completions)
+                modality_groups[modality].append((k, content))
 
             # Process each modality group
             for modality, items in modality_groups.items():
@@ -129,55 +204,76 @@ class UMERewardFunction:
                     # Apply temperature scaling to make rewards more suitable for RL
                     scaled_likelihoods = [likelihood / self.temperature for likelihood in likelihoods]
 
-                    # Assign rewards back to their positions
+                    # Assign rewards back to their positions in the original completions list
                     for idx, likelihood in zip(indices, scaled_likelihoods):
-                        batch_rewards[idx] = float(likelihood)
+                        original_idx = i + batch_original_indices[idx]  # Convert to global index
+                        rewards[original_idx] = float(likelihood)
 
                 except Exception as e:
                     logger.warning(
-                        f"Error computing likelihoods for {modality.value} sequences: {e}. Assigning zero rewards."
+                        f"Error computing likelihoods for {modality.value} sequences: {e}. Assigning penalty rewards."
                     )
-                    # If there's an error computing likelihoods, assign zero rewards
+                    # If there's an error computing likelihoods, assign penalty rewards
                     for idx in indices:
-                        batch_rewards[idx] = 0.0
+                        original_idx = i + batch_original_indices[idx]  # Convert to global index
+                        rewards[original_idx] = self.penalty_for_invalid
 
-            rewards.extend(batch_rewards)
-            modalities.extend([mod.value for mod in batch_modalities])
-
-            # Store sample examples for logging
+            # Store sample examples for logging (only for valid rewards)
             if self.enable_wandb_logging and random.random() < 0.1:  # 10% chance to log samples
-                for comp, reward, modality in zip(batch_completions, batch_rewards, batch_modalities):
-                    sample_examples.append(
-                        {
-                            "completion": comp[:100] + "..." if len(comp) > 100 else comp,
-                            "reward": reward,
-                            "modality": modality.value,
-                            "length": len(comp),
-                        }
-                    )
+                for j, comp in enumerate(batch_completions):
+                    global_idx = i + j
+                    if global_idx < len(rewards) and rewards[global_idx] != self.penalty_for_invalid:
+                        # Find the modality for this completion
+                        comp_modality = None
+                        for k, (content, modality) in enumerate(zip(batch_tagged_content, batch_modalities)):
+                            if i + batch_original_indices[k] == global_idx:
+                                comp_modality = modality
+                                break
 
-        # Update statistics
+                        if comp_modality:
+                            sample_examples.append(
+                                {
+                                    "completion": comp[:100] + "..." if len(comp) > 100 else comp,
+                                    "reward": rewards[global_idx],
+                                    "modality": comp_modality.value,
+                                    "length": len(comp),
+                                }
+                            )
+
+        # Update statistics for valid rewards only (including penalties)
+        valid_rewards = rewards  # Now all rewards are floats
         self.total_completions_processed += len(completions)
-        for reward in rewards:
+
+        for reward in valid_rewards:
             self.reward_statistics["min"] = min(self.reward_statistics["min"], reward)
             self.reward_statistics["max"] = max(self.reward_statistics["max"], reward)
             self.reward_statistics["sum"] += reward
             self.reward_statistics["count"] += 1
 
-        # Update modality counts
-        for modality in modalities:
-            if modality not in self.reward_statistics["modality_counts"]:
-                self.reward_statistics["modality_counts"][modality] = 0
-            self.reward_statistics["modality_counts"][modality] += 1
+        # Update modality counts for valid rewards
+        for j, reward in enumerate(rewards):
+            if reward != self.penalty_for_invalid:
+                # Find the modality for this completion by checking the original completion
+                comp = completions[j]
+                tag_type, _ = extract_tagged_content(comp)
+                if tag_type:
+                    tag_to_modality = {"smiles": "smiles", "protein": "amino_acid", "dna": "nucleotide"}
+                    modality_key = tag_to_modality.get(tag_type)
+                    if modality_key:
+                        if modality_key not in self.reward_statistics["modality_counts"]:
+                            self.reward_statistics["modality_counts"][modality_key] = 0
+                        self.reward_statistics["modality_counts"][modality_key] += 1
 
         # Log to wandb if enabled
         if self.enable_wandb_logging and sample_examples:
-            self._log_to_wandb(sample_examples, rewards, modalities)
+            self._log_to_wandb(sample_examples, [r for r in rewards if r != self.penalty_for_invalid])
 
-        logger.info(f"Computed rewards for {len(completions)} completions")
+        logger.info(
+            f"Computed rewards for {len(completions)} completions ({len([r for r in rewards if r != self.penalty_for_invalid])} valid)"
+        )
         return rewards
 
-    def _log_to_wandb(self, sample_examples: list[dict], rewards: list[float], modalities: list[str]) -> None:
+    def _log_to_wandb(self, sample_examples: list[dict], rewards: list[float]) -> None:
         """Log sample examples and statistics to wandb."""
         try:
             # Log sample examples
@@ -205,17 +301,13 @@ class UMERewardFunction:
                         "reward_statistics/max": max(rewards),
                         "reward_statistics/std": torch.std(torch.tensor(rewards)).item(),
                         "reward_statistics/count": len(rewards),
+                        "reward_statistics/no_tag_count": self.reward_statistics["no_tag_count"],
+                        "reward_statistics/empty_content_count": self.reward_statistics["empty_content_count"],
                     }
                 )
 
-            # Log modality breakdown
-            modality_counts = {}
-            for modality in modalities:
-                if modality not in modality_counts:
-                    modality_counts[modality] = 0
-                modality_counts[modality] += 1
-
-            for modality, count in modality_counts.items():
+            # Log modality breakdown from statistics
+            for modality, count in self.reward_statistics["modality_counts"].items():
                 wandb.log({f"modality_counts/{modality}": count})
 
         except Exception as e:
@@ -230,9 +322,53 @@ class UMERewardFunction:
             stats["mean"] = 0.0
         return stats
 
+    def suggest_penalty_value(self, sample_size: int = 100) -> float:
+        """
+        Suggest an appropriate penalty value based on typical UME likelihood ranges.
+
+        This method helps determine a good penalty value for GRPO training by
+        analyzing the distribution of valid rewards. The suggested penalty should
+        be significantly lower than the mean reward to provide clear negative signal.
+
+        Parameters:
+        -----------
+        sample_size : int, optional
+            Number of sample completions to analyze, default 100
+
+        Returns:
+        --------
+        float
+            Suggested penalty value that's approximately 2-3 standard deviations
+            below the mean of valid rewards
+        """
+        if self.reward_statistics["count"] == 0:
+            logger.warning("No reward statistics available. Using default penalty of -5.0")
+            return -5.0
+
+        mean_reward = self.reward_statistics["sum"] / self.reward_statistics["count"]
+
+        # Calculate standard deviation from min/max as approximation
+        reward_range = self.reward_statistics["max"] - self.reward_statistics["min"]
+        std_estimate = reward_range / 4  # Rough estimate assuming normal distribution
+
+        # Suggest penalty that's 2-3 standard deviations below mean
+        suggested_penalty = mean_reward - (2.5 * std_estimate)
+
+        logger.info(f"Based on {self.reward_statistics['count']} rewards:")
+        logger.info(f"  Mean reward: {mean_reward:.3f}")
+        logger.info(f"  Reward range: {self.reward_statistics['min']:.3f} to {self.reward_statistics['max']:.3f}")
+        logger.info(f"  Estimated std: {std_estimate:.3f}")
+        logger.info(f"  Suggested penalty: {suggested_penalty:.3f}")
+
+        return suggested_penalty
+
 
 def create_ume_reward_wrapper(
-    ume_model: UME, temperature: float = 0.1, batch_size: int = 8, enable_wandb_logging: bool = True
+    ume_model: UME,
+    temperature: float = 0.1,
+    batch_size: int = 8,
+    enable_wandb_logging: bool = True,
+    penalty_for_invalid: float = -5.0,
 ):
     """
     Create a reward function wrapper that captures the ume_model.
@@ -250,13 +386,17 @@ def create_ume_reward_wrapper(
         Batch size for processing sequences, default 8
     enable_wandb_logging : bool, optional
         Whether to enable detailed wandb logging, default True
+    penalty_for_invalid : float, optional
+        Penalty reward for invalid completions, default -5.0. For GRPO training,
+        this should be significantly lower than typical valid rewards since GRPO
+        normalizes rewards by standard deviation.
 
     Returns:
     --------
     callable
-        A reward function with signature (completions, **kwargs) -> List[float]
+        A reward function with signature (completions, **kwargs) -> List[float | None]
     """
-    reward_function = UMERewardFunction(ume_model, temperature, batch_size, enable_wandb_logging)
+    reward_function = UMERewardFunction(ume_model, temperature, batch_size, enable_wandb_logging, penalty_for_invalid)
 
     def reward_wrapper(completions, **kwargs):
         return reward_function(completions, **kwargs)

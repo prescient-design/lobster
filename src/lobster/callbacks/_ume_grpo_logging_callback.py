@@ -154,7 +154,9 @@ class UmeGrpoLoggingCallback(TrainerCallback):
 
         # Log the final sample examples table
         if self.log_sample_examples and self.sample_examples_table is not None and self._is_wandb_available():
-            wandb.log({"train/sample_examples": self.sample_examples_table}, step=state.global_step)
+            # Only log if the table has data
+            if len(self.sample_examples_table.data) > 0:
+                wandb.log({"train/all_sample_examples": self.sample_examples_table}, step=state.global_step)
 
     def _is_wandb_available(self) -> bool:
         """Check if wandb is available and initialized."""
@@ -215,22 +217,31 @@ class UmeGrpoLoggingCallback(TrainerCallback):
     def _log_sample_examples(
         self, state: TrainerState, samples: list[str], rewards: list[float], modalities: list[str]
     ) -> None:
-        """Log sample examples to wandb as a persistent table with step column."""
-        if not samples or not rewards or self.sample_examples_table is None:
+        """Log sample examples to wandb as both a persistent table and step-specific table."""
+        if not samples or not rewards:
             return
 
         n_samples = min(self.max_samples_to_log, len(samples))
         indices = random.sample(range(len(samples)), n_samples)
+
+        # Create a step-specific table for immediate logging
+        step_table = wandb.Table(columns=["sample", "reward", "modality", "length"])
 
         for idx in indices:
             sample = samples[idx]
             reward = rewards[idx]
             modality = modalities[idx] if idx < len(modalities) else "unknown"
             display_sample = sample[:200] + "..." if len(sample) > 200 else sample
-            self.sample_examples_table.add_data(state.global_step, display_sample, reward, modality, len(sample))
 
-        # Log the table at each step so it is updated in wandb
-        wandb.log({"train/sample_examples": self.sample_examples_table}, step=state.global_step)
+            # Add to step-specific table
+            step_table.add_data(display_sample, reward, modality, len(sample))
+
+            # Add to persistent table for final logging
+            if self.sample_examples_table is not None:
+                self.sample_examples_table.add_data(state.global_step, display_sample, reward, modality, len(sample))
+
+        # Log the step-specific table immediately
+        wandb.log({f"train/sample_examples_step_{state.global_step}": step_table}, step=state.global_step)
 
     def _log_reward_histogram(self, state: TrainerState, rewards: list[float]) -> None:
         """Log reward histogram to wandb."""
