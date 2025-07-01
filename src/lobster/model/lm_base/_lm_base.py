@@ -1419,10 +1419,11 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
             attentions=outputs.attentions,
         )
 
-    # reproduce behavior before https://github.com/huggingface/transformers/pull/36963
-    @classmethod
-    def get_init_context(cls, is_quantized: bool, _is_ds_init_called: bool):
-        return []
+
+#    @classmethod
+#    def get_init_context(cls, is_quantized: bool, _is_ds_init_called: bool):
+#        # reproduce behavior before https://github.com/huggingface/transformers/pull/36963
+#        return []
 
 
 @add_start_docstrings(
