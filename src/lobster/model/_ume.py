@@ -767,6 +767,12 @@ class UME(L.LightningModule):
         except RuntimeError as e:
             logger.error(f"""Inputs failed: 
                                  
+                                 batch["input_ids"]: {batch["input_ids"].shape}
+                                 batch["attention_mask"]: {batch["attention_mask"].shape}
+                                 batch["input_ids"]: {batch["input_ids"]}
+                                 batch["modality"]: {batch["modality"]}
+
+                                 Shapes:
                                  masked_input_ids: {masked_input_ids.shape}
                                  attention_mask: {attention_mask.shape}
                                  cu_seqlens: {cu_seqlens.shape}
