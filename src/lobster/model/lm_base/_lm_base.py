@@ -1419,6 +1419,11 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
             attentions=outputs.attentions,
         )
 
+    # reproduce behavior before https://github.com/huggingface/transformers/pull/36963
+    @classmethod
+    def get_init_context(cls, is_quantized: bool, _is_ds_init_called: bool):
+        return []
+
 
 @add_start_docstrings(
     """LMBase Model with Conditional generatation`language modeling` head on top.""", LMBase_START_DOCSTRING
