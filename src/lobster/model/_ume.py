@@ -757,12 +757,22 @@ class UME(L.LightningModule):
         masked_input_ids, labels = self.model._mask_inputs(input_ids)
 
         # Get model outputs
-        hidden_states = self.model.model(
-            input_ids=masked_input_ids,
-            attention_mask=attention_mask,
-            cu_seqlens=cu_seqlens,
-            max_seqlen=self.max_length,
-        )
+        try:
+            hidden_states = self.model.model(
+                input_ids=masked_input_ids,
+                attention_mask=attention_mask,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=self.max_length,
+            )
+        except RuntimeError as e:
+            logger.error(f"""Inputs failed: 
+                                 
+                                 masked_input_ids: {masked_input_ids.shape}
+                                 attention_mask: {attention_mask.shape}
+                                 cu_seqlens: {cu_seqlens.shape}
+                                 max_seqlen: {self.max_length}
+                        """)
+            raise e
 
         # Get logits from decoder and reshape for loss calculation
         logits = self.model.decoder(hidden_states)
