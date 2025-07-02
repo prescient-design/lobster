@@ -137,12 +137,13 @@ We follow NumPy docstring conventions and require comprehensive type hints for a
 
 ```python
 from typing import Any
-import torch
+from torch.nn import Module
+from torch import Tensor
 import numpy as np
 
 def embed_sequences(
     sequences: list[str],
-    model: torch.nn.Module,
+    model: Module,
     batch_size: int = 32,
     device: str | None = None
 ) -> torch.Tensor:
@@ -152,7 +153,7 @@ def embed_sequences(
 def process_data(
     data: list[str] | np.ndarray,
     config: dict[str, Any]
-) -> dict[str, torch.Tensor]:
+) -> dict[str, Tensor]:
     """Process input data according to configuration."""
     pass
 ```
