@@ -124,6 +124,138 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+### NumPy Docstrings and Type Hints
+
+We follow NumPy docstring conventions and require comprehensive type hints for all functions and classes.
+
+#### Type Hints
+
+- **All functions** must have type hints for parameters and return values
+- Use modern union syntax `|` instead of `Union` (Python 3.10+)
+- Use `| None` instead of `Optional` for nullable parameters
+- Use built-in generics (`list`, `dict`) instead of `typing` equivalents when possible
+
+```python
+from typing import Any
+import torch
+import numpy as np
+
+def embed_sequences(
+    sequences: list[str],
+    model: torch.nn.Module,
+    batch_size: int = 32,
+    device: str | None = None
+) -> torch.Tensor:
+    """Embed biological sequences using a pre-trained model."""
+    pass
+
+def process_data(
+    data: list[str] | np.ndarray,
+    config: dict[str, Any]
+) -> dict[str, torch.Tensor]:
+    """Process input data according to configuration."""
+    pass
+```
+
+#### NumPy Docstring Format
+
+Follow the NumPy docstring standard with these sections:
+
+```python
+def train_model(
+    sequences: list[str],
+    labels: torch.Tensor,
+    model: torch.nn.Module,
+    learning_rate: float = 1e-4,
+    epochs: int = 10,
+    device: str | None = None
+) -> dict[str, Any]:
+    """
+    Train a biological sequence model on provided data.
+    
+    This function implements the complete training loop for biological
+    sequence models, including data preprocessing, model training,
+    and evaluation metrics computation.
+    
+    Parameters
+    ----------
+    sequences : list[str]
+        List of biological sequences (protein, DNA, or RNA).
+        Each sequence should be a valid string of standard residues.
+    labels : torch.Tensor
+        Target labels for supervised training. Shape: (n_samples,)
+        or (n_samples, n_classes) for multi-class problems.
+    model : torch.nn.Module
+        PyTorch model to train. Must have forward() method that
+        accepts tokenized sequences.
+    learning_rate : float, default=1e-4
+        Learning rate for the optimizer. Must be positive.
+    epochs : int, default=10
+        Number of training epochs. Must be positive integer.
+    device : str, optional
+        Device to use for training ('cpu', 'cuda', 'mps').
+        If None, automatically selects best available device.
+        
+    Returns
+    -------
+    dict[str, Any]
+        Training results dictionary containing:
+        - 'loss_history': list[float] - Loss values per epoch
+        - 'accuracy_history': list[float] - Accuracy per epoch  
+        - 'final_model_state': dict - Final model state dict
+        - 'training_time': float - Total training time in seconds
+        
+    Raises
+    ------
+    ValueError
+        If sequences list is empty or contains invalid sequences.
+        If labels tensor shape doesn't match number of sequences.
+    RuntimeError
+        If model training fails due to memory or computation issues.
+    FileNotFoundError
+        If model checkpoint path doesn't exist (for resume training).
+        
+    Examples
+    --------
+    >>> sequences = ["MKTVRQERLK", "ATCGATCG", "AUGCUGAUC"]
+    >>> labels = torch.tensor([0, 1, 1])
+    >>> model = ProteinBertModel()
+    >>> results = train_model(sequences, labels, model, epochs=5)
+    >>> print(f"Final accuracy: {results['accuracy_history'][-1]:.3f}")
+    Final accuracy: 0.892
+    
+    >>> # Training with custom device
+    >>> results = train_model(
+    ...     sequences, labels, model,
+    ...     learning_rate=2e-4,
+    ...     device='cuda'
+    ... )
+    
+    Notes
+    -----
+    - Training automatically handles tokenization and batching
+    - Model checkpoints are saved every 10 epochs by default
+    - Early stopping is applied if validation loss doesn't improve
+    - Memory usage is optimized for large sequence datasets
+    
+    See Also
+    --------
+    evaluate_model : Evaluate trained model performance
+    embed_sequences : Generate embeddings from trained model
+    """
+    pass
+```
+
+#### Documentation Requirements
+
+- **All public functions and classes** must have complete NumPy docstrings
+- **Parameters section**: Document every parameter with type and description
+- **Returns section**: Describe return value structure and types
+- **Raises section**: Document all possible exceptions
+- **Examples section**: Include realistic usage examples
+- **Notes section**: Add implementation details, assumptions, or warnings
+- **See Also section**: Reference related functions when helpful
+
 
 
 
