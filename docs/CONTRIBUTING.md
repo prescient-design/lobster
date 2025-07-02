@@ -381,6 +381,10 @@ Brief description of changes made
 - [ ] No breaking changes (or clearly documented)
 ```
 
+## Code Review Process
+
+- **Request reviews**: If you don't have a specific person in mind to request feedback, tag `@ncfrey` or `@karinazad` in your pull request or issue
+- **Ask questions**: Don't hesitate to ask for clarification in PR comments
 
 
 ### Recognition
