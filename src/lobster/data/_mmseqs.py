@@ -2,7 +2,7 @@
 
 import shutil
 import subprocess
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
 
 import pandas as pd
 from Bio import SeqIO
@@ -16,7 +16,7 @@ class MMSeqsRunner:
 
     def cluster_sequences(
         self,
-        inputs: Union[str, pd.DataFrame],
+        inputs: str | pd.DataFrame,
         output_fasta_file: str,
         sequence_identity: float = 0.85,
         cov: float = 0.8,
@@ -122,7 +122,7 @@ class MMSeqsRunner:
         self,
         cluster_csv: str,
         input_fasta: str,
-        lengths: Optional[Sequence[float]] = (0.9, 0.05, 0.05),
+        lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
     ):
         """
         Linclust min-seq-id: centroids of the clusters should be less than X% identical
@@ -135,7 +135,7 @@ class MMSeqsRunner:
         clusters_df = pd.read_csv(cluster_csv, sep="\t", header=None, names=["Cluster", "Sequence"])
         sequences = [record for record in SeqIO.parse(input_fasta, "fasta") if len(record.seq) > 0]
 
-        num_train, num_val, num_test = [ll * len(clusters_df) for ll in lengths]
+        num_train, num_val, num_test = (ll * len(clusters_df) for ll in lengths)
         print(num_train, num_val, num_test)
         train_data, val_data, test_data = (
             pd.DataFrame(columns=clusters_df.columns),
@@ -168,9 +168,7 @@ class MMSeqsRunner:
     def _check_tool_installed(self, name="mmseqs"):
         # Checks whether `name` is on PATH and marked as executable.
         if shutil.which(name) is None:
-            raise EnvironmentError(
-                f"{name} is not found. Please ensure the executable is installed and is in your PATH."
-            )
+            raise OSError(f"{name} is not found. Please ensure the executable is installed and is in your PATH.")
         else:
             print(f"{name} is installed and available.")
             return True

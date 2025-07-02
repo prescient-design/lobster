@@ -1,7 +1,7 @@
 from torch import Size
 
 from lobster.tokenization import MgmTokenizerTransform
-from lobster.transforms import uniform_sample
+from lobster.transforms.functional import uniform_sample
 
 
 class TestMgmTokenizer:

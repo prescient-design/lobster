@@ -1,8 +1,9 @@
 import importlib.resources
 import random
 import re
+from collections.abc import Iterable
 from os import PathLike
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any
 
 import torch
 from transformers import T5Tokenizer
@@ -20,18 +21,18 @@ from lobster.transforms import Transform
 class PmlmTokenizerTransform(Transform):
     def __init__(
         self,
-        pretrained_model_name_or_path: Union[str, PathLike] = None,
-        padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = False,
-        max_length: Optional[int] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
+        pretrained_model_name_or_path: str | PathLike = None,
+        padding: bool | str | PaddingStrategy = False,
+        truncation: bool | str | TruncationStrategy = False,
+        max_length: int | None = None,
+        return_token_type_ids: bool | None = None,
+        return_attention_mask: bool | None = None,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
         return_length: bool = False,
         verbose: bool = True,
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        tokenizer_dir: str | None = "pmlm_tokenizer",
         mlm: bool = True,
     ):
         super().__init__()
@@ -66,7 +67,7 @@ class PmlmTokenizerTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         tokenized = self._auto_tokenizer(
@@ -96,41 +97,41 @@ class PmlmTokenizerTransform(Transform):
 
         return tokenized
 
-    def _reverse_text(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
+    def _reverse_text(self, text: str | list[str]) -> str | list[str]:
         if isinstance(text, str):
             return text[::-1]
         elif isinstance(text, list):
             return [t[::-1] for t in text]
 
-    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
         return self.transform(input, parameters)
 
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
-    def _check_inputs(self, inputs: List[Any]) -> None:
+    def _check_inputs(self, inputs: list[Any]) -> None:
         pass
 
 
 class PmlmConceptTokenizerTransform(Transform):
     def __init__(
         self,
-        pretrained_model_name_or_path: Union[str, PathLike] = None,
-        padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = False,
-        max_length: Optional[int] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
+        pretrained_model_name_or_path: str | PathLike = None,
+        padding: bool | str | PaddingStrategy = False,
+        truncation: bool | str | TruncationStrategy = False,
+        max_length: int | None = None,
+        return_token_type_ids: bool | None = None,
+        return_attention_mask: bool | None = None,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
         return_length: bool = False,
         verbose: bool = True,
-        tokenizer_dir: Optional[str] = "pmlm_tokenizer",
+        tokenizer_dir: str | None = "pmlm_tokenizer",
         mlm: bool = True,
         normalize: bool = True,
         # concepts: Optional[[Iterable, Iterable,Iterable]] = [None,None,None],
-        concepts_name: Optional[Iterable] = [
+        concepts_name: Iterable | None = [
             "molecular_weight",
             "aromaticity",
             "instability_index",
@@ -146,8 +147,8 @@ class PmlmConceptTokenizerTransform(Transform):
             "avg_hydrophilicity",
             "avg_surface_accessibility",
         ],
-        concepts_max: Optional[Iterable] = [83158, 1, 566, 12, 4.5, 512, 512, 1, 1, 1, 1332490, 1332490, 3, 1.55],
-        concepts_min: Optional[Iterable] = [260, 0, -101, 4, -4.5, -500, -510, 0, 0, 0, 0, 0, -3, 0.39],
+        concepts_max: Iterable | None = [83158, 1, 566, 12, 4.5, 512, 512, 1, 1, 1, 1332490, 1332490, 3, 1.55],
+        concepts_min: Iterable | None = [260, 0, -101, 4, -4.5, -500, -510, 0, 0, 0, 0, 0, -3, 0.39],
     ):
         super().__init__()
 
@@ -187,7 +188,7 @@ class PmlmConceptTokenizerTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         tokenized = self._auto_tokenizer(
@@ -243,30 +244,30 @@ class PmlmConceptTokenizerTransform(Transform):
         # tokenized["text"]= text[:self._max_length]
         return tokenized
 
-    def _reverse_text(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
+    def _reverse_text(self, text: str | list[str]) -> str | list[str]:
         if isinstance(text, str):
             return text[::-1]
         elif isinstance(text, list):
             return [t[::-1] for t in text]
 
-    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
         return self.transform(input, parameters)
 
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
-    def _check_inputs(self, inputs: List[Any]) -> None:
+    def _check_inputs(self, inputs: list[Any]) -> None:
         pass
 
 
 class PT5TokenizerTransform(Transform):
     def __init__(
         self,
-        pretrained_model_name_or_path: Union[str, PathLike] = "ProstT5",
-        padding: Union[bool, str, PaddingStrategy] = "max_length",
-        truncation: Union[bool, str, TruncationStrategy] = True,
+        pretrained_model_name_or_path: str | PathLike = "ProstT5",
+        padding: bool | str | PaddingStrategy = "max_length",
+        truncation: bool | str | TruncationStrategy = True,
         max_length: int = 512,
-        return_token_type_ids: Optional[bool] = None,
+        return_token_type_ids: bool | None = None,
         return_attention_mask: bool = True,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
@@ -294,7 +295,7 @@ class PT5TokenizerTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         sequence = " ".join(list(re.sub(r"[UZOB]", "X", text)))  # replace UNK AAs
@@ -328,12 +329,12 @@ class PT5TokenizerTransform(Transform):
 class PT5TeacherForcingTransform(Transform):
     def __init__(
         self,
-        pretrained_model_name_or_path: Union[str, PathLike] = "ProstT5",
+        pretrained_model_name_or_path: str | PathLike = "ProstT5",
         mask_percentage: float = 0.125,
-        padding: Union[bool, str, PaddingStrategy] = "max_length",
-        truncation: Union[bool, str, TruncationStrategy] = True,
+        padding: bool | str | PaddingStrategy = "max_length",
+        truncation: bool | str | TruncationStrategy = True,
         max_length: int = 512,
-        return_token_type_ids: Optional[bool] = None,
+        return_token_type_ids: bool | None = None,
         return_attention_mask: bool = True,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
@@ -362,7 +363,7 @@ class PT5TeacherForcingTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         sequence = " ".join(list(re.sub(r"[UZOB]", "X", text)))  # replace UNK AAs

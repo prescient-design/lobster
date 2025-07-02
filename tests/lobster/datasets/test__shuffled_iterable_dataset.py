@@ -1,8 +1,9 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from lobster.datasets import ShuffledIterableDataset
 from torch.utils.data import IterableDataset
+
+from lobster.datasets import ShuffledIterableDataset
 
 
 class SimpleIterableDataset(IterableDataset):

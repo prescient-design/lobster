@@ -1,9 +1,8 @@
 import importlib.resources
-from typing import Dict, List
 
 import pytest
 
-from lobster.transforms import (
+from lobster.transforms.functional import (
     invert_residue_to_codon_mapping,
     json_load,
     sample_list_with_probs,
@@ -12,7 +11,7 @@ from lobster.transforms import (
 
 
 @pytest.fixture(scope="class")
-def residue_to_codon() -> Dict[str, List[str]]:
+def residue_to_codon() -> dict[str, list[str]]:
     path = importlib.resources.files("lobster") / "assets" / "codon_tables" / "codon_table.json"
     data = json_load(path)
     return data

@@ -29,6 +29,7 @@ scripts/combined_db*
 *_play.py
 src/lobster/hydra_config/experiment/*
 *.ipynb_checkpoints/
+src/lobster/mcp/claude_desktop_config.json
 
 notebooks/nathan/*
 notebooks/karina/*

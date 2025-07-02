@@ -1,12 +1,15 @@
 import logging
 import tempfile
 from collections import defaultdict
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import Callable, Sequence
 
 import lightning as L
+import numpy as np
 import torch
 from lightning.pytorch.loggers import CSVLogger
+from scipy.stats import spearmanr
 from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.multioutput import MultiOutputClassifier
 from torch import Tensor
 from torch.utils.data import DataLoader
@@ -15,7 +18,7 @@ from transformers.tokenization_utils_base import BatchEncoding
 
 from lobster.constants import PEER_TASK_CATEGORIES, PEER_TASK_SPLITS, PEER_TASKS, PEERTask, PEERTaskCategory
 from lobster.datasets import PEERDataset
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -66,36 +69,51 @@ class PEEREvaluationCallback(LinearProbeCallback):
         Protein Sequence Understanding"
         https://arxiv.org/abs/2206.02096
 
-    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
+    Supports both tokenizer-based models (using UMETokenizerTransform) and
+    sequence-based models like ESM.
     """
 
     def __init__(
         self,
-        max_length: int,
-        tasks: Optional[Sequence[Union[PEERTask, str]]] = None,
+        max_length: int | None = None,
+        tasks: Sequence[PEERTask | str] | None = None,
         batch_size: int = 32,
-        run_every_n_epochs: Optional[int] = None,
+        run_every_n_epochs: int | None = None,
+        requires_tokenization: bool = True,
+        transform_fn: Callable | None = None,
     ):
         """Initialize the PEER benchmark callback.
 
         Parameters
         ----------
-        max_length : int
-            Maximum sequence length for tokenization.
-        tasks : Optional[Sequence[Union[PEERTask, str]]], default=None
+        max_length : int, default=None
+            Maximum sequence length for tokenization (if needed).
+        tasks : Sequence[PEERTask | str] | None, default=None
             Specific PEER tasks to evaluate. If None, all tasks are used.
         batch_size : int, default=32
             Batch size for embedding extraction and evaluation.
-        run_every_n_epochs : Optional[int], default=None
+        run_every_n_epochs : int | None, default=None
             Run this callback every n epochs. If None, runs every validation epoch.
+        requires_tokenization : bool, default=True
+            Whether the model requires tokenized inputs (via UMETokenizerTransform) or
+            can accept raw sequences directly.
+        transform_fn : Callable | None, default=None
+            Custom transform function to apply to inputs. If None and requires_tokenization
+            is True, UMETokenizerTransform will be used.
         """
-        tokenizer_transform = UmeTokenizerTransform(
-            modality="amino_acid",
-            max_length=max_length,
-        )
+        self.requires_tokenization = requires_tokenization
+
+        if requires_tokenization and transform_fn is None:
+            if max_length is None:
+                raise ValueError("max_length must be provided if requires_tokenization is True")
+
+            transform_fn = UMETokenizerTransform(
+                modality="amino_acid",
+                max_length=max_length,
+            )
 
         super().__init__(
-            transform_fn=tokenizer_transform,
+            transform_fn=transform_fn,
             # Default task type will be updated per task
             task_type="regression",
             batch_size=batch_size,
@@ -119,10 +137,52 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Cache for datasets
         self.datasets = {}
 
+    def _get_relevant_metric(self, task: PEERTask) -> str:
+        """Get the relevant metric for a given PEER task.
+
+        Parameters
+        ----------
+        task : PEERTask
+            The PEER task to get the relevant metric for.
+
+        Returns
+        -------
+        str
+            The name of the relevant metric for this task.
+        """
+        # Function prediction tasks
+        if task in {PEERTask.FLUORESCENCE, PEERTask.STABILITY, PEERTask.BETALACTAMASE}:
+            return "spearman"
+        # Localization and function classification tasks
+        elif task in {
+            PEERTask.SOLUBILITY,
+            PEERTask.SUBCELLULAR_LOCALIZATION,
+            PEERTask.BINARY_LOCALIZATION,
+            PEERTask.FOLD,
+            PEERTask.SECONDARY_STRUCTURE,
+        }:
+            return "accuracy"
+        # Contact prediction
+        elif task == PEERTask.PROTEINNET:
+            return "l5_precision"
+        # PPI classification
+        elif task in {PEERTask.HUMANPPI, PEERTask.YEASTPPI}:
+            return "accuracy"
+        # Regression tasks with RMSE
+        elif task in {PEERTask.PPIAFFINITY, PEERTask.PDBBIND, PEERTask.BINDINGDB}:
+            return "rmse"
+        # Default to accuracy for classification and rmse for regression
+        else:
+            task_type = PEER_TASKS[task][0]
+            if task_type in {"binary", "multiclass", "multilabel"}:
+                return "accuracy"
+            else:  # regression
+                return "rmse"
+
     def _process_and_embed(
         self,
         pl_module: L.LightningModule,
-        inputs: Union[Dict[str, Tensor], List[str], str],
+        inputs: dict[str, Tensor] | list[str] | str | BatchEncoding,
         modality: str = "amino_acid",
         aggregate: bool = True,
     ) -> Tensor:
@@ -132,7 +192,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         ----------
         pl_module : L.LightningModule
             The lightning module with a model that can extract embeddings
-        inputs : Union[Dict[str, Tensor], List[str], str]
+        inputs : dict[str, Tensor] | list[str] | str | BatchEncoding
             Either tokenized inputs (dict with input_ids, attention_mask)
             or raw inputs (list of strings or single string)
         modality : str, default="amino_acid"
@@ -146,20 +206,51 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Embeddings tensor of shape (batch_size, hidden_size) if aggregate=True
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
-        # Check if inputs are already tokenized (either dict or BatchEncoding)
-        if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:
-            tokenized_inputs = inputs
-        else:
-            # Tokenize the inputs
-            tokenizer_transform = pl_module.tokenizer_transforms[modality]
-            tokenized_inputs = tokenizer_transform(inputs)
+        # Models that accept sequence inputs directly (like ESM)
+        if not self.requires_tokenization:
+            # Check if inputs are already tokenized (BatchEncoding or dict with input_ids)
+            if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:  # noqa: UP038
+                # Extract the original sequences if possible and available
+                if hasattr(inputs, "original_sequence"):
+                    # Use the original sequence if available
+                    sequences = inputs.original_sequence
+                elif hasattr(self.transform_fn, "tokenizer") and hasattr(self.transform_fn.tokenizer, "decode"):
+                    # Try to decode the input_ids back to sequences
+                    tokenizer = self.transform_fn.tokenizer
+                    sequences = [tokenizer.decode(ids) for ids in inputs["input_ids"]]
+                else:
+                    # We can't handle this case - return error
+                    raise ValueError(
+                        "Model requires sequence inputs but received tokenized inputs "
+                        "without a way to recover the original sequences"
+                    )
+            else:
+                # Inputs are already sequences or can be used directly
+                sequences = inputs
 
-        # Use the embed method from the model
-        return pl_module.model.embed(tokenized_inputs, aggregate=aggregate)
+            # Call the model's embed method with the sequences
+            return pl_module.embed(sequences, aggregate=aggregate)
+
+        # Models that require tokenized inputs (traditional approach)
+        else:
+            # Check if inputs are already tokenized (either dict or BatchEncoding)
+            if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:  # noqa: UP038
+                tokenized_inputs = inputs
+            else:
+                # Tokenize the inputs
+                if hasattr(pl_module, "tokenizer_transforms") and modality in pl_module.tokenizer_transforms:
+                    tokenizer_transform = pl_module.tokenizer_transforms[modality]
+                    tokenized_inputs = tokenizer_transform(inputs)
+                else:
+                    # Fall back to the transform_fn from this callback
+                    tokenized_inputs = self.transform_fn(inputs)
+
+            # Use the embed method from the model
+            return pl_module.embed(tokenized_inputs, aggregate=aggregate)
 
     def _get_embeddings(
-        self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask = None
-    ) -> Tuple[Tensor, Tensor]:
+        self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask | None = None
+    ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader with task-specific handling."""
         if task is None:
             # Fall back to parent implementation if no task specified
@@ -185,7 +276,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 for batch in dataloader:
                     x, y = batch
 
-                    # Get embeddings using our new method
+                    # Get embeddings using our modified method that handles both tokenized and direct inputs
                     batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
 
                     embeddings.append(batch_embeddings.cpu())
@@ -216,7 +307,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 # Default case: return anything with test
                 return [split for split in PEER_TASK_SPLITS[task] if split not in ["train", "valid"]]
 
-    def _get_task_datasets(self, task: PEERTask) -> Tuple[PEERDataset, Dict[str, PEERDataset]]:
+    def _get_task_datasets(self, task: PEERTask) -> tuple[PEERDataset, dict[str, PEERDataset]]:
         """Get or create train and test datasets for a given task.
 
         Returns:
@@ -256,7 +347,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def _get_paired_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Extract embeddings for paired inputs (protein-protein or protein-ligand)."""
         task_type = PEER_TASKS[task][0]
         embeddings = []
@@ -286,7 +377,18 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         protein_embeddings = self._process_and_embed(
                             pl_module, seq1, modality="amino_acid", aggregate=True
                         )
-                        ligand_embeddings = self._process_and_embed(pl_module, seq2, modality="ligand", aggregate=True)
+
+                        # For sequence-based models that don't have ligand tokenizers
+                        if not self.requires_tokenization:
+                            # Assume the model can handle ligand sequences directly
+                            ligand_embeddings = self._process_and_embed(
+                                pl_module, seq2, modality="amino_acid", aggregate=True
+                            )
+                        else:
+                            # Use the specific ligand tokenizer for tokenizer-based models
+                            ligand_embeddings = self._process_and_embed(
+                                pl_module, seq2, modality="ligand", aggregate=True
+                            )
 
                         # Concatenate the embeddings
                         batch_embeddings = torch.cat([protein_embeddings, ligand_embeddings], dim=1)
@@ -308,10 +410,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
         self,
         batch_embeddings: Tensor,
         targets: Tensor,
-        input_ids: Optional[Tensor] = None,
-        attention_mask: Optional[Tensor] = None,
+        input_ids: Tensor | None = None,
+        attention_mask: Tensor | None = None,
         ignore_target_value: int = -100,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Helper method to flatten embeddings and filter special tokens for token-level tasks.
 
         Parameters
@@ -320,16 +422,16 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Embeddings with shape [batch_size, seq_len, hidden_size]
         targets : Tensor
             Target labels with shape [batch_size, seq_len] or [batch_size*seq_len]
-        input_ids : Optional[Tensor], default=None
+        input_ids : Tensor | None, default=None
             Token IDs from tokenizer, used to identify special tokens
-        attention_mask : Optional[Tensor], default=None
+        attention_mask : Tensor | None, default=None
             Attention mask from tokenizer
         ignore_target_value : int, default=-100
             Value in targets to ignore (typically padding value)
 
         Returns
         -------
-        Tuple[Tensor, Tensor]
+        tuple[Tensor, Tensor]
             Filtered embeddings and targets
         """
         _batch_size, _seq_len, hidden_size = batch_embeddings.shape
@@ -343,8 +445,13 @@ class PEEREvaluationCallback(LinearProbeCallback):
         else:
             targets_flat = targets
 
-        # If we have tokenized input, use it to filter special tokens
-        if input_ids is not None and attention_mask is not None:
+        # If we have tokenized input and we're using a tokenizer-based model, use it to filter special tokens
+        if (
+            input_ids is not None
+            and attention_mask is not None
+            and self.requires_tokenization
+            and hasattr(self.transform_fn, "tokenizer")
+        ):
             tokenizer = self.transform_fn.tokenizer
             special_token_ids = {
                 tokenizer.cls_token_id,
@@ -374,7 +481,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             filtered_embeddings = batch_embeddings_flat[combined_mask]
             filtered_targets = targets_flat[combined_mask]
         else:
-            # If no tokenizer info provided, just filter based on ignore value
+            # If no tokenizer info provided or using sequence-based model, just filter based on ignore value
             valid_mask = targets_flat != ignore_target_value
             filtered_embeddings = batch_embeddings_flat[valid_mask]
             filtered_targets = targets_flat[valid_mask]
@@ -383,7 +490,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def _get_structure_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Extract embeddings for structure prediction tasks with special handling."""
         embeddings = []
         targets = []
@@ -395,9 +502,22 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 if isinstance(batch, tuple) and len(batch) == 2:
                     x, y = batch
 
-                    # x should be a dictionary with tokenizer outputs
-                    input_ids = x.get("input_ids")
-                    attention_mask = x.get("attention_mask")
+                    # For sequence-based models that don't require tokenization
+                    if not self.requires_tokenization:
+                        if isinstance(x, dict) and "input_ids" in x:
+                            # Get the raw sequences if we can
+                            if hasattr(x, "original_sequence"):
+                                x = x.original_sequence
+                            elif hasattr(self.transform_fn, "tokenizer") and hasattr(
+                                self.transform_fn.tokenizer, "decode"
+                            ):
+                                # Try to decode from input_ids
+                                tokenizer = self.transform_fn.tokenizer
+                                x = [tokenizer.decode(ids) for ids in x["input_ids"]]
+
+                    # Extract input_ids and attention_mask if available (for token filtering)
+                    input_ids = x.get("input_ids") if isinstance(x, dict) else None
+                    attention_mask = x.get("attention_mask") if isinstance(x, dict) else None
                 else:
                     raise ValueError(f"Expected batch to be a tuple of (inputs, targets), got {type(batch)}")
 
@@ -535,9 +655,76 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         return probe
 
+    def _evaluate_probe(self, probe, embeddings: Tensor, targets: Tensor, task: PEERTask = None) -> dict[str, float]:
+        """Evaluate a trained probe on the given embeddings and targets, returning task-specific metrics."""
+        if task is None:
+            # Fallback to parent implementation if no task specified
+            return super()._evaluate_probe(probe, embeddings, targets)
+
+        embeddings_np = embeddings.numpy()
+        targets_np = targets.numpy()
+
+        relevant_metric = self._get_relevant_metric(task)
+        metrics = {}
+
+        # Get predictions from the probe
+        predictions = probe.predict(embeddings_np)
+
+        # Calculate the relevant metric based on the task
+        match relevant_metric:
+            case "accuracy":
+                # For classification tasks
+                if predictions.ndim > 1 and predictions.shape[1] > 1:
+                    # Multi-class: reshape if needed
+                    targets_np = targets_np.ravel() if targets_np.ndim > 1 else targets_np
+
+                metrics["accuracy"] = accuracy_score(targets_np, predictions)
+
+            case "spearman":
+                # For regression tasks requiring Spearman correlation
+                if predictions.ndim > 1:
+                    # Multiple outputs - calculate correlation for each and average
+                    correlations = []
+                    for i in range(predictions.shape[1]):
+                        corr, _ = spearmanr(targets_np[:, i], predictions[:, i])
+                        correlations.append(corr)
+                    metrics["spearman"] = np.mean(correlations)
+                else:
+                    # Single output
+                    corr, _ = spearmanr(targets_np, predictions)
+                    metrics["spearman"] = corr
+
+            case "rmse":
+                # For regression tasks requiring RMSE
+                rmse = np.sqrt(mean_squared_error(targets_np, predictions))
+                metrics["rmse"] = rmse
+
+            case "l5_precision":
+                # For contact prediction tasks
+                if task == PEERTask.PROTEINNET:
+                    # For contact prediction, we need L/5 precision
+                    # We sort predictions by confidence and take top L/5
+                    if hasattr(probe, "predict_proba"):
+                        # Get probabilities for positive class
+                        probs = probe.predict_proba(embeddings_np)[:, 1]
+
+                        # Get sequence length L (approximated from data)
+                        # This is simplified - in practice you might want to group by protein
+                        L = int(np.sqrt(len(targets_np) * 2))
+                        top_k = max(1, L // 5)
+
+                        # Get top L/5 predictions
+                        top_indices = np.argsort(probs)[-top_k:]
+                        metrics["l5_precision"] = np.mean(targets_np[top_indices])
+                    else:
+                        # Fallback if predict_proba is not available
+                        metrics["accuracy"] = accuracy_score(targets_np, predictions)
+
+        return metrics
+
     def _evaluate_task(
         self, task: PEERTask, trainer: L.Trainer, pl_module: L.LightningModule
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Evaluate a single PEER task across all its test splits.
 
         Returns:
@@ -559,8 +746,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
                 test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader, task)
 
-                # Evaluate probe
-                metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
+                # Evaluate probe with task-specific metrics
+                metrics = self._evaluate_probe(probe, test_embeddings, test_targets, task)
                 split_metrics[split_name] = metrics
 
             return split_metrics
@@ -574,23 +761,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
         pl_module: L.LightningModule,
         trainer: L.Trainer,
         step: int = 0,
-    ) -> Dict[str, Dict[str, float]]:
-        """Core evaluation logic used by both on_validation_epoch_end and evaluate.
-
-        Parameters
-        ----------
-        pl_module : L.LightningModule
-            The model to evaluate
-        trainer : L.Trainer
-            Trainer instance for logging metrics
-        step : int, optional
-            Step value for logging metrics, by default 0
-
-        Returns
-        -------
-        Dict[str, Dict[str, float]]
-            Dictionary of task_name -> split_name -> {metric_name: value} with "mean" entry
-        """
+    ) -> dict[str, dict[str, float]]:
+        """Core evaluation logic used by both on_validation_epoch_end and evaluate."""
         # Track metrics
         category_metrics = defaultdict(lambda: defaultdict(list))
         all_metrics = defaultdict(list)
@@ -602,40 +774,45 @@ class PEEREvaluationCallback(LinearProbeCallback):
             task_category = PEER_TASK_CATEGORIES[task]
             split_metrics = self._evaluate_task(task, trainer, pl_module)
 
+            # Get the relevant metric for this task
+            relevant_metric = self._get_relevant_metric(task)
+
             # Store task metrics for return value
             all_task_metrics[str(task)] = split_metrics
 
-            # Process metrics for each split
+            # Process metrics for each split, but only log the relevant metric
             for split_name, metrics in split_metrics.items():
-                # Log split-specific metrics
-                for metric_name, value in metrics.items():
-                    metric_key = f"peer_linear_probe/{task}/{split_name}/{metric_name}"
+                # Only log the relevant metric for this task
+                if relevant_metric in metrics:
+                    value = metrics[relevant_metric]
+                    metric_key = f"peer_linear_probe/{task}/{split_name}/{relevant_metric}"
                     trainer.logger.log_metrics({metric_key: value}, step=step)
 
                     # Collect metrics for category averages
                     if len(split_metrics) > 1:
-                        category_metrics[task_category][f"{metric_name}_by_split"].append(value)
+                        category_metrics[task_category][f"{relevant_metric}_by_split"].append(value)
 
-                    # Collect metrics for global averages
-                    all_metrics[metric_name].append(value)
+                    # Collect metrics for global averages - using the metric type as the key
+                    all_metrics[relevant_metric].append(value)
 
                 split_count += 1
 
             # Calculate and log task averages across splits if there are multiple splits
             if len(split_metrics) > 1:
                 task_avg_metrics = {}
-                for metric_name in next(iter(split_metrics.values()), {}):
-                    values = [m.get(metric_name) for m in split_metrics.values() if metric_name in m]
+                # Only average the relevant metric
+                if any(relevant_metric in m for m in split_metrics.values()):
+                    values = [m.get(relevant_metric) for m in split_metrics.values() if relevant_metric in m]
                     if values:
                         avg_value = sum(values) / len(values)
-                        task_avg_key = f"peer_linear_probe/{task}/average/{metric_name}"
+                        task_avg_key = f"peer_linear_probe/{task}/average/{relevant_metric}"
                         trainer.logger.log_metrics({task_avg_key: avg_value}, step=step)
-                        task_avg_metrics[metric_name] = avg_value
+                        task_avg_metrics[relevant_metric] = avg_value
 
                 if task_avg_metrics:
                     all_task_metrics[f"{task}/average"] = task_avg_metrics
 
-        # Log category averages
+        # Log category averages - but only for metrics that are relevant to tasks in that category
         category_metrics_dict = {}
         for category, metrics_dict in category_metrics.items():
             category_metrics_dict[str(category)] = {}
@@ -649,7 +826,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         if category_metrics_dict:
             all_task_metrics["categories"] = category_metrics_dict
 
-        # Calculate and log overall averages
+        # Calculate and log overall averages for each metric type
         mean_metrics = {}
         for metric_name, values in all_metrics.items():
             if values:
@@ -679,8 +856,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
     def evaluate(
         self,
         module: L.LightningModule,
-        trainer: L.Trainer = None,
-    ) -> Dict[str, Dict[str, float]]:
+        trainer: L.Trainer | None = None,
+    ) -> dict[str, dict[str, float]]:
         """Evaluate model on PEER benchmark tasks using linear probes.
 
         This method can be called manually at any time to evaluate a model.
@@ -689,12 +866,12 @@ class PEEREvaluationCallback(LinearProbeCallback):
         ----------
         module : L.LightningModule
             The model to evaluate
-        trainer : Optional[L.Trainer], optional
+        trainer : L.Trainer | None, optional
             Trainer for logging metrics, by default None
 
         Returns
         -------
-        Dict[str, Dict[str, float]]
+        dict[str, dict[str, float]]
             Dictionary of task results with metrics and averages
         """
         # Create a simple trainer with logger if none provided
@@ -703,7 +880,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 logger=CSVLogger(tempfile.mkdtemp()),
                 accelerator="auto",
                 devices=1,
-                enable_checkpoints=False,
             )
 
         return self._run_evaluation(module, trainer, step=0)

@@ -1,7 +1,8 @@
 import logging
 import warnings
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Iterator, List, Sequence, Tuple, Union
+from typing import Any, ClassVar
 
 from datasets import Dataset as HFDataset
 from datasets import IterableDataset as HFIterableDataset
@@ -23,7 +24,7 @@ class HuggingFaceIterableDataset(IterableDataset):
     and automatically detects and configures for multi-node distributed training.
     """
 
-    SUPPORTED_SPLITS: ClassVar[List[str]] = ["train"]  # Default, override in subclasses
+    SUPPORTED_SPLITS: ClassVar[list[str]] = ["train"]  # Default, override in subclasses
 
     def __init__(
         self,
@@ -104,7 +105,7 @@ class HuggingFaceIterableDataset(IterableDataset):
         processing should go into a transform."""
         return sample
 
-    def __iter__(self) -> Iterator[Union[Tuple[str, ...], str]]:
+    def __iter__(self) -> Iterator[tuple[str, ...] | str]:
         # Detect distributed environment
         self.distributed, self.rank, self.world_size = detect_distributed_environment()
 

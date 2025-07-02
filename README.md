@@ -70,11 +70,29 @@ For the `cb-lbster` code base cite: [Concept Bottleneck Language Models for Prot
 ## Install <a name="install"></a>
 
 ### Using `uv`
-Install [uv](https://github.com/astral-sh/uv)  
+Install [uv](https://github.com/astral-sh/uv) and create a new virtual environment:
+
+
 ```bash
 uv venv --python 3.12  # create a new virtual environment in the `lobster` directory
 source .venv/bin/activate
 uv pip install -e .
+```
+
+Alternatively, run installation directly with `uv sync`:
+```bash
+uv sync
+```
+and then prefix every command with `uv run`. For example,
+
+```bash
+uv run lobster_train data.path_to_fasta="test_data/query.fasta" 
+```
+
+### flash attention
+To make use of [flash attention](https://github.com/Dao-AILab/flash-attention) install with the `flash` extra
+```bash
+uv sync --extra flash
 ```
 
 ### Using `mamba`
@@ -129,6 +147,25 @@ Check out this [jupyter notebook tutorial](notebooks/01-inference.ipynb) for an 
 ### Concept Interventions
 
 Check out this [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for an example on how to intervene on different concepts for our concept-bottleneck models class.
+
+## MCP Integration
+
+Lobster supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for seamless integration with Claude Desktop and other AI tools:
+
+```bash
+# Install with MCP support
+uv sync --extra mcp
+
+# Setup Claude Desktop integration
+uv run lobster_mcp_setup
+```
+
+After setup, you can use Lobster models directly in Claude Desktop with natural language commands like:
+- "Get embeddings for this protein sequence using lobster_24M"
+- "What concepts are supported by the cb_lobster_24M model?"
+- "Intervene on this sequence to reduce hydrophobicity"
+
+See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation.
 
 ## Example scripts
 

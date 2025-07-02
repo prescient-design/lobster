@@ -106,7 +106,7 @@ def mock_transform():
 @pytest.fixture
 def callback(monkeypatch, mock_transform):
     monkeypatch.setattr(
-        "lobster.callbacks._peer_evaluation_callback.UmeTokenizerTransform",
+        "lobster.callbacks._peer_evaluation_callback.UMETokenizerTransform",
         lambda **kwargs: mock_transform,
     )
 

@@ -1,12 +1,20 @@
 repos:
-  - hooks:
-      - args: [ --fix ]
-        id: ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.1
+    hooks:
+      - id: ruff
+        args: [--fix]
       - id: ruff-format
-    repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.9
-  - hooks:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
       - id: check-toml
       - id: check-yaml
-    repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+  - repo: local
+    hooks:
+      - id: check-claude-md
+        name: Check CLAUDE.md is up to date
+        entry: bash -c 'echo "⚠️  Remember to update CLAUDE.md if you changed project structure, commands, or major features"'
+        language: system
+        pass_filenames: false
+        always_run: true

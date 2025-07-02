@@ -1,6 +1,5 @@
 import math
 from dataclasses import dataclass
-from typing import Dict
 
 from lobster.constants import GPUType, ModelType
 
@@ -116,7 +115,7 @@ class ArchitectureAnalyzer:
         self.issues = []
         self.suggestions = []
 
-    def analyze(self) -> Dict:
+    def analyze(self) -> dict:
         """Analyze the model configuration and return optimization suggestions."""
         self.issues = []
         self.suggestions = []

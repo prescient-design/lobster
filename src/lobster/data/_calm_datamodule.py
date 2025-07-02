@@ -1,6 +1,7 @@
 import random
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence, TypeVar, Union
+from typing import Any, TypeVar
 
 import torch
 from lightning import LightningDataModule
@@ -16,17 +17,17 @@ T = TypeVar("T")
 class CalmLightningDataModule(LightningDataModule):
     def __init__(
         self,
-        root: Union[str, Path] = None,
+        root: str | Path = None,
         *,
         use_text_descriptions: bool = False,
-        transform_fn: Union[Callable, Transform, None] = None,
+        transform_fn: Callable | Transform | None = None,
         seed: int = 0xDEADBEEF,
         batch_size: int = 1,
         shuffle: bool = True,
-        sampler: Optional[Union[Iterable, Sampler]] = None,
-        batch_sampler: Optional[Union[Iterable[Sequence], Sampler[Sequence]]] = None,
+        sampler: Iterable | Sampler | None = None,
+        batch_sampler: Iterable[Sequence] | Sampler[Sequence] | None = None,
         num_workers: int = 0,
-        collate_fn: Optional[Callable[[list[T]], Any]] = None,
+        collate_fn: Callable[[list[T]], Any] | None = None,
         max_length: int = 512,
         pin_memory: bool = True,
         drop_last: bool = False,

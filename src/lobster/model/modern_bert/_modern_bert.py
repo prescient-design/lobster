@@ -9,6 +9,7 @@ from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, get_sched
 from ._config import FlexBertConfig
 from ._model import FlexBertModel, FlexBertPredictionHead
 from ._modern_bert_configuration import FLEXBERT_CONFIG_ARGS
+from lobster.constants import SchedulerType
 
 _FLASH_ATTN_AVAILABLE = False
 
@@ -39,18 +40,7 @@ class FlexBERT(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         mask_percentage: float = 0.25,
         max_length: int = 8192,
-        scheduler: Literal[
-            "linear",
-            "cosine",
-            "cosine_with_restarts",
-            "polynomial",
-            "constant",
-            "constant_with_warmup",
-            "inverse_sqrt",
-            "reduce_lr_on_plateau",
-            "cosine_with_min_lr",
-            "warmup_stable_decay",
-        ] = "constant_with_warmup",
+        scheduler: SchedulerType = "constant_with_warmup",
         model_kwargs: dict = None,
         scheduler_kwargs: dict = None,
         ckpt_path: str = None,
@@ -116,6 +106,15 @@ class FlexBERT(pl.LightningModule):
         config_args = FLEXBERT_CONFIG_ARGS[model_name]
         model_kwargs = model_kwargs or {}
 
+        # If flash-attn is not available but use_fa2 is True, warn and set to False
+        if model_kwargs.get("use_fa2", True) and not _FLASH_ATTN_AVAILABLE:
+            import warnings
+            warnings.warn(
+                "flash_attn not available but use_fa2=True. Setting use_fa2=False. "
+                "This will use standard attention instead of flash-attn."
+            )
+            model_kwargs["use_fa2"] = False
+
         self.config = FlexBertConfig(
             **config_args,
             vocab_size=vocab_size,
@@ -128,7 +127,6 @@ class FlexBERT(pl.LightningModule):
             FlexBertPredictionHead(self.config), nn.Linear(self.config.hidden_size, self.config.vocab_size)
         )
 
-        assert _FLASH_ATTN_AVAILABLE, "flash_attn not available. This dependency is part of the flash extra"
         self.loss_fn = CrossEntropyLoss()
         self.save_hyperparameters(logger=False)
 
@@ -273,22 +271,38 @@ class FlexBERT(pl.LightningModule):
         Parameters
         ----------
         input_ids: torch.Tensor
-            Input IDs of shape (batch_size, 1, length).
+            Input IDs of shape (batch_size, 1, length) for unpadded models or (batch_size, length) for padded models.
         attention_mask: torch.Tensor
-            Attention mask of shape (batch_size, 1, length).
+            Attention mask of shape (batch_size, 1, length) for unpadded models or (batch_size, length) for padded models.
         
         Returns
         -------
         torch.Tensor
-            Latents of shape (batch_size * sequence_length, hidden_size).
+            Latents of shape (batch_size * sequence_length, hidden_size) for unpadded models
+            or (batch_size, sequence_length, hidden_size) for padded models.
         """
-        input_ids, attention_mask, cu_seqlens = self._prepare_inputs(input_ids, attention_mask)
-        
         with torch.inference_mode():
-            return self.model(
-                input_ids, 
-                attention_mask=attention_mask, 
-                cu_seqlens=cu_seqlens, 
-                max_seqlen=self.max_length
-            )
+            if self.config.padding == "unpadded":
+                # For unpadded models, convert 3D to 2D if needed and let the encoder handle unpadding
+                if input_ids.dim() == 3:
+                    input_ids = input_ids.squeeze(1)
+                if attention_mask.dim() == 3:
+                    attention_mask = attention_mask.squeeze(1)
+                
+                # Call the model with 2D tensors - the unpadded encoder will handle unpadding automatically
+                return self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask
+                )
+            else:
+                # For padded models, also ensure we have 2D tensors
+                if input_ids.dim() == 3:
+                    input_ids = input_ids.squeeze(1)
+                if attention_mask.dim() == 3:
+                    attention_mask = attention_mask.squeeze(1)
+                
+                return self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask
+                )
             

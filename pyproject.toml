@@ -8,7 +8,6 @@ requires-python = ">=3.11, <3.13"
 dependencies = [
     "pooch",
     "torch",
-    "flash-attn; sys_platform == 'linux'",
     "tqdm",
     "lightning",
     "torchmetrics",
@@ -23,7 +22,7 @@ dependencies = [
     "wandb",
     "hydra-core",
     "torchdata",
-    "datasets",
+    "datasets>2",
     "tokenizers",
     "transformers>=4.24.0",
     "scikit-learn",
@@ -40,6 +39,8 @@ dependencies = [
     "beignet[datasets]",
     "deepspeed",
     "dotenv>=0.9.9",
+    "litdata>=0.2.49",
+    "polars>=1.30.0",
 ]
 
 [build-system]
@@ -53,15 +54,30 @@ lobster_predict = "lobster.cmdline:predict"
 lobster_intervene = "lobster.cmdline:intervene"
 lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
-lobster_eval = "lobster.cmdline:eval_embed"
+lobster_eval_embed = "lobster.cmdline:eval_embed"
+lobster_eval = "lobster.cmdline:evaluate"
+lobster_mcp_server = "lobster.mcp.inference_server:main"
+lobster_mcp_setup = "lobster.mcp.setup:main"
 
 [project.optional-dependencies]
 mgm = [
     "rdkit>=2024.9.4",
     "selfies>=2.1.2",
 ]
-beignet_mdtraj = [
-    "beignet[mdtraj]"
+flash = [
+    "triton<=3.1.0; sys_platform == 'linux'",
+    "flash-attn>=2.8.0.post2; sys_platform == 'linux'",
+    "rotary-embedding-torch",
+
+]
+mcp = [
+    "mcp[cli]>=1.0.0",
+    "fastmcp>=0.2.0",
+    "python-Levenshtein>=0.20.0",
+    "pydantic>=2.0.0",
+]
+eval = [
+     "umap-learn>=0.5.7"
 ]
 
 [tool.setuptools.packages.find]
@@ -83,6 +99,8 @@ line-length = 120
 exclude = [
   "scripts",
   "notebooks",
+  "examples",
+  "src/lobster/extern/openfold_utils",
   "src/lobster/model/openfold_utils",
   "src/lobster/model/modern_bert"
 ]
@@ -103,6 +121,8 @@ ignore = [
     "B905",  # requires python >= 3.10
     "B007",  # unused-loop-control-variable
     "E741",  # ambiguous-variable-name
+    "E902",  # file not found error
+    "UP038",  # Use X | Y in isinstance call instead of (X, Y)
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -115,15 +135,19 @@ ignore = [
 
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
-constraint-dependencies = ["torch==2.5.1", "flash-attn==2.7.4.post1"]
-
+no-build-isolation-package = ["flash-attn"]
+constraint-dependencies = [
+    "torch>=2.0.0; extra != 'flash'",
+    "torch==2.7.0; extra == 'flash'"
+] # flash-attn wheels available
 
 [tool.uv.sources]
-flash_attn = [
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.11'"},
-  { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.12'"},
-]
 beignet = { git = "https://github.com/Genentech/beignet" }
+
+[[tool.uv.dependency-metadata]]
+name = "flash-attn"
+version = "2.8.0"
+requires-dist = ["torch", "einops"]
 
 [dependency-groups]
 dev = [

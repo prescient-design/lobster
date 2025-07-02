@@ -1,5 +1,6 @@
 import warnings
-from typing import Callable, Dict, Literal, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Literal
 
 import lightning as L
 import numpy as np
@@ -24,7 +25,7 @@ warnings.filterwarnings(
 class LinearProbeCallback(Callback):
     """Callback for evaluating embedding models using scikit-learn linear probes.
 
-    Assumes the underlying model is Ume as it accesses
+    Assumes the underlying model is UME as it accesses
     `module.model.tokens_to_latents` to extract embeddings. To use with other
     models, you may need to override `_get_embeddings`.
 
@@ -36,7 +37,7 @@ class LinearProbeCallback(Callback):
         self,
         task_type: TaskType = "regression",
         transform_fn: Transform | Callable | None = None,
-        num_classes: Optional[int] = None,
+        num_classes: int | None = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
     ):
@@ -51,9 +52,9 @@ class LinearProbeCallback(Callback):
         self._set_metrics(task_type, num_classes)
 
         # Dictionary to store trained probes
-        self.probes: Dict[str, LinearRegression | LogisticRegression] = {}
+        self.probes: dict[str, LinearRegression | LogisticRegression] = {}
 
-    def _set_metrics(self, task_type: TaskType, num_classes: Optional[int] = None) -> None:
+    def _set_metrics(self, task_type: TaskType, num_classes: int | None = None) -> None:
         """Initialize metrics based on task type."""
         if task_type == "regression":
             self.mse = MeanSquaredError()
@@ -92,8 +93,8 @@ class LinearProbeCallback(Callback):
         return trainer.current_epoch % self.run_every_n_epochs != 0
 
     def _get_embeddings(
-        self, model: Union[L.LightningModule, torch.nn.Module], dataloader: DataLoader
-    ) -> Tuple[Tensor, Tensor]:
+        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader
+    ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader.
 
         Parameters
@@ -157,7 +158,7 @@ class LinearProbeCallback(Callback):
 
         return probe
 
-    def _evaluate_probe(self, probe, embeddings: Tensor, targets: Tensor) -> Dict[str, float]:
+    def _evaluate_probe(self, probe, embeddings: Tensor, targets: Tensor) -> dict[str, float]:
         """Evaluate a trained probe using task-appropriate metrics."""
         embeddings_np = embeddings.numpy()  # Convert to numpy for probe prediction
         metrics = {}
@@ -190,7 +191,7 @@ class LinearProbeCallback(Callback):
         self,
         module: L.LightningModule,
         trainer: L.Trainer | None = None,
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Evaluate the model using linear probes.
 
         This method can be used both during training (with a trainer) and

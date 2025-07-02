@@ -1,5 +1,5 @@
 import random
-from typing import Literal, Optional
+from typing import Literal
 
 import lightning.pytorch as pl
 import torch
@@ -20,9 +20,9 @@ from ._utils import model_typer
 class DyAbModel(pl.LightningModule):
     def __init__(
         self,
-        model_name: Optional[str] = None,
-        checkpoint: Optional[str] = None,
-        ckpt_path: Optional[str] = None,
+        model_name: str | None = None,
+        checkpoint: str | None = None,
+        ckpt_path: str | None = None,
         model_type: Literal["LobsterPMLM", "LobsterPCLM"] = "LobsterPMLM",
         lr: float = 1e-3,
         seed: int = 0,
@@ -33,8 +33,8 @@ class DyAbModel(pl.LightningModule):
         freeze_encoder: bool = True,
         embedding_img_size: int = 192,
         diff_channel_0: Literal["diff", "add", "mul", "div"] = "diff",
-        diff_channel_1: Optional[Literal["sub", "add", "mul", "div"]] = None,
-        diff_channel_2: Optional[Literal["diff", "add", "mul", "div"]] = None,
+        diff_channel_1: Literal["diff", "add", "mul", "div"] | None = None,
+        diff_channel_2: Literal["diff", "add", "mul", "div"] | None = None,
         scheduler_cfg: DictConfig = None,
     ):
         """
@@ -137,6 +137,7 @@ class DyAbModel(pl.LightningModule):
         num_feats = self.resnet.fc.in_features
         self.resnet.fc = nn.Linear(num_feats, 1)  # regression
         self.loss = nn.MSELoss(reduction="sum")
+        self.save_hyperparameters(logger=False)
 
     def training_step(self, batch, batch_idx):
         loss, preds, targets = self._compute_loss(batch)
@@ -219,8 +220,8 @@ class DyAbModel(pl.LightningModule):
                     hidden_states = self.model.sequences_to_latents([seq2])[layer].to(self.device).float()
                 self.embedding_cache[seq2] = hidden_states
 
-        embeddings1 = torch.concat([self.embedding_cache[seq] for seq in sequences1], dim=0)
-        embeddings2 = torch.concat([self.embedding_cache[seq] for seq in sequences2], dim=0)
+        embeddings1 = torch.concat([self.embedding_cache[seq].to(self.device) for seq in sequences1], dim=0)
+        embeddings2 = torch.concat([self.embedding_cache[seq].to(self.device) for seq in sequences2], dim=0)
         ys = y1 - y2  # subtract labels
         ys = ys.float()
 

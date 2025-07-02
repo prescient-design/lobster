@@ -1,7 +1,7 @@
 import importlib.resources
 import json
 from os import PathLike
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import torch
 from transformers.tokenization_utils_base import (
@@ -15,24 +15,24 @@ from lobster.transforms import Transform
 from ._hyena_tokenizer import HyenaTokenizer
 
 filename = importlib.resources.files("lobster") / "assets" / "codon_tables" / "codon_table.json"
-DNA_CODON_DICT = json.load(open(filename, "r"))
+DNA_CODON_DICT = json.load(open(filename))
 
 
 class HyenaTokenizerTransform(Transform):
     def __init__(
         self,
-        pretrained_model_name_or_path: Union[str, PathLike] = None,
-        padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = False,
-        max_length: Optional[int] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = False,
+        pretrained_model_name_or_path: str | PathLike = None,
+        padding: bool | str | PaddingStrategy = False,
+        truncation: bool | str | TruncationStrategy = False,
+        max_length: int | None = None,
+        return_token_type_ids: bool | None = None,
+        return_attention_mask: bool | None = False,
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
         return_length: bool = False,
         verbose: bool = True,
-        tokenizer_dir: Optional[str] = "hyena_tokenizer",
+        tokenizer_dir: str | None = "hyena_tokenizer",
         mlm: bool = False,
         aa_to_dna: bool = False,
     ):
@@ -73,7 +73,7 @@ class HyenaTokenizerTransform(Transform):
 
     def transform(
         self,
-        text: Union[str, List[str], List[int]],
+        text: str | list[str] | list[int],
         parameters: dict[str, Any],
     ) -> BatchEncoding:
         if self._aa_to_dna:
@@ -104,10 +104,10 @@ class HyenaTokenizerTransform(Transform):
     def validate(self, flat_inputs: list[Any]) -> None:
         pass
 
-    def _check_inputs(self, inputs: List[Any]) -> None:
+    def _check_inputs(self, inputs: list[Any]) -> None:
         pass
 
-    def _transform(self, input: Any, parameters: Dict[str, Any]) -> Any:
+    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
         return self.transform(input, parameters)
 
     def translate_aa_to_dna(self, aa_sequence: str) -> str:

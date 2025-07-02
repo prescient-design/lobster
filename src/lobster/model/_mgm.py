@@ -1,5 +1,6 @@
 import importlib.resources
-from typing import Callable, Iterable, Literal, Optional, Union
+from collections.abc import Callable, Iterable
+from typing import Literal
 
 import lightning.pytorch as pl
 import pandas as pd
@@ -28,11 +29,11 @@ class LobsterMGM(pl.LightningModule):
         num_warmup_steps: int = 1_000,
         freeze: bool = False,
         mask_percentage: float = 0.15,
-        initial_mask_percentage: Optional[float] = None,
-        transform_fn: Union[Callable, Transform, None] = None,
-        config: Union[PretrainedConfig, None] = None,
+        initial_mask_percentage: float | None = None,
+        transform_fn: Callable | Transform | None = None,
+        config: PretrainedConfig | None = None,
         ckpt_path: str = None,
-        tokenizer_dir: Optional[str] = "mgm_tokenizer",
+        tokenizer_dir: str | None = "mgm_tokenizer",
         max_length: int = 512,
         position_embedding_type: Literal["rotary", "absolute"] = "rotary",
         scheduler_cfg: DictConfig = None,
@@ -280,7 +281,7 @@ class LobsterMGM(pl.LightningModule):
         sequence: str,
         batch_size: int = 32,
         return_probs: bool = False,
-    ) -> tuple[float, Optional[tuple[torch.Tensor, torch.Tensor]]]:
+    ) -> tuple[float, tuple[torch.Tensor, torch.Tensor] | None]:
         N = len(sequence)
 
         # Tokenize full sequence

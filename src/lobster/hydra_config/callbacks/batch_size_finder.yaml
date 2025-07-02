@@ -1,0 +1,7 @@
+batch_size_finder:
+  _target_: lightning.pytorch.callbacks.BatchSizeFinder
+  mode: power
+  steps_per_trial: 3
+  init_val: 2
+  max_trials: 25
+  batch_arg_name: batch_size

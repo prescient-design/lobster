@@ -15,7 +15,6 @@
 
 import logging
 from dataclasses import asdict, dataclass, field
-from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -189,7 +188,7 @@ def compute_fape(
     target_positions: torch.Tensor,
     positions_mask: torch.Tensor,
     length_scale: float,
-    l1_clamp_distance: Optional[float] = None,
+    l1_clamp_distance: float | None = None,
     eps=1e-8,
 ) -> torch.Tensor:
     """
@@ -257,7 +256,7 @@ def backbone_loss(
     backbone_rigid_tensor: torch.Tensor,
     backbone_rigid_mask: torch.Tensor,
     traj: torch.Tensor,
-    use_clamped_fape: Optional[torch.Tensor] = None,
+    use_clamped_fape: torch.Tensor | None = None,
     clamp_distance: float = 10.0,
     loss_unit_distance: float = 10.0,
     eps: float = 1e-4,
@@ -356,8 +355,8 @@ def sidechain_loss(
 
 
 def fape_loss(
-    out: Dict[str, torch.Tensor],
-    batch: Dict[str, torch.Tensor],
+    out: dict[str, torch.Tensor],
+    batch: dict[str, torch.Tensor],
     config: LossConfig,
 ) -> torch.Tensor:
     bb_loss = backbone_loss(
@@ -636,7 +635,7 @@ def _calculate_bin_centers(boundaries: torch.Tensor):
 def _calculate_expected_aligned_error(
     alignment_confidence_breaks: torch.Tensor,
     aligned_distance_error_probs: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     bin_centers = _calculate_bin_centers(alignment_confidence_breaks)
     return (
         torch.sum(aligned_distance_error_probs * bin_centers, dim=-1),
@@ -649,7 +648,7 @@ def compute_predicted_aligned_error(
     max_bin: int = 31,
     no_bins: int = 64,
     **kwargs,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """
     Computes aligned confidence metrics from logits.
 
@@ -687,7 +686,7 @@ def compute_predicted_aligned_error(
 
 def compute_tm(
     logits: torch.Tensor,
-    residue_weights: Optional[torch.Tensor] = None,
+    residue_weights: torch.Tensor | None = None,
     max_bin: int = 31,
     no_bins: int = 64,
     eps: float = 1e-8,
@@ -772,7 +771,7 @@ def between_residue_bond_loss(
     tolerance_factor_soft=12.0,
     tolerance_factor_hard=12.0,
     eps=1e-6,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """
     Flat-bottom loss to penalize structural violations between residues.
 
@@ -896,7 +895,7 @@ def between_residue_clash_loss(
     overlap_tolerance_soft=1.5,
     overlap_tolerance_hard=1.5,
     eps=1e-10,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """
     Loss to penalize steric clashes between residues.
 
@@ -1010,7 +1009,7 @@ def within_residue_violations(
     atom14_dists_upper_bound: torch.Tensor,
     tighten_bounds_for_loss=0.0,
     eps=1e-10,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """
     Loss to penalize steric clashes within residues.
 
@@ -1077,12 +1076,12 @@ def within_residue_violations(
 
 
 def find_structural_violations(
-    batch: Dict[str, torch.Tensor],
+    batch: dict[str, torch.Tensor],
     atom14_pred_positions: torch.Tensor,
     violation_tolerance_factor: float,
     clash_overlap_tolerance: float,
     **kwargs,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """Computes several checks for structural violations."""
     # Compute between residue backbone violations of bonds and angles.
     connection_violations = between_residue_bond_loss(
@@ -1161,10 +1160,10 @@ def find_structural_violations(
 
 
 def find_structural_violations_np(
-    batch: Dict[str, np.ndarray],
+    batch: dict[str, np.ndarray],
     atom14_pred_positions: np.ndarray,
     config: LossConfig,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     def to_tensor(x):
         return torch.tensor(x)
 
@@ -1220,10 +1219,10 @@ def extreme_ca_ca_distance_violations(
 
 
 def compute_violation_metrics(
-    batch: Dict[str, torch.Tensor],
+    batch: dict[str, torch.Tensor],
     atom14_pred_positions: torch.Tensor,  # (N, 14, 3)
-    violations: Dict[str, torch.Tensor],
-) -> Dict[str, torch.Tensor]:
+    violations: dict[str, torch.Tensor],
+) -> dict[str, torch.Tensor]:
     """Compute several metrics to assess the structural violations."""
     ret = {}
     extreme_ca_ca_violations = extreme_ca_ca_distance_violations(
@@ -1259,10 +1258,10 @@ def compute_violation_metrics(
 
 
 def compute_violation_metrics_np(
-    batch: Dict[str, np.ndarray],
+    batch: dict[str, np.ndarray],
     atom14_pred_positions: np.ndarray,
-    violations: Dict[str, np.ndarray],
-) -> Dict[str, np.ndarray]:
+    violations: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
     def to_tensor(x):
         return torch.tensor(x)
 
@@ -1279,7 +1278,7 @@ def compute_violation_metrics_np(
 
 
 def violation_loss(
-    violations: Dict[str, torch.Tensor],
+    violations: dict[str, torch.Tensor],
     atom14_atom_exists: torch.Tensor,
     eps=1e-6,
     **kwargs,
@@ -1303,10 +1302,10 @@ def violation_loss(
 
 
 def compute_renamed_ground_truth(
-    batch: Dict[str, torch.Tensor],
+    batch: dict[str, torch.Tensor],
     atom14_pred_positions: torch.Tensor,
     eps=1e-10,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """
     Find optimal renaming of ground truth based on the predicted positions.
 
@@ -1458,7 +1457,7 @@ class AlphaFoldLoss(nn.Module):
     """
 
     def __init__(self, config):
-        super(AlphaFoldLoss, self).__init__()
+        super().__init__()
         self.config = config
 
     def forward(self, out, batch, _return_breakdown=False):

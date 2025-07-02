@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, Optional, Sequence
+from collections.abc import Sequence
 
 import lightning as L
 from torch.utils.data import DataLoader
@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from lobster.constants import MOLECULEACE_TASKS
 from lobster.datasets import MoleculeACEDataset
-from lobster.tokenization import UmeTokenizerTransform
+from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -16,7 +16,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
     """Callback for evaluating embedding models on the Molecule Activity Cliff
     Estimation (MoleculeACE) dataset from Tilborg et al. (2022).
 
-    Currently only supports Ume embeddings and uses UmeTokenizerTransform.
+    Currently only supports UME embeddings and uses UMETokenizerTransform.
 
     This callback assesses how well a molecular embedding model captures activity
     cliffs - pairs of molecules that are structurally similar but show large
@@ -33,11 +33,11 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
     def __init__(
         self,
         max_length: int,
-        tasks: Optional[Sequence[str]] = None,
+        tasks: Sequence[str] | None = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
     ):
-        tokenizer_transform = UmeTokenizerTransform(
+        tokenizer_transform = UMETokenizerTransform(
             modality="SMILES",
             max_length=max_length,
         )
@@ -56,7 +56,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         self,
         module: L.LightningModule,
         trainer: L.Trainer | None = None,
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> dict[str, dict[str, float]]:
         """Evaluate the model on MoleculeACE datasets using linear probes.
 
         This method can be used both during training (with a trainer)
