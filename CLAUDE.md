@@ -115,6 +115,21 @@ Datasets implement PyTorch's Dataset/IterableDataset interface with support for 
 - Distributed training supported via Lightning
 - Integration with Weights & Biases for experiment tracking
 
+## Code Standards
+
+### Type Hints
+- Use modern Python 3.10+ union syntax: `str | None` instead of `Optional[str]`
+- Use built-in generics: `list[str]`, `dict[str, Any]` instead of `List[str]`, `Dict[str, Any]`
+- All functions must have comprehensive type hints for parameters and return values
+- Minimize `typing` imports - prefer built-in types and union operator `|`
+
+### Documentation
+- Follow NumPy docstring conventions for all public functions and classes
+- Include all standard sections: Parameters, Returns, Raises, Examples, Notes, See Also
+- Provide realistic examples relevant to biological sequence modeling
+- Document all parameters with types and clear descriptions
+- Specify all possible exceptions in Raises section
+
 ## Git Commit Guidelines
 
 When creating git commits, DO NOT include the following text in commit messages:
