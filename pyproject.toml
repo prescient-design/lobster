@@ -66,7 +66,6 @@ mgm = [
     "selfies>=2.1.2",
 ]
 flash = [
-    "triton<=3.1.0; sys_platform == 'linux'",
     "flash-attn>=2.8.0.post2; sys_platform == 'linux'",
     "rotary-embedding-torch",
 
