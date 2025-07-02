@@ -4,7 +4,6 @@
   import Mutations from '$lib/Mutations.svelte';
   import { PUBLIC_INFERENCE_SERVER } from '$env/static/public';
   import normalize from '$lib/normalize.ts';
-  import defaultVocabData from '$lib/vocab.json';
 
   let sequence = $state(
     'DIQMTQSPSSLSASVGDRVTITCQASQDIGISLSWYQQKPGKAPKLLIYNANNLADGVPSRFSGSGSGTDFTLTISSLQPEDFATYYCLQHNSAPYTFGQGTKLEIKR'
@@ -16,14 +15,12 @@
   let selectedModel = $state(models[1]);
   let threshold = $state(1);
 
-  const defaultVocab: Map<string, number> = new Map(Object.entries(defaultVocabData));
   const alphabet = [...'ACDEFGHIKLMNPQRSTVWY'];
-  const alphabet_vocab_indices = alphabet.map((c) => defaultVocab.get(c));
 
   let inference_result = $derived.by(async () => {
-    let inference_data = { sequence: sequence, mlm_model_name: `facebook/${selectedModel}` };
+    let inference_data = { sequence: sequence, model_name: `facebook/${selectedModel}` };
 
-    let url = new URL('./mlm_probabilities', PUBLIC_INFERENCE_SERVER);
+    let url = new URL('./naturalness', PUBLIC_INFERENCE_SERVER);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -34,11 +31,13 @@
     });
     const data = await response.json();
 
-    const { logprobs, wt_logprobs, naturalness } = data;
+    const { logp, wt_logp, naturalness } = data;
 
-    const probs = logprobs.map((v) => normalize(alphabet_vocab_indices.map((i) => Math.exp(v[i]))));
+    //const probs = logp.map((v) => normalize(alphabet_vocab_indices.map((i) => Math.exp(v[i]))));
 
-    const wt_probs = wt_logprobs.map((p) => Math.exp(p));
+    const probs = logp.map((v) => v.map((p) => Math.exp(p)));
+
+    const wt_probs = wt_logp.map((p) => Math.exp(p));
 
     return { probs, wt_probs, naturalness };
   });
