@@ -130,10 +130,6 @@ pre-commit run --all-files
 
 ## Testing
 
-
-
-
-
 ### Writing Tests
 
 - Place tests in the `tests/` directory
@@ -196,58 +192,6 @@ class TestUmeRewardFunction:
 - **End-to-end tests**: Test complete workflows (e.g., training pipeline)
 - **Performance tests**: Test memory usage and inference speed for large models
 
-## Documentation
-
-### Docstring Guidelines
-
-Use Google-style docstrings:
-
-```python
-def train_ume_grpo(
-    dataset_path: str, 
-    ume_model_path: str,
-    output_dir: str,
-    config: dict[str, Any] | None = None
-) -> None:
-    """Train a language model using UME-based GRPO rewards.
-    
-    Args:
-        dataset_path: Path to the training dataset (HuggingFace dataset format)
-        ume_model_path: Path to the UME model checkpoint for reward computation
-        output_dir: Directory to save training artifacts and checkpoints
-        config: Optional training configuration overrides. If None, uses defaults
-            
-    Returns:
-        None. Saves trained model and logs to the output directory
-        
-    Raises:
-        FileNotFoundError: If dataset or UME model paths don't exist
-        ValueError: If config contains invalid training parameters
-        RuntimeError: If training fails due to memory or device issues
-        
-    Example:
-        >>> # Train with default configuration
-        >>> train_ume_grpo(
-        ...     dataset_path="synthetic_molecular_dataset/",
-        ...     ume_model_path="models/ume_checkpoint.ckpt", 
-        ...     output_dir="./grpo_training_output"
-        ... )
-        
-        >>> # Train with custom configuration
-        >>> custom_config = {
-        ...     "learning_rate": 1e-5,
-        ...     "batch_size": 16,
-        ...     "num_train_epochs": 5,
-        ...     "gradient_accumulation_steps": 4
-        ... }
-        >>> train_ume_grpo(
-        ...     dataset_path="data/molecules.json",
-        ...     ume_model_path="models/ume_v2.ckpt",
-        ...     output_dir="./custom_training",
-        ...     config=custom_config
-        ... )
-    """
-```
 
 ### Adding New Documentation
 
@@ -307,103 +251,8 @@ Brief description of changes made
 
 
 
-## Code Review Process
-
-### What to Expect
-
-- **Initial response**: Maintainers will respond within 1-2 business days
-- **Review process**: May involve multiple rounds of feedback
-- **CI checks**: All automated checks must pass
-- **Approval**: At least one maintainer approval required for merge
-
-### Addressing Feedback
-
-- **Be responsive**: Address feedback promptly
-- **Ask questions**: If feedback is unclear, ask for clarification
-- **Make focused changes**: Address each piece of feedback individually
-- **Test changes**: Re-run tests after making changes
-
-### Review Criteria
-
-Reviewers will check for:
-- Code correctness and logic
-- Test coverage for new functionality
-- Documentation completeness
-- Performance implications
-- Security considerations
-- Consistency with existing codebase
-
-## Community Guidelines
-
-### Code of Conduct
-
-We follow a code of conduct that promotes:
-- **Respectful communication** with all community members
-- **Constructive feedback** in code reviews and discussions
-- **Inclusive environment** welcoming contributors of all backgrounds
-- **Focus on technical merit** in discussions and decisions
-
-### Getting Help
-
-- **GitHub Issues**: For bugs, feature requests, and questions
-- **Discussions**: For general questions and community interaction
-- **Documentation**: Check existing docs first
-- **Code examples**: Look at the `examples/` directory
-
 ### Recognition
 
-Contributors are recognized in:
-- `CONTRIBUTORS.md` file (if it exists)
-- Release notes for significant contributions
-- Commit history and GitHub contributors page
-
-## Additional Resources
-
-### Useful Commands
-
-```bash
-# Development workflow
-git checkout main && git pull upstream main
-git checkout -b feature/my-feature
-# ... make changes ...
-git add . && git commit -m "descriptive message"
-git push origin feature/my-feature
-
-# Testing and quality
-pytest tests/ --cov=src/lobster
-ruff check . --fix
-ruff format .
-pre-commit run --all-files
-
-# Documentation
-# Build docs locally (if doc building is set up)
-# python -m sphinx docs/ docs/_build/
-```
-
-### Project Structure
-
-```
-lobster/
-├── src/lobster/          # Main package source
-├── tests/                # Test files
-├── docs/                 # Documentation
-├── examples/             # Usage examples
-├── scripts/              # Utility scripts
-├── notebooks/            # Jupyter tutorials
-├── pyproject.toml        # Project configuration
-├── .pre-commit-config.yaml
-└── README.md
-```
-
-### Key Dependencies
-
-- **PyTorch**: Deep learning framework
-- **Lightning**: Training framework
-- **Transformers**: HuggingFace transformers
-- **Biopython**: Biological sequence processing
-- **uv**: Fast Python package manager
-- **Ruff**: Fast Python linter/formatter
-
----
+Please add your name to the `CONTRIBUTORS.md` file
 
 Thank you for contributing to LBSTER! Your contributions help advance biological sequence modeling for everyone. 🦞✨
