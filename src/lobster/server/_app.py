@@ -33,6 +33,14 @@ class NaturalnessOutput(BaseModel):
 
 fastapi_app = FastAPI()
 
+fastapi_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOW_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @fastapi_app.post("/naturalness")
 def naturalness(input: NaturalnessInput) -> NaturalnessOutput:
@@ -61,12 +69,4 @@ app = Starlette(
         Mount("/api", app=fastapi_app),
     ],
     lifespan=mcp_app.lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOW_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
