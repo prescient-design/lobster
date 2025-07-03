@@ -6,7 +6,6 @@ from lobster.model import UME
 class UMEServer:
     def __init__(self, model: UME):
         """Initialize the UME MCP server with a model.
-
         Args:
             model: A UME model instance to use for embeddings
         """
@@ -26,7 +25,6 @@ class UMEServer:
 
     def get_server(self):
         """Get the FastMCP server instance.
-
         Returns:
             FastMCP: The configured MCP server instance
         """

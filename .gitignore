@@ -44,3 +44,8 @@ lightning_logs
 dev
 
 *.ckpt
+web/build
+web/node_modules
+web/.svelte-kit
+
+share/lobster/ui
