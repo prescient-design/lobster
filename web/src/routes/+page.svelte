@@ -2,7 +2,7 @@
   import Logo from '$lib/Logo.svelte';
   import Sequence from '$lib/Sequence.svelte';
   import Mutations from '$lib/Mutations.svelte';
-  import normalize from '$lib/normalize.ts';
+  import normalize from '$lib/normalize';
 
   let sequence = $state(
     'DIQMTQSPSSLSASVGDRVTITCQASQDIGISLSWYQQKPGKAPKLLIYNANNLADGVPSRFSGSGSGTDFTLTISSLQPEDFATYYCLQHNSAPYTFGQGTKLEIKR'
@@ -13,30 +13,41 @@
 
   let selectedModel = $state(models[1]);
   let threshold = $state(1);
+  let isLoading = $state(false);
+  let inference_result = $state<any>(null);
 
   const alphabet = [...'ACDEFGHIKLMNPQRSTVWY'];
 
-  let inference_result = $derived.by(async () => {
-    let inference_data = { sequence: sequence, model_name: `facebook/${selectedModel}` };
+  async function runInference() {
+    if (!sequence.trim()) return;
+    
+    isLoading = true;
+    try {
+      let inference_data = { sequence: sequence, model_name: `facebook/${selectedModel}` };
 
-    // FIXME here we assume we are serving frontend and backend together
-    const response = await fetch('../naturalness', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(inference_data)
-    });
-    const data = await response.json();
+      // FIXME here we assume we are serving frontend and backend together
+      const response = await fetch('../naturalness', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(inference_data)
+      });
+      const data = await response.json();
 
-    const { logp, wt_logp, naturalness } = data;
+      const { logp, wt_logp, naturalness } = data;
 
-    const probs = logp.map((v) => v.map((p) => Math.exp(p)));
+      const probs = logp.map((v: any) => v.map((p: any) => Math.exp(p)));
 
-    const wt_probs = wt_logp.map((p) => Math.exp(p));
+      const wt_probs = wt_logp.map((p: any) => Math.exp(p));
 
-    return { probs, wt_probs, naturalness };
-  });
+      inference_result = { probs, wt_probs, naturalness };
+    } catch (error) {
+      console.error('Inference failed:', error);
+    } finally {
+      isLoading = false;
+    }
+  }
 </script>
 
 <div class="app-container">
@@ -80,46 +91,75 @@
         </div>
       </div>
 
-      {#await inference_result then { naturalness }}
+      {#if inference_result}
         <div class="sidebar-section">
           <h3>Analysis</h3>
           <div class="metric-card">
             <div class="metric-label">Naturalness Score</div>
-            <div class="metric-value">{naturalness.toFixed(2)}</div>
+            <div class="metric-value">{inference_result.naturalness.toFixed(2)}</div>
           </div>
         </div>
-      {/await}
+      {/if}
     </div>
     
     <div class="main-content">
       <div class="container">
         <div class="input-section">
           <label for="sequence-input" class="input-label">Protein Sequence</label>
-          <input 
-            id="sequence-input"
-            bind:value={sequence} 
-            class="sequence-input" 
-            placeholder="Enter your protein sequence here..."
-          />
+          <div class="textarea-container">
+            <textarea 
+              id="sequence-input"
+              bind:value={sequence} 
+              class="sequence-input" 
+              placeholder="Enter your protein sequence here..."
+              rows="4"
+            ></textarea>
+            <button 
+              class="submit-button" 
+              onclick={runInference}
+              disabled={isLoading || !sequence.trim()}
+            >
+              {isLoading ? 'Analyzing...' : 'Analyze'}
+            </button>
+          </div>
         </div>
         
         <div class="visualization-section">
-          {#await inference_result then { probs, wt_probs }}
+          {#if inference_result}
             <div class="viz-card">
               <h3>Sequence Logo</h3>
-              <Logo {probs} font={data.font} width="1400" height="300" />
+              <div class="viz-container">
+                <Logo probs={inference_result.probs} font={data.font} width={1200} height={300} />
+              </div>
             </div>
             
             <div class="viz-card">
               <h3>Sequence Visualization</h3>
-              <Sequence {sequence} probs={wt_probs} font={data.font} width="1400" height="100" />
+              <div class="viz-container">
+                <Sequence {sequence} probs={inference_result.wt_probs} font={data.font} width={1200} height={100} />
+              </div>
             </div>
             
             <div class="viz-card">
               <h3>Mutation Analysis</h3>
-              <Mutations {sequence} {probs} {threshold} font={data.font} width="1400" height="100" />
+              <div class="viz-container">
+                <Mutations {sequence} probs={inference_result.probs} {threshold} font={data.font} width={1200} height={100} />
+              </div>
             </div>
-          {/await}
+          {:else if isLoading}
+            <div class="viz-card">
+              <div class="loading-message">
+                <div class="loading-spinner"></div>
+                <p>Analyzing sequence...</p>
+              </div>
+            </div>
+          {:else}
+            <div class="viz-card">
+              <div class="empty-message">
+                <p>Enter a protein sequence and click "Analyze Sequence" to see visualization</p>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -335,7 +375,7 @@
     flex-direction: column;
     gap: 2rem;
     width: 100%;
-    max-width: 1500px;
+    max-width: 1200px;
   }
 
   .input-section {
@@ -351,23 +391,91 @@
     margin: 0;
   }
 
-  .sequence-input {
-    padding: 1rem;
-    font-size: 1.1rem;
+  .textarea-container {
+    position: relative;
     width: 100%;
     max-width: 1200px;
+  }
+
+  .sequence-input {
+    padding: 1rem;
+    padding-right: 120px; /* Make room for button */
+    font-size: 1.1rem;
+    width: 100%;
     border: 2px solid #e2e8f0;
     border-radius: 8px;
     font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     background: white;
     transition: all 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    resize: vertical;
+    min-height: 120px;
+    box-sizing: border-box;
   }
 
   .sequence-input:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1), 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .submit-button {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    white-space: nowrap;
+    z-index: 1;
+  }
+
+  .submit-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+
+  .submit-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .loading-message, .empty-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    text-align: center;
+  }
+
+  .loading-message p, .empty-message p {
+    margin: 0;
+    color: #64748b;
+    font-size: 1.1rem;
+  }
+
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e2e8f0;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 
   .character-guide {
@@ -410,6 +518,44 @@
     color: #2d3748;
     border-bottom: 2px solid #e2e8f0;
     padding-bottom: 0.75rem;
+  }
+
+  .viz-container {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 8px;
+    background: #fafafa;
+    padding: 1rem;
+    min-height: 120px;
+    /* Allow content to scroll horizontally when needed */
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f7fafc;
+  }
+
+  .viz-container::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .viz-container::-webkit-scrollbar-track {
+    background: #f7fafc;
+    border-radius: 4px;
+  }
+
+  .viz-container::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 4px;
+  }
+
+  .viz-container::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+  }
+
+  .viz-container :global(svg) {
+    height: auto;
+    display: block;
+    min-width: 800px; /* Ensure minimum readable size */
+    /* SVG will maintain its natural width for scrolling */
   }
 
   /* Responsive adjustments */
@@ -455,6 +601,14 @@
     
     .sequence-input {
       font-size: 1rem;
+    }
+    
+    .viz-container {
+      padding: 0.5rem;
+    }
+    
+    .viz-card {
+      padding: 1rem;
     }
   }
 </style>
