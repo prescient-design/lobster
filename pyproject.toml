@@ -40,8 +40,8 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools >= 65", "setuptools_scm[toml]>=6.2"]
-build-backend = 'setuptools.build_meta'
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project.scripts]
 lobster_train = "lobster.cmdline:train"
@@ -52,7 +52,8 @@ lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval_embed = "lobster.cmdline:eval_embed"
 lobster_eval = "lobster.cmdline:evaluate"
-lobster_mcp_server = "lobster.mcp.inference_server:main"
+lobster_mcp_server = "lobster.server:run_mcp_server"
+lobster_web = "lobster.server:serve"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 
 [project.optional-dependencies]
@@ -83,20 +84,6 @@ web = [
     "fastapi>=0.115.14",
     "uvicorn>=0.34.3",
 ]
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-lobster = ["*.txt", "*.json", "*.yaml"]
-"lobster.assets" = ["**/*.txt", "**/*.json", "**/*.yaml"]
-"lobster.hydra_config" = [ "**/*.yaml"]
-
-[tool.setuptools_scm]
-search_parent_directories = true
-version_scheme = "no-guess-dev"
-fallback_version = "0.0.0"
-local_scheme = "no-local-version" # see https://github.com/pypa/setuptools-scm/issues/455
 
 [tool.ruff]
 line-length = 120
@@ -163,3 +150,17 @@ dev = [
 
 [[tool.uv.index]]
 url = "https://pypi.python.org/simple"
+
+[tool.hatch]
+version.source = "vcs"
+version.fallback-version = "0.0.0"
+
+# Defining this (empty) section invokes hatch_build.py
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lobster"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"share/lobster/.identifying_file_42688fa5f3a65e2caa822dec544d5694" = "share/lobster/.identifying_file_42688fa5f3a65e2caa822dec544d5694"
+"share/lobster/ui" = "share/lobster/ui"

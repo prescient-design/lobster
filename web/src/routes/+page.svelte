@@ -2,7 +2,6 @@
   import Logo from '$lib/Logo.svelte';
   import Sequence from '$lib/Sequence.svelte';
   import Mutations from '$lib/Mutations.svelte';
-  import { PUBLIC_INFERENCE_SERVER } from '$env/static/public';
   import normalize from '$lib/normalize.ts';
 
   let sequence = $state(
@@ -20,9 +19,8 @@
   let inference_result = $derived.by(async () => {
     let inference_data = { sequence: sequence, model_name: `facebook/${selectedModel}` };
 
-    let url = new URL('./naturalness', PUBLIC_INFERENCE_SERVER);
-
-    const response = await fetch(url, {
+    // FIXME here we assume we are serving frontend and backend together
+    const response = await fetch('../naturalness', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -32,8 +30,6 @@
     const data = await response.json();
 
     const { logp, wt_logp, naturalness } = data;
-
-    //const probs = logp.map((v) => normalize(alphabet_vocab_indices.map((i) => Math.exp(v[i]))));
 
     const probs = logp.map((v) => v.map((p) => Math.exp(p)));
 

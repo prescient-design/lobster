@@ -1,16 +1,16 @@
 import os
 from typing import Literal
+from pathlib import Path
 
-from fastmcp import FastMCP
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.applications import Starlette
-from starlette.routing import Mount
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ._esm import get_esm_cached, esm_aa_naturalness
+from ._utils import SHARE_LOBSTER_PATH
 
-DEFAULT_LOBSTER_ALLOW_ORIGINS = "http://localhost"
+DEFAULT_LOBSTER_ALLOW_ORIGINS = "*"
 
 ALLOW_ORIGINS = os.getenv("LOBSTER_ALLOW_ORIGINS", DEFAULT_LOBSTER_ALLOW_ORIGINS).split(",")
 
@@ -31,18 +31,24 @@ class NaturalnessOutput(BaseModel):
     encoded: list[float]
 
 
-fastapi_app = FastAPI()
+app = FastAPI()
 
-fastapi_app.add_middleware(
+app.mount(
+    "/ui",
+    StaticFiles(directory=Path(SHARE_LOBSTER_PATH, "ui")),
+    name="ui",
+)
+
+app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOW_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@fastapi_app.post("/naturalness")
+@app.post("/naturalness")
 def naturalness(input: NaturalnessInput) -> NaturalnessOutput:
     L = len(input.sequence)
     if not L > 0:
@@ -60,13 +66,13 @@ def naturalness(input: NaturalnessInput) -> NaturalnessOutput:
     return out
 
 
-mcp = FastMCP.from_fastapi(app=fastapi_app)
-mcp_app = mcp.http_app(path="/mcp")
+def serve():
+    import uvicorn
 
-app = Starlette(
-    routes=[
-        Mount("/mcp-server", app=mcp_app),
-        Mount("/api", app=fastapi_app),
-    ],
-    lifespan=mcp_app.lifespan,
-)
+    host = "localhost"
+    port = 8000
+
+    url = f"http://{host}:{port}/ui/index.html"
+    print(f"visit {url}")
+
+    uvicorn.run(app, host=host, port=port)
