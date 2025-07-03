@@ -155,6 +155,9 @@ url = "https://pypi.python.org/simple"
 version.source = "vcs"
 version.fallback-version = "0.0.0"
 
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
 # Defining this (empty) section invokes hatch_build.py
 [tool.hatch.build.hooks.custom]
 
