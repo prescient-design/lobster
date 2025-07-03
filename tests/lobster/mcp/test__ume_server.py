@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from lobster.model import UME
-from lobster.server._server import UMEServer
+from lobster.mcp._server import UMEServer
 
 
 @pytest.fixture

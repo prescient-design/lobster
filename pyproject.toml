@@ -53,7 +53,7 @@ lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval_embed = "lobster.cmdline:eval_embed"
 lobster_eval = "lobster.cmdline:evaluate"
 lobster_web = "lobster.server:serve"
-lobster_mcp_server = "lobster.mcp:serve"
+lobster_mcp_server = "lobster.mcp.inference_server:main"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 
 [project.optional-dependencies]
