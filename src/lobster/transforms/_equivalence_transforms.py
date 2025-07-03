@@ -632,7 +632,7 @@ class NucleotideToAminoAcidAndSmilesTransform(Transform):
 
         # Check if sequence starts with ATG (start codon)
         if not input.startswith("ATG"):
-            logger.warning(f"Nucleotide sequence does not start with ATG start codon: {input[:10]}...")
+            # logger.warning(f"Nucleotide sequence does not start with ATG start codon: {input[:10]}...")
             amino_acid_sequence = None
         else:
             try:
