@@ -53,7 +53,7 @@
 <div class="app-container">
   <div class="header">
     <div class="header-content">
-      <h1>🦞 Lobster Web</h1>
+      <h1>🦞 Lobster Live 🦞</h1>
       <p class="subtitle">Protein Sequence Analysis & Visualization</p>
     </div>
   </div>
