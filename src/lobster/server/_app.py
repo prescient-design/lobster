@@ -73,7 +73,4 @@ def serve():
     host = "localhost"
     port = 8000
 
-    url = f"http://{host}:{port}/ui/index.html"
-    print(f"visit {url}")
-
     uvicorn.run(app, host=host, port=port)
