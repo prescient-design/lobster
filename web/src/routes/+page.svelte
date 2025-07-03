@@ -20,7 +20,7 @@
 
   async function runInference() {
     if (!sequence.trim()) return;
-    
+
     isLoading = true;
     try {
       let inference_data = { sequence: sequence, model_name: `facebook/${selectedModel}` };
@@ -62,7 +62,7 @@
     <div class="sidebar">
       <div class="sidebar-section">
         <h3>Configuration</h3>
-        
+
         <div class="control-group">
           <label for="model-select" class="control-label">Model Selection</label>
           <select
@@ -101,21 +101,21 @@
         </div>
       {/if}
     </div>
-    
+
     <div class="main-content">
       <div class="container">
         <div class="input-section">
           <label for="sequence-input" class="input-label">Protein Sequence</label>
           <div class="textarea-container">
-            <textarea 
+            <textarea
               id="sequence-input"
-              bind:value={sequence} 
-              class="sequence-input" 
+              bind:value={sequence}
+              class="sequence-input"
               placeholder="Enter your protein sequence here..."
               rows="4"
             ></textarea>
-            <button 
-              class="submit-button" 
+            <button
+              class="submit-button"
               onclick={runInference}
               disabled={isLoading || !sequence.trim()}
             >
@@ -123,7 +123,7 @@
             </button>
           </div>
         </div>
-        
+
         <div class="visualization-section">
           {#if inference_result}
             <div class="viz-card">
@@ -132,18 +132,31 @@
                 <Logo probs={inference_result.probs} font={data.font} width={1200} height={300} />
               </div>
             </div>
-            
+
             <div class="viz-card">
               <h3>Sequence Visualization</h3>
               <div class="viz-container">
-                <Sequence {sequence} probs={inference_result.wt_probs} font={data.font} width={1200} height={100} />
+                <Sequence
+                  {sequence}
+                  probs={inference_result.wt_probs}
+                  font={data.font}
+                  width={1200}
+                  height={100}
+                />
               </div>
             </div>
-            
+
             <div class="viz-card">
               <h3>Mutation Analysis</h3>
               <div class="viz-container">
-                <Mutations {sequence} probs={inference_result.probs} {threshold} font={data.font} width={1200} height={100} />
+                <Mutations
+                  {sequence}
+                  probs={inference_result.probs}
+                  {threshold}
+                  font={data.font}
+                  width={1200}
+                  height={100}
+                />
               </div>
             </div>
           {:else if isLoading}
@@ -171,7 +184,8 @@
     margin: 0;
     height: 100%;
     width: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   }
 
@@ -416,7 +430,9 @@
   .sequence-input:focus {
     outline: none;
     border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1), 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow:
+      0 0 0 3px rgba(102, 126, 234, 0.1),
+      0 4px 12px rgba(0, 0, 0, 0.1);
   }
 
   .submit-button {
@@ -448,7 +464,8 @@
     transform: none;
   }
 
-  .loading-message, .empty-message {
+  .loading-message,
+  .empty-message {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -457,7 +474,8 @@
     text-align: center;
   }
 
-  .loading-message p, .empty-message p {
+  .loading-message p,
+  .empty-message p {
     margin: 0;
     color: #64748b;
     font-size: 1.1rem;
@@ -474,8 +492,12 @@
   }
 
   @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
   }
 
   .character-guide {
@@ -563,14 +585,14 @@
     .content-wrapper {
       flex-direction: column;
     }
-    
+
     .sidebar {
       width: 100%;
       flex-direction: row;
       gap: 2rem;
       padding: 1.5rem;
     }
-    
+
     .sidebar-section {
       flex: 1;
       min-width: 0;
@@ -581,32 +603,32 @@
     .header-content {
       padding: 1.5rem;
     }
-    
+
     .header h1 {
       font-size: 2rem;
     }
-    
+
     .subtitle {
       font-size: 1rem;
     }
-    
+
     .sidebar {
       flex-direction: column;
       gap: 1.5rem;
     }
-    
+
     .main-content {
       padding: 1rem;
     }
-    
+
     .sequence-input {
       font-size: 1rem;
     }
-    
+
     .viz-container {
       padding: 0.5rem;
     }
-    
+
     .viz-card {
       padding: 1rem;
     }
