@@ -34,6 +34,7 @@ def get_esm_cached(
 def esm_aa_naturalness(sequence: str, model, tokenizer, batch_size: int = 16) -> dict:
     L = len(sequence)
     vocab = tokenizer.get_vocab()
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     assert set(sequence) <= set(STANDARD_RESIDUES)
 
@@ -49,7 +50,10 @@ def esm_aa_naturalness(sequence: str, model, tokenizer, batch_size: int = 16) ->
 
     with torch.inference_mode():
         logits = torch.cat(
-            [model(**tokenizer(input, return_tensors="pt")).logits for input in batched(masked_sequences, batch_size)],
+            [
+                model(**{k: v.to(device) for k, v in tokenizer(input, return_tensors="pt").items()}).logits
+                for input in batched(masked_sequences, batch_size)
+            ],
             dim=0,
         )
         logits = torch.diagonal(logits[:, 1:-1, :], dim1=0, dim2=1)
