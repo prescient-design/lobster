@@ -155,3 +155,6 @@ dev = [
     "pytest-cov>=6.0.0",
     "ruff>=0.9.1",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.python.org/simple"
