@@ -212,7 +212,7 @@ wheels = [
 [[package]]
 name = "beignet"
 version = "0.0.13"
-source = { git = "https://github.com/Genentech/beignet#ecf7e7d46e2f542b02f780158376d6d01f21f54f" }
+source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "biotite", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -222,6 +222,10 @@ dependencies = [
     { name = "pooch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/23/ed44366ef8eed08d34b676e45d4c6a4aa3fb0320e40dae0cb1382749f123/beignet-0.0.13.tar.gz", hash = "sha256:776b73bfa705ad7345ebf21c158e99f21389cc7fe96b0430ff63d2b0b24b1c80", size = 401164, upload-time = "2025-06-24T19:01:16.447Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/e1/3fd7b93bf27ab9eccda43ef7abcc8ccc3a0b65a3936e7b07da7383983afa/beignet-0.0.13-py3-none-any.whl", hash = "sha256:14dffc1692f894a22eacec039b7d7f11823f0b278b02a5dda05f9544014944ab", size = 256660, upload-time = "2025-06-24T19:01:14.47Z" },
 ]
 
 [package.optional-dependencies]
@@ -1301,7 +1305,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", marker = "extra == 'trl'" },
-    { name = "beignet", extras = ["datasets"], git = "https://github.com/Genentech/beignet" },
+    { name = "beignet", extras = ["datasets"], specifier = ">=0.0.13" },
     { name = "biopandas" },
     { name = "biopython" },
     { name = "captum" },
