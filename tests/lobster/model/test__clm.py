@@ -45,6 +45,9 @@ class TestLobsterPCLM:
 
         assert outputs[0].device == model.device
 
+    @pytest.mark.skip(
+        reason="ONNX export is currently not supported due to incompatibility with HuggingFace Llama's masking and rotary embedding operations, which use functorch and custom rotary embeddings that are not ONNX-traceable."
+    )
     def test_onnx(self, model):
         input_ids = torch.randint(0, 2, (4, 512)).long()  # (B, L)
         attention_mask = torch.randint(0, 2, (4, 512)).long()  # (B, L)
