@@ -52,8 +52,8 @@ lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval_embed = "lobster.cmdline:eval_embed"
 lobster_eval = "lobster.cmdline:evaluate"
-lobster_mcp_server = "lobster.server:run_mcp_server"
 lobster_web = "lobster.server:serve"
+lobster_mcp_server = "lobster.mcp:serve"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 
 [project.optional-dependencies]

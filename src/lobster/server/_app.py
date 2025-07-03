@@ -33,20 +33,6 @@ class NaturalnessOutput(BaseModel):
 
 app = FastAPI()
 
-app.mount(
-    "/ui",
-    StaticFiles(directory=Path(SHARE_LOBSTER_PATH, "ui")),
-    name="ui",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 @app.post("/naturalness")
 def naturalness(input: NaturalnessInput) -> NaturalnessOutput:
@@ -64,6 +50,21 @@ def naturalness(input: NaturalnessInput) -> NaturalnessOutput:
     out = esm_aa_naturalness(sequence=input.sequence, model=model, tokenizer=tokenizer, batch_size=64)
 
     return out
+
+
+app.mount(
+    "/",
+    StaticFiles(directory=Path(SHARE_LOBSTER_PATH, "ui"), html=True),
+    name="ui",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def serve():
