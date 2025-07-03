@@ -44,3 +44,10 @@ lightning_logs
 dev
 
 *.ckpt
+
+# DGEB evaluation results and test reports
+dgeb_results/
+dgeb_test_results/
+*_dgeb_eval/
+evaluation_report.md
+results_summary.json

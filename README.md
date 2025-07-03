@@ -84,7 +84,9 @@ uv pip install -e .
 Alternatively, run installation directly with `uv sync`:
 ```bash
 uv sync
+uv sync --all-extras --no-cache  # to resolve flash-attn installation issues
 ```
+
 and then prefix every command with `uv run`. For example,
 
 ```bash
