@@ -43,4 +43,6 @@ lightning_logs
 .env
 dev
 
+# DXT extensions (large binary files)
+*.dxt
 *.ckpt

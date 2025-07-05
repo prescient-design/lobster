@@ -175,6 +175,51 @@ After setup, you can use Lobster models directly in Cursor or Claude Desktop wit
 
 See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation.
 
+## DXT Extension for Claude Desktop
+
+Lobster is available as a **DXT (Desktop Extension Toolkit) extension** for Claude Desktop, providing a one-click installation experience:
+
+### Quick Install
+
+1. **Download**: Get the latest `.dxt` file from [GitHub Releases](https://github.com/prescient-design/lobster/releases)
+2. **Install**: Double-click the `.dxt` file or drag it into Claude Desktop
+3. **Use**: Start using Lobster models with natural language commands
+
+### Features
+
+- **One-click installation** - No command line setup required
+- **Self-contained** - Includes all dependencies (~500MB)
+- **Automatic updates** - New versions available through GitHub Releases
+- **Full functionality** - All MCP server capabilities included
+
+### Usage Examples
+
+Once installed, you can use natural language commands in Claude Desktop:
+
+```
+What Lobster models are available for protein analysis?
+
+Get embeddings for the sequence MKTVRQERLKSIVRIL using lobster_24M
+
+What concepts are supported by the cb_lobster_24M model?
+
+Intervene on MKTVRQERLKSIVRIL to reduce hydrophobicity using cb_lobster_24M
+```
+
+### Development
+
+For developers who want to build and test DXT extensions locally:
+
+```bash
+# Build DXT extension locally
+python scripts/build_dxt.py
+
+# Create a release (updates version, builds, and creates GitHub release)
+python scripts/release_dxt.py 0.1.0
+```
+
+See [DXT Distribution Guide](docs/DXT_DISTRIBUTION.md) for detailed build and distribution instructions.
+
 ## Example scripts
 
 Check out [examples](examples/) for scripts showing how to perform inference and interventions.
