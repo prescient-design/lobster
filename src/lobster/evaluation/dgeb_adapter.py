@@ -10,6 +10,7 @@ from dgeb.modality import Modality
 
 from lobster.constants import Modality as LobsterModality
 from lobster.model import UME
+from lobster.model.modern_bert._padding import unpad_input, pad_input
 
 logger = logging.getLogger(__name__)
 
@@ -396,9 +397,38 @@ class UMEAdapterDGEB(BioSeqTransformer):
         embeddings = flexbert.embeddings(input_ids)
         hidden_states = embeddings
         all_hidden_states = [hidden_states]
+
+        # Use the encoder's forward method which handles unpadding automatically
+        # This ensures proper handling of cu_seqlens and max_seqlen for unpadded layers
+        _encoder_output = flexbert.encoder(hidden_states=hidden_states, attention_mask=attention_mask)
+
+        # For layer extraction, we need to manually call each layer
+        # but we need to handle the unpadding properly
+        current_hidden = hidden_states
         for layer in flexbert.encoder.layers:
-            hidden_states = layer(hidden_states, attn_mask=attention_mask)
-            all_hidden_states.append(hidden_states)
+            # Check if this is an unpadded layer that requires cu_seqlens and max_seqlen
+            if hasattr(layer, "forward") and "cu_seqlens" in layer.forward.__code__.co_varnames:
+                # This is an unpadded layer, we need to unpad the input
+                attention_mask_bool = attention_mask.bool()
+                batch, seqlen = current_hidden.shape[:2]
+                unpad_hidden, indices, cu_seqlens, max_seqlen = unpad_input(current_hidden, attention_mask_bool)
+
+                # Call the layer with unpadded inputs
+                layer_output = layer(
+                    unpad_hidden,
+                    cu_seqlens,
+                    max_seqlen,
+                    indices,
+                    attn_mask=attention_mask,
+                )
+
+                # Repad the output
+                current_hidden = pad_input(layer_output, indices, batch, seqlen)
+            else:
+                # This is a padded layer, call normally
+                current_hidden = layer(current_hidden, attn_mask=attention_mask)
+
+            all_hidden_states.append(current_hidden)
 
         # Select the requested layers (self.layers)
         selected_layers = [

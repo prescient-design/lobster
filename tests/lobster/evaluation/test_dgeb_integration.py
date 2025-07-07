@@ -114,7 +114,7 @@ def test_ume_adapter_pretrained():
     ]
 
     embeddings = adapter.encode(test_sequences)
-    expected_shape = (len(test_sequences), adapter.num_layers, adapter.embed_dim)
+    expected_shape = (len(test_sequences), 2, adapter.embed_dim)  # 2 is the number of layers the DGEB will use
     assert embeddings.shape == expected_shape
 
 
@@ -139,7 +139,7 @@ def test_ume_adapter_from_checkpoint(test_model_checkpoint):
     ]
 
     embeddings = adapter.encode(test_sequences)
-    expected_shape = (len(test_sequences), adapter.num_layers, adapter.embed_dim)
+    expected_shape = (len(test_sequences), 2, adapter.embed_dim)  # 2 is the number of layers the DGEB will use
     assert embeddings.shape == expected_shape
 
 
@@ -181,7 +181,7 @@ def test_ume_adapter_dna_modality(test_model_checkpoint):
     ]
 
     embeddings = adapter.encode(dna_sequences)
-    expected_shape = (len(dna_sequences), adapter.num_layers, adapter.embed_dim)
+    expected_shape = (len(dna_sequences), 2, adapter.embed_dim)  # 2 is the number of layers the DGEB will use
     assert embeddings.shape == expected_shape
 
 
