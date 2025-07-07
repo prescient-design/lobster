@@ -1,0 +1,43 @@
+{
+  "dxt_version": "0.1",
+  "name": "lobster",
+  "version": "0.0.1",
+  "description": "lobster dxt extension",
+  "author": {
+    "name": "Prescient Design",
+    "url": "https://ncfrey.github.io/"
+  },
+  "homepage": "https://github.com/prescient-design/lobster",
+  "documentation": "https://prescient-design.github.io/lobster-docs/intro.html",
+  "server": {
+    "type": "python",
+    "entry_point": "src/lobster/mcp/inference_server.py",
+    "mcp_config": {
+      "command": "python",
+      "args": [
+        "${__dirname}/src/lobster/mcp/inference_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "server/lib"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "lobster",
+      "description": "https://github.com/prescient-design/lobster"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "lobster_prompt",
+      "description": "You can use lobster models with natural language commands",
+      "text": "What lobster models are available? What can you do with lobster models?"
+    }
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prescient-design/lobster"
+  }
+}
