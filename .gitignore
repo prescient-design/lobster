@@ -45,5 +45,13 @@ dev
 
 *.ckpt
 
+# DGEB evaluation results and test reports
+*.log
+dgeb_results/
+dgeb_test_results/
+*_dgeb_eval/
+evaluation_report.md
+results_summary.json
+
 # DXT extensions (large binary files)
 *.dxt

@@ -37,6 +37,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "litdata>=0.2.49",
     "seaborn>=0.13.2",
+    "dgeb>=0.2.0",
 ]
 
 [build-system]
@@ -52,6 +53,7 @@ lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval_embed = "lobster.cmdline:eval_embed"
 lobster_eval = "lobster.cmdline:evaluate"
+lobster_dgeb_eval = "lobster.cmdline.dgeb_eval:main"
 lobster_mcp_server = "lobster.mcp.inference_server:main"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 

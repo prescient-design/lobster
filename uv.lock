@@ -605,6 +605,30 @@ wheels = [
 ]
 
 [[package]]
+name = "dgeb"
+version = "0.2.0"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "datasets", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pydantic", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pytrec-eval-terrier", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "rich", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "scikit-learn", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "seaborn", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "transformers", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/df/684e6c09b30131c792d03d3c14453b99c23b0db70cb48d030f9950dde9c3/dgeb-0.2.0.tar.gz", hash = "sha256:b17ef4de7fada6051eeeca2f9e4b030fe2f4efd533f68f2ace6fd7c5f2d399a7", size = 162501 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/7f/c18bb59d43dfe7d37148336780e1e3f00bf9a8af3ff704392b56ffe4e709/dgeb-0.2.0-py3-none-any.whl", hash = "sha256:ffe81955787ec5ed7914ee4a546f8d2c762feee50f9dc95c36a2ff947da7de67", size = 296373 },
+]
+
+[[package]]
 name = "dill"
 version = "0.3.8"
 source = { registry = "https://pypi.python.org/simple" }
@@ -1173,6 +1197,7 @@ dependencies = [
     { name = "biopython", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "datasets", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "datasketch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "dgeb", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "dotenv", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "edlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1239,6 +1264,7 @@ requires-dist = [
     { name = "biopython" },
     { name = "datasets", specifier = ">2" },
     { name = "datasketch" },
+    { name = "dgeb", specifier = ">=0.2.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "edlib" },
     { name = "einops" },
@@ -1970,7 +1996,7 @@ wheels = [
 
 [[package]]
 name = "pandas"
-version = "2.3.0"
+version = "2.3.1"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1978,20 +2004,20 @@ dependencies = [
     { name = "pytz", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tzdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/51/48f713c4c728d7c55ef7444ba5ea027c26998d96d1a40953b346438602fc/pandas-2.3.0.tar.gz", hash = "sha256:34600ab34ebf1131a7613a260a61dbe8b62c188ec0ea4c296da7c9a06b004133", size = 4484490 }
+sdist = { url = "https://files.pythonhosted.org/packages/d1/6f/75aa71f8a14267117adeeed5d21b204770189c0a0025acbdc03c337b28fc/pandas-2.3.1.tar.gz", hash = "sha256:0a95b9ac964fe83ce317827f80304d37388ea77616b1425f0ae41c9d2d0d7bb2", size = 4487493 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/1e/ba313812a699fe37bf62e6194265a4621be11833f5fce46d9eae22acb5d7/pandas-2.3.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:8adff9f138fc614347ff33812046787f7d43b3cef7c0f0171b3340cae333f6ca", size = 11551836 },
-    { url = "https://files.pythonhosted.org/packages/1b/cc/0af9c07f8d714ea563b12383a7e5bde9479cf32413ee2f346a9c5a801f22/pandas-2.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:e5f08eb9a445d07720776df6e641975665c9ea12c9d8a331e0f6890f2dcd76ef", size = 10807977 },
-    { url = "https://files.pythonhosted.org/packages/ee/3e/8c0fb7e2cf4a55198466ced1ca6a9054ae3b7e7630df7757031df10001fd/pandas-2.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fa35c266c8cd1a67d75971a1912b185b492d257092bdd2709bbdebe574ed228d", size = 11788230 },
-    { url = "https://files.pythonhosted.org/packages/14/22/b493ec614582307faf3f94989be0f7f0a71932ed6f56c9a80c0bb4a3b51e/pandas-2.3.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:14a0cc77b0f089d2d2ffe3007db58f170dae9b9f54e569b299db871a3ab5bf46", size = 12370423 },
-    { url = "https://files.pythonhosted.org/packages/9f/74/b012addb34cda5ce855218a37b258c4e056a0b9b334d116e518d72638737/pandas-2.3.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:c06f6f144ad0a1bf84699aeea7eff6068ca5c63ceb404798198af7eb86082e33", size = 12990594 },
-    { url = "https://files.pythonhosted.org/packages/95/81/b310e60d033ab64b08e66c635b94076488f0b6ce6a674379dd5b224fc51c/pandas-2.3.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:ed16339bc354a73e0a609df36d256672c7d296f3f767ac07257801aa064ff73c", size = 13745952 },
-    { url = "https://files.pythonhosted.org/packages/94/46/24192607058dd607dbfacdd060a2370f6afb19c2ccb617406469b9aeb8e7/pandas-2.3.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:2eb4728a18dcd2908c7fccf74a982e241b467d178724545a48d0caf534b38ebf", size = 11573865 },
-    { url = "https://files.pythonhosted.org/packages/9f/cc/ae8ea3b800757a70c9fdccc68b67dc0280a6e814efcf74e4211fd5dea1ca/pandas-2.3.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:b9d8c3187be7479ea5c3d30c32a5d73d62a621166675063b2edd21bc47614027", size = 10702154 },
-    { url = "https://files.pythonhosted.org/packages/d8/ba/a7883d7aab3d24c6540a2768f679e7414582cc389876d469b40ec749d78b/pandas-2.3.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9ff730713d4c4f2f1c860e36c005c7cefc1c7c80c21c0688fd605aa43c9fcf09", size = 11262180 },
-    { url = "https://files.pythonhosted.org/packages/01/a5/931fc3ad333d9d87b10107d948d757d67ebcfc33b1988d5faccc39c6845c/pandas-2.3.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ba24af48643b12ffe49b27065d3babd52702d95ab70f50e1b34f71ca703e2c0d", size = 11991493 },
-    { url = "https://files.pythonhosted.org/packages/d7/bf/0213986830a92d44d55153c1d69b509431a972eb73f204242988c4e66e86/pandas-2.3.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:404d681c698e3c8a40a61d0cd9412cc7364ab9a9cc6e144ae2992e11a2e77a20", size = 12470733 },
-    { url = "https://files.pythonhosted.org/packages/a4/0e/21eb48a3a34a7d4bac982afc2c4eb5ab09f2d988bdf29d92ba9ae8e90a79/pandas-2.3.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:6021910b086b3ca756755e86ddc64e0ddafd5e58e076c72cb1585162e5ad259b", size = 13212406 },
+    { url = "https://files.pythonhosted.org/packages/76/1c/ccf70029e927e473a4476c00e0d5b32e623bff27f0402d0a92b7fc29bb9f/pandas-2.3.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:2b0540963d83431f5ce8870ea02a7430adca100cec8a050f0811f8e31035541b", size = 11566608 },
+    { url = "https://files.pythonhosted.org/packages/ec/d3/3c37cb724d76a841f14b8f5fe57e5e3645207cc67370e4f84717e8bb7657/pandas-2.3.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:fe7317f578c6a153912bd2292f02e40c1d8f253e93c599e82620c7f69755c74f", size = 10823181 },
+    { url = "https://files.pythonhosted.org/packages/8a/4c/367c98854a1251940edf54a4df0826dcacfb987f9068abf3e3064081a382/pandas-2.3.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e6723a27ad7b244c0c79d8e7007092d7c8f0f11305770e2f4cd778b3ad5f9f85", size = 11793570 },
+    { url = "https://files.pythonhosted.org/packages/07/5f/63760ff107bcf5146eee41b38b3985f9055e710a72fdd637b791dea3495c/pandas-2.3.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3462c3735fe19f2638f2c3a40bd94ec2dc5ba13abbb032dd2fa1f540a075509d", size = 12378887 },
+    { url = "https://files.pythonhosted.org/packages/15/53/f31a9b4dfe73fe4711c3a609bd8e60238022f48eacedc257cd13ae9327a7/pandas-2.3.1-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:98bcc8b5bf7afed22cc753a28bc4d9e26e078e777066bc53fac7904ddef9a678", size = 13230957 },
+    { url = "https://files.pythonhosted.org/packages/e0/94/6fce6bf85b5056d065e0a7933cba2616dcb48596f7ba3c6341ec4bcc529d/pandas-2.3.1-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:4d544806b485ddf29e52d75b1f559142514e60ef58a832f74fb38e48d757b299", size = 13883883 },
+    { url = "https://files.pythonhosted.org/packages/46/de/b8445e0f5d217a99fe0eeb2f4988070908979bec3587c0633e5428ab596c/pandas-2.3.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:689968e841136f9e542020698ee1c4fbe9caa2ed2213ae2388dc7b81721510d3", size = 11588172 },
+    { url = "https://files.pythonhosted.org/packages/1e/e0/801cdb3564e65a5ac041ab99ea6f1d802a6c325bb6e58c79c06a3f1cd010/pandas-2.3.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:025e92411c16cbe5bb2a4abc99732a6b132f439b8aab23a59fa593eb00704232", size = 10717365 },
+    { url = "https://files.pythonhosted.org/packages/51/a5/c76a8311833c24ae61a376dbf360eb1b1c9247a5d9c1e8b356563b31b80c/pandas-2.3.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9b7ff55f31c4fcb3e316e8f7fa194566b286d6ac430afec0d461163312c5841e", size = 11280411 },
+    { url = "https://files.pythonhosted.org/packages/da/01/e383018feba0a1ead6cf5fe8728e5d767fee02f06a3d800e82c489e5daaf/pandas-2.3.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7dcb79bf373a47d2a40cf7232928eb7540155abbc460925c2c96d2d30b006eb4", size = 11988013 },
+    { url = "https://files.pythonhosted.org/packages/5b/14/cec7760d7c9507f11c97d64f29022e12a6cc4fc03ac694535e89f88ad2ec/pandas-2.3.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:56a342b231e8862c96bdb6ab97170e203ce511f4d0429589c8ede1ee8ece48b8", size = 12767210 },
+    { url = "https://files.pythonhosted.org/packages/50/b9/6e2d2c6728ed29fb3d4d4d302504fb66f1a543e37eb2e43f352a86365cdf/pandas-2.3.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:ca7ed14832bce68baef331f4d7f294411bed8efd032f8109d690df45e00c4679", size = 13440571 },
 ]
 
 [[package]]
@@ -2432,6 +2458,24 @@ wheels = [
 ]
 
 [[package]]
+name = "pytrec-eval-terrier"
+version = "0.5.7"
+source = { registry = "https://pypi.python.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/61/9003ffdb64f74a91208d69235dbcd380ae1a8d267089348eb8f7aab9819a/pytrec_eval_terrier-0.5.7.tar.gz", hash = "sha256:47e01ef52bfbe2f1df27c43842aa2faae542044e550983cd1a3100a4d9f62b48", size = 16935 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/c0/8b9209bb5073c2071de0ce0bacfe82e0d192eec9a96007fc5338579f7ec6/pytrec_eval_terrier-0.5.7-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:45e2a234e0061cd80adfa14de239393052339e0227bb4b7f13bf7a9dca7cdd33", size = 135464 },
+    { url = "https://files.pythonhosted.org/packages/14/81/7a6b5b4063dc0133bccdc83afdc3a407db801361e1bf044900de651d2e68/pytrec_eval_terrier-0.5.7-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:707cbdde6be31fb68cc3323bb0523ece23a72a91d1eb2d2d61db27a16872daad", size = 287986 },
+    { url = "https://files.pythonhosted.org/packages/75/89/99a7f72f11ceef515090fe2a22352e07d476c3ec70272be61ecbb1d78eab/pytrec_eval_terrier-0.5.7-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:19cdd0daedeae758e8815414c8ea890601ff1e6344f5bc5967c3931fadb1e4a2", size = 280801 },
+    { url = "https://files.pythonhosted.org/packages/c4/1e/becc8155fefd6705bebcabe6dd5ff6f8eaa825d2ffb7ce3124422b297149/pytrec_eval_terrier-0.5.7-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:a3a0b35fbd3b7423122b3be2189a0fcf34e7c9ea92183dfaa76bff24ac8d488d", size = 1425137 },
+    { url = "https://files.pythonhosted.org/packages/fd/87/d9003d988ed37196cc1ac85e417361ac855f4ac4dd39ee047342cf56da47/pytrec_eval_terrier-0.5.7-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:72138fe4d8e1442b4f80b0c71b904612a66ff1efa67428fbb280009960e5c1ac", size = 1326102 },
+    { url = "https://files.pythonhosted.org/packages/1a/41/d56116972d308ceefff769dc025580e6e43dd088f87ea82bffac66bcdfa6/pytrec_eval_terrier-0.5.7-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:0d5fcabd7c1ddcc6b1d0d191f50b1ea6e6817f9a674c31a06ce530878d21de0f", size = 135782 },
+    { url = "https://files.pythonhosted.org/packages/e4/3d/ec04c49dd2cfd684d046acdf338f5aeaaa4c31b4c6a4648d3f60eef0d56a/pytrec_eval_terrier-0.5.7-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b3f9b5765068f6e98edd560c76d76076a6a61a8a6265c1ef48d48d982d8a733e", size = 288596 },
+    { url = "https://files.pythonhosted.org/packages/31/1d/c345131f866b2642163d2b101f11eeadf903e62f36d919734227074ca5b7/pytrec_eval_terrier-0.5.7-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:3a5b1d232bfb770c70c12f80990c314558d77e46cd56861b60188fcd1803c9a7", size = 280897 },
+    { url = "https://files.pythonhosted.org/packages/5d/ac/fd0eb474e0166747c7afde90a7c29f3e66da019b3ccb3ca9dc01bf1a132d/pytrec_eval_terrier-0.5.7-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:b9c086e6ce4303aa0d14dc2a9083d5edec6c949347957c4ddb3b99554e603f7e", size = 1425761 },
+    { url = "https://files.pythonhosted.org/packages/22/1f/20ed725e7aebda09ae64b33a8aad1bb5c67c24e002ac3c965f9616f2b831/pytrec_eval_terrier-0.5.7-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:581f3cfe75bf0474f4da37b471c4ba27a4fd945ed7c0bc71897929243142192b", size = 1326648 },
+]
+
+[[package]]
 name = "pytz"
 version = "2025.2"
 source = { registry = "https://pypi.python.org/simple" }
@@ -2625,15 +2669,15 @@ wheels = [
 
 [[package]]
 name = "rotary-embedding-torch"
-version = "0.8.7"
+version = "0.8.8"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/ca/32b171c8a87b10b93deae163d545bc21817fb3a73524f96eb62d7084ba97/rotary_embedding_torch-0.8.7.tar.gz", hash = "sha256:58c68cad9866f59c42fe18299e312a71d83401c379006df82c238a203c061675", size = 7465 }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/10/6e027abe8f8d7cf37ccf238b54c251b79e270605336fe038bd6450de7066/rotary_embedding_torch-0.8.8.tar.gz", hash = "sha256:42cdb6d997356f0f026f0b6fd7f0af84b846b84bc0353826153ad67259e244b1", size = 7496 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/f4/bb20b03f52b85b908f64255ee1f63ce8a3768af842be4b493b24cb4b6bbc/rotary_embedding_torch-0.8.7-py3-none-any.whl", hash = "sha256:9e483bd7e7dd28885e6eaebdf73fb46a576e0a0aeae808cc7b8c40a7ed0e2a0c", size = 5847 },
+    { url = "https://files.pythonhosted.org/packages/22/fa/efc52e012a3c54570bfae17eaa98b9975c3d5e0c6887ce5e69a4b280dc74/rotary_embedding_torch-0.8.8-py3-none-any.whl", hash = "sha256:1ab881d42b9c98f3d3137e812cc172640a340a5c048d06df614481dcc0251447", size = 5875 },
 ]
 
 [[package]]
