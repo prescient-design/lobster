@@ -2,14 +2,6 @@
 
 This document explains how to build and distribute the Lobster DXT extension for Claude Desktop.
 
-## What is DXT?
-
-DXT (Desktop Extension Toolkit) is Anthropic's system for distributing MCP servers as local desktop extensions for Claude Desktop. DXT extensions are packaged as `.dxt` files that contain:
-
-- The MCP server code and dependencies
-- A manifest file describing the extension
-- Any additional resources needed
-
 ## Building DXT Extensions
 
 ### Prerequisites
@@ -149,56 +141,3 @@ lobster.dxt (zip archive)
 - **GitHub release failed**: Check GitHub Actions logs for build errors
 - **File too large**: Consider excluding unnecessary dependencies
 - **Download issues**: Verify the release is public and accessible
-
-## Best Practices
-
-### Development
-
-1. **Test locally** before releasing using `python scripts/build_dxt.py`
-2. **Use manual workflow triggers** for testing before version tags
-3. **Version appropriately** following semantic versioning
-4. **Include release notes** with changes and known issues
-5. **Test installation** on clean systems
-
-### Distribution
-
-1. **Use GitHub Releases** for all distribution
-2. **Never commit** .dxt files to Git
-3. **Include installation instructions** in release notes
-4. **Monitor download metrics** and user feedback
-
-### Maintenance
-
-1. **Regular updates** to keep dependencies current
-2. **Security patches** for critical vulnerabilities
-3. **Compatibility testing** with new Claude Desktop versions
-4. **User feedback** collection and response
-
-### Building with Claude Code
-Build [extensions directly with Claude Code](https://www.anthropic.com/engineering/desktop-extensions). For example, describe what the extension should do and add this prompt:
-```
-I want to build this as a Desktop Extension, abbreviated as "DXT". Please follow these steps:
-
-1. **Read the specifications thoroughly:**
-   - https://github.com/anthropics/dxt/blob/main/README.md - DXT architecture overview, capabilities, and integration patterns
-   - https://github.com/anthropics/dxt/blob/main/MANIFEST.md - Complete extension manifest structure and field definitions
-   - https://github.com/anthropics/dxt/tree/main/examples - Reference implementations including a "Hello World" example
-
-2. **Create a proper extension structure:**
-   - Generate a valid manifest.json following the MANIFEST.md spec
-   - Implement an MCP server using @modelcontextprotocol/sdk with proper tool definitions
-   - Include proper error handling and timeout management
-
-3. **Follow best development practices:**
-   - Implement proper MCP protocol communication via stdio transport
-   - Structure tools with clear schemas, validation, and consistent JSON responses
-   - Make use of the fact that this extension will be running locally
-   - Add appropriate logging and debugging capabilities
-   - Include proper documentation and setup instructions
-
-4. **Test considerations:**
-   - Validate that all tool calls return properly structured responses
-   - Verify manifest loads correctly and host integration works
-
-Generate complete, production-ready code that can be immediately tested. Focus on defensive programming, clear error messages, and following the exact DXT specifications to ensure compatibility with the ecosystem.
-```
