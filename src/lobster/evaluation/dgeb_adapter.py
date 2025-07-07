@@ -347,7 +347,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
                 logger.error(f"Error encoding batch {i // self.batch_size + 1}: {e}")
                 # Return zeros for failed batch
                 batch_size = len(batch_sequences)
-                zero_embeddings = np.zeros((batch_size, self.num_layers, self.embed_dim))
+                zero_embeddings = np.zeros((batch_size, len(self.layers), self.embed_dim))
                 all_embeddings.append(zero_embeddings)
 
         # Concatenate all embeddings
@@ -376,29 +376,59 @@ class UMEAdapterDGEB(BioSeqTransformer):
         np.ndarray
             Embeddings of shape [batch_size, num_layers, embedding_dim].
         """
-        # For now, use the high-level embed_sequences method which gives us aggregated embeddings
-        # TODO: In the future, we could implement proper layer-wise extraction by calling
-        # the underlying FlexBERT model directly to get intermediate layer outputs
+        # Get the tokenizer transform for the specified modality
+        tokenizer_transform = self.model.tokenizer_transforms[modality]
+        encoded_batch = tokenizer_transform(sequences)
+        input_ids = encoded_batch["input_ids"]
+        attention_mask = encoded_batch["attention_mask"]
 
-        # Get aggregated embeddings (mean pooled across sequence length)
-        aggregated_embeddings = self.model.embed_sequences(
-            sequences,
-            modality=modality,
-            aggregate=True,
-        )
+        device = next(self.model.parameters()).device
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
 
-        # Convert to numpy
-        aggregated_embeddings = aggregated_embeddings.detach().cpu().numpy()
+        # Handle shape (batch, seq) or (batch, 1, seq)
+        if input_ids.dim() == 3:
+            input_ids = input_ids.squeeze(1)
+            attention_mask = attention_mask.squeeze(1)
 
-        # DGEB expects embeddings from multiple layers
-        # Since UME's embed_sequences gives us the final aggregated representation,
-        # we'll duplicate it for each layer as a reasonable approximation
-        # This is similar to how some other models handle layer extraction in DGEB
+        # Get embedding layer and encoder layers
+        flexbert = self.model.model.model
+        embeddings = flexbert.embeddings(input_ids)
+        hidden_states = embeddings
+        all_hidden_states = [hidden_states]
+        for layer in flexbert.encoder.layers:
+            hidden_states = layer(hidden_states, attn_mask=attention_mask)
+            all_hidden_states.append(hidden_states)
 
-        # Create embeddings array with shape [batch_size, num_layers, embed_dim]
-        layer_embeddings = np.tile(aggregated_embeddings[:, np.newaxis, :], (1, self.num_layers, 1))
+        # Select the requested layers (self.layers)
+        selected_layers = [
+            all_hidden_states[i + 1] for i in self.layers
+        ]  # +1 because all_hidden_states[0] is embedding
 
-        return layer_embeddings
+        # Pool each layer
+        pooled_layers = []
+        for layer_hidden in selected_layers:
+            if self.pool_type == "mean":
+                pooled = (layer_hidden * attention_mask.unsqueeze(-1)).sum(dim=1) / attention_mask.sum(
+                    dim=1, keepdim=True
+                )
+            elif self.pool_type == "max":
+                mask = attention_mask.unsqueeze(-1).expand_as(layer_hidden)
+                layer_hidden_masked = layer_hidden.masked_fill(mask == 0, float("-inf"))
+                pooled = layer_hidden_masked.max(dim=1)[0]
+            elif self.pool_type == "cls":
+                pooled = layer_hidden[:, 0, :]
+            elif self.pool_type == "last":
+                lengths = attention_mask.sum(dim=1) - 1
+                pooled = torch.stack([layer_hidden[i, l, :] for i, l in enumerate(lengths)], dim=0)
+            else:
+                raise ValueError(f"Unsupported pool_type: {self.pool_type}")
+            pooled_layers.append(pooled)
+
+        # Stack: (batch, num_layers, dim)
+        layer_embeddings = torch.stack(pooled_layers, dim=1)
+
+        return layer_embeddings.cpu().numpy()
 
     @property
     def modality(self) -> Modality:
