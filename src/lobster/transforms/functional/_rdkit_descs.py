@@ -6,7 +6,6 @@ The normalization logic is taken from the `descriptastorus` [1]_ package.
 """
 
 import math
-from collections import defaultdict
 from types import MappingProxyType
 from typing import Protocol
 
