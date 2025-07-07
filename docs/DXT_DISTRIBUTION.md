@@ -47,6 +47,35 @@ git push origin v0.1.0
 # 3. Attaches the .dxt file to the release
 ```
 
+### Testing Without Version Tags
+
+To test the build workflow without pushing version tags:
+
+#### Method 1: Manual GitHub Actions Trigger (Recommended)
+1. Go to your GitHub repository → **Actions** tab
+2. Select "Build and Release DXT Extension" workflow
+3. Click **"Run workflow"** button
+4. Enter a test version like `v0.1.0-test`
+5. This creates a prerelease without affecting your main version tags
+
+#### Method 2: Local Build Testing
+```bash
+# Test the build script locally
+python scripts/build_dxt.py
+
+# This creates lobster.dxt in the current directory (~339 MB)
+# Test installation in Claude Desktop before releasing
+```
+
+#### Method 3: Branch Testing
+```bash
+# Create a separate branch for testing
+git checkout -b test-dxt-workflow
+git push origin test-dxt-workflow
+
+# Test changes without affecting main branch
+```
+
 ## Distribution Strategy
 
 The recommended approach is to distribute .dxt files through **GitHub Releases**:
@@ -106,7 +135,8 @@ lobster.dxt (zip archive)
 
 - **Missing dependencies**: Run `uv sync --extra mcp`
 - **Permission errors**: Ensure write permissions in the output directory
-- **Large file size**: The extension includes all dependencies (~500MB)
+- **Large file size**: The extension includes all dependencies (~339 MB)
+- **GitHub Actions timeout**: Large dependency downloads may timeout; consider caching
 
 ### Installation Issues
 
@@ -124,10 +154,11 @@ lobster.dxt (zip archive)
 
 ### Development
 
-1. **Test locally** before releasing
-2. **Version appropriately** following semantic versioning
-3. **Include release notes** with changes and known issues
-4. **Test installation** on clean systems
+1. **Test locally** before releasing using `python scripts/build_dxt.py`
+2. **Use manual workflow triggers** for testing before version tags
+3. **Version appropriately** following semantic versioning
+4. **Include release notes** with changes and known issues
+5. **Test installation** on clean systems
 
 ### Distribution
 

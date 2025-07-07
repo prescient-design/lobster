@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'  # Trigger on version tags
+  workflow_dispatch:  # Allow manual triggering for testing
+    inputs:
+      version:
+        description: 'Version to build (e.g. v0.1.0-test)'
+        required: true
+        default: 'v0.1.0-test'
 
 jobs:
   build-dxt:
@@ -29,21 +35,15 @@ jobs:
         
     - name: Build DXT extension
       run: |
-        # Create server/lib directory with dependencies
-        mkdir -p server/lib
-        uv pip install --target server/lib -e .[mcp]
-        
-        # Create the .dxt archive
-        # Note: You'll need to implement the actual DXT packaging logic
-        # This is a placeholder for the DXT build process
-        echo "Building DXT extension..."
-        # dxt build manifest.json -o lobster.dxt
+        python scripts/build_dxt.py
         
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: lobster.dxt
         draft: false
-        prerelease: false
+        prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+        tag_name: ${{ github.event.inputs.version || github.ref_name }}
+        name: Release ${{ github.event.inputs.version || github.ref_name }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
