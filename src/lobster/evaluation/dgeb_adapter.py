@@ -58,6 +58,7 @@ class UMEAdapter(BioSeqTransformer):
         modality: Literal["protein", "dna"] = "protein",
         use_flash_attn: bool | None = None,
     ):
+        logger.info(f"Initializing UMEAdapter with model_name={model_name}, modality={modality}")
         if devices is None:
             devices = [0]
 
@@ -67,6 +68,7 @@ class UMEAdapter(BioSeqTransformer):
         self._model_name = model_name
         self._devices = devices
 
+        logger.info("Calling parent BioSeqTransformer.__init__...")
         super().__init__(
             model_name=model_name,
             layers=layers,
@@ -77,6 +79,7 @@ class UMEAdapter(BioSeqTransformer):
             batch_size=batch_size,
             pool_type=pool_type,
         )
+        logger.info("UMEAdapter initialization completed")
 
     def _determine_optimal_settings(self) -> tuple[str, bool]:
         """Determine optimal device and flash attention settings.
@@ -152,35 +155,69 @@ class UMEAdapter(BioSeqTransformer):
 
     def _load_model(self, model_name: str):
         """Load the UME model from checkpoint or pretrained model."""
+        logger.info("Starting model loading process...")
         # Determine device and flash attention availability
         device, use_flash_attn = self._determine_optimal_settings()
+        logger.info(f"Determined settings: device={device}, use_flash_attn={use_flash_attn}")
 
         try:
             # Try loading as pretrained model first
             if model_name.startswith("ume-"):
                 logger.info(f"Loading pretrained UME model: {model_name}")
-                model = UME.from_pretrained(
-                    model_name,
-                    device=device,
-                    use_flash_attn=use_flash_attn,
-                )
+                logger.info("Calling UME.from_pretrained...")
+                try:
+                    model = UME.from_pretrained(
+                        model_name,
+                        device=device,
+                        use_flash_attn=use_flash_attn,
+                    )
+                    logger.info("UME.from_pretrained completed successfully")
+                except NotImplementedError as e:
+                    logger.warning(f"Pre-trained model not available: {e}")
+                    logger.info("Creating new UME model instead...")
+                    # Extract model size from name (e.g., "ume-mini-base-12M" -> "UME_mini")
+                    if "mini" in model_name:
+                        model_size = "UME_mini"
+                    elif "small" in model_name:
+                        model_size = "UME_small"
+                    elif "medium" in model_name:
+                        model_size = "UME_medium"
+                    elif "large" in model_name:
+                        model_size = "UME_large"
+                    else:
+                        model_size = "UME_mini"  # Default fallback
+
+                    logger.info(f"Creating new UME model with size: {model_size}")
+                    model = UME(
+                        model_name=model_size,
+                        use_flash_attn=use_flash_attn,
+                    )
+                    logger.info("New UME model created successfully")
             else:
                 # Load from checkpoint path
                 logger.info(f"Loading UME model from checkpoint: {model_name}")
+                logger.info("Calling UME.load_from_checkpoint...")
                 model = UME.load_from_checkpoint(
                     model_name,
                     device=device,
                     use_flash_attn=use_flash_attn,
                 )
+                logger.info("UME.load_from_checkpoint completed successfully")
         except Exception as e:
             logger.error(f"Failed to load UME model {model_name}: {e}")
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
+        logger.info("Freezing model for evaluation...")
         # Freeze model for evaluation
         model.freeze()
+        logger.info("Model frozen successfully")
 
         # Move to specified device (model is already loaded on the correct device)
         if device == "cuda" and torch.cuda.is_available():
+            logger.info("Moving model to CUDA...")
             model = model.cuda()
             # Log GPU memory usage if available
             try:
@@ -188,14 +225,20 @@ class UMEAdapter(BioSeqTransformer):
                 logger.info(f"Using GPU with {gpu_memory:.1f}GB memory")
             except Exception:
                 pass
+        else:
+            logger.info("Model will run on CPU")
 
+        logger.info("Setting up model config...")
         # DGEB expects the returned model to have a config attribute directly
         # UME models have config under model.config, so we need to expose it
         if not hasattr(model, "config"):
             model.config = model.model.config
+        logger.info("Model config setup completed")
 
+        logger.info("Storing model as instance variable...")
         # Store model as instance variable
         self.model = model
+        logger.info("Model stored successfully")
 
         # Log final configuration
         flash_status = "enabled" if use_flash_attn else "disabled"

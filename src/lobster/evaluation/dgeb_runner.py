@@ -93,7 +93,7 @@ def run_evaluation(
     # Get tasks to run
     if tasks is None:
         task_classes = get_tasks_for_modality(modality)
-        task_names = [task.metadata.name for task in task_classes]
+        task_names = [task.metadata.display_name for task in task_classes]
         logger.info(f"Running all {len(task_classes)} tasks for {modality}: {task_names}")
     else:
         task_classes = dgeb.get_tasks_by_name(tasks)
@@ -106,6 +106,7 @@ def run_evaluation(
         devices = [0]
 
     try:
+        logger.info("Creating UMEAdapter instance...")
         model = UMEAdapter(
             model_name=model_name,
             modality=modality,
@@ -116,9 +117,13 @@ def run_evaluation(
             pool_type=pool_type,
             devices=devices,
         )
+        logger.info("UMEAdapter instance created successfully")
         logger.info(f"Successfully initialized UME adapter with embedding dim: {model.embed_dim}")
     except Exception as e:
         logger.error(f"Failed to initialize UME adapter: {e}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
     # Initialize DGEB evaluation
@@ -151,8 +156,8 @@ def run_evaluation(
         # Extract key metrics from results
         for result in results:
             task_summary = {
-                "task_name": getattr(result.task, "name", "Unknown Task"),
-                "task_type": getattr(result.task, "type", "Unknown Type"),
+                "task_name": getattr(result.task.metadata, "display_name", "Unknown Task"),
+                "task_type": getattr(result.task.metadata, "type", "Unknown Type"),
                 "scores": {},
             }
 

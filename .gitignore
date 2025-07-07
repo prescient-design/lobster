@@ -46,6 +46,7 @@ dev
 *.ckpt
 
 # DGEB evaluation results and test reports
+*.log
 dgeb_results/
 dgeb_test_results/
 *_dgeb_eval/
