@@ -61,6 +61,12 @@ class UMEAdapter(BioSeqTransformer):
         if devices is None:
             devices = [0]
 
+        # Set attributes before calling parent __init__ since parent calls _load_model
+        self._modality = modality
+        self._use_flash_attn = use_flash_attn
+        self._model_name = model_name
+        self._devices = devices
+
         super().__init__(
             model_name=model_name,
             layers=layers,
@@ -72,15 +78,82 @@ class UMEAdapter(BioSeqTransformer):
             pool_type=pool_type,
         )
 
-        self._modality = modality
-        self._use_flash_attn = use_flash_attn
-        self._model_name = model_name
-        # Don't call _load_model here, the parent class will call it
+    def _determine_optimal_settings(self) -> tuple[str, bool]:
+        """Determine optimal device and flash attention settings.
+
+        Returns
+        -------
+        tuple[str, bool]
+            Device string and whether to use flash attention.
+        """
+        # Check CUDA availability
+        cuda_available = torch.cuda.is_available()
+        has_gpu_devices = self._devices and any(d >= 0 for d in self._devices)
+
+        if cuda_available and has_gpu_devices:
+            device = "cuda"
+            logger.info("CUDA detected - using GPU acceleration")
+        else:
+            device = "cpu"
+            if not cuda_available:
+                logger.info("CUDA not available - falling back to CPU")
+            else:
+                logger.info("No GPU devices specified - using CPU")
+
+        # Determine flash attention usage
+        use_flash_attn = False
+        if self._use_flash_attn is not None:
+            # User explicitly specified flash attention preference
+            use_flash_attn = self._use_flash_attn
+            if use_flash_attn and device == "cpu":
+                logger.warning("Flash attention requested but using CPU - flash attention will be disabled")
+                use_flash_attn = False
+        elif device == "cuda":
+            # Auto-detect flash attention availability on GPU
+            use_flash_attn = self._check_flash_attention_available()
+            if use_flash_attn:
+                logger.info("Flash attention detected and enabled for better performance")
+            else:
+                logger.info("Flash attention not available - using standard attention")
+
+        return device, use_flash_attn
+
+    def _check_flash_attention_available(self) -> bool:
+        """Check if flash attention is available.
+
+        Returns
+        -------
+        bool
+            True if flash attention is available and can be used.
+        """
+        import importlib.util
+
+        # Check if flash_attn module is available without importing it
+        flash_attn_spec = importlib.util.find_spec("flash_attn")
+        if flash_attn_spec is None:
+            logger.debug("Flash attention library not available")
+            return False
+
+        # Check if the specific flash_attn_func is available
+        try:
+            # Only import the specific function we need to test functionality
+            from flash_attn import flash_attn_func
+
+            # Test that we can access the function
+            _ = flash_attn_func  # Suppress unused import warning
+            logger.debug("Flash attention library found and functional")
+            return True
+        except (ImportError, AttributeError) as e:
+            logger.debug(f"Flash attention components not available: {e}")
+            return False
+        except Exception as e:
+            logger.debug(f"Flash attention check failed: {e}")
+            return False
 
     def _load_model(self, model_name: str):
         """Load the UME model from checkpoint or pretrained model."""
-        # Determine device
-        device = "cuda" if torch.cuda.is_available() and self.devices else "cpu"
+        # Determine device and flash attention availability
+        device, use_flash_attn = self._determine_optimal_settings()
 
         try:
             # Try loading as pretrained model first
@@ -89,7 +162,7 @@ class UMEAdapter(BioSeqTransformer):
                 model = UME.from_pretrained(
                     model_name,
                     device=device,
-                    use_flash_attn=False,  # Default to CPU-compatible
+                    use_flash_attn=use_flash_attn,
                 )
             else:
                 # Load from checkpoint path
@@ -97,7 +170,7 @@ class UMEAdapter(BioSeqTransformer):
                 model = UME.load_from_checkpoint(
                     model_name,
                     device=device,
-                    use_flash_attn=False,  # Default to CPU-compatible
+                    use_flash_attn=use_flash_attn,
                 )
         except Exception as e:
             logger.error(f"Failed to load UME model {model_name}: {e}")
@@ -106,9 +179,15 @@ class UMEAdapter(BioSeqTransformer):
         # Freeze model for evaluation
         model.freeze()
 
-        # Move to specified device
+        # Move to specified device (model is already loaded on the correct device)
         if device == "cuda" and torch.cuda.is_available():
             model = model.cuda()
+            # Log GPU memory usage if available
+            try:
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+                logger.info(f"Using GPU with {gpu_memory:.1f}GB memory")
+            except Exception:
+                pass
 
         # DGEB expects the returned model to have a config attribute directly
         # UME models have config under model.config, so we need to expose it
@@ -118,22 +197,59 @@ class UMEAdapter(BioSeqTransformer):
         # Store model as instance variable
         self.model = model
 
-        logger.info(f"Loaded UME model {model_name} on {device}")
+        # Log final configuration
+        flash_status = "enabled" if use_flash_attn else "disabled"
+        logger.info(f"Loaded UME model {model_name} on {device} (flash attention: {flash_status})")
 
         # Return the model for DGEB compatibility
         return model
 
     def _get_tokenizer(self, model_name: str):
-        """Override tokenizer loading to use UME's tokenizer."""
+        """Override tokenizer loading to use UME's real tokenizer."""
         # model_name is not used since UME has its own tokenizers built-in
         _ = model_name  # Suppress unused parameter warning
 
-        # Return a dummy tokenizer object since we don't need it
-        class DummyTokenizer:
-            def __init__(self):
-                self.model_max_length = 1024
+        # Get the appropriate UME tokenizer for the current modality
+        lobster_modality = self._get_lobster_modality()
 
-        return DummyTokenizer()
+        try:
+            # Get the tokenizer transform for the specific modality
+            tokenizer_transform = self.model.tokenizer_transforms[lobster_modality]
+
+            # Return the underlying HuggingFace tokenizer
+            # This provides the interface that DGEB expects (encode, decode, etc.)
+            ume_tokenizer = tokenizer_transform.tokenizer
+
+            logger.debug(
+                f"Using UME {lobster_modality.value} tokenizer with vocab size: {len(ume_tokenizer.get_vocab())}"
+            )
+
+            return ume_tokenizer
+
+        except Exception as e:
+            logger.warning(f"Failed to get UME tokenizer for {lobster_modality.value}: {e}")
+            logger.warning("Falling back to dummy tokenizer")
+
+            # Fallback to dummy tokenizer if UME tokenizer access fails
+            class DummyTokenizer:
+                def __init__(self):
+                    self.model_max_length = self.max_seq_length
+                    self.vocab_size = 50000  # Reasonable default
+
+                def encode(self, text, **kwargs):
+                    # Simple character-based encoding as fallback
+                    _ = kwargs  # Suppress unused parameter warning
+                    return list(range(len(text)))
+
+                def decode(self, token_ids, **kwargs):
+                    # Simple decoding fallback
+                    _ = kwargs  # Suppress unused parameter warning
+                    return "".join([chr(65 + (i % 26)) for i in token_ids])
+
+                def get_vocab(self):
+                    return {}
+
+            return DummyTokenizer()
 
     def _get_lobster_modality(self) -> LobsterModality:
         """Convert DGEB modality to Lobster modality."""
@@ -264,6 +380,9 @@ class UMEAdapter(BioSeqTransformer):
     @property
     def metadata(self) -> dict:
         """Return model metadata."""
+        # Determine current device
+        device = next(self.model.parameters()).device.type
+
         return {
             "model_name": self._model_name,
             "hf_name": self._model_name,  # Required by DGEB
@@ -275,4 +394,7 @@ class UMEAdapter(BioSeqTransformer):
             "pool_type": self.pool_type,
             "l2_norm": self.l2_norm,
             "batch_size": self.batch_size,
+            "device": device,
+            "use_flash_attn": self._use_flash_attn,
+            "cuda_available": torch.cuda.is_available(),
         }
