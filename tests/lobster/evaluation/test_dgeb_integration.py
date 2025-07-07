@@ -4,12 +4,14 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+import types
 
 import pytest
 import torch
 
-from lobster.evaluation.dgeb_adapter import UMEAdapter
+from lobster.evaluation.dgeb_adapter import UMEAdapterDGEB
 from lobster.model import UME
+from lobster.evaluation import dgeb_runner
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +94,8 @@ def test_dgeb_tasks():
 
 @pytest.mark.skipif(not check_aws_credentials(), reason="AWS credentials not available for pretrained model testing")
 def test_ume_adapter_pretrained():
-    """Test UMEAdapter with pretrained model (requires AWS credentials)."""
-    adapter = UMEAdapter(
+    """Test UMEAdapterDGEB with pretrained model (requires AWS credentials)."""
+    adapter = UMEAdapterDGEB(
         model_name="ume-mini-base-12M",
         modality="protein",
         batch_size=2,
@@ -117,8 +119,8 @@ def test_ume_adapter_pretrained():
 
 
 def test_ume_adapter_from_checkpoint(test_model_checkpoint):
-    """Test UMEAdapter with model created from scratch."""
-    adapter = UMEAdapter(
+    """Test UMEAdapterDGEB with model created from scratch."""
+    adapter = UMEAdapterDGEB(
         model_name=test_model_checkpoint,
         modality="protein",
         batch_size=2,
@@ -142,8 +144,8 @@ def test_ume_adapter_from_checkpoint(test_model_checkpoint):
 
 
 def test_ume_adapter_empty_sequences(test_model_checkpoint):
-    """Test UMEAdapter with empty sequences."""
-    adapter = UMEAdapter(
+    """Test UMEAdapterDGEB with empty sequences."""
+    adapter = UMEAdapterDGEB(
         model_name=test_model_checkpoint,
         modality="protein",
         batch_size=2,
@@ -161,8 +163,8 @@ def test_ume_adapter_empty_sequences(test_model_checkpoint):
 
 
 def test_ume_adapter_dna_modality(test_model_checkpoint):
-    """Test UMEAdapter with DNA modality."""
-    adapter = UMEAdapter(
+    """Test UMEAdapterDGEB with DNA modality."""
+    adapter = UMEAdapterDGEB(
         model_name=test_model_checkpoint,
         modality="dna",
         batch_size=2,
@@ -184,8 +186,8 @@ def test_ume_adapter_dna_modality(test_model_checkpoint):
 
 
 def test_ume_adapter_metadata(test_model_checkpoint):
-    """Test UMEAdapter metadata property."""
-    adapter = UMEAdapter(
+    """Test UMEAdapterDGEB metadata property."""
+    adapter = UMEAdapterDGEB(
         model_name=test_model_checkpoint,
         modality="protein",
         batch_size=32,
@@ -203,3 +205,72 @@ def test_ume_adapter_metadata(test_model_checkpoint):
     assert metadata["pool_type"] == "mean"
     assert "embed_dim" in metadata
     assert metadata["embed_dim"] > 0
+
+
+def test_run_evaluation_task_metadata_extraction(monkeypatch):
+    """Test that run_evaluation correctly extracts task_name and task_type from TaskMetadata objects in results."""
+
+    # Create a fake TaskMetadata-like object
+    class FakeTaskMetadata:
+        display_name = "Fake Task"
+        type = "fake_type"
+
+    # Create a fake result object
+    class FakeTaskMetric:
+        id = "main_score"
+        value = 0.99
+
+    class FakeLayerResult:
+        layer_number = 0
+        metrics = [FakeTaskMetric()]
+
+    class FakeResult:
+        def __init__(self):
+            self.task = FakeTaskMetadata()
+            self.results = [FakeLayerResult()]
+
+    # Create a fake UMEAdapterDGEB
+    class FakeUMEAdapterDGEB:
+        def __init__(self, **kwargs):
+            self.embed_dim = 128
+            self.num_layers = 6
+            self.metadata = {"modality": "protein", "embed_dim": 128, "num_layers": 6}
+
+    # Patch all the necessary components
+    monkeypatch.setattr(
+        dgeb_runner, "get_tasks_for_modality", lambda modality: [types.SimpleNamespace(metadata=FakeTaskMetadata)]
+    )
+    monkeypatch.setattr(dgeb_runner, "UMEAdapterDGEB", FakeUMEAdapterDGEB)
+
+    class FakeDGEB:
+        def __init__(self, tasks, seed):
+            pass
+
+        def run(self, model, output_folder=None):
+            return [FakeResult()]
+
+    monkeypatch.setattr(
+        dgeb_runner,
+        "dgeb",
+        types.SimpleNamespace(
+            DGEB=FakeDGEB, get_tasks_by_name=lambda names: [types.SimpleNamespace(metadata=FakeTaskMetadata)]
+        ),
+    )
+
+    # Run evaluation
+    results = dgeb_runner.run_evaluation(
+        model_name="fake_model",
+        modality="protein",
+        tasks=None,
+        output_dir="/tmp",
+        batch_size=1,
+        max_seq_length=10,
+        use_flash_attn=False,
+        l2_norm=False,
+        pool_type="mean",
+        devices=[0],
+        seed=42,
+    )
+    assert results["results"][0]["task_name"] == "Fake Task"
+    assert results["results"][0]["task_type"] == "fake_type"
+    assert results["results"][0]["scores"]["layer_0"]["main_score"] == 0.99

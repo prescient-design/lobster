@@ -130,7 +130,7 @@ The easiest way to run DGEB evaluations is through the command line:
 uv run lobster_dgeb_eval ume-mini-base-12M --modality protein
 
 # Evaluate a custom checkpoint on DNA tasks
-uv run lobster_dgeb_eval /path/to/checkpoint.ckpt --modality dna
+uv run lobster_dgeb_eval /path/to/checkpoint.ckpt --modality dna --max-seq-length 8192
 
 # Run specific tasks only with custom parameters
 uv run lobster_dgeb_eval ume-mini-base-12M \
@@ -145,7 +145,7 @@ uv run lobster_dgeb_eval ume-mini-base-12M \
 You can also run evaluations programmatically:
 
 ```python
-from lobster.evaluation import UMEAdapter, run_evaluation
+from lobster.evaluation import UMEAdapterDGEB, run_evaluation
 
 # Run DGEB evaluation
 results = run_evaluation(
@@ -153,12 +153,11 @@ results = run_evaluation(
     modality="protein",
     output_dir="dgeb_results",
     batch_size=32,
-    max_seq_length=1024,
+    max_seq_length=1024,  # DGEB standard - required for benchmark compatibility
 )
 
 print(f"Evaluated {len(results['results'])} tasks")
 print(f"Results saved to: dgeb_results/")
-```
 
 ### Output Files and Reports
 
@@ -240,12 +239,15 @@ uv run lobster_dgeb_eval MODEL_NAME \
     --batch-size BATCH_SIZE            # Optional: encoding batch size (default: 32)
     --max-seq-length MAX_LENGTH        # Optional: max sequence length (default: 1024)
     --use-flash-attn                   # Optional: enable flash attention
-    --no-flash-attn                    # Optional: disable flash attention
     --l2-norm                          # Optional: L2-normalize embeddings
     --pool-type {mean,max,cls,last}    # Optional: pooling strategy (default: mean)
     --devices 0 1 2                    # Optional: GPU devices (default: [0])
     --seed 42                          # Optional: random seed (default: 42)
 ```
+
+**Important Note on Sequence Length**: DGEB expects a maximum sequence length of 1024 tokens, which is our default value. This requirement is consistent with the [DGEB benchmark specification](https://github.com/TattaBio/DGEB/blob/1b187e607e278a34ba7338b8b43747c57add4134/scripts/eval_all_models.py#L10). Changing this value may affect benchmark compatibility and results comparability.
+
+**DNA Tasks**: For DNA tasks, it is recommended to set `--max-seq-length` to 8,192 for optimal performance, as DNA sequences can be significantly longer than protein sequences.
 
 ### Example Evaluation Session
 
@@ -275,7 +277,8 @@ with open('my_eval/results_summary.json') as f:
 ### Performance Tips
 
 - **Batch Size**: Increase `--batch-size` for faster evaluation on GPU (try 64-128)
-- **Sequence Length**: Reduce `--max-seq-length` if memory is limited (try 512)
+- **Sequence Length**: The default of 1024 is required for DGEB benchmark compatibility. Only reduce `--max-seq-length` if memory is limited and you understand the impact on benchmark comparability
+- **DNA Tasks**: Use `--max-seq-length 8192` for DNA tasks to handle longer sequences effectively
 - **Flash Attention**: Use `--use-flash-attn` on GPU for better performance
 - **Multiple GPUs**: Use `--devices 0 1 2 3` for multi-GPU inference
 

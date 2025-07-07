@@ -10,7 +10,7 @@ from typing import Any, Literal
 import dgeb
 from dgeb.modality import Modality as DGEBModality
 
-from .dgeb_adapter import UMEAdapter
+from .dgeb_adapter import UMEAdapterDGEB
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +106,8 @@ def run_evaluation(
         devices = [0]
 
     try:
-        logger.info("Creating UMEAdapter instance...")
-        model = UMEAdapter(
+        logger.info("Creating UMEAdapterDGEB instance...")
+        model = UMEAdapterDGEB(
             model_name=model_name,
             modality=modality,
             batch_size=batch_size,
@@ -117,7 +117,7 @@ def run_evaluation(
             pool_type=pool_type,
             devices=devices,
         )
-        logger.info("UMEAdapter instance created successfully")
+        logger.info("UMEAdapterDGEB instance created successfully")
         logger.info(f"Successfully initialized UME adapter with embedding dim: {model.embed_dim}")
     except Exception as e:
         logger.error(f"Failed to initialize UME adapter: {e}")
@@ -156,15 +156,19 @@ def run_evaluation(
         # Extract key metrics from results
         for result in results:
             task_summary = {
-                "task_name": getattr(result.task.metadata, "display_name", "Unknown Task"),
-                "task_type": getattr(result.task.metadata, "type", "Unknown Type"),
+                "task_name": getattr(result.task, "display_name", "Unknown Task"),
+                "task_type": getattr(result.task, "type", "Unknown Type"),
                 "scores": {},
             }
 
             # Extract scores from each layer result
             for layer_result in result.results:
-                layer_name = f"layer_{layer_result.layer}"
-                task_summary["scores"][layer_name] = layer_result.scores
+                layer_name = f"layer_{layer_result.layer_number}"
+                # Convert list of TaskMetric objects to dictionary
+                metrics_dict = {}
+                for metric in layer_result.metrics:
+                    metrics_dict[metric.id] = metric.value
+                task_summary["scores"][layer_name] = metrics_dict
 
             results_summary["results"].append(task_summary)
 
@@ -175,17 +179,17 @@ def run_evaluation(
         raise
 
 
-def generate_report(results_summary: dict[str, Any], output_path: Path) -> None:
+def generate_report(results_summary: dict[str, Any], report_dir: Path) -> None:
     """Generate a human-readable evaluation report.
 
     Parameters
     ----------
     results_summary : dict[str, Any]
         Results summary from run_evaluation.
-    output_path : Path
-        Path to save the report.
+    report_dir : Path
+        Directory to save the report.
     """
-    report_path = output_path / "evaluation_report.md"
+    report_path = report_dir / "evaluation_report.md"
 
     with open(report_path, "w") as f:
         f.write("# DGEB Evaluation Report\n\n")
@@ -251,6 +255,22 @@ def generate_report(results_summary: dict[str, Any], output_path: Path) -> None:
     logger.info(f"Report saved to {report_path}")
 
 
+def make_json_serializable(obj):
+    """Recursively convert TaskMetric and other non-serializable objects to serializable types."""
+    if isinstance(obj, dict):
+        return {k: make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_serializable(v) for v in obj]
+    elif hasattr(obj, "model_dump"):  # Pydantic v2
+        return make_json_serializable(obj.model_dump())
+    elif hasattr(obj, "dict"):  # Pydantic v1
+        return make_json_serializable(obj.dict())
+    elif hasattr(obj, "value"):
+        return make_json_serializable(obj.value)
+    else:
+        return obj
+
+
 def main():
     """Main entry point for DGEB evaluation."""
     parser = argparse.ArgumentParser(description="Run DGEB evaluation on UME models")
@@ -305,12 +325,6 @@ def main():
     )
 
     parser.add_argument(
-        "--no-flash-attn",
-        action="store_true",
-        help="Disable flash attention",
-    )
-
-    parser.add_argument(
         "--l2-norm",
         action="store_true",
         help="L2-normalize embeddings",
@@ -352,12 +366,8 @@ def main():
     # Set up logging
     setup_logging(args.log_level)
 
-    # Handle flash attention flags
-    use_flash_attn = None
-    if args.use_flash_attn:
-        use_flash_attn = True
-    elif args.no_flash_attn:
-        use_flash_attn = False
+    # Handle flash attention flag
+    use_flash_attn = args.use_flash_attn if args.use_flash_attn else None
 
     # Run evaluation
     try:
@@ -375,19 +385,23 @@ def main():
             seed=args.seed,
         )
 
-        # Save results summary
+        # Create output directory and report subdirectory
         output_path = Path(args.output_dir)
-        summary_path = output_path / "results_summary.json"
-        with open(summary_path, "w") as f:
-            json.dump(results_summary, f, indent=2)
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_dir = output_path / f"report_{timestamp_str}"
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save results summary as JSON
+        with open(report_dir / "results_summary.json", "w") as f:
+            json.dump(make_json_serializable(results_summary), f, indent=2)
 
         # Generate report
-        generate_report(results_summary, output_path)
+        generate_report(results_summary, report_dir)
 
         logger.info("Evaluation completed successfully!")
         logger.info(f"Results saved to: {output_path}")
-        logger.info(f"Summary: {summary_path}")
-        logger.info(f"Report: {output_path / 'evaluation_report.md'}")
+        logger.info(f"Summary: {report_dir / 'results_summary.json'}")
+        logger.info(f"Report: {report_dir / 'evaluation_report.md'}")
 
     except Exception as e:
         logger.error(f"Evaluation failed: {e}")

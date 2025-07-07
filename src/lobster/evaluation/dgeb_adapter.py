@@ -14,7 +14,7 @@ from lobster.model import UME
 logger = logging.getLogger(__name__)
 
 
-class UMEAdapter(BioSeqTransformer):
+class UMEAdapterDGEB(BioSeqTransformer):
     """Adapter class to make UME models compatible with DGEB evaluation framework.
 
     This adapter wraps UME models to provide the interface expected by DGEB,
@@ -58,7 +58,7 @@ class UMEAdapter(BioSeqTransformer):
         modality: Literal["protein", "dna"] = "protein",
         use_flash_attn: bool | None = None,
     ):
-        logger.info(f"Initializing UMEAdapter with model_name={model_name}, modality={modality}")
+        logger.info(f"Initializing UMEAdapterDGEB with model_name={model_name}, modality={modality}")
         if devices is None:
             devices = [0]
 
@@ -79,7 +79,7 @@ class UMEAdapter(BioSeqTransformer):
             batch_size=batch_size,
             pool_type=pool_type,
         )
-        logger.info("UMEAdapter initialization completed")
+        logger.info("UMEAdapterDGEB initialization completed")
 
     def _determine_optimal_settings(self) -> tuple[str, bool]:
         """Determine optimal device and flash attention settings.
