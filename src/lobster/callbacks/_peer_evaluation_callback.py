@@ -27,17 +27,17 @@ logger = logging.getLogger(__name__)
 
 def peer_structure_collate_fn(batch):
     """Custom collation function for PEER structure prediction tasks.
-    
+
     Handles variable-length tensors that can't be stacked by default collation.
     """
     inputs = []
     targets = []
-    
+
     for item in batch:
         x, y = item
         inputs.append(x)
         targets.append(y)
-    
+
     # For structure tasks, we don't stack the targets - return them as lists
     return inputs, targets
 
@@ -473,7 +473,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Handle target length mismatch with tokenized sequence
         orig_target_len = targets.numel()
         expected_len = batch_embeddings_flat.shape[0]
-        
+
         # Flatten targets if not already flattened
         if targets.dim() > 1:
             targets_flat = targets.reshape(-1)
@@ -484,7 +484,9 @@ class PEEREvaluationCallback(LinearProbeCallback):
         if orig_target_len != expected_len:
             if orig_target_len < expected_len:
                 # Pad targets with ignore_target_value for padded positions
-                padded_targets = torch.full((expected_len,), ignore_target_value, dtype=targets_flat.dtype, device=targets_flat.device)
+                padded_targets = torch.full(
+                    (expected_len,), ignore_target_value, dtype=targets_flat.dtype, device=targets_flat.device
+                )
                 padded_targets[:orig_target_len] = targets_flat
                 targets_flat = padded_targets
             else:
@@ -564,9 +566,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                             )
                     else:
                         # Regular batch processing for backward compatibility
-                        self._process_single_structure_item(
-                            pl_module, task, x, y, embeddings, targets
-                        )
+                        self._process_single_structure_item(pl_module, task, x, y, embeddings, targets)
                 else:
                     raise ValueError(f"Expected batch to be a tuple/list of (inputs, targets), got {type(batch)}")
 
@@ -585,9 +585,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             logger.warning(f"Targets shapes: {[tgt.shape for tgt in targets]}")
             return torch.tensor([]), torch.tensor([])
 
-    def _process_single_structure_item(
-        self, pl_module: L.LightningModule, task: PEERTask, x, y, embeddings, targets
-    ):
+    def _process_single_structure_item(self, pl_module: L.LightningModule, task: PEERTask, x, y, embeddings, targets):
         """Process a single structure prediction item."""
         # For sequence-based models that don't require tokenization
         if not self.requires_tokenization:
@@ -595,9 +593,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 # Get the raw sequences if we can
                 if hasattr(x, "original_sequence"):
                     x = x.original_sequence
-                elif hasattr(self.transform_fn, "tokenizer") and hasattr(
-                    self.transform_fn.tokenizer, "decode"
-                ):
+                elif hasattr(self.transform_fn, "tokenizer") and hasattr(self.transform_fn.tokenizer, "decode"):
                     # Try to decode from input_ids
                     tokenizer = self.transform_fn.tokenizer
                     x = [tokenizer.decode(ids) for ids in x["input_ids"]]
@@ -610,7 +606,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             case PEERTask.SECONDARY_STRUCTURE:
                 # Get per-residue embeddings
                 batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
-                
+
                 # Handle single item case (batch_size=1 due to collation)
                 if batch_embeddings.dim() == 3:
                     batch_embeddings = batch_embeddings.squeeze(0)  # Remove batch dimension
@@ -635,15 +631,15 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
                 # Get per-residue embeddings
                 batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
-                
+
                 # Handle single item case (batch_size=1 due to collation)
                 if batch_embeddings.dim() == 3:
                     batch_embeddings = batch_embeddings.squeeze(0)  # Remove batch dimension
-                
+
                 # Ensure mask length matches embedding sequence length
                 seq_len = batch_embeddings.shape[0]  # Should be 512 (padded length)
                 orig_len = len(valid_mask)  # Original sequence length
-                
+
                 # Truncate or pad the mask to match embedding length
                 if orig_len > seq_len:
                     # Truncate mask if original sequence is longer than max_length
@@ -654,17 +650,17 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     padded_mask = torch.zeros(seq_len, dtype=torch.bool)
                     padded_mask[:orig_len] = valid_mask.bool()
                     residue_mask = padded_mask
-                    
+
                     # Pad tertiary coords with zeros
                     padded_coords = torch.zeros((seq_len, tertiary_coords.shape[1]), dtype=tertiary_coords.dtype)
                     padded_coords[:orig_len] = tertiary_coords
                     tertiary_coords = padded_coords
                 else:
                     residue_mask = valid_mask.bool()
-                
+
                 # Only use valid (non-padded) positions for contact prediction
                 true_residue_mask = residue_mask[:orig_len]  # Only original sequence positions
-                
+
                 if true_residue_mask.sum() > 0:
                     valid_embeddings = batch_embeddings[:orig_len][true_residue_mask]
                     valid_coords = tertiary_coords[:orig_len][true_residue_mask]
@@ -698,12 +694,12 @@ class PEEREvaluationCallback(LinearProbeCallback):
             case PEERTask.FOLD:
                 # Standard fold classification - sequence-level task
                 batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
-                
+
                 # Ensure target has at least one dimension for concatenation
                 target = y.cpu()
                 if target.dim() == 0:
                     target = target.unsqueeze(0)
-                
+
                 # Only append if we have valid embeddings/targets
                 if batch_embeddings.numel() > 0 and target.numel() > 0:
                     embeddings.append(batch_embeddings.cpu())
@@ -862,23 +858,21 @@ class PEEREvaluationCallback(LinearProbeCallback):
             collate_fn = self._get_collate_fn(task)
 
             # Use batch_size=1 for problematic tasks to avoid collation issues
-            batch_size = 1 if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD} else self.batch_size
+            batch_size = (
+                1 if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD} else self.batch_size
+            )
 
             # Get train embeddings and probe
             train_loader = DataLoader(
-                train_dataset, 
-                batch_size=batch_size, 
-                shuffle=True, 
-                num_workers=4,
-                collate_fn=collate_fn
+                train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn
             )
             train_embeddings, train_targets = self._get_embeddings(pl_module, train_loader, task)
-            
+
             # Check if we have valid training data
             if train_embeddings.numel() == 0 or train_targets.numel() == 0:
                 logger.warning(f"No valid training data for task {task}, skipping...")
                 return {}
-            
+
             probe = self._train_probe(train_embeddings, train_targets, task)
             self.probes[str(task)] = probe
 
@@ -886,11 +880,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             split_metrics = {}
             for split_name, test_dataset in test_datasets.items():
                 test_loader = DataLoader(
-                    test_dataset, 
-                    batch_size=batch_size, 
-                    shuffle=False, 
-                    num_workers=4,
-                    collate_fn=collate_fn
+                    test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn
                 )
 
                 test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader, task)

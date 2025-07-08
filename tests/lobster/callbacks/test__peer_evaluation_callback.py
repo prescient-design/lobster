@@ -293,7 +293,10 @@ class TestPEEREvaluationCallback:
             callback._train_probe(embeddings, targets, PEERTask.SECONDARY_STRUCTURE)
 
             assert mock_logistic_regression.call_count > 0
-            assert mock_logistic_regression.call_args[1].get("multi_class") == "multinomial"
+            # Check for the actual parameters being passed (multi_class parameter was removed to fix deprecation)
+            call_args = mock_logistic_regression.call_args[1]
+            assert call_args.get("random_state") == 42
+            assert call_args.get("max_iter") == 1000
             mock_model.fit.assert_called_once()
 
     @patch("lobster.callbacks._peer_evaluation_callback.PEERDataset", MockPEERDataset)
