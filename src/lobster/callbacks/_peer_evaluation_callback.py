@@ -25,6 +25,32 @@ from ._linear_probe_callback import LinearProbeCallback
 logger = logging.getLogger(__name__)
 
 
+def peer_structure_collate_fn(batch):
+    """Custom collation function for PEER structure prediction tasks.
+    
+    Handles variable-length tensors that can't be stacked by default collation.
+    """
+    inputs = []
+    targets = []
+    
+    for item in batch:
+        x, y = item
+        inputs.append(x)
+        targets.append(y)
+    
+    # For structure tasks, we don't stack the targets - return them as lists
+    return inputs, targets
+
+
+def peer_default_collate_fn(batch):
+    """Default collation function for PEER tasks that can be batched normally."""
+    try:
+        return torch.utils.data.default_collate(batch)
+    except Exception:
+        # If default collation fails, fall back to list format
+        return peer_structure_collate_fn(batch)
+
+
 class PEEREvaluationCallback(LinearProbeCallback):
     """Callback for evaluating model embeddings on PEER benchmark tasks:
 
@@ -419,9 +445,9 @@ class PEEREvaluationCallback(LinearProbeCallback):
         Parameters
         ----------
         batch_embeddings : Tensor
-            Embeddings with shape [batch_size, seq_len, hidden_size]
+            Embeddings with shape [batch_size, seq_len, hidden_size] or [seq_len, hidden_size]
         targets : Tensor
-            Target labels with shape [batch_size, seq_len] or [batch_size*seq_len]
+            Target labels with shape [batch_size, seq_len] or [batch_size*seq_len] or [orig_seq_len]
         input_ids : Tensor | None, default=None
             Token IDs from tokenizer, used to identify special tokens
         attention_mask : Tensor | None, default=None
@@ -434,16 +460,36 @@ class PEEREvaluationCallback(LinearProbeCallback):
         tuple[Tensor, Tensor]
             Filtered embeddings and targets
         """
-        _batch_size, _seq_len, hidden_size = batch_embeddings.shape
+        # Handle both batched and single sequence cases
+        if batch_embeddings.dim() == 3:
+            _batch_size, _seq_len, hidden_size = batch_embeddings.shape
+            # Flatten embeddings to (batch_size*seq_len, hidden_size)
+            batch_embeddings_flat = batch_embeddings.reshape(-1, hidden_size)
+        else:
+            # Single sequence case [seq_len, hidden_size]
+            _seq_len, hidden_size = batch_embeddings.shape
+            batch_embeddings_flat = batch_embeddings
 
-        # Flatten embeddings to (batch_size*seq_len, hidden_size)
-        batch_embeddings_flat = batch_embeddings.reshape(-1, hidden_size)
-
+        # Handle target length mismatch with tokenized sequence
+        orig_target_len = targets.numel()
+        expected_len = batch_embeddings_flat.shape[0]
+        
         # Flatten targets if not already flattened
         if targets.dim() > 1:
             targets_flat = targets.reshape(-1)
         else:
             targets_flat = targets
+
+        # Handle length mismatch between targets and embeddings
+        if orig_target_len != expected_len:
+            if orig_target_len < expected_len:
+                # Pad targets with ignore_target_value for padded positions
+                padded_targets = torch.full((expected_len,), ignore_target_value, dtype=targets_flat.dtype, device=targets_flat.device)
+                padded_targets[:orig_target_len] = targets_flat
+                targets_flat = padded_targets
+            else:
+                # Truncate targets if they're longer than embeddings
+                targets_flat = targets_flat[:expected_len]
 
         # If we have tokenized input and we're using a tokenizer-based model, use it to filter special tokens
         if (
@@ -475,6 +521,13 @@ class PEEREvaluationCallback(LinearProbeCallback):
             # Flatten mask & filter embeddings based on token mask
             valid_token_mask_flat = valid_token_mask.reshape(-1)
 
+            # Ensure mask length matches
+            if len(valid_token_mask_flat) != len(targets_flat):
+                min_len = min(len(valid_token_mask_flat), len(targets_flat))
+                valid_token_mask_flat = valid_token_mask_flat[:min_len]
+                targets_flat = targets_flat[:min_len]
+                batch_embeddings_flat = batch_embeddings_flat[:min_len]
+
             # Combine both masks
             combined_mask = valid_token_mask_flat & target_mask
 
@@ -498,105 +551,163 @@ class PEEREvaluationCallback(LinearProbeCallback):
         pl_module.eval()
         with torch.no_grad():
             for batch in dataloader:
-                # Unpack the batch - all batches will have input_ids and attention_mask
-                if isinstance(batch, tuple) and len(batch) == 2:
+                # Handle both tuple and list batch formats
+                if isinstance(batch, (tuple, list)) and len(batch) == 2:
                     x, y = batch
 
-                    # For sequence-based models that don't require tokenization
-                    if not self.requires_tokenization:
-                        if isinstance(x, dict) and "input_ids" in x:
-                            # Get the raw sequences if we can
-                            if hasattr(x, "original_sequence"):
-                                x = x.original_sequence
-                            elif hasattr(self.transform_fn, "tokenizer") and hasattr(
-                                self.transform_fn.tokenizer, "decode"
-                            ):
-                                # Try to decode from input_ids
-                                tokenizer = self.transform_fn.tokenizer
-                                x = [tokenizer.decode(ids) for ids in x["input_ids"]]
-
-                    # Extract input_ids and attention_mask if available (for token filtering)
-                    input_ids = x.get("input_ids") if isinstance(x, dict) else None
-                    attention_mask = x.get("attention_mask") if isinstance(x, dict) else None
-                else:
-                    raise ValueError(f"Expected batch to be a tuple of (inputs, targets), got {type(batch)}")
-
-                match task:
-                    case PEERTask.SECONDARY_STRUCTURE:
-                        # Get per-residue embeddings
-                        batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
-
-                        # Use helper method to flatten and filter token-level embeddings
-                        filtered_embeddings, filtered_targets = self._flatten_and_filter_token_embeddings(
-                            batch_embeddings=batch_embeddings,
-                            targets=y,
-                            input_ids=input_ids,
-                            attention_mask=attention_mask,
-                            ignore_target_value=-100,  # Use -100 as the padding value for targets
+                    # If x and y are lists (from custom collation), process each item
+                    if isinstance(x, list) and isinstance(y, list):
+                        # Process each item in the batch individually
+                        for single_x, single_y in zip(x, y):
+                            self._process_single_structure_item(
+                                pl_module, task, single_x, single_y, embeddings, targets
+                            )
+                    else:
+                        # Regular batch processing for backward compatibility
+                        self._process_single_structure_item(
+                            pl_module, task, x, y, embeddings, targets
                         )
+                else:
+                    raise ValueError(f"Expected batch to be a tuple/list of (inputs, targets), got {type(batch)}")
 
-                        embeddings.append(filtered_embeddings.cpu())
-                        targets.append(filtered_targets.cpu())
+        # If we have no valid embeddings, return empty tensors
+        if not embeddings or not targets:
+            return torch.tensor([]), torch.tensor([])
 
-                    case PEERTask.PROTEINNET:
-                        # Handle contact map prediction with tertiary structure coordinates
-                        tertiary_coords, valid_mask = y
+        # Handle concatenation with proper error handling
+        try:
+            concatenated_embeddings = torch.cat(embeddings, dim=0)
+            concatenated_targets = torch.cat(targets, dim=0)
+            return concatenated_embeddings, concatenated_targets
+        except RuntimeError as e:
+            logger.warning(f"Failed to concatenate embeddings/targets: {e}")
+            logger.warning(f"Embeddings shapes: {[emb.shape for emb in embeddings]}")
+            logger.warning(f"Targets shapes: {[tgt.shape for tgt in targets]}")
+            return torch.tensor([]), torch.tensor([])
 
-                        # Get per-residue embeddings
-                        batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
-                        batch_size, _seq_len, hidden_size = batch_embeddings.shape
+    def _process_single_structure_item(
+        self, pl_module: L.LightningModule, task: PEERTask, x, y, embeddings, targets
+    ):
+        """Process a single structure prediction item."""
+        # For sequence-based models that don't require tokenization
+        if not self.requires_tokenization:
+            if isinstance(x, dict) and "input_ids" in x:
+                # Get the raw sequences if we can
+                if hasattr(x, "original_sequence"):
+                    x = x.original_sequence
+                elif hasattr(self.transform_fn, "tokenizer") and hasattr(
+                    self.transform_fn.tokenizer, "decode"
+                ):
+                    # Try to decode from input_ids
+                    tokenizer = self.transform_fn.tokenizer
+                    x = [tokenizer.decode(ids) for ids in x["input_ids"]]
 
-                        # Extract valid embeddings and coords based on mask
-                        valid_embeddings = []
-                        valid_coords = []
+        # Extract input_ids and attention_mask if available (for token filtering)
+        input_ids = x.get("input_ids") if isinstance(x, dict) else None
+        attention_mask = x.get("attention_mask") if isinstance(x, dict) else None
 
-                        for i in range(batch_size):
-                            # Create combined mask using both valid_mask and token masks if available
-                            residue_mask = valid_mask[i].bool()
+        match task:
+            case PEERTask.SECONDARY_STRUCTURE:
+                # Get per-residue embeddings
+                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
+                
+                # Handle single item case (batch_size=1 due to collation)
+                if batch_embeddings.dim() == 3:
+                    batch_embeddings = batch_embeddings.squeeze(0)  # Remove batch dimension
 
-                            if residue_mask.sum() > 0:
-                                valid_embeddings.append(batch_embeddings[i, residue_mask])
-                                valid_coords.append(tertiary_coords[i, residue_mask])
+                # Use helper method to flatten and filter token-level embeddings
+                filtered_embeddings, filtered_targets = self._flatten_and_filter_token_embeddings(
+                    batch_embeddings=batch_embeddings,
+                    targets=y,
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    ignore_target_value=-100,  # Use -100 as the padding value for targets
+                )
 
-                        if not valid_embeddings:
-                            continue
+                # Only append if we have valid embeddings/targets
+                if filtered_embeddings.numel() > 0 and filtered_targets.numel() > 0:
+                    embeddings.append(filtered_embeddings.cpu())
+                    targets.append(filtered_targets.cpu())
 
-                        # Create contact map representations
-                        contact_targets = []
-                        contact_embeddings = []
+            case PEERTask.PROTEINNET:
+                # Handle contact map prediction with tertiary structure coordinates
+                tertiary_coords, valid_mask = y
 
-                        for emb, coords in zip(valid_embeddings, valid_coords):
-                            # Calculate pairwise distances between 3D coordinates
-                            n_residues = coords.shape[0]
-                            distances = torch.cdist(coords, coords)
+                # Get per-residue embeddings
+                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
+                
+                # Handle single item case (batch_size=1 due to collation)
+                if batch_embeddings.dim() == 3:
+                    batch_embeddings = batch_embeddings.squeeze(0)  # Remove batch dimension
+                
+                # Ensure mask length matches embedding sequence length
+                seq_len = batch_embeddings.shape[0]  # Should be 512 (padded length)
+                orig_len = len(valid_mask)  # Original sequence length
+                
+                # Truncate or pad the mask to match embedding length
+                if orig_len > seq_len:
+                    # Truncate mask if original sequence is longer than max_length
+                    residue_mask = valid_mask[:seq_len].bool()
+                    tertiary_coords = tertiary_coords[:seq_len]
+                elif orig_len < seq_len:
+                    # Pad mask with False for padded positions
+                    padded_mask = torch.zeros(seq_len, dtype=torch.bool)
+                    padded_mask[:orig_len] = valid_mask.bool()
+                    residue_mask = padded_mask
+                    
+                    # Pad tertiary coords with zeros
+                    padded_coords = torch.zeros((seq_len, tertiary_coords.shape[1]), dtype=tertiary_coords.dtype)
+                    padded_coords[:orig_len] = tertiary_coords
+                    tertiary_coords = padded_coords
+                else:
+                    residue_mask = valid_mask.bool()
+                
+                # Only use valid (non-padded) positions for contact prediction
+                true_residue_mask = residue_mask[:orig_len]  # Only original sequence positions
+                
+                if true_residue_mask.sum() > 0:
+                    valid_embeddings = batch_embeddings[:orig_len][true_residue_mask]
+                    valid_coords = tertiary_coords[:orig_len][true_residue_mask]
 
-                            # Define contacts as residues closer than 8 Angstroms
-                            contacts = (distances < 8.0).float()
+                    # Create contact map representations
+                    contact_targets = []
+                    contact_embeddings = []
 
-                            # For each residue pair, concatenate their embeddings
-                            for i in range(n_residues):
-                                for j in range(i + 4, n_residues):  # Skip local contacts (i to i+3)
-                                    contact_embeddings.append(torch.cat([emb[i], emb[j]]))
-                                    contact_targets.append(contacts[i, j])
+                    # Calculate pairwise distances between 3D coordinates
+                    n_residues = valid_coords.shape[0]
+                    distances = torch.cdist(valid_coords, valid_coords)
 
-                        if contact_embeddings:
-                            batch_embeddings = torch.stack(contact_embeddings)
-                            batch_targets = torch.tensor(contact_targets)
+                    # Define contacts as residues closer than 8 Angstroms
+                    contacts = (distances < 8.0).float()
 
+                    # For each residue pair, concatenate their embeddings
+                    for i in range(n_residues):
+                        for j in range(i + 4, n_residues):  # Skip local contacts (i to i+3)
+                            contact_embeddings.append(torch.cat([valid_embeddings[i], valid_embeddings[j]]))
+                            contact_targets.append(contacts[i, j])
+
+                    if contact_embeddings:
+                        batch_embeddings = torch.stack(contact_embeddings)
+                        batch_targets = torch.tensor(contact_targets)
+
+                        # Only append if we have valid embeddings/targets
+                        if batch_embeddings.numel() > 0 and batch_targets.numel() > 0:
                             embeddings.append(batch_embeddings.cpu())
                             targets.append(batch_targets.cpu())
 
-                    case PEERTask.FOLD:
-                        # Standard fold classification - sequence-level task
-                        batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
-                        embeddings.append(batch_embeddings.cpu())
-                        targets.append(y.cpu())
-
-        # If we have no valid embeddings, return empty tensors
-        if not embeddings:
-            return torch.tensor([]), torch.tensor([])
-
-        return torch.cat(embeddings), torch.cat(targets)
+            case PEERTask.FOLD:
+                # Standard fold classification - sequence-level task
+                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
+                
+                # Ensure target has at least one dimension for concatenation
+                target = y.cpu()
+                if target.dim() == 0:
+                    target = target.unsqueeze(0)
+                
+                # Only append if we have valid embeddings/targets
+                if batch_embeddings.numel() > 0 and target.numel() > 0:
+                    embeddings.append(batch_embeddings.cpu())
+                    targets.append(target)
 
     def _train_probe(self, embeddings: Tensor, targets: Tensor, task: PEERTask = None):
         """Train a probe on the given embeddings and targets with task-specific handling."""
@@ -646,11 +757,17 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 probe.fit(embeddings_np, targets_np)
 
             case "binary" | "multiclass":
-                probe = LogisticRegression(
-                    multi_class="ovr" if task_type == "binary" else "multinomial",
-                    random_state=42,
-                    max_iter=1000,  # Increase for convergence
-                )
+                # Use appropriate classifier for binary vs multiclass
+                if task_type == "binary":
+                    probe = LogisticRegression(
+                        random_state=42,
+                        max_iter=1000,  # Increase for convergence
+                    )
+                else:  # multiclass
+                    probe = LogisticRegression(
+                        random_state=42,
+                        max_iter=1000,  # Increase for convergence
+                    )
                 probe.fit(embeddings_np, targets_np.ravel())
 
         return probe
@@ -722,6 +839,14 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         return metrics
 
+    def _get_collate_fn(self, task: PEERTask):
+        """Get the appropriate collation function for the task."""
+        # Tasks that need custom collation due to variable-length tensors
+        if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD}:
+            return peer_structure_collate_fn
+        else:
+            return peer_default_collate_fn
+
     def _evaluate_task(
         self, task: PEERTask, trainer: L.Trainer, pl_module: L.LightningModule
     ) -> dict[str, dict[str, float]]:
@@ -733,18 +858,47 @@ class PEEREvaluationCallback(LinearProbeCallback):
         try:
             train_dataset, test_datasets = self._get_task_datasets(task)
 
+            # Get appropriate collation function for this task
+            collate_fn = self._get_collate_fn(task)
+
+            # Use batch_size=1 for problematic tasks to avoid collation issues
+            batch_size = 1 if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD} else self.batch_size
+
             # Get train embeddings and probe
-            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
+            train_loader = DataLoader(
+                train_dataset, 
+                batch_size=batch_size, 
+                shuffle=True, 
+                num_workers=4,
+                collate_fn=collate_fn
+            )
             train_embeddings, train_targets = self._get_embeddings(pl_module, train_loader, task)
+            
+            # Check if we have valid training data
+            if train_embeddings.numel() == 0 or train_targets.numel() == 0:
+                logger.warning(f"No valid training data for task {task}, skipping...")
+                return {}
+            
             probe = self._train_probe(train_embeddings, train_targets, task)
             self.probes[str(task)] = probe
 
             # Evaluate on each test split
             split_metrics = {}
             for split_name, test_dataset in test_datasets.items():
-                test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
+                test_loader = DataLoader(
+                    test_dataset, 
+                    batch_size=batch_size, 
+                    shuffle=False, 
+                    num_workers=4,
+                    collate_fn=collate_fn
+                )
 
                 test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader, task)
+
+                # Check if we have valid test data
+                if test_embeddings.numel() == 0 or test_targets.numel() == 0:
+                    logger.warning(f"No valid test data for task {task}, split {split_name}, skipping...")
+                    continue
 
                 # Evaluate probe with task-specific metrics
                 metrics = self._evaluate_probe(probe, test_embeddings, test_targets, task)
