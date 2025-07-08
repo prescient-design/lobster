@@ -107,6 +107,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         run_every_n_epochs: int | None = None,
         requires_tokenization: bool = True,
         transform_fn: Callable | None = None,
+        clear_cache_between_tasks: bool = True,
     ):
         """Initialize the PEER benchmark callback.
 
@@ -126,8 +127,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
         transform_fn : Callable | None, default=None
             Custom transform function to apply to inputs. If None and requires_tokenization
             is True, UMETokenizerTransform will be used.
+        clear_cache_between_tasks : bool, default=True
+            Whether to clear dataset cache between tasks to reduce memory usage.
         """
         self.requires_tokenization = requires_tokenization
+        self.clear_cache_between_tasks = clear_cache_between_tasks
 
         if requires_tokenization and transform_fn is None:
             if max_length is None:
@@ -162,6 +166,28 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         # Cache for datasets
         self.datasets = {}
+        
+        # Define memory-intensive tasks that need special handling
+        self.memory_intensive_tasks = {
+            PEERTask.PROTEINNET,
+            PEERTask.SECONDARY_STRUCTURE, 
+            PEERTask.FOLD,
+            PEERTask.SUBCELLULAR_LOCALIZATION,
+            PEERTask.BINDINGDB,
+            PEERTask.PDBBIND,
+                 }
+
+    def _get_batch_size_for_task(self, task: PEERTask) -> int:
+        """Get batch size for a specific task."""
+        # Tasks that need batch_size=1 due to collation issues
+        if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD}:
+            return 1
+        
+        # Reduce batch size for memory-intensive tasks
+        if task in self.memory_intensive_tasks:
+            return max(1, self.batch_size // 2)
+        
+        return self.batch_size
 
     def _get_relevant_metric(self, task: PEERTask) -> str:
         """Get the relevant metric for a given PEER task.
@@ -857,10 +883,13 @@ class PEEREvaluationCallback(LinearProbeCallback):
             # Get appropriate collation function for this task
             collate_fn = self._get_collate_fn(task)
 
-            # Use batch_size=1 for problematic tasks to avoid collation issues
-            batch_size = (
-                1 if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD} else self.batch_size
-            )
+            # Clear GPU cache before memory-intensive tasks
+            if task in self.memory_intensive_tasks and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug(f"Cleared GPU cache before memory-intensive task: {task}")
+            
+            # Get batch size for this task
+            batch_size = self._get_batch_size_for_task(task)
 
             # Get train embeddings and probe
             train_loader = DataLoader(
@@ -893,6 +922,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 # Evaluate probe with task-specific metrics
                 metrics = self._evaluate_probe(probe, test_embeddings, test_targets, task)
                 split_metrics[split_name] = metrics
+
+
+
+
 
             return split_metrics
 
@@ -955,6 +988,13 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
                 if task_avg_metrics:
                     all_task_metrics[f"{task}/average"] = task_avg_metrics
+                    
+            # Clear dataset cache between tasks if enabled
+            if self.clear_cache_between_tasks:
+                task_cache_key = str(task)
+                if task_cache_key in self.datasets:
+                    del self.datasets[task_cache_key]
+                    logger.debug(f"Cleared dataset cache for task {task}")
 
         # Log category averages - but only for metrics that are relevant to tasks in that category
         category_metrics_dict = {}

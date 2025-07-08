@@ -114,6 +114,7 @@ def callback(monkeypatch, mock_transform):
         max_length=32,
         tasks=[PEERTask.STABILITY, PEERTask.SECONDARY_STRUCTURE, PEERTask.HUMANPPI],
         batch_size=4,
+        clear_cache_between_tasks=False,  # Keep cache for tests
     )
 
 
