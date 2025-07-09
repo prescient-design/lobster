@@ -3,6 +3,7 @@
   "name": "lobster",
   "display_name": "Lobster MCP Server",
   "version": "0.0.1",
+  "icon": "icon.png",
   "description": "Lobster MCP server for protein sequence analysis and concept interventions",
   "long_description": "The Lobster MCP server provides access to pretrained language models for biological sequence analysis. It supports masked language models and concept bottleneck models for protein sequence understanding, concept interventions, and naturalness scoring. This extension enables Claude to work with protein sequences and perform sophisticated biological sequence analysis tasks.",
   "author": {
@@ -16,12 +17,12 @@
     "type": "python",
     "entry_point": "src/lobster/mcp/inference_server.py",
     "mcp_config": {
-      "command": "python",
+      "command": "bash",
       "args": [
-        "${__dirname}/src/lobster/mcp/inference_server.py"
+        "${__dirname}/run_mcp_server.sh"
       ],
       "env": {
-        "PYTHONPATH": "server/lib"
+        "PYTHONPATH": "${__dirname}"
       }
     }
   },
