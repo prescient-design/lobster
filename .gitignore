@@ -54,4 +54,5 @@ evaluation_report.md
 results_summary.json
 
 # DXT extensions (large binary files)
+test_dxt/*
 *.dxt
