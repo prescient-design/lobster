@@ -212,31 +212,91 @@ def generate_report(results_summary: dict[str, Any], report_dir: Path) -> None:
             task_name = task_result["task_name"]
             task_type = task_result["task_type"]
 
-            # Get the primary metric (usually from layer_0)
-            if "layer_0" in task_result["scores"]:
-                scores = task_result["scores"]["layer_0"]
-                # Try to get the main metric (this varies by task type)
-                if "main_score" in scores:
-                    primary_score = scores["main_score"]
-                elif "accuracy" in scores:
-                    primary_score = scores["accuracy"]
-                elif "f1" in scores:
-                    primary_score = scores["f1"]
-                elif "pearson" in scores:
-                    primary_score = scores["pearson"]
-                elif "spearman" in scores:
-                    primary_score = scores["spearman"]
+            # Get the primary metric based on task type
+            primary_metric = "N/A"
+            primary_score = "N/A"
+
+            # Find the best layer (prefer layer_0, then layer_12, then layer_23, then any available)
+            best_layer = None
+            for layer_name in ["layer_0", "layer_12", "layer_23"]:
+                if layer_name in task_result["scores"]:
+                    best_layer = layer_name
+                    break
+
+            if not best_layer and task_result["scores"]:
+                # If no preferred layer found, use the first available
+                best_layer = next(iter(task_result["scores"].keys()))
+
+            if best_layer:
+                scores = task_result["scores"][best_layer]
+
+                # Determine primary metric based on task type
+                if task_type == "eds":
+                    # For EDS tasks, use cos_sim as primary metric
+                    if "cos_sim" in scores:
+                        primary_metric = "cos_sim"
+                        primary_score = scores["cos_sim"]
+                elif task_type == "pair_classification":
+                    # For pair classification, use cos_sim_accuracy as primary metric
+                    if "cos_sim_accuracy" in scores:
+                        primary_metric = "cos_sim_accuracy"
+                        primary_score = scores["cos_sim_accuracy"]
+                elif task_type == "classification":
+                    # For classification tasks, use accuracy as primary metric
+                    if "accuracy" in scores:
+                        primary_metric = "accuracy"
+                        primary_score = scores["accuracy"]
+                    elif "cos_sim_accuracy" in scores:
+                        primary_metric = "cos_sim_accuracy"
+                        primary_score = scores["cos_sim_accuracy"]
+                elif task_type == "retrieval":
+                    # For retrieval tasks, use ndcg_at_5 as primary metric
+                    if "ndcg_at_5" in scores:
+                        primary_metric = "ndcg_at_5"
+                        primary_score = scores["ndcg_at_5"]
+                    elif "map_at_5" in scores:
+                        primary_metric = "map_at_5"
+                        primary_score = scores["map_at_5"]
+                    elif "mrr_at_5" in scores:
+                        primary_metric = "mrr_at_5"
+                        primary_score = scores["mrr_at_5"]
+                    elif "top_corr" in scores:
+                        primary_metric = "top_corr"
+                        primary_score = scores["top_corr"]
+                    elif "cos_sim" in scores:
+                        primary_metric = "cos_sim"
+                        primary_score = scores["cos_sim"]
+                elif task_type == "clustering":
+                    # For clustering tasks, use v_measure as primary metric
+                    if "v_measure" in scores:
+                        primary_metric = "v_measure"
+                        primary_score = scores["v_measure"]
+                elif task_type == "bigene_mining":
+                    # For bigene mining tasks, use accuracy as primary metric
+                    if "accuracy" in scores:
+                        primary_metric = "accuracy"
+                        primary_score = scores["accuracy"]
+                    elif "f1" in scores:
+                        primary_metric = "f1"
+                        primary_score = scores["f1"]
                 else:
-                    # Use the first available score
-                    primary_score = next(iter(scores.values())) if scores else "N/A"
-            else:
-                primary_score = "N/A"
+                    # For unknown task types, try common metrics
+                    for metric in ["accuracy", "cos_sim_accuracy", "cos_sim", "top_corr", "f1"]:
+                        if metric in scores:
+                            primary_metric = metric
+                            primary_score = scores[metric]
+                            break
+
+                    # If still no metric found, use the first available
+                    if primary_metric == "N/A" and scores:
+                        primary_metric = next(iter(scores.keys()))
+                        primary_score = scores[primary_metric]
 
             # Format score
             if isinstance(primary_score, (int, float)):
                 primary_score = f"{primary_score:.4f}"
 
-            f.write(f"| {task_name} | {task_type} | Primary | {primary_score} |\n")
+            f.write(f"| {task_name} | {task_type} | {primary_metric} | {primary_score} |\n")
 
         f.write("\n## Detailed Results\n\n")
         for task_result in results_summary["results"]:

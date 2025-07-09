@@ -31,8 +31,8 @@ umask g+w
 ### DGEB EVAL
 srun -u --cpus-per-task 8 --cpu-bind=cores,verbose \
     uv run lobster_dgeb_eval \
-    ume-medium-base-480M \
-    --modality protein \
+    ume-mini-base-12M \
+    --modality dna \
     --output-dir dgeb_results \
     --batch-size 32 \
     --max-seq-length 1024 \
