@@ -136,7 +136,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
         clear_cache_between_tasks : bool, default=True
             Whether to clear dataset cache between tasks to reduce memory usage.
         manage_memory : bool, default=True
-            Whether to use enhanced memory management techniques.
+            Whether to use enhanced memory management techniques. This includes chunked
+            processing, memory cache clearing, and adaptive batch sizing for memory-intensive tasks.
         max_embeddings_per_chunk : int, default=10000
             Maximum number of embeddings to process at once to prevent memory issues.
         """
@@ -189,13 +190,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
             PEERTask.PDBBIND,
         }
 
-        # Define high memory-intensive tasks that need batch_size=1
-        self.high_memory_tasks = {
-            PEERTask.PROTEINNET,
-            PEERTask.SECONDARY_STRUCTURE,
-            PEERTask.FOLD,
-        }
-
     def _clear_memory_cache(self):
         """Clear memory caches and force garbage collection."""
         if self.manage_memory:
@@ -209,10 +203,19 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
             logger.debug("Cleared memory caches and forced garbage collection")
 
+    def _requires_minimal_batch_size(self, task: PEERTask) -> bool:
+        """Determine if a task requires minimal batch size (1) due to extreme memory usage or collation issues."""
+        # Tasks that require most restrictive settings due to high memory usage or collation complexity
+        return task in {
+            PEERTask.PROTEINNET,
+            PEERTask.SECONDARY_STRUCTURE,
+            PEERTask.FOLD,
+        }
+
     def _get_batch_size_for_task(self, task: PEERTask) -> int:
         """Get batch size for a specific task with enhanced memory management."""
-        # Tasks that need batch_size=1 due to collation issues or high memory usage
-        if task in self.high_memory_tasks:
+        # Tasks that need batch_size=1 due to collation issues or extreme memory usage
+        if self._requires_minimal_batch_size(task):
             return 1
 
         # Moderate reduction for memory-intensive tasks only
@@ -1031,7 +1034,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             batch_size = self._get_batch_size_for_task(task)
 
             # Use fewer workers for memory-intensive tasks, but not zero
-            if task in self.high_memory_tasks:
+            if self._requires_minimal_batch_size(task):
                 num_workers = 1  # Single worker to minimize overhead
             elif task in self.memory_intensive_tasks:
                 num_workers = 2  # Reduced workers for memory-intensive tasks
