@@ -208,6 +208,104 @@ def generate_report(results_summary: dict[str, Any], report_dir: Path) -> None:
         f.write("| Task | Type | Primary Metric | Score |\n")
         f.write("|------|------|----------------|-------|\n")
 
+        # First pass: analyze all layers to find the best performing layer across all tasks
+        layer_performance = {}
+
+        for task_result in results_summary["results"]:
+            task_type = task_result["task_type"]
+
+            for layer_name, scores in task_result["scores"].items():
+                if layer_name not in layer_performance:
+                    layer_performance[layer_name] = {"wins": 0, "total_tasks": 0}
+
+                layer_performance[layer_name]["total_tasks"] += 1
+
+                # Get primary metric for this task type and layer based on DGEB specifications
+                primary_score = None
+
+                if task_type == "eds":
+                    # EDS tasks use top_corr as primary metric
+                    if "top_corr" in scores:
+                        primary_score = scores["top_corr"]
+                elif task_type == "pair_classification":
+                    # Pair classification tasks use top_ap as primary metric
+                    if "top_ap" in scores:
+                        primary_score = scores["top_ap"]
+                elif task_type == "classification":
+                    # Classification tasks use f1 as primary metric
+                    if "f1" in scores:
+                        primary_score = scores["f1"]
+                elif task_type == "retrieval":
+                    # Retrieval tasks use map_at_5 as primary metric
+                    if "map_at_5" in scores:
+                        primary_score = scores["map_at_5"]
+                elif task_type == "clustering":
+                    # Clustering tasks use v_measure as primary metric
+                    if "v_measure" in scores:
+                        primary_score = scores["v_measure"]
+                elif task_type == "bigene_mining":
+                    # BiGene tasks use f1 as primary metric (except ModAC Paralogy which uses recall_at_50)
+                    if task_result["task_name"] == "ModAC Paralogy BiGene" and "recall_at_50" in scores:
+                        primary_score = scores["recall_at_50"]
+                    elif "f1" in scores:
+                        primary_score = scores["f1"]
+                else:
+                    # For unknown task types, try common metrics
+                    for metric in ["f1", "accuracy", "top_corr", "map_at_5", "v_measure"]:
+                        if metric in scores:
+                            primary_score = scores[metric]
+                            break
+
+                    # If still no metric found, use the first available
+                    if primary_score is None and scores:
+                        primary_score = next(iter(scores.values()))
+
+                # Store the score for comparison
+                if primary_score is not None:
+                    if "scores" not in layer_performance[layer_name]:
+                        layer_performance[layer_name]["scores"] = {}
+                    layer_performance[layer_name]["scores"][task_result["task_name"]] = primary_score
+
+        # Find the best layer (one that wins on the most tasks)
+        best_layer = None
+        best_wins = 0
+
+        for layer_name, performance in layer_performance.items():
+            if "scores" not in performance:
+                continue
+
+            wins = 0
+            total_comparable_tasks = 0
+
+            # Compare this layer against all other layers for each task
+            for task_name, score in performance["scores"].items():
+                task_wins = 0
+                task_total = 0
+
+                for other_layer, other_performance in layer_performance.items():
+                    if other_layer == layer_name:
+                        continue
+                    if "scores" not in other_performance:
+                        continue
+                    if task_name in other_performance["scores"]:
+                        task_total += 1
+                        if score >= other_performance["scores"][task_name]:
+                            task_wins += 1
+
+                if task_total > 0:
+                    total_comparable_tasks += 1
+                    if task_wins == task_total:  # This layer won against all other layers for this task
+                        wins += 1
+
+            if total_comparable_tasks > 0 and wins > best_wins:
+                best_wins = wins
+                best_layer = layer_name
+
+        # If no clear winner, fall back to the layer with the most total tasks
+        if best_layer is None:
+            best_layer = max(layer_performance.keys(), key=lambda x: layer_performance[x]["total_tasks"])
+
+        # Second pass: generate the report using the best layer
         for task_result in results_summary["results"]:
             task_name = task_result["task_name"]
             task_type = task_result["task_type"]
@@ -216,72 +314,46 @@ def generate_report(results_summary: dict[str, Any], report_dir: Path) -> None:
             primary_metric = "N/A"
             primary_score = "N/A"
 
-            # Find the best layer (prefer layer_0, then layer_12, then layer_23, then any available)
-            best_layer = None
-            for layer_name in ["layer_0", "layer_12", "layer_23"]:
-                if layer_name in task_result["scores"]:
-                    best_layer = layer_name
-                    break
-
-            if not best_layer and task_result["scores"]:
-                # If no preferred layer found, use the first available
-                best_layer = next(iter(task_result["scores"].keys()))
-
-            if best_layer:
+            if best_layer and best_layer in task_result["scores"]:
                 scores = task_result["scores"][best_layer]
 
-                # Determine primary metric based on task type
+                # Determine primary metric based on task type using DGEB specifications
                 if task_type == "eds":
-                    # For EDS tasks, use cos_sim as primary metric
-                    if "cos_sim" in scores:
-                        primary_metric = "cos_sim"
-                        primary_score = scores["cos_sim"]
-                elif task_type == "pair_classification":
-                    # For pair classification, use cos_sim_accuracy as primary metric
-                    if "cos_sim_accuracy" in scores:
-                        primary_metric = "cos_sim_accuracy"
-                        primary_score = scores["cos_sim_accuracy"]
-                elif task_type == "classification":
-                    # For classification tasks, use accuracy as primary metric
-                    if "accuracy" in scores:
-                        primary_metric = "accuracy"
-                        primary_score = scores["accuracy"]
-                    elif "cos_sim_accuracy" in scores:
-                        primary_metric = "cos_sim_accuracy"
-                        primary_score = scores["cos_sim_accuracy"]
-                elif task_type == "retrieval":
-                    # For retrieval tasks, use ndcg_at_5 as primary metric
-                    if "ndcg_at_5" in scores:
-                        primary_metric = "ndcg_at_5"
-                        primary_score = scores["ndcg_at_5"]
-                    elif "map_at_5" in scores:
-                        primary_metric = "map_at_5"
-                        primary_score = scores["map_at_5"]
-                    elif "mrr_at_5" in scores:
-                        primary_metric = "mrr_at_5"
-                        primary_score = scores["mrr_at_5"]
-                    elif "top_corr" in scores:
+                    # EDS tasks use top_corr as primary metric
+                    if "top_corr" in scores:
                         primary_metric = "top_corr"
                         primary_score = scores["top_corr"]
-                    elif "cos_sim" in scores:
-                        primary_metric = "cos_sim"
-                        primary_score = scores["cos_sim"]
+                elif task_type == "pair_classification":
+                    # Pair classification tasks use top_ap as primary metric
+                    if "top_ap" in scores:
+                        primary_metric = "top_ap"
+                        primary_score = scores["top_ap"]
+                elif task_type == "classification":
+                    # Classification tasks use f1 as primary metric
+                    if "f1" in scores:
+                        primary_metric = "f1"
+                        primary_score = scores["f1"]
+                elif task_type == "retrieval":
+                    # Retrieval tasks use map_at_5 as primary metric
+                    if "map_at_5" in scores:
+                        primary_metric = "map_at_5"
+                        primary_score = scores["map_at_5"]
                 elif task_type == "clustering":
-                    # For clustering tasks, use v_measure as primary metric
+                    # Clustering tasks use v_measure as primary metric
                     if "v_measure" in scores:
                         primary_metric = "v_measure"
                         primary_score = scores["v_measure"]
                 elif task_type == "bigene_mining":
-                    # For bigene mining tasks, use accuracy as primary metric
-                    if "accuracy" in scores:
-                        primary_metric = "accuracy"
-                        primary_score = scores["accuracy"]
+                    # BiGene tasks use f1 as primary metric (except ModAC Paralogy which uses recall_at_50)
+                    if task_name == "ModAC Paralogy BiGene" and "recall_at_50" in scores:
+                        primary_metric = "recall_at_50"
+                        primary_score = scores["recall_at_50"]
                     elif "f1" in scores:
                         primary_metric = "f1"
                         primary_score = scores["f1"]
                 else:
                     # For unknown task types, try common metrics
-                    for metric in ["accuracy", "cos_sim_accuracy", "cos_sim", "top_corr", "f1"]:
+                    for metric in ["f1", "accuracy", "top_corr", "map_at_5", "v_measure"]:
                         if metric in scores:
                             primary_metric = metric
                             primary_score = scores[metric]
