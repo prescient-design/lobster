@@ -1,7 +1,7 @@
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, Optional
 
 import numpy
 from beignet.datasets._sized_sequence_dataset import SizedSequenceDataset
@@ -17,6 +17,7 @@ class FASTADataset(SizedSequenceDataset):
         *,
         transform: Callable | None = None,
         use_text_descriptions: bool = True,
+        offsets_arr: Optional[numpy.ndarray] = None,
     ) -> None:
         if isinstance(root, str):
             root = Path(root)
@@ -32,14 +33,17 @@ class FASTADataset(SizedSequenceDataset):
 
         self.data = ThreadSafeFile(self.root, open)
 
-        offsets = Path(f"{self.root}.offsets.npy")
+        if offsets_arr is None:
+            offsets_path = Path(f"{self.root}.offsets.npy")
+            if offsets_path.exists():
+                self.offsets, sizes = numpy.load(f"{offsets_path}")
+            else:
+                self.offsets, sizes = self._build_index()
+                numpy.save(f"{offsets_path}", numpy.stack([self.offsets, sizes]))
 
-        if offsets.exists():
-            self.offsets, sizes = numpy.load(f"{offsets}")
         else:
-            self.offsets, sizes = self._build_index()
-
-            numpy.save(f"{offsets}", numpy.stack([self.offsets, sizes]))
+            self.offsets = offsets_arr[0, :]
+            sizes = offsets_arr[1, :]
 
         self.transform = transform
 
