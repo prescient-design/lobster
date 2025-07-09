@@ -1,5 +1,6 @@
 import logging
 import tempfile
+import gc
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 
@@ -54,13 +55,14 @@ def peer_default_collate_fn(batch):
 class PEEREvaluationCallback(LinearProbeCallback):
     """Callback for evaluating model embeddings on PEER benchmark tasks:
 
+    By default, evaluates 16 out of 17 PEER tasks (excludes PROTEINNET due to high-memory issues).
+
     The callback handles various input types including:
     - Single sequence inputs
     - Paired sequence inputs (protein-protein, protein-ligand)
     - Per-residue tasks (secondary structure)
-    - Contact map prediction
 
-    Available tasks:
+    Available tasks (16 by default):
     - Function prediction tasks (regression):
         - "aav": AAV variant fitness
         - "betalactamase": Beta-lactamase stability
@@ -87,8 +89,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     - Structure prediction tasks:
         - "fold": Protein fold classification (multiclass, 1195 classes)
-        - "proteinnet": Contact map prediction (binary, 2 classes)
         - "secondarystructure": Secondary structure prediction (multiclass, 3 classes - coil, strand, helix)
+
+    Excluded by default:
+        - "proteinnet": Contact map prediction (excluded due to quadratic memory scaling)
 
     Reference:
         Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
@@ -108,6 +112,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
         requires_tokenization: bool = True,
         transform_fn: Callable | None = None,
         clear_cache_between_tasks: bool = True,
+        manage_memory: bool = True,
+        max_embeddings_per_chunk: int = 10000,
     ):
         """Initialize the PEER benchmark callback.
 
@@ -129,9 +135,15 @@ class PEEREvaluationCallback(LinearProbeCallback):
             is True, UMETokenizerTransform will be used.
         clear_cache_between_tasks : bool, default=True
             Whether to clear dataset cache between tasks to reduce memory usage.
+        manage_memory : bool, default=True
+            Whether to use enhanced memory management techniques.
+        max_embeddings_per_chunk : int, default=10000
+            Maximum number of embeddings to process at once to prevent memory issues.
         """
         self.requires_tokenization = requires_tokenization
         self.clear_cache_between_tasks = clear_cache_between_tasks
+        self.manage_memory = manage_memory
+        self.max_embeddings_per_chunk = max_embeddings_per_chunk
 
         if requires_tokenization and transform_fn is None:
             if max_length is None:
@@ -157,9 +169,9 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 task_enum = PEERTask(task) if isinstance(task, str) else task
                 self.selected_tasks.add(task_enum)
 
-        # If no tasks specified, use all tasks
+        # If no tasks specified, use all tasks except PROTEINNET (which causes OOM)
         if not self.selected_tasks:
-            self.selected_tasks = set(PEER_TASKS.keys())
+            self.selected_tasks = set(PEER_TASKS.keys()) - {PEERTask.PROTEINNET}
 
         # Store embedders for different modalities (AA, SMILES)
         self.embedders = {}
@@ -175,18 +187,42 @@ class PEEREvaluationCallback(LinearProbeCallback):
             PEERTask.SUBCELLULAR_LOCALIZATION,
             PEERTask.BINDINGDB,
             PEERTask.PDBBIND,
-                 }
+        }
+
+        # Define high memory-intensive tasks that need batch_size=1
+        self.high_memory_tasks = {
+            PEERTask.PROTEINNET,
+            PEERTask.SECONDARY_STRUCTURE,
+            PEERTask.FOLD,
+        }
+
+    def _clear_memory_cache(self):
+        """Clear memory caches and force garbage collection."""
+        if self.manage_memory:
+            # Clear Python garbage
+            gc.collect()
+            
+            # Clear GPU cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            
+            logger.debug("Cleared memory caches and forced garbage collection")
 
     def _get_batch_size_for_task(self, task: PEERTask) -> int:
-        """Get batch size for a specific task."""
-        # Tasks that need batch_size=1 due to collation issues
-        if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD}:
+        """Get batch size for a specific task with enhanced memory management."""
+        # Tasks that need batch_size=1 due to collation issues or high memory usage
+        if task in self.high_memory_tasks:
             return 1
         
-        # Reduce batch size for memory-intensive tasks
+        # Moderate reduction for memory-intensive tasks only
         if task in self.memory_intensive_tasks:
-            return max(1, self.batch_size // 2)
+            if self.manage_memory:
+                return max(1, self.batch_size // 2)  # Less aggressive reduction
+            else:
+                return max(1, self.batch_size // 2)
         
+        # For non-memory-intensive tasks, use full batch size even with memory management
         return self.batch_size
 
     def _get_relevant_metric(self, task: PEERTask) -> str:
@@ -320,21 +356,65 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
         # Standard single sequence tasks (function prediction, localization)
         else:
-            embeddings = []
-            targets = []
+            return self._get_standard_embeddings(pl_module, dataloader, task)
 
-            pl_module.eval()
-            with torch.no_grad():
-                for batch in dataloader:
-                    x, y = batch
+    def _get_standard_embeddings(
+        self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask
+    ) -> tuple[Tensor, Tensor]:
+        """Extract embeddings for standard tasks with chunked processing to prevent memory issues."""
+        embeddings = []
+        targets = []
+        current_embeddings = []
+        current_targets = []
 
-                    # Get embeddings using our modified method that handles both tokenized and direct inputs
-                    batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
+        pl_module.eval()
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(dataloader):
+                x, y = batch
 
-                    embeddings.append(batch_embeddings.cpu())
-                    targets.append(y.cpu())
+                # Get embeddings using our modified method that handles both tokenized and direct inputs
+                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
 
-            return torch.cat(embeddings), torch.cat(targets)
+                current_embeddings.append(batch_embeddings.cpu())
+                current_targets.append(y.cpu())
+
+                # Check if we've accumulated enough embeddings or if this is the last batch
+                current_size = sum(emb.shape[0] for emb in current_embeddings)
+                is_last_batch = batch_idx == len(dataloader) - 1
+
+                # Only chunk for memory-intensive tasks, or if we hit the chunk limit
+                should_chunk = (task in self.memory_intensive_tasks and current_size >= self.max_embeddings_per_chunk) or is_last_batch
+
+                if should_chunk:
+                    # Process current chunk
+                    if current_embeddings:
+                        chunk_embeddings = torch.cat(current_embeddings, dim=0)
+                        chunk_targets = torch.cat(current_targets, dim=0)
+                        
+                        embeddings.append(chunk_embeddings)
+                        targets.append(chunk_targets)
+                        
+                        # Clear current chunk and force memory cleanup
+                        current_embeddings.clear()
+                        current_targets.clear()
+                        del chunk_embeddings, chunk_targets
+                        
+                        # Clear memory cache only for memory-intensive tasks
+                        if self.manage_memory and task in self.memory_intensive_tasks:
+                            self._clear_memory_cache()
+
+        # Final concatenation
+        if embeddings:
+            final_embeddings = torch.cat(embeddings, dim=0)
+            final_targets = torch.cat(targets, dim=0)
+            
+            # Clear intermediate results
+            embeddings.clear()
+            targets.clear()
+            
+            return final_embeddings, final_targets
+        else:
+            return torch.tensor([]), torch.tensor([])
 
     def _get_task_test_splits(self, task: PEERTask) -> list[str]:
         """Get all appropriate test splits for a task.
@@ -691,31 +771,82 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     valid_embeddings = batch_embeddings[:orig_len][true_residue_mask]
                     valid_coords = tertiary_coords[:orig_len][true_residue_mask]
 
-                    # Create contact map representations
-                    contact_targets = []
-                    contact_embeddings = []
+                    # Limit sequence length for PROTEINNET to prevent memory explosion
+                    n_residues = valid_coords.shape[0]
+                    if n_residues > self.proteinnet_max_length:
+                        # Truncate to prevent quadratic memory explosion
+                        valid_embeddings = valid_embeddings[:self.proteinnet_max_length]
+                        valid_coords = valid_coords[:self.proteinnet_max_length]
+                        n_residues = self.proteinnet_max_length
+                        logger.debug(f"Truncated PROTEINNET sequence to {n_residues} residues to prevent OOM")
 
                     # Calculate pairwise distances between 3D coordinates
-                    n_residues = valid_coords.shape[0]
                     distances = torch.cdist(valid_coords, valid_coords)
 
                     # Define contacts as residues closer than 8 Angstroms
                     contacts = (distances < 8.0).float()
 
+                    # Process residue pairs in chunks to avoid memory accumulation
+                    chunk_size = 5000  # Process pairs in chunks of 5000
+                    contact_targets = []
+                    contact_embeddings = []
+
+                    pair_count = 0
+                    current_chunk_embeddings = []
+                    current_chunk_targets = []
+
                     # For each residue pair, concatenate their embeddings
                     for i in range(n_residues):
                         for j in range(i + 4, n_residues):  # Skip local contacts (i to i+3)
-                            contact_embeddings.append(torch.cat([valid_embeddings[i], valid_embeddings[j]]))
-                            contact_targets.append(contacts[i, j])
+                            current_chunk_embeddings.append(torch.cat([valid_embeddings[i], valid_embeddings[j]]))
+                            current_chunk_targets.append(contacts[i, j])
+                            pair_count += 1
 
+                            # Process chunk when it's full
+                            if len(current_chunk_embeddings) >= chunk_size:
+                                if current_chunk_embeddings:
+                                    chunk_embeddings = torch.stack(current_chunk_embeddings)
+                                    chunk_targets = torch.tensor(current_chunk_targets)
+                                    
+                                    contact_embeddings.append(chunk_embeddings.cpu())
+                                    contact_targets.append(chunk_targets.cpu())
+                                    
+                                    # Clear current chunk and force memory cleanup
+                                    current_chunk_embeddings.clear()
+                                    current_chunk_targets.clear()
+                                    del chunk_embeddings, chunk_targets
+                                    
+                                    # Clear memory cache for PROTEINNET
+                                    if self.manage_memory:
+                                        self._clear_memory_cache()
+
+                    # Process remaining pairs in the last chunk
+                    if current_chunk_embeddings:
+                        chunk_embeddings = torch.stack(current_chunk_embeddings)
+                        chunk_targets = torch.tensor(current_chunk_targets)
+                        
+                        contact_embeddings.append(chunk_embeddings.cpu())
+                        contact_targets.append(chunk_targets.cpu())
+                        
+                        # Clear memory
+                        del chunk_embeddings, chunk_targets
+
+                    # Concatenate all chunks
                     if contact_embeddings:
-                        batch_embeddings = torch.stack(contact_embeddings)
-                        batch_targets = torch.tensor(contact_targets)
+                        batch_embeddings = torch.cat(contact_embeddings, dim=0)
+                        batch_targets = torch.cat(contact_targets, dim=0)
 
                         # Only append if we have valid embeddings/targets
                         if batch_embeddings.numel() > 0 and batch_targets.numel() > 0:
                             embeddings.append(batch_embeddings.cpu())
                             targets.append(batch_targets.cpu())
+                            
+                            # Clear intermediate results
+                            del batch_embeddings, batch_targets
+                            contact_embeddings.clear()
+                            contact_targets.clear()
+
+                    logger.debug(f"Processed {pair_count} residue pairs for PROTEINNET")
 
             case PEERTask.FOLD:
                 # Standard fold classification - sequence-level task
@@ -878,22 +1009,38 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Dict mapping split names to dictionaries of metrics
         """
         try:
+            # Clear memory cache before starting memory-intensive tasks
+            if task in self.memory_intensive_tasks:
+                self._clear_memory_cache()
+                logger.debug(f"Cleared memory cache before starting task: {task}")
+            
             train_dataset, test_datasets = self._get_task_datasets(task)
 
             # Get appropriate collation function for this task
             collate_fn = self._get_collate_fn(task)
 
-            # Clear GPU cache before memory-intensive tasks
-            if task in self.memory_intensive_tasks and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                logger.debug(f"Cleared GPU cache before memory-intensive task: {task}")
+            # Clear GPU cache for memory-intensive tasks
+            if task in self.memory_intensive_tasks:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    logger.debug(f"Cleared GPU cache before memory-intensive task: {task}")
             
             # Get batch size for this task
             batch_size = self._get_batch_size_for_task(task)
+            
+            # Use fewer workers for memory-intensive tasks, but not zero
+            if task in self.high_memory_tasks:
+                num_workers = 1  # Single worker to minimize overhead
+            elif task in self.memory_intensive_tasks:
+                num_workers = 2  # Reduced workers for memory-intensive tasks
+            else:
+                num_workers = 4  # Full workers for regular tasks
+            
+            logger.info(f"Starting task {task} with batch_size={batch_size}, num_workers={num_workers}")
 
             # Get train embeddings and probe
             train_loader = DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn
+                train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=collate_fn
             )
             train_embeddings, train_targets = self._get_embeddings(pl_module, train_loader, task)
 
@@ -905,11 +1052,16 @@ class PEEREvaluationCallback(LinearProbeCallback):
             probe = self._train_probe(train_embeddings, train_targets, task)
             self.probes[str(task)] = probe
 
+            # Clear training data to free memory
+            del train_embeddings, train_targets
+            if task in self.memory_intensive_tasks:
+                self._clear_memory_cache()
+
             # Evaluate on each test split
             split_metrics = {}
             for split_name, test_dataset in test_datasets.items():
                 test_loader = DataLoader(
-                    test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn
+                    test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, collate_fn=collate_fn
                 )
 
                 test_embeddings, test_targets = self._get_embeddings(pl_module, test_loader, task)
@@ -923,14 +1075,17 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 metrics = self._evaluate_probe(probe, test_embeddings, test_targets, task)
                 split_metrics[split_name] = metrics
 
-
-
-
+                # Clear test data to free memory
+                del test_embeddings, test_targets
+                if task in self.memory_intensive_tasks:
+                    self._clear_memory_cache()
 
             return split_metrics
 
         except Exception as e:
             logger.exception(f"Error evaluating task {task}: {str(e)}")
+            # Clear memory on error
+            self._clear_memory_cache()
             return {}
 
     def _run_evaluation(
@@ -995,6 +1150,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 if task_cache_key in self.datasets:
                     del self.datasets[task_cache_key]
                     logger.debug(f"Cleared dataset cache for task {task}")
+                    
+            # Force memory cleanup after memory-intensive tasks
+            if task in self.memory_intensive_tasks:
+                self._clear_memory_cache()
+                logger.debug(f"Completed memory-intensive task {task} and cleared memory")
 
         # Log category averages - but only for metrics that are relevant to tasks in that category
         category_metrics_dict = {}
