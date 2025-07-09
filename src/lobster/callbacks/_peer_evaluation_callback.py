@@ -244,7 +244,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             try:
                 return pl_module.embed(inputs, aggregate=aggregate)
             except Exception as e:
-                raise ValueError(f"Could not process inputs of type {type(inputs)}: {e}")
+                raise ValueError(f"Could not process inputs of type {type(inputs)}: {e}") from e
 
     def _get_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask | None = None
