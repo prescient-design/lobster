@@ -17,90 +17,58 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers.tokenization_utils_base import BatchEncoding
 
-from lobster.constants import PEER_TASK_CATEGORIES, PEER_TASK_SPLITS, PEER_TASKS, PEERTask, PEERTaskCategory
+from lobster.constants import (
+    PEER_TASK_CATEGORIES,
+    PEER_TASK_SPLITS,
+    PEER_TASKS,
+    PEER_STRUCTURE_TASKS,
+    PEERTask,
+    PEERTaskCategory,
+    Modality,
+)
 from lobster.datasets import PEERDataset
 from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
+from ._peer_utils import (
+    peer_structure_collate_fn,
+    peer_default_collate_fn,
+    flatten_and_filter_token_embeddings,
+    process_secondary_structure_item,
+    process_proteinnet_item,
+    process_fold_item,
+    aggregate_task_metrics,
+    calculate_category_averages,
+    calculate_mean_metrics,
+    get_peer_task_metric,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def peer_structure_collate_fn(batch):
-    """Custom collation function for PEER structure prediction tasks.
-
-    Handles variable-length tensors that can't be stacked by default collation.
-    """
-    inputs = []
-    targets = []
-
-    for item in batch:
-        x, y = item
-        inputs.append(x)
-        targets.append(y)
-
-    # For structure tasks, we don't stack the targets - return them as lists
-    return inputs, targets
-
-
-def peer_default_collate_fn(batch):
-    """Default collation function for PEER tasks that can be batched normally."""
-    try:
-        return torch.utils.data.default_collate(batch)
-    except Exception:
-        # If default collation fails, fall back to list format
-        return peer_structure_collate_fn(batch)
-
-
 class PEEREvaluationCallback(LinearProbeCallback):
-    """Callback for evaluating model embeddings on PEER benchmark tasks:
+    """Callback for evaluating model embeddings on PEER benchmark tasks.
 
     By default, evaluates 16 out of 17 PEER tasks (excludes PROTEINNET due to high-memory issues).
 
-    The callback handles various input types including:
-    - Single sequence inputs
-    - Paired sequence inputs (protein-protein, protein-ligand)
-    - Per-residue tasks (secondary structure)
+    The callback handles various input types:
+    - Single sequence inputs (function prediction, localization)
+    - Paired sequence inputs (protein-protein, protein-ligand interactions)
+    - Per-residue tasks (secondary structure prediction)
 
-    Available tasks (16 by default):
-    - Function prediction tasks (regression):
-        - "aav": AAV variant fitness
-        - "betalactamase": Beta-lactamase stability
-        - "fluorescence": Protein fluorescence
-        - "gb1": GB1 protein stability
-        - "stability": Protein stability
-        - "thermostability": Protein thermostability
+    Available task categories (16 tasks by default):
+    - Function prediction: fluorescence, stability, betalactamase, solubility, etc.
+    - Localization: binary and multi-class subcellular localization
+    - Protein-ligand interaction: binding affinity (BindingDB, PDBbind)
+    - Protein-protein interaction: human/yeast PPI classification and affinity
+    - Structure prediction: fold classification, secondary structure
 
-    - Function prediction tasks (classification):
-        - "solubility": Protein solubility (binary, 2 classes)
+    Excluded by default: PROTEINNET (contact map prediction, quadratic memory scaling)
 
-    - Localization prediction tasks:
-        - "binarylocalization": Binary subcellular localization (binary, 2 classes)
-        - "subcellularlocalization": Multi-class subcellular localization (multiclass, 10 classes)
+    Reference: Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
+    Protein Sequence Understanding" https://arxiv.org/abs/2206.02096
 
-    - Protein-ligand interaction tasks (regression):
-        - "bindingdb": Protein-ligand binding affinity (BindingDB)
-        - "pdbbind": Protein-ligand binding affinity (PDBbind)
-
-    - Protein-protein interaction tasks:
-        - "humanppi": Human protein-protein interactions (binary, 2 classes)
-        - "ppiaffinity": Protein-protein binding affinity (regression)
-        - "yeastppi": Yeast protein-protein interactions (binary, 2 classes)
-
-    - Structure prediction tasks:
-        - "fold": Protein fold classification (multiclass, 1195 classes)
-        - "secondarystructure": Secondary structure prediction (multiclass, 3 classes - coil, strand, helix)
-
-    Excluded by default:
-        - "proteinnet": Contact map prediction (excluded due to quadratic memory scaling)
-
-    Reference:
-        Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
-        Protein Sequence Understanding"
-        https://arxiv.org/abs/2206.02096
-
-    Supports both tokenizer-based models (using UMETokenizerTransform) and
-    sequence-based models like ESM.
+    Supports both tokenizer-based models (UMETokenizerTransform) and sequence-based models (ESM).
     """
 
     def __init__(
@@ -180,7 +148,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Cache for datasets
         self.datasets = {}
 
-        # Define memory-intensive tasks that need special handling
+        # Define memory-intensive tasks that get a reduced batch size
         self.memory_intensive_tasks = {
             PEERTask.PROTEINNET,
             PEERTask.SECONDARY_STRUCTURE,
@@ -228,48 +196,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # For non-memory-intensive tasks, use full batch size even with memory management
         return self.batch_size
 
-    def _get_relevant_metric(self, task: PEERTask) -> str:
-        """Get the relevant metric for a given PEER task.
-
-        Parameters
-        ----------
-        task : PEERTask
-            The PEER task to get the relevant metric for.
-
-        Returns
-        -------
-        str
-            The name of the relevant metric for this task.
-        """
-        # Function prediction tasks
-        if task in {PEERTask.FLUORESCENCE, PEERTask.STABILITY, PEERTask.BETALACTAMASE}:
-            return "spearman"
-        # Localization and function classification tasks
-        elif task in {
-            PEERTask.SOLUBILITY,
-            PEERTask.SUBCELLULAR_LOCALIZATION,
-            PEERTask.BINARY_LOCALIZATION,
-            PEERTask.FOLD,
-            PEERTask.SECONDARY_STRUCTURE,
-        }:
-            return "accuracy"
-        # Contact prediction
-        elif task == PEERTask.PROTEINNET:
-            return "l5_precision"
-        # PPI classification
-        elif task in {PEERTask.HUMANPPI, PEERTask.YEASTPPI}:
-            return "accuracy"
-        # Regression tasks with RMSE
-        elif task in {PEERTask.PPIAFFINITY, PEERTask.PDBBIND, PEERTask.BINDINGDB}:
-            return "rmse"
-        # Default to accuracy for classification and rmse for regression
-        else:
-            task_type = PEER_TASKS[task][0]
-            if task_type in {"binary", "multiclass", "multilabel"}:
-                return "accuracy"
-            else:  # regression
-                return "rmse"
-
     def _process_and_embed(
         self,
         pl_module: L.LightningModule,
@@ -277,7 +203,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         modality: str = "amino_acid",
         aggregate: bool = True,
     ) -> Tensor:
-        """Process inputs (tokenize if needed) and extract embeddings using the model's embed method.
+        """Process inputs and extract embeddings using UME's built-in embedding methods.
 
         Parameters
         ----------
@@ -297,47 +223,28 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Embeddings tensor of shape (batch_size, hidden_size) if aggregate=True
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
-        # Models that accept sequence inputs directly (like ESM)
-        if not self.requires_tokenization:
-            # Check if inputs are already tokenized (BatchEncoding or dict with input_ids)
-            if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:  # noqa: UP038
-                # Extract the original sequences if possible and available
-                if hasattr(inputs, "original_sequence"):
-                    # Use the original sequence if available
-                    sequences = inputs.original_sequence
-                elif hasattr(self.transform_fn, "tokenizer") and hasattr(self.transform_fn.tokenizer, "decode"):
-                    # Try to decode the input_ids back to sequences
-                    tokenizer = self.transform_fn.tokenizer
-                    sequences = [tokenizer.decode(ids) for ids in inputs["input_ids"]]
-                else:
-                    # We can't handle this case - return error
-                    raise ValueError(
-                        "Model requires sequence inputs but received tokenized inputs "
-                        "without a way to recover the original sequences"
-                    )
-            else:
-                # Inputs are already sequences or can be used directly
-                sequences = inputs
+        # Handle raw sequences directly using UME's embed_sequences method
+        if isinstance(inputs, (str, list)) and not isinstance(inputs, dict):
+            # Use UME's embed_sequences method directly for raw sequences
+            return pl_module.embed_sequences(inputs, modality=modality, aggregate=aggregate)
 
-            # Call the model's embed method with the sequences
-            return pl_module.embed(sequences, aggregate=aggregate)
+        # Handle tokenized inputs using UME's embed method
+        elif isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:
+            # For tokenized inputs, use UME's embed method
+            return pl_module.embed(inputs, aggregate=aggregate)
 
-        # Models that require tokenized inputs (traditional approach)
+        # Handle mixed case - try to extract sequences if possible
         else:
-            # Check if inputs are already tokenized (either dict or BatchEncoding)
-            if isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:  # noqa: UP038
-                tokenized_inputs = inputs
-            else:
-                # Tokenize the inputs
-                if hasattr(pl_module, "tokenizer_transforms") and modality in pl_module.tokenizer_transforms:
-                    tokenizer_transform = pl_module.tokenizer_transforms[modality]
-                    tokenized_inputs = tokenizer_transform(inputs)
-                else:
-                    # Fall back to the transform_fn from this callback
-                    tokenized_inputs = self.transform_fn(inputs)
+            # Try to extract sequences from complex input structures
+            if hasattr(inputs, "original_sequence"):
+                sequences = inputs.original_sequence
+                return pl_module.embed_sequences(sequences, modality=modality, aggregate=aggregate)
 
-            # Use the embed method from the model
-            return pl_module.embed(tokenized_inputs, aggregate=aggregate)
+            # Fallback - try to use as is
+            try:
+                return pl_module.embed(inputs, aggregate=aggregate)
+            except Exception as e:
+                raise ValueError(f"Could not process inputs of type {type(inputs)}: {e}")
 
     def _get_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask | None = None
@@ -375,8 +282,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
             for batch_idx, batch in enumerate(dataloader):
                 x, y = batch
 
-                # Get embeddings using our modified method that handles both tokenized and direct inputs
-                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
+                # Use simplified embedding extraction
+                batch_embeddings = self._process_and_embed(pl_module, x, modality=Modality.AMINO_ACID, aggregate=True)
 
                 current_embeddings.append(batch_embeddings.cpu())
                 current_targets.append(y.cpu())
@@ -502,8 +409,12 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     # Handle protein-protein interactions
                     if task in {PEERTask.HUMANPPI, PEERTask.YEASTPPI, PEERTask.PPIAFFINITY}:
                         # Get embeddings for each protein separately
-                        embeddings1 = self._process_and_embed(pl_module, seq1, modality="amino_acid", aggregate=True)
-                        embeddings2 = self._process_and_embed(pl_module, seq2, modality="amino_acid", aggregate=True)
+                        embeddings1 = self._process_and_embed(
+                            pl_module, seq1, modality=Modality.AMINO_ACID, aggregate=True
+                        )
+                        embeddings2 = self._process_and_embed(
+                            pl_module, seq2, modality=Modality.AMINO_ACID, aggregate=True
+                        )
 
                         # Concatenate the embeddings
                         batch_embeddings = torch.cat([embeddings1, embeddings2], dim=1)
@@ -512,20 +423,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     elif task in {PEERTask.BINDINGDB, PEERTask.PDBBIND}:
                         # Get embeddings for protein and ligand
                         protein_embeddings = self._process_and_embed(
-                            pl_module, seq1, modality="amino_acid", aggregate=True
+                            pl_module, seq1, modality=Modality.AMINO_ACID, aggregate=True
                         )
-
-                        # For sequence-based models that don't have ligand tokenizers
-                        if not self.requires_tokenization:
-                            # Assume the model can handle ligand sequences directly
-                            ligand_embeddings = self._process_and_embed(
-                                pl_module, seq2, modality="amino_acid", aggregate=True
-                            )
-                        else:
-                            # Use the specific ligand tokenizer for tokenizer-based models
-                            ligand_embeddings = self._process_and_embed(
-                                pl_module, seq2, modality="ligand", aggregate=True
-                            )
+                        ligand_embeddings = self._process_and_embed(
+                            pl_module, seq2, modality=Modality.SMILES, aggregate=True
+                        )
 
                         # Concatenate the embeddings
                         batch_embeddings = torch.cat([protein_embeddings, ligand_embeddings], dim=1)
@@ -551,108 +453,17 @@ class PEEREvaluationCallback(LinearProbeCallback):
         attention_mask: Tensor | None = None,
         ignore_target_value: int = -100,
     ) -> tuple[Tensor, Tensor]:
-        """Helper method to flatten embeddings and filter special tokens for token-level tasks.
-
-        Parameters
-        ----------
-        batch_embeddings : Tensor
-            Embeddings with shape [batch_size, seq_len, hidden_size] or [seq_len, hidden_size]
-        targets : Tensor
-            Target labels with shape [batch_size, seq_len] or [batch_size*seq_len] or [orig_seq_len]
-        input_ids : Tensor | None, default=None
-            Token IDs from tokenizer, used to identify special tokens
-        attention_mask : Tensor | None, default=None
-            Attention mask from tokenizer
-        ignore_target_value : int, default=-100
-            Value in targets to ignore (typically padding value)
-
-        Returns
-        -------
-        tuple[Tensor, Tensor]
-            Filtered embeddings and targets
-        """
-        # Handle both batched and single sequence cases
-        if batch_embeddings.dim() == 3:
-            _batch_size, _seq_len, hidden_size = batch_embeddings.shape
-            # Flatten embeddings to (batch_size*seq_len, hidden_size)
-            batch_embeddings_flat = batch_embeddings.reshape(-1, hidden_size)
-        else:
-            # Single sequence case [seq_len, hidden_size]
-            _seq_len, hidden_size = batch_embeddings.shape
-            batch_embeddings_flat = batch_embeddings
-
-        # Handle target length mismatch with tokenized sequence
-        orig_target_len = targets.numel()
-        expected_len = batch_embeddings_flat.shape[0]
-
-        # Flatten targets if not already flattened
-        if targets.dim() > 1:
-            targets_flat = targets.reshape(-1)
-        else:
-            targets_flat = targets
-
-        # Handle length mismatch between targets and embeddings
-        if orig_target_len != expected_len:
-            if orig_target_len < expected_len:
-                # Pad targets with ignore_target_value for padded positions
-                padded_targets = torch.full(
-                    (expected_len,), ignore_target_value, dtype=targets_flat.dtype, device=targets_flat.device
-                )
-                padded_targets[:orig_target_len] = targets_flat
-                targets_flat = padded_targets
-            else:
-                # Truncate targets if they're longer than embeddings
-                targets_flat = targets_flat[:expected_len]
-
-        # If we have tokenized input and we're using a tokenizer-based model, use it to filter special tokens
-        if (
-            input_ids is not None
-            and attention_mask is not None
-            and self.requires_tokenization
-            and hasattr(self.transform_fn, "tokenizer")
-        ):
-            tokenizer = self.transform_fn.tokenizer
-            special_token_ids = {
-                tokenizer.cls_token_id,
-                tokenizer.eos_token_id,
-                tokenizer.pad_token_id,
-                tokenizer.sep_token_id,
-                tokenizer.mask_token_id,
-                tokenizer.unk_token_id,
-            }
-
-            # Create a mask for real tokens (not special tokens and not padding)
-            valid_token_mask = torch.ones_like(input_ids, dtype=torch.bool)
-            for special_id in special_token_ids:
-                if special_id is not None:  # In case some IDs are None
-                    valid_token_mask &= input_ids != special_id
-            valid_token_mask &= attention_mask.bool()
-
-            # Also filter based on target values to ignore
-            target_mask = targets_flat != ignore_target_value
-
-            # Flatten mask & filter embeddings based on token mask
-            valid_token_mask_flat = valid_token_mask.reshape(-1)
-
-            # Ensure mask length matches
-            if len(valid_token_mask_flat) != len(targets_flat):
-                min_len = min(len(valid_token_mask_flat), len(targets_flat))
-                valid_token_mask_flat = valid_token_mask_flat[:min_len]
-                targets_flat = targets_flat[:min_len]
-                batch_embeddings_flat = batch_embeddings_flat[:min_len]
-
-            # Combine both masks
-            combined_mask = valid_token_mask_flat & target_mask
-
-            filtered_embeddings = batch_embeddings_flat[combined_mask]
-            filtered_targets = targets_flat[combined_mask]
-        else:
-            # If no tokenizer info provided or using sequence-based model, just filter based on ignore value
-            valid_mask = targets_flat != ignore_target_value
-            filtered_embeddings = batch_embeddings_flat[valid_mask]
-            filtered_targets = targets_flat[valid_mask]
-
-        return filtered_embeddings, filtered_targets
+        """Helper method to flatten embeddings and filter special tokens for token-level tasks."""
+        tokenizer = self.transform_fn.tokenizer if hasattr(self.transform_fn, "tokenizer") else None
+        return flatten_and_filter_token_embeddings(
+            batch_embeddings=batch_embeddings,
+            targets=targets,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            ignore_target_value=ignore_target_value,
+            tokenizer=tokenizer,
+            requires_tokenization=self.requires_tokenization,
+        )
 
     def _get_structure_embeddings(
         self, pl_module: L.LightningModule, dataloader: DataLoader, task: PEERTask
@@ -698,174 +509,51 @@ class PEEREvaluationCallback(LinearProbeCallback):
 
     def _process_single_structure_item(self, pl_module: L.LightningModule, task: PEERTask, x, y, embeddings, targets):
         """Process a single structure prediction item."""
-        # For sequence-based models that don't require tokenization
-        if not self.requires_tokenization:
-            if isinstance(x, dict) and "input_ids" in x:
-                # Get the raw sequences if we can
-                if hasattr(x, "original_sequence"):
-                    x = x.original_sequence
-                elif hasattr(self.transform_fn, "tokenizer") and hasattr(self.transform_fn.tokenizer, "decode"):
-                    # Try to decode from input_ids
-                    tokenizer = self.transform_fn.tokenizer
-                    x = [tokenizer.decode(ids) for ids in x["input_ids"]]
-
         # Extract input_ids and attention_mask if available (for token filtering)
         input_ids = x.get("input_ids") if isinstance(x, dict) else None
         attention_mask = x.get("attention_mask") if isinstance(x, dict) else None
+        tokenizer = self.transform_fn.tokenizer if hasattr(self.transform_fn, "tokenizer") else None
 
         match task:
             case PEERTask.SECONDARY_STRUCTURE:
-                # Get per-residue embeddings
-                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
-
-                # Handle single item case (batch_size=1 due to collation)
-                if batch_embeddings.dim() == 3:
-                    batch_embeddings = batch_embeddings.squeeze(0)  # Remove batch dimension
-
-                # Use helper method to flatten and filter token-level embeddings
-                filtered_embeddings, filtered_targets = self._flatten_and_filter_token_embeddings(
-                    batch_embeddings=batch_embeddings,
-                    targets=y,
+                result_embeddings, result_targets = process_secondary_structure_item(
+                    pl_module=pl_module,
+                    x=x,
+                    y=y,
                     input_ids=input_ids,
                     attention_mask=attention_mask,
-                    ignore_target_value=-100,  # Use -100 as the padding value for targets
+                    process_and_embed_fn=self._process_and_embed,
+                    tokenizer=tokenizer,
+                    requires_tokenization=self.requires_tokenization,
                 )
-
-                # Only append if we have valid embeddings/targets
-                if filtered_embeddings.numel() > 0 and filtered_targets.numel() > 0:
-                    embeddings.append(filtered_embeddings.cpu())
-                    targets.append(filtered_targets.cpu())
+                if result_embeddings.numel() > 0 and result_targets.numel() > 0:
+                    embeddings.append(result_embeddings)
+                    targets.append(result_targets)
 
             case PEERTask.PROTEINNET:
-                # Handle contact map prediction with tertiary structure coordinates
-                tertiary_coords, valid_mask = y
-
-                # Get per-residue embeddings
-                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=False)
-
-                # Handle single item case (batch_size=1 due to collation)
-                if batch_embeddings.dim() == 3:
-                    batch_embeddings = batch_embeddings.squeeze(0)  # Remove batch dimension
-
-                # Ensure mask length matches embedding sequence length
-                seq_len = batch_embeddings.shape[0]  # Should be 512 (padded length)
-                orig_len = len(valid_mask)  # Original sequence length
-
-                # Truncate or pad the mask to match embedding length
-                if orig_len > seq_len:
-                    # Truncate mask if original sequence is longer than max_length
-                    residue_mask = valid_mask[:seq_len].bool()
-                    tertiary_coords = tertiary_coords[:seq_len]
-                elif orig_len < seq_len:
-                    # Pad mask with False for padded positions
-                    padded_mask = torch.zeros(seq_len, dtype=torch.bool)
-                    padded_mask[:orig_len] = valid_mask.bool()
-                    residue_mask = padded_mask
-
-                    # Pad tertiary coords with zeros
-                    padded_coords = torch.zeros((seq_len, tertiary_coords.shape[1]), dtype=tertiary_coords.dtype)
-                    padded_coords[:orig_len] = tertiary_coords
-                    tertiary_coords = padded_coords
-                else:
-                    residue_mask = valid_mask.bool()
-
-                # Only use valid (non-padded) positions for contact prediction
-                true_residue_mask = residue_mask[:orig_len]  # Only original sequence positions
-
-                if true_residue_mask.sum() > 0:
-                    valid_embeddings = batch_embeddings[:orig_len][true_residue_mask]
-                    valid_coords = tertiary_coords[:orig_len][true_residue_mask]
-
-                    # Limit sequence length for PROTEINNET to prevent memory explosion
-                    n_residues = valid_coords.shape[0]
-                    if n_residues > self.proteinnet_max_length:
-                        # Truncate to prevent quadratic memory explosion
-                        valid_embeddings = valid_embeddings[: self.proteinnet_max_length]
-                        valid_coords = valid_coords[: self.proteinnet_max_length]
-                        n_residues = self.proteinnet_max_length
-                        logger.debug(f"Truncated PROTEINNET sequence to {n_residues} residues to prevent OOM")
-
-                    # Calculate pairwise distances between 3D coordinates
-                    distances = torch.cdist(valid_coords, valid_coords)
-
-                    # Define contacts as residues closer than 8 Angstroms
-                    contacts = (distances < 8.0).float()
-
-                    # Process residue pairs in chunks to avoid memory accumulation
-                    chunk_size = 5000  # Process pairs in chunks of 5000
-                    contact_targets = []
-                    contact_embeddings = []
-
-                    pair_count = 0
-                    current_chunk_embeddings = []
-                    current_chunk_targets = []
-
-                    # For each residue pair, concatenate their embeddings
-                    for i in range(n_residues):
-                        for j in range(i + 4, n_residues):  # Skip local contacts (i to i+3)
-                            current_chunk_embeddings.append(torch.cat([valid_embeddings[i], valid_embeddings[j]]))
-                            current_chunk_targets.append(contacts[i, j])
-                            pair_count += 1
-
-                            # Process chunk when it's full
-                            if len(current_chunk_embeddings) >= chunk_size:
-                                if current_chunk_embeddings:
-                                    chunk_embeddings = torch.stack(current_chunk_embeddings)
-                                    chunk_targets = torch.tensor(current_chunk_targets)
-
-                                    contact_embeddings.append(chunk_embeddings.cpu())
-                                    contact_targets.append(chunk_targets.cpu())
-
-                                    # Clear current chunk and force memory cleanup
-                                    current_chunk_embeddings.clear()
-                                    current_chunk_targets.clear()
-                                    del chunk_embeddings, chunk_targets
-
-                                    # Clear memory cache for PROTEINNET
-                                    if self.manage_memory:
-                                        self._clear_memory_cache()
-
-                    # Process remaining pairs in the last chunk
-                    if current_chunk_embeddings:
-                        chunk_embeddings = torch.stack(current_chunk_embeddings)
-                        chunk_targets = torch.tensor(current_chunk_targets)
-
-                        contact_embeddings.append(chunk_embeddings.cpu())
-                        contact_targets.append(chunk_targets.cpu())
-
-                        # Clear memory
-                        del chunk_embeddings, chunk_targets
-
-                    # Concatenate all chunks
-                    if contact_embeddings:
-                        batch_embeddings = torch.cat(contact_embeddings, dim=0)
-                        batch_targets = torch.cat(contact_targets, dim=0)
-
-                        # Only append if we have valid embeddings/targets
-                        if batch_embeddings.numel() > 0 and batch_targets.numel() > 0:
-                            embeddings.append(batch_embeddings.cpu())
-                            targets.append(batch_targets.cpu())
-
-                            # Clear intermediate results
-                            del batch_embeddings, batch_targets
-                            contact_embeddings.clear()
-                            contact_targets.clear()
-
-                    logger.debug(f"Processed {pair_count} residue pairs for PROTEINNET")
+                result_embeddings, result_targets = process_proteinnet_item(
+                    pl_module=pl_module,
+                    x=x,
+                    y=y,
+                    process_and_embed_fn=self._process_and_embed,
+                    max_length=512,  # Default max length
+                    manage_memory=self.manage_memory,
+                    clear_memory_cache_fn=self._clear_memory_cache,
+                )
+                if result_embeddings.numel() > 0 and result_targets.numel() > 0:
+                    embeddings.append(result_embeddings)
+                    targets.append(result_targets)
 
             case PEERTask.FOLD:
-                # Standard fold classification - sequence-level task
-                batch_embeddings = self._process_and_embed(pl_module, x, modality="amino_acid", aggregate=True)
-
-                # Ensure target has at least one dimension for concatenation
-                target = y.cpu()
-                if target.dim() == 0:
-                    target = target.unsqueeze(0)
-
-                # Only append if we have valid embeddings/targets
-                if batch_embeddings.numel() > 0 and target.numel() > 0:
-                    embeddings.append(batch_embeddings.cpu())
-                    targets.append(target)
+                result_embeddings, result_targets = process_fold_item(
+                    pl_module=pl_module,
+                    x=x,
+                    y=y,
+                    process_and_embed_fn=self._process_and_embed,
+                )
+                if result_embeddings.numel() > 0 and result_targets.numel() > 0:
+                    embeddings.append(result_embeddings)
+                    targets.append(result_targets)
 
     def _train_probe(self, embeddings: Tensor, targets: Tensor, task: PEERTask = None):
         """Train a probe on the given embeddings and targets with task-specific handling."""
@@ -873,29 +561,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
             # Fallback to parent implementation if no task specified
             return super()._train_probe(embeddings, targets)
 
+        # Get task type and num_classes from constants
         task_type, num_classes = PEER_TASKS[task]
-
-        # Update task_type and num_classes based on the specific task
-        match task:
-            case PEERTask.SECONDARY_STRUCTURE:
-                # Secondary structure is a multiclass classification problem
-                task_type = "multiclass"
-                num_classes = 3  # 3 secondary structure classes (helix, sheet, coil)
-
-            case PEERTask.SUBCELLULAR_LOCALIZATION:
-                # Subcellular localization is a multiclass problem
-                task_type = "multiclass"
-                num_classes = 10
-
-            case PEERTask.FOLD:
-                # Fold classification is a multiclass problem
-                task_type = "multiclass"
-                num_classes = 1195  # TODO - verify number of fold classes
-
-            case PEERTask.PROTEINNET:
-                # Contact prediction is a binary classification problem
-                task_type = "binary"
-                num_classes = None
 
         # Set metrics based on the task type and num_classes
         self._set_metrics(task_type, num_classes)
@@ -910,22 +577,12 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 probe.fit(embeddings_np, targets_np)
 
             case "multilabel":
-                base_classifier = LogisticRegression(random_state=42)
+                base_classifier = LogisticRegression(random_state=42, max_iter=1000)
                 probe = MultiOutputClassifier(base_classifier)
                 probe.fit(embeddings_np, targets_np)
 
             case "binary" | "multiclass":
-                # Use appropriate classifier for binary vs multiclass
-                if task_type == "binary":
-                    probe = LogisticRegression(
-                        random_state=42,
-                        max_iter=1000,  # Increase for convergence
-                    )
-                else:  # multiclass
-                    probe = LogisticRegression(
-                        random_state=42,
-                        max_iter=1000,  # Increase for convergence
-                    )
+                probe = LogisticRegression(random_state=42, max_iter=1000)
                 probe.fit(embeddings_np, targets_np.ravel())
 
         return probe
@@ -939,7 +596,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
         embeddings_np = embeddings.numpy()
         targets_np = targets.numpy()
 
-        relevant_metric = self._get_relevant_metric(task)
+        relevant_metric = get_peer_task_metric(task)
         metrics = {}
 
         # Get predictions from the probe
@@ -1000,10 +657,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
     def _get_collate_fn(self, task: PEERTask):
         """Get the appropriate collation function for the task."""
         # Tasks that need custom collation due to variable-length tensors
-        if task in {PEERTask.PROTEINNET, PEERTask.SECONDARY_STRUCTURE, PEERTask.FOLD}:
-            return peer_structure_collate_fn
-        else:
-            return peer_default_collate_fn
+        return peer_structure_collate_fn if task in PEER_STRUCTURE_TASKS else peer_default_collate_fn
 
     def _evaluate_task(
         self, task: PEERTask, trainer: L.Trainer, pl_module: L.LightningModule
@@ -1112,7 +766,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             split_metrics = self._evaluate_task(task, trainer, pl_module)
 
             # Get the relevant metric for this task
-            relevant_metric = self._get_relevant_metric(task)
+            relevant_metric = get_peer_task_metric(task)
 
             # Store task metrics for return value
             all_task_metrics[str(task)] = split_metrics
@@ -1135,19 +789,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 split_count += 1
 
             # Calculate and log task averages across splits if there are multiple splits
-            if len(split_metrics) > 1:
-                task_avg_metrics = {}
-                # Only average the relevant metric
-                if any(relevant_metric in m for m in split_metrics.values()):
-                    values = [m.get(relevant_metric) for m in split_metrics.values() if relevant_metric in m]
-                    if values:
-                        avg_value = sum(values) / len(values)
-                        task_avg_key = f"peer_linear_probe/{task}/average/{relevant_metric}"
-                        trainer.logger.log_metrics({task_avg_key: avg_value}, step=step)
-                        task_avg_metrics[relevant_metric] = avg_value
-
-                if task_avg_metrics:
-                    all_task_metrics[f"{task}/average"] = task_avg_metrics
+            task_avg_metrics = aggregate_task_metrics(split_metrics, relevant_metric)
+            if task_avg_metrics:
+                task_avg_key = f"peer_linear_probe/{task}/average/{relevant_metric}"
+                trainer.logger.log_metrics({task_avg_key: task_avg_metrics[relevant_metric]}, step=step)
+                all_task_metrics[f"{task}/average"] = task_avg_metrics
 
             # Clear dataset cache between tasks if enabled
             if self.clear_cache_between_tasks:
@@ -1162,27 +808,20 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 logger.debug(f"Completed memory-intensive task {task} and cleared memory")
 
         # Log category averages - but only for metrics that are relevant to tasks in that category
-        category_metrics_dict = {}
-        for category, metrics_dict in category_metrics.items():
-            category_metrics_dict[str(category)] = {}
-            for metric_name, values in metrics_dict.items():
-                if values:
-                    avg_value = sum(values) / len(values)
-                    metric_key = f"peer_linear_probe/category/{category}/{metric_name}"
-                    trainer.logger.log_metrics({metric_key: avg_value}, step=step)
-                    category_metrics_dict[str(category)][metric_name] = avg_value
+        category_metrics_dict = calculate_category_averages(category_metrics)
+        for category, metrics_dict in category_metrics_dict.items():
+            for metric_name, avg_value in metrics_dict.items():
+                metric_key = f"peer_linear_probe/category/{category}/{metric_name}"
+                trainer.logger.log_metrics({metric_key: avg_value}, step=step)
 
         if category_metrics_dict:
             all_task_metrics["categories"] = category_metrics_dict
 
         # Calculate and log overall averages for each metric type
-        mean_metrics = {}
-        for metric_name, values in all_metrics.items():
-            if values:
-                avg_value = sum(values) / len(values)
-                metric_key = f"peer_linear_probe/mean/{metric_name}"
-                trainer.logger.log_metrics({metric_key: avg_value}, step=step)
-                mean_metrics[metric_name] = avg_value
+        mean_metrics = calculate_mean_metrics(all_metrics)
+        for metric_name, avg_value in mean_metrics.items():
+            metric_key = f"peer_linear_probe/mean/{metric_name}"
+            trainer.logger.log_metrics({metric_key: avg_value}, step=step)
 
         # Add mean metrics to result
         all_task_metrics["mean"] = mean_metrics
