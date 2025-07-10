@@ -33,6 +33,7 @@ srun -u --cpus-per-task 8 --cpu-bind=cores,verbose \
     uv run lobster_dgeb_eval \
     ume-mini-base-12M \
     --modality dna \
+    --tasks ec_dna_classification \
     --output-dir dgeb_results \
     --batch-size 32 \
     --max-seq-length 1024 \

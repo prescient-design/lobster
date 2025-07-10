@@ -90,23 +90,44 @@ def load_checkpoint_with_retry(
     """
     local_path = os.path.join(local_directory, local_filename)
 
+    logger.info("Loading checkpoint with retry:")
+    logger.info(f"  - S3 path: {checkpoint_path}")
+    logger.info(f"  - Local path: {local_path}")
+    logger.info(f"  - Load function: {load_func.__name__}")
+
     # First, ensure checkpoint is downloaded
+    logger.info("Ensuring checkpoint is downloaded...")
     download_checkpoint(checkpoint_path, local_directory, local_filename)
 
     # Try to load the model
+    logger.info("Attempting to load checkpoint...")
     try:
-        return load_func(local_path, *args, **kwargs)
+        model = load_func(local_path, *args, **kwargs)
+        logger.info("✅ Successfully loaded checkpoint on first attempt")
+        return model
     except RuntimeError as e:
         if "PytorchStreamReader failed reading zip archive" in str(e):
-            logger.warning(f"Downloaded checkpoint {local_filename} appears corrupted. Redownloading...")
+            logger.warning(f"❌ Downloaded checkpoint {local_filename} appears corrupted. Redownloading...")
+            logger.warning(f"   Error: {e}")
+
             # Remove corrupted file and redownload
             if os.path.exists(local_path):
+                logger.info(f"Removing corrupted file: {local_path}")
                 os.remove(local_path)
 
             # Force redownload
+            logger.info("Forcing redownload of checkpoint...")
             download_checkpoint(checkpoint_path, local_directory, local_filename, force_redownload=True)
 
             # Try loading again
-            return load_func(local_path, *args, **kwargs)
+            logger.info("Attempting to load checkpoint after redownload...")
+            try:
+                model = load_func(local_path, *args, **kwargs)
+                logger.info("✅ Successfully loaded checkpoint after redownload")
+                return model
+            except Exception as e2:
+                logger.error(f"❌ Failed to load checkpoint even after redownload: {e2}")
+                raise
         else:
+            logger.error(f"❌ Failed to load checkpoint (non-corruption error): {e}")
             raise

@@ -965,7 +965,7 @@ class UME(L.LightningModule):
     @classmethod
     def from_pretrained(
         cls,
-        model_name: Literal["ume-mini-base-12M", "ume-medium-base-480M", "ume-large-base-740M"],
+        model_name: Literal["ume-mini-base-12M", "ume-small-base-90M", "ume-medium-base-480M", "ume-large-base-740M"],
         *,
         device: str | None = None,
         use_flash_attn: bool | None = None,
@@ -1014,6 +1014,14 @@ class UME(L.LightningModule):
         >>> # Load with custom cache directory
         >>> model = UME.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"Loading pretrained UME model: {model_name}")
+        logger.info(f"  - Device: {device}")
+        logger.info(f"  - Use flash attention: {use_flash_attn}")
+        logger.info(f"  - Cache directory: {cache_dir}")
 
         # Warning that you're using pre-release checkpoints which
         # are just placeholder checkpoints for now.
@@ -1021,6 +1029,8 @@ class UME(L.LightningModule):
             "You're using pre-release UME checkpoints which are just placeholder checkpoints for now. Stay tuned for UME release.",
             stacklevel=2,
         )
+
+        logger.info("Fetching checkpoint mapping from S3...")
         checkpoint_dict = get_ume_checkpoints()
 
         checkpoint_path = checkpoint_dict.get(model_name)
@@ -1028,17 +1038,25 @@ class UME(L.LightningModule):
             available_models = [
                 model_name for model_name in checkpoint_dict.keys() if checkpoint_dict[model_name] is not None
             ]
+            logger.error(f"Unknown model name: {model_name}")
+            logger.error(f"Available models: {available_models}")
             raise ValueError(f"Unknown model name: {model_name}. Currently available models: {available_models}")
+
+        logger.info(f"Found checkpoint path: {checkpoint_path}")
 
         # Determine cache directory
         if cache_dir is None:
             cache_dir = os.path.join(os.getcwd(), "models", "ume")
 
+        logger.info(f"Using cache directory: {cache_dir}")
+
         local_filename = f"{model_name}.ckpt"
+        logger.info(f"Local filename: {local_filename}")
 
         # Load the model with automatic retry on corruption
         # happens if previous download was stopped, for example
-        return load_checkpoint_with_retry(
+        logger.info("Starting model loading with automatic retry...")
+        model = load_checkpoint_with_retry(
             checkpoint_path=checkpoint_path,
             local_directory=cache_dir,
             local_filename=local_filename,
@@ -1047,3 +1065,41 @@ class UME(L.LightningModule):
             use_flash_attn=use_flash_attn,
             **kwargs,
         )
+
+        # Validate the loaded model
+        logger.info("Validating loaded model configuration...")
+        total_params = sum(p.numel() for p in model.parameters())
+        embed_dim = model.embedding_dim
+        num_layers = model.model.config.num_hidden_layers
+
+        logger.info("Loaded model configuration:")
+        logger.info(f"  - Model name: {model_name}")
+        logger.info(f"  - Embedding dimension: {embed_dim}")
+        logger.info(f"  - Number of layers: {num_layers}")
+        logger.info(f"  - Total parameters: {total_params:,}")
+        logger.info(f"  - Parameters in millions: {total_params / 1e6:.1f}M")
+        logger.info(f"  - Device: {next(model.parameters()).device}")
+        logger.info(f"  - Use flash attention: {model.use_flash_attn}")
+
+        # Validate expected model size based on name
+        expected_params = {
+            "ume-mini-base-12M": (10e6, 20e6),  # 10-20M parameters
+            "ume-small-base-90M": (80e6, 100e6),  # 80-100M parameters
+            "ume-medium-base-480M": (450e6, 500e6),  # 450-500M parameters
+            "ume-large-base-740M": (700e6, 800e6),  # 700-800M parameters
+        }
+
+        if model_name in expected_params:
+            min_expected, max_expected = expected_params[model_name]
+            if min_expected <= total_params <= max_expected:
+                logger.info(
+                    f"✅ Model parameter count ({total_params / 1e6:.1f}M) matches expected range for {model_name}"
+                )
+            else:
+                logger.warning(
+                    f"⚠️  Model parameter count ({total_params / 1e6:.1f}M) is outside expected range for {model_name} ({min_expected / 1e6:.1f}M-{max_expected / 1e6:.1f}M)"
+                )
+                logger.warning("   This might indicate a checkpoint mismatch or incorrect model configuration")
+
+        logger.info(f"✅ Successfully loaded pretrained UME model: {model_name}")
+        return model

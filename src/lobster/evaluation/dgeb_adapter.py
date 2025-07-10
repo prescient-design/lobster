@@ -173,6 +173,11 @@ class UMEAdapterDGEB(BioSeqTransformer):
                         use_flash_attn=use_flash_attn,
                     )
                     logger.info("UME.from_pretrained completed successfully")
+                    logger.info("Loaded pretrained model configuration:")
+                    logger.info(f"  - Model name: {model_name}")
+                    logger.info(f"  - Embedding dimension: {model.embedding_dim}")
+                    logger.info(f"  - Number of layers: {model.model.config.num_hidden_layers}")
+                    logger.info(f"  - Total parameters: {sum(p.numel() for p in model.parameters()):,}")
                 except NotImplementedError as e:
                     logger.warning(f"Pre-trained model not available: {e}")
                     logger.info("Creating new UME model instead...")
@@ -189,11 +194,17 @@ class UMEAdapterDGEB(BioSeqTransformer):
                         model_size = "UME_mini"  # Default fallback
 
                     logger.info(f"Creating new UME model with size: {model_size}")
+                    logger.info(f"Model name mapping: '{model_name}' -> '{model_size}'")
                     model = UME(
                         model_name=model_size,
                         use_flash_attn=use_flash_attn,
                     )
                     logger.info("New UME model created successfully")
+                    logger.info("Created model configuration:")
+                    logger.info(f"  - Model size: {model_size}")
+                    logger.info(f"  - Embedding dimension: {model.embedding_dim}")
+                    logger.info(f"  - Number of layers: {model.model.config.num_hidden_layers}")
+                    logger.info(f"  - Total parameters: {sum(p.numel() for p in model.parameters()):,}")
             else:
                 # Load from checkpoint path
                 logger.info(f"Loading UME model from checkpoint: {model_name}")
@@ -204,6 +215,11 @@ class UMEAdapterDGEB(BioSeqTransformer):
                     use_flash_attn=use_flash_attn,
                 )
                 logger.info("UME.load_from_checkpoint completed successfully")
+                logger.info("Loaded checkpoint model configuration:")
+                logger.info(f"  - Checkpoint path: {model_name}")
+                logger.info(f"  - Embedding dimension: {model.embedding_dim}")
+                logger.info(f"  - Number of layers: {model.model.config.num_hidden_layers}")
+                logger.info(f"  - Total parameters: {sum(p.numel() for p in model.parameters()):,}")
         except Exception as e:
             logger.error(f"Failed to load UME model {model_name}: {e}")
             import traceback
@@ -486,13 +502,27 @@ class UMEAdapterDGEB(BioSeqTransformer):
         # Determine current device
         device = next(self.model.parameters()).device.type
 
+        # Calculate actual parameter count
+        total_params = sum(p.numel() for p in self.model.parameters())
+
+        # Get actual model configuration
+        actual_embed_dim = self.model.embedding_dim
+        actual_num_layers = self.model.model.config.num_hidden_layers
+
+        # Log the actual model configuration for debugging
+        logger.info("Actual model configuration:")
+        logger.info(f"  - Embedding dimension: {actual_embed_dim}")
+        logger.info(f"  - Number of layers: {actual_num_layers}")
+        logger.info(f"  - Total parameters: {total_params:,}")
+        logger.info(f"  - Model name: {self._model_name}")
+
         return {
             "model_name": self._model_name,
             "hf_name": self._model_name,  # Required by DGEB
             "modality": self._modality,
-            "embed_dim": self.embed_dim,  # Required by DGEB
-            "num_layers": self.num_layers,  # Required by DGEB
-            "num_params": sum(p.numel() for p in self.model.parameters()),  # Total parameter count
+            "embed_dim": actual_embed_dim,  # Required by DGEB
+            "num_layers": actual_num_layers,  # Required by DGEB
+            "num_params": total_params,  # Total parameter count
             "max_seq_length": self.max_seq_length,
             "pool_type": self.pool_type,
             "l2_norm": self.l2_norm,
