@@ -54,6 +54,7 @@ lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval_embed = "lobster.cmdline:eval_embed"
 lobster_eval = "lobster.cmdline:evaluate"
 lobster_dgeb_eval = "lobster.cmdline.dgeb_eval:main"
+lobster_dgeb_mock_eval = "lobster.evaluation.dgeb_mock_runner:main"
 lobster_mcp_server = "lobster.mcp.inference_server:main"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 
