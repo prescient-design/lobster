@@ -1,13 +1,15 @@
 # LBSTER 🦞
 **L**anguage models for **B**iological **S**equence **T**ransformation and **E**volutionary **R**epresentation
 
-[![CI](https://github.com/prescient-design/lobster/workflows/CI/badge.svg)](https://github.com/prescient-design/lobster/actions)
+[![CI](https://github.com/prescient-design/lobster/actions/workflows/push.yml/badge.svg?branch=main)](https://github.com/prescient-design/lobster/actions)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI version](https://badge.fury.io/py/lbster.svg)](https://badge.fury.io/py/lbster)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Ruff](https://img.shields.io/badge/ruff-enabled-green)](https://github.com/astral-sh/ruff)
 [![Hugging Face Models](https://img.shields.io/badge/Hugging%20Face-Models%20Available-orange)](https://huggingface.co/asalam91)
 [![MCP Ready](https://img.shields.io/badge/MCP-Integration%20Ready-purple)](docs/MCP_INTEGRATION.md)
+[![GitHub stars](https://img.shields.io/github/stars/prescient-design/lobster?style=social)](https://github.com/prescient-design/lobster/stargazers)
+<!-- [![codecov](https://codecov.io/gh/prescient-design/lobster/branch/main/graph/badge.svg)](https://codecov.io/gh/prescient-design/lobster) -->
 
 
 `lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Karina Zadorozhny](https://github.com/karinazad), [Taylor Joren](https://github.com/taylormjs), [Sidney Lisanza](https://github.com/Sidney-Lisanza), [Aya Abdlesalam Ismail](https://github.com/ayaabdelsalam91), [Joseph Kleinhenz](https://github.com/kleinhenz) and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/CONTRIBUTORS.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
