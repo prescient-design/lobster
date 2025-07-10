@@ -143,3 +143,38 @@ PEER_TASK_COLUMNS = {
     PEERTask.YEASTPPI: (["protein1_sequence", "protein2_sequence"], ["interaction"]),
     PEERTask.HUMANPPI: (["protein1_sequence", "protein2_sequence"], ["interaction"]),
 }
+
+
+# Define task-specific metrics for evaluation
+# Maps each task to its most relevant evaluation metric
+PEER_TASK_METRICS = {
+    # Function prediction tasks - use Spearman correlation for regression
+    PEERTask.GB1: "spearman",
+    PEERTask.AAV: "spearman",
+    PEERTask.THERMOSTABILITY: "spearman",
+    PEERTask.FLUORESCENCE: "spearman",
+    PEERTask.STABILITY: "spearman",
+    PEERTask.BETALACTAMASE: "spearman",
+    PEERTask.SOLUBILITY: "accuracy",  # Binary classification
+    # Localization prediction tasks - use accuracy for classification
+    PEERTask.SUBCELLULAR_LOCALIZATION: "accuracy",
+    PEERTask.BINARY_LOCALIZATION: "accuracy",
+    # Structure prediction tasks
+    PEERTask.PROTEINNET: "l5_precision",  # Special metric for contact prediction
+    PEERTask.FOLD: "accuracy",  # Multiclass classification
+    PEERTask.SECONDARY_STRUCTURE: "accuracy",  # Multiclass classification
+    # Protein-protein interaction tasks
+    PEERTask.YEASTPPI: "accuracy",  # Binary classification
+    PEERTask.HUMANPPI: "accuracy",  # Binary classification
+    PEERTask.PPIAFFINITY: "rmse",  # Regression
+    # Protein-ligand interaction tasks - use RMSE for regression
+    PEERTask.PDBBIND: "rmse",
+    PEERTask.BINDINGDB: "rmse",
+}
+
+# Tasks that require custom collation due to variable-length tensors
+PEER_STRUCTURE_TASKS = {
+    PEERTask.PROTEINNET,
+    PEERTask.SECONDARY_STRUCTURE,
+    PEERTask.FOLD,
+}
