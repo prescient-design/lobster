@@ -5,27 +5,24 @@ the main PEEREvaluationCallback class.
 """
 
 import logging
-from typing import Tuple
 
 import torch
 from torch import Tensor
-from torch.utils.data import DataLoader
 import lightning as L
 
 from lobster.constants import PEERTask, PEER_TASKS, PEER_TASK_METRICS
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
 
 def get_peer_task_metric(task: PEERTask) -> str:
     """Get the relevant evaluation metric for a given PEER task.
-    
+
     Parameters
     ----------
     task : PEERTask
         The PEER task to get the metric for
-        
+
     Returns
     -------
     str
@@ -34,7 +31,7 @@ def get_peer_task_metric(task: PEERTask) -> str:
     # Return task-specific metric if available
     if task in PEER_TASK_METRICS:
         return PEER_TASK_METRICS[task]
-    
+
     # Fallback to default based on task type
     task_type = PEER_TASKS[task][0]
     if task_type in {"binary", "multiclass", "multilabel"}:
@@ -45,7 +42,7 @@ def get_peer_task_metric(task: PEERTask) -> str:
 
 def peer_structure_collate_fn(batch):
     """Custom collation function for PEER structure prediction tasks.
-    
+
     Handles variable-length tensors that can't be stacked by default collation.
     """
     inputs, targets = zip(*batch)
@@ -60,6 +57,7 @@ def peer_default_collate_fn(batch):
         # If default collation fails, fall back to list format
         return peer_structure_collate_fn(batch)
 
+
 def flatten_and_filter_token_embeddings(
     batch_embeddings: Tensor,
     targets: Tensor,
@@ -68,7 +66,7 @@ def flatten_and_filter_token_embeddings(
     ignore_target_value: int = -100,
     tokenizer=None,
     requires_tokenization: bool = True,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Helper function to flatten embeddings and filter special tokens for token-level tasks.
 
     Parameters
@@ -127,12 +125,7 @@ def flatten_and_filter_token_embeddings(
             targets_flat = targets_flat[:expected_len]
 
     # If we have tokenized input and we're using a tokenizer-based model, use it to filter special tokens
-    if (
-        input_ids is not None
-        and attention_mask is not None
-        and requires_tokenization
-        and tokenizer is not None
-    ):
+    if input_ids is not None and attention_mask is not None and requires_tokenization and tokenizer is not None:
         special_token_ids = {
             tokenizer.cls_token_id,
             tokenizer.eos_token_id,
@@ -185,9 +178,9 @@ def process_secondary_structure_item(
     process_and_embed_fn=None,
     tokenizer=None,
     requires_tokenization: bool = True,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Process a single secondary structure prediction item.
-    
+
     Parameters
     ----------
     pl_module : L.LightningModule
@@ -206,7 +199,7 @@ def process_secondary_structure_item(
         Tokenizer for filtering special tokens
     requires_tokenization : bool
         Whether the model requires tokenization
-        
+
     Returns
     -------
     Tuple[Tensor, Tensor]
@@ -245,9 +238,9 @@ def process_proteinnet_item(
     max_length: int = 512,
     manage_memory: bool = True,
     clear_memory_cache_fn=None,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Process a single PROTEINNET contact prediction item.
-    
+
     Parameters
     ----------
     pl_module : L.LightningModule
@@ -264,7 +257,7 @@ def process_proteinnet_item(
         Whether to manage memory aggressively
     clear_memory_cache_fn : callable
         Function to clear memory cache
-        
+
     Returns
     -------
     Tuple[Tensor, Tensor]
@@ -397,9 +390,9 @@ def process_fold_item(
     x,
     y,
     process_and_embed_fn=None,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Process a single fold classification item.
-    
+
     Parameters
     ----------
     pl_module : L.LightningModule
@@ -410,7 +403,7 @@ def process_fold_item(
         Target fold class
     process_and_embed_fn : callable
         Function to process inputs and get embeddings
-        
+
     Returns
     -------
     Tuple[Tensor, Tensor]
@@ -433,14 +426,14 @@ def process_fold_item(
 
 def aggregate_task_metrics(split_metrics: dict, relevant_metric: str) -> dict:
     """Aggregate metrics across multiple splits for a task.
-    
+
     Parameters
     ----------
     split_metrics : dict
         Dictionary mapping split names to their metrics
     relevant_metric : str
         The main metric to aggregate
-        
+
     Returns
     -------
     dict
@@ -448,24 +441,24 @@ def aggregate_task_metrics(split_metrics: dict, relevant_metric: str) -> dict:
     """
     if len(split_metrics) <= 1:
         return {}
-    
+
     # Only average the relevant metric
     if any(relevant_metric in m for m in split_metrics.values()):
         values = [m.get(relevant_metric) for m in split_metrics.values() if relevant_metric in m]
         if values:
             return {relevant_metric: sum(values) / len(values)}
-    
+
     return {}
 
 
 def calculate_category_averages(category_metrics: dict) -> dict:
     """Calculate averages for each category.
-    
+
     Parameters
     ----------
     category_metrics : dict
         Dictionary mapping categories to their metric collections
-        
+
     Returns
     -------
     dict
@@ -483,12 +476,12 @@ def calculate_category_averages(category_metrics: dict) -> dict:
 
 def calculate_mean_metrics(all_metrics: dict) -> dict:
     """Calculate mean metrics across all tasks.
-    
+
     Parameters
     ----------
     all_metrics : dict
         Dictionary mapping metric names to lists of values
-        
+
     Returns
     -------
     dict
@@ -498,4 +491,4 @@ def calculate_mean_metrics(all_metrics: dict) -> dict:
     for metric_name, values in all_metrics.items():
         if values:
             mean_metrics[metric_name] = sum(values) / len(values)
-    return mean_metrics 
+    return mean_metrics
