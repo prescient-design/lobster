@@ -90,10 +90,13 @@ def load_checkpoint_with_retry(
     """
     local_path = os.path.join(local_directory, local_filename)
 
+    # Get function name safely, handling mock objects
+    func_name = getattr(load_func, "__name__", str(load_func))
+
     logger.info("Loading checkpoint with retry:")
     logger.info(f"  - S3 path: {checkpoint_path}")
     logger.info(f"  - Local path: {local_path}")
-    logger.info(f"  - Load function: {load_func.__name__}")
+    logger.info(f"  - Load function: {func_name}")
 
     # First, ensure checkpoint is downloaded
     logger.info("Ensuring checkpoint is downloaded...")
