@@ -49,6 +49,7 @@ dev
 *.log
 dgeb_results/
 dgeb_test_results/
+dgeb_mock_results/
 *_dgeb_eval/
 evaluation_report.md
 results_summary.json
