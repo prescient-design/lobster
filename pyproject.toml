@@ -32,6 +32,7 @@ dependencies = [
     "edlib",
     "onnx",
     "onnxscript",
+    "onnxruntime",
     "einops",
     "beignet[datasets]>=0.0.13",
     "dotenv>=0.9.9",
