@@ -1,0 +1,67 @@
+{
+  "dxt_version": "0.2",
+  "name": "lobster",
+  "display_name": "Lobster MCP Server",
+  "version": "0.0.1",
+  "icon": "icon.png",
+  "description": "Lobster MCP server for protein sequence analysis and concept interventions",
+  "long_description": "The Lobster MCP server provides access to pretrained language models for biological sequence analysis. It supports masked language models and concept bottleneck models for protein sequence understanding, concept interventions, and naturalness scoring. This extension enables Claude to work with protein sequences and perform sophisticated biological sequence analysis tasks.",
+  "author": {
+    "name": "Prescient Design",
+    "url": "https://ncfrey.github.io/"
+  },
+  "homepage": "https://github.com/prescient-design/lobster",
+  "documentation": "https://prescient-design.github.io/lobster-docs/intro.html",
+  "support": "https://github.com/prescient-design/lobster/issues",
+  "server": {
+    "type": "python",
+    "entry_point": "src/lobster/mcp/inference_server.py",
+    "mcp_config": {
+      "command": "bash",
+      "args": [
+        "${__dirname}/run_mcp_server.sh"
+      ],
+      "env": {
+        "PYTHONPATH": "${__dirname}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "list_available_models",
+      "description": "List all available pretrained Lobster models and current device"
+    },
+    {
+      "name": "get_sequence_representations",
+      "description": "Get sequence representations from a model"
+    },
+    {
+      "name": "get_sequence_concepts",
+      "description": "Get concept predictions from a concept bottleneck model"
+    },
+    {
+      "name": "intervene_on_sequence",
+      "description": "Perform concept intervention on a sequence"
+    },
+    {
+      "name": "get_supported_concepts",
+      "description": "Get list of supported concepts for a model"
+    },
+    {
+      "name": "compute_naturalness",
+      "description": "Compute naturalness scores for sequences"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "lobster_prompt",
+      "description": "You can use lobster models with natural language commands",
+      "text": "What lobster models are available? What can you do with lobster models?"
+    }
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prescient-design/lobster"
+  }
+}

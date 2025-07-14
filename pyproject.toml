@@ -21,7 +21,6 @@ dependencies = [
     "biopandas",
     "wandb",
     "hydra-core",
-    "torchdata",
     "datasets>2",
     "tokenizers",
     "transformers>=4.24.0",
@@ -30,18 +29,15 @@ dependencies = [
     "torcheval",
     "datasketch",
     "peft",
-    "icecream",
-    "captum",
     "edlib",
     "onnx",
     "onnxscript",
     "einops",
-    "beignet[datasets]",
-    "deepspeed",
+    "beignet[datasets]>=0.0.13",
     "dotenv>=0.9.9",
     "litdata>=0.2.49",
-    "polars>=1.30.0",
     "seaborn>=0.13.2",
+    "dgeb>=0.2.0",
 ]
 
 [build-system]
@@ -57,6 +53,8 @@ lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
 lobster_perplexity = "lobster.cmdline:perplexity"
 lobster_eval_embed = "lobster.cmdline:eval_embed"
 lobster_eval = "lobster.cmdline:evaluate"
+lobster_dgeb_eval = "lobster.cmdline.dgeb_eval:main"
+lobster_dgeb_mock_eval = "lobster.evaluation.dgeb_mock_runner:main"
 lobster_mcp_server = "lobster.mcp.inference_server:main"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 
@@ -146,9 +144,6 @@ constraint-dependencies = [
     "torch==2.7.0; extra == 'flash'"
 ] # flash-attn wheels available
 
-[tool.uv.sources]
-beignet = { git = "https://github.com/Genentech/beignet" }
-
 [[tool.uv.dependency-metadata]]
 name = "flash-attn"
 version = "2.8.0"
@@ -163,3 +158,6 @@ dev = [
     "pytest-cov>=6.0.0",
     "ruff>=0.9.1",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.python.org/simple"

@@ -114,6 +114,7 @@ def callback(monkeypatch, mock_transform):
         max_length=32,
         tasks=[PEERTask.STABILITY, PEERTask.SECONDARY_STRUCTURE, PEERTask.HUMANPPI],
         batch_size=4,
+        clear_cache_between_tasks=False,  # Keep cache for tests
     )
 
 
@@ -184,6 +185,7 @@ class TestPEEREvaluationCallback:
             torch.tensor([0.75, 0.5]),
         )
         mock_loader.__iter__.return_value = [test_batch]
+        mock_loader.__len__.return_value = 1  # Mock dataloader length
 
         with patch.object(callback, "_process_and_embed", return_value=torch.randn(2, 32)) as mock_proc:
             embeddings, targets = callback._get_embeddings(mock_model, mock_loader, PEERTask.STABILITY)
@@ -210,6 +212,7 @@ class TestPEEREvaluationCallback:
             torch.tensor([1, 0]),
         )
         mock_loader.__iter__.return_value = [test_batch]
+        mock_loader.__len__.return_value = 1  # Mock dataloader length
 
         # likewise patch _process_and_embed for each leg of the pair
         with patch.object(callback, "_process_and_embed") as mock_proc:
@@ -293,7 +296,10 @@ class TestPEEREvaluationCallback:
             callback._train_probe(embeddings, targets, PEERTask.SECONDARY_STRUCTURE)
 
             assert mock_logistic_regression.call_count > 0
-            assert mock_logistic_regression.call_args[1].get("multi_class") == "multinomial"
+            # Check for the actual parameters being passed (multi_class parameter was removed to fix deprecation)
+            call_args = mock_logistic_regression.call_args[1]
+            assert call_args.get("random_state") == 42
+            assert call_args.get("max_iter") == 1000
             mock_model.fit.assert_called_once()
 
     @patch("lobster.callbacks._peer_evaluation_callback.PEERDataset", MockPEERDataset)

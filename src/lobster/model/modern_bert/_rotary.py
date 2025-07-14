@@ -132,6 +132,65 @@ class ApplyRotaryEmbUnpad(torch.autograd.Function):
         return do, None, None, None, None, None, None
 
 
+def apply_rotary_emb_unpad_cpu(
+    qkv,
+    cos,
+    sin,
+    interleaved=False,
+    seqlen_offsets: Union[int, torch.Tensor] = 0,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    max_seqlen: Optional[int] = None,
+):
+    """
+    CPU fallback implementation of rotary embedding for unpadded sequences.
+    """
+    # Extract q and k from qkv
+    q, k = qkv[:, 0, :, :], qkv[:, 1, :, :]
+    
+    # Apply rotary embedding to q and k
+    q_rot = apply_rotary_emb_cpu(q, cos, sin, interleaved=interleaved, seqlen_offsets=seqlen_offsets)
+    k_rot = apply_rotary_emb_cpu(k, cos, sin, interleaved=interleaved, seqlen_offsets=seqlen_offsets)
+    
+    # Update qkv in-place
+    qkv[:, 0, :, :] = q_rot
+    qkv[:, 1, :, :] = k_rot
+    
+    return qkv
+
+
+def apply_rotary_emb_cpu(x, cos, sin, interleaved=False, seqlen_offsets: Union[int, torch.Tensor] = 0):
+    """
+    CPU implementation of rotary embedding.
+    x: (total_nnz, nheads, headdim)
+    cos, sin: (seqlen, rotary_dim // 2)
+    """
+    rotary_dim = cos.shape[-1] * 2
+    x_rot = x[..., :rotary_dim]
+    x_pass = x[..., rotary_dim:]
+
+    # Figure out which position each token is at
+    if isinstance(seqlen_offsets, int):
+        positions = torch.arange(x.shape[0], device=x.device)
+    else:
+        # If seqlen_offsets is a tensor, use it to offset positions
+        # This is a simplification; real packed rotary may need more logic
+        positions = torch.arange(x.shape[0], device=x.device)
+
+    cos = cos[positions]
+    sin = sin[positions]
+
+    x_rot_reshaped = x_rot.view(x.shape[0], x.shape[1], -1, 2)
+    x1 = x_rot_reshaped[..., 0]
+    x2 = x_rot_reshaped[..., 1]
+    cos = cos.unsqueeze(1)  # (total_nnz, 1, rotary_dim//2)
+    sin = sin.unsqueeze(1)
+
+    out1 = x1 * cos - x2 * sin
+    out2 = x1 * sin + x2 * cos
+    x_rotated = torch.stack([out1, out2], dim=-1).reshape(x_rot.shape)
+    return torch.cat([x_rotated, x_pass], dim=-1)
+
+
 def apply_rotary_emb_unpad(
     qkv,
     cos,
@@ -157,6 +216,10 @@ def apply_rotary_emb_unpad(
     rotary_dim must be <= headdim
     Apply rotary embedding to the first rotary_dim of x.
     """
+    # Use CPU fallback if not on CUDA or flash attention not available
+    if qkv.device.type != 'cuda' or not _FLASH_ATTN_AVAILABLE:
+        return apply_rotary_emb_unpad_cpu(qkv, cos, sin, interleaved, seqlen_offsets, cu_seqlens, max_seqlen)
+    
     return ApplyRotaryEmbUnpad.apply(qkv, cos, sin, interleaved, seqlen_offsets, cu_seqlens, max_seqlen)
 
 

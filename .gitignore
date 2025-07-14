@@ -44,3 +44,16 @@ lightning_logs
 dev
 
 *.ckpt
+
+# DGEB evaluation results and test reports
+*.log
+dgeb_results/
+dgeb_test_results/
+dgeb_mock_results/
+*_dgeb_eval/
+evaluation_report.md
+results_summary.json
+
+# DXT extensions (large binary files)
+test_dxt/*
+*.dxt

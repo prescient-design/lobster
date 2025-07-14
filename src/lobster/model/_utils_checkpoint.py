@@ -43,7 +43,7 @@ def get_s3_last_modified_timestamp(s3_url: str) -> str:
 
     # Format timestamp for filename use
     timestamp = response["LastModified"]
-    formatted_timestamp = timestamp.strftime("%Y%m%d_%H%M%S")
+    formatted_timestamp = timestamp.strftime("%Y%m%d-%H%M%S")
 
     return formatted_timestamp
 
@@ -126,23 +126,47 @@ def load_checkpoint_with_retry(
     """
     local_path = os.path.join(local_directory, local_filename)
 
+    # Get function name safely, handling mock objects
+    func_name = getattr(load_func, "__name__", str(load_func))
+
+    logger.debug("Loading checkpoint with retry:")
+    logger.debug(f"  - S3 path: {checkpoint_path}")
+    logger.debug(f"  - Local path: {local_path}")
+    logger.debug(f"  - Load function: {func_name}")
+
     # First, ensure checkpoint is downloaded
+    logger.debug("Ensuring checkpoint is downloaded...")
     download_checkpoint(checkpoint_path, local_directory, local_filename)
 
     # Try to load the model
+    logger.debug("Attempting to load checkpoint...")
     try:
-        return load_func(local_path, *args, **kwargs)
+        model = load_func(local_path, *args, **kwargs)
+        logger.info("✅ Successfully loaded checkpoint.")
+        return model
     except RuntimeError as e:
         if "PytorchStreamReader failed reading zip archive" in str(e):
-            logger.warning(f"Downloaded checkpoint {local_filename} appears corrupted. Redownloading...")
+            logger.warning(f"❌ Downloaded checkpoint {local_filename} appears corrupted. Redownloading...")
+            logger.warning(f"   Error: {e}")
+
             # Remove corrupted file and redownload
             if os.path.exists(local_path):
+                logger.info(f"Removing corrupted file: {local_path}")
                 os.remove(local_path)
 
             # Force redownload
+            logger.info("Forcing redownload of checkpoint...")
             download_checkpoint(checkpoint_path, local_directory, local_filename, force_redownload=True)
 
             # Try loading again
-            return load_func(local_path, *args, **kwargs)
+            logger.info("Attempting to load checkpoint after redownload...")
+            try:
+                model = load_func(local_path, *args, **kwargs)
+                logger.info("✅ Successfully loaded checkpoint after redownload")
+                return model
+            except Exception as e2:
+                logger.error(f"❌ Failed to load checkpoint even after redownload: {e2}")
+                raise
         else:
+            logger.error(f"❌ Failed to load checkpoint (non-corruption error): {e}")
             raise

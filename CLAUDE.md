@@ -14,6 +14,7 @@ LBSTER (Lobster) is a "batteries included" language model library for proteins a
 - `src/lobster/datasets/` - Dataset implementations for different data types
 - `src/lobster/tokenization/` - Tokenizers for biological sequences (amino acids, nucleotides, SMILES)
 - `src/lobster/transforms/` - Data transformation functions
+- `src/lobster/evaluation/` - Model evaluation tools and benchmarks (DGEB integration, callbacks)
 - `src/lobster/hydra_config/` - Hydra configuration files for all components
 - `src/lobster/cmdline/` - Command-line interface implementations
 - `tests/` - Unit tests mirroring the src structure
@@ -59,6 +60,7 @@ lobster_predict
 lobster_intervene
 lobster_perplexity
 lobster_eval
+lobster_dgeb_eval ume-mini-base-12M --modality protein
 ```
 
 ## Model Architecture
