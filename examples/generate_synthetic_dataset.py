@@ -90,7 +90,7 @@ def generate_smiles_prompts() -> List[str]:
         "Generate a valid SMILES string representing a small organic molecule. \
             The molecule should be at least 10 characters long. You MUST only use the following atoms: \
             C, H, O, N, P, S, F, Cl, Br, I. You MUST produce valid SMILES strings. \
-                Generate only one SMILES string and nothing else.",
+                Generate only one SMILES string and nothing else. You MUST enclose the SMILES string in <smiles> and </smiles> tags.",
     ]
     return [random.choice(prompts) for _ in range(100)]
 
@@ -101,7 +101,7 @@ def generate_amino_acid_prompts() -> List[str]:
         "Generate a valid amino acid sequence using one-letter codes. \
             The sequence should be at least 10 characters long. You MUST only use the following amino acids: \
             A, C, D, E, F, G, H, I, K, L, M, N, P, Q, R, S, T, V, W, Y. There must be no other characters in the sequence. \
-                Generate only one amino acid sequence and nothing else.",
+                Generate only one amino acid sequence and nothing else. You MUST enclose the amino acid sequence in <amino_acid> and </amino_acid> tags.",
     ]
     return [random.choice(prompts) for _ in range(100)]
 
@@ -111,7 +111,7 @@ def generate_dna_prompts() -> List[str]:
     prompts = [
         "Generate a valid DNA sequence using A, T, G, C. The sequence should be at least 20 characters long. \
             You MUST only use the following nucleotides: A, T, G, C. There must be no other characters in the sequence. \
-                Generate only one DNA sequence and nothing else.",
+                Generate only one DNA sequence and nothing else. You MUST enclose the DNA sequence in <dna> and </dna> tags.",
     ]
     return [random.choice(prompts) for _ in range(100)]
 

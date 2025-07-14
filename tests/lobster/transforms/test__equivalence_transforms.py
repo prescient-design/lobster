@@ -8,6 +8,7 @@ from lobster.transforms._equivalence_transforms import (
     AminoAcidToNucleotideAndSmilesTransform,
     AminoAcidToNucleotidePairTransform,
     AminoAcidToSmilesPairTransform,
+    NucleotideToAminoAcidAndSmilesTransform,
     NucleotideToAminoAcidPairTransform,
     NucleotideToSmilesPairTransform,
     SmilesToSmilesPairTransform,
@@ -198,8 +199,7 @@ class TestAminoAcidToSmilesPairTransform:
             # if the underlying convert_aa_to_smiles produces canonical by default when not randomizing
             # Let's assume convert_aa_to_smiles is canonical when not randomizing for now
             assert result == expected_canonical_smiles
-        # No easy check for randomization other than it not being None and canonicalizing correctly
-        # unless we know specific non-canonical forms are likely for specific inputs.
+        # For randomized SMILES, we only check that it canonicalizes correctly, not exact equality
 
     @pytest.mark.parametrize(
         "input_peptide, max_len, expected_original, expected_smiles_target",
@@ -660,3 +660,189 @@ def test_amino_acid_to_nucleotide_and_smiles_transform():
     assert peptide_seq == "MAG"
     assert nucleotide_seq is not None
     assert smiles is not None
+
+
+class TestNucleotideToAminoAcidAndSmilesTransform:
+    """Test the NucleotideToAminoAcidAndSmilesTransform class."""
+
+    def test_init_default(self):
+        """Test default initialization."""
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+        assert transform._max_input_length is None
+        assert transform._randomize_smiles is False
+        assert transform._randomize_cap is False
+        assert transform._codon_to_residue is not None
+        assert transform._residue_to_codon is not None
+
+    def test_init_custom_parameters(self):
+        """Test initialization with custom parameters."""
+        transform = NucleotideToAminoAcidAndSmilesTransform(
+            max_input_length=100,
+            randomize_smiles=True,
+            randomize_cap=True,
+        )
+        assert transform._max_input_length == 100
+        assert transform._randomize_smiles is True
+        assert transform._randomize_cap is True
+
+    @pytest.mark.parametrize(
+        "inputs, expected_error, error_message_contains",
+        [
+            ([], ValueError, "expects one string input, got none"),
+            (["n1", "n2"], ValueError, "expects a single string input, but got 2"),
+            ([123], TypeError, "expects a string input, but got type <class 'int'>"),
+        ],
+    )
+    def test_check_inputs_invalid(
+        self, inputs: list[Any], expected_error: type[Exception], error_message_contains: str
+    ):
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+        with pytest.raises(expected_error, match=error_message_contains):
+            transform(inputs)
+
+    def test_transform_valid_atg_sequence(self):
+        """Test transformation of valid sequence starting with ATG."""
+        transform = NucleotideToAminoAcidAndSmilesTransform(
+            randomize_smiles=False,
+            randomize_cap=False,
+        )
+        input_nt = "ATGAAATAG"  # ATG AAA TAG -> M K (stop)
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == "ATGAAATAG"
+        assert amino_acid_seq == "MK"
+        assert smiles_seq is not None
+        assert isinstance(smiles_seq, str)
+
+    def test_transform_valid_atg_sequence_case_insensitive(self):
+        """Test transformation with lowercase input."""
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+        input_nt = "atgaaatag"
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == "ATGAAATAG"
+        assert amino_acid_seq == "MK"
+        assert smiles_seq is not None
+
+    def test_transform_no_atg_start(self):
+        """Test transformation of sequence not starting with ATG."""
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+        input_nt = "AAATAG"  # Does not start with ATG
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == "AAATAG"
+        assert amino_acid_seq is None  # Should be None due to no ATG
+        assert smiles_seq is not None  # SMILES conversion should still work
+
+    def test_transform_with_max_input_length(self):
+        """Test truncation with max_input_length."""
+        transform = NucleotideToAminoAcidAndSmilesTransform(max_input_length=6)
+        input_nt = "ATGAAACAG"  # 9 bases
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == "ATGAAA"  # Truncated to 6 bases
+        assert amino_acid_seq == "MK"  # Only 1 complete codon after truncation
+        assert smiles_seq is not None
+
+    @mock.patch("lobster.transforms._equivalence_transforms.random.choice")
+    def test_transform_with_randomize_cap(self, mock_random_choice):
+        """Test transformation with randomized caps."""
+        mock_random_choice.return_value = "5'"
+        transform = NucleotideToAminoAcidAndSmilesTransform(randomize_cap=True)
+        input_nt = "ATGAAATAG"
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == "ATGAAATAG"
+        assert amino_acid_seq == "MK"
+        assert smiles_seq is not None
+        mock_random_choice.assert_called_once_with(["5'", "3'", "both", None])
+
+    def test_transform_exception_handling_amino_acid(self):
+        """Test that exceptions during amino acid conversion result in None."""
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+
+        # Mock convert_nt_to_aa to raise an exception
+        with mock.patch(
+            "lobster.transforms._equivalence_transforms.convert_nt_to_aa", side_effect=ValueError("Test error")
+        ):
+            outputs = transform(["ATGAAACAG"])
+
+            assert len(outputs) == 1
+            original, amino_acid_seq, smiles_seq = outputs[0]
+
+            assert original == "ATGAAACAG"
+            assert amino_acid_seq is None
+            assert smiles_seq is not None  # SMILES conversion should still work
+
+    def test_transform_exception_handling_smiles(self):
+        """Test that exceptions during SMILES conversion result in None."""
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+
+        # Mock convert_nt_to_smiles to raise an exception
+        with mock.patch(
+            "lobster.transforms._equivalence_transforms.convert_nt_to_smiles", side_effect=ValueError("Test error")
+        ):
+            outputs = transform(["ATGAAACAG"])
+
+            assert len(outputs) == 1
+            original, amino_acid_seq, smiles_seq = outputs[0]
+
+            assert original == "ATGAAACAG"
+            assert amino_acid_seq == "MKQ"  # ATG AAA CAG -> M K Q
+            assert smiles_seq is None
+
+    def test_transform_empty_sequence(self):
+        """Test transformation of empty sequence."""
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+        outputs = transform([""])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == ""
+        assert amino_acid_seq is None  # Empty doesn't start with ATG
+        assert smiles_seq == ""  # Empty SMILES for empty input
+
+    def test_transform_short_sequence(self):
+        """Test transformation of sequence shorter than ATG."""
+        transform = NucleotideToAminoAcidAndSmilesTransform()
+        input_nt = "AT"
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == "AT"
+        assert amino_acid_seq is None  # Too short to start with ATG
+        assert smiles_seq is not None  # SMILES conversion should still work
+
+    def test_transform_randomize_smiles(self):
+        """Test transformation with randomized SMILES."""
+        transform = NucleotideToAminoAcidAndSmilesTransform(randomize_smiles=True)
+        input_nt = "ATGAAATAG"
+        outputs = transform([input_nt])
+
+        assert len(outputs) == 1
+        original, amino_acid_seq, smiles_seq = outputs[0]
+
+        assert original == "ATGAAATAG"
+        assert amino_acid_seq == "MK"
+        assert smiles_seq is not None
+        # We can't easily test randomization without knowing the exact behavior
+        # but we can verify it's still a valid SMILES string
+        assert get_canonical_smiles(smiles_seq) is not None

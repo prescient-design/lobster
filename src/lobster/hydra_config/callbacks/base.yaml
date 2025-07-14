@@ -4,6 +4,7 @@ defaults:
   - lr_monitor.yaml
   - progress_bar.yaml
   # - naturalness.yaml  # TODO: too slow
+  # - perturbation_score.yaml  # TODO: requires sequence parameter
   - _self_
 
 

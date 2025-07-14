@@ -14,6 +14,7 @@ LBSTER (Lobster) is a "batteries included" language model library for proteins a
 - `src/lobster/datasets/` - Dataset implementations for different data types
 - `src/lobster/tokenization/` - Tokenizers for biological sequences (amino acids, nucleotides, SMILES)
 - `src/lobster/transforms/` - Data transformation functions
+- `src/lobster/evaluation/` - Model evaluation tools and benchmarks (DGEB integration, callbacks)
 - `src/lobster/hydra_config/` - Hydra configuration files for all components
 - `src/lobster/cmdline/` - Command-line interface implementations
 - `tests/` - Unit tests mirroring the src structure
@@ -59,6 +60,7 @@ lobster_predict
 lobster_intervene
 lobster_perplexity
 lobster_eval
+lobster_dgeb_eval ume-mini-base-12M --modality protein
 ```
 
 ## Model Architecture
@@ -114,6 +116,21 @@ Datasets implement PyTorch's Dataset/IterableDataset interface with support for 
 - Models support both CPU and GPU execution
 - Distributed training supported via Lightning
 - Integration with Weights & Biases for experiment tracking
+
+## Code Standards
+
+### Type Hints
+- Use modern Python 3.10+ union syntax: `str | None` instead of `Optional[str]`
+- Use built-in generics: `list[str]`, `dict[str, Any]` instead of `List[str]`, `Dict[str, Any]`
+- All functions must have comprehensive type hints for parameters and return values
+- Minimize `typing` imports - prefer built-in types and union operator `|`
+
+### Documentation
+- Follow NumPy docstring conventions for all public functions and classes
+- Include all standard sections: Parameters, Returns, Raises, Examples, Notes, See Also
+- Provide realistic examples relevant to biological sequence modeling
+- Document all parameters with types and clear descriptions
+- Specify all possible exceptions in Raises section
 
 ## Git Commit Guidelines
 

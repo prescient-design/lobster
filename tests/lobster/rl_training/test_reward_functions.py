@@ -49,7 +49,7 @@ class TestUMERewardFunction:
     def test_single_completion(self, mock_UME_model):
         """Test reward function with a single completion."""
         reward_func = UMERewardFunction(mock_UME_model)
-        completions = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]  # Ibuprofen
+        completions = ["<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>"]  # Ibuprofen
         rewards = reward_func(completions)
 
         assert len(rewards) == 1
@@ -62,9 +62,9 @@ class TestUMERewardFunction:
         """Test reward function with multiple completions."""
         reward_func = UMERewardFunction(mock_UME_model)
         completions = [
-            "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",  # Ibuprofen
-            "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",  # Caffeine
-            "COC1=CC=C(CCN)C=C1",  # Simple molecule
+            "<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>",  # Ibuprofen
+            "<smiles>CN1C=NC2=C1C(=O)N(C(=O)N2C)C</smiles>",  # Caffeine
+            "<smiles>COC1=CC=C(CCN)C=C1</smiles>",  # Simple molecule
         ]
         rewards = reward_func(completions)
 
@@ -77,10 +77,10 @@ class TestUMERewardFunction:
         """Test that completions are processed in batches."""
         reward_func = UMERewardFunction(mock_UME_model, batch_size=2)
         completions = [
-            "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
-            "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
-            "COC1=CC=C(CCN)C=C1",
-            "CC12CCC(CC1)CC(C2)C(C)CN",
+            "<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>",
+            "<smiles>CN1C=NC2=C1C(=O)N(C(=O)N2C)C</smiles>",
+            "<smiles>COC1=CC=C(CCN)C=C1</smiles>",
+            "<smiles>CC12CCC(CC1)CC(C2)C(C)CN</smiles>",
         ]
         rewards = reward_func(completions)
 
@@ -88,22 +88,30 @@ class TestUMERewardFunction:
         # The mock should be called multiple times due to batching
         assert mock_UME_model.compute_pseudo_likelihood.call_count >= 2
 
-    def test_error_handling(self, mock_UME_model):
-        """Test error handling when modality detection fails."""
+    def test_error_handling_missing_tag(self, mock_UME_model):
+        """Test error handling when no valid tag is present."""
         reward_func = UMERewardFunction(mock_UME_model)
         completions = ["invalid_sequence_12345"]
         rewards = reward_func(completions)
 
         assert len(rewards) == 1
-        # Invalid sequences get assigned SMILES modality and still get rewards computed
-        assert isinstance(rewards[0], (float, np.floating))
-        assert not (rewards[0] != rewards[0])  # Not NaN
-        assert rewards[0] != float("inf")  # Not inf
+        # No tag, so reward should be penalty
+        assert rewards[0] == reward_func.penalty_for_invalid
+
+    def test_error_handling_empty_tag(self, mock_UME_model):
+        """Test error handling when tag is present but content is empty or whitespace."""
+        reward_func = UMERewardFunction(mock_UME_model)
+        completions = ["<smiles>   </smiles>", "<protein></protein>", "<dna>\n\n</dna>"]
+        rewards = reward_func(completions)
+        assert rewards == [reward_func.penalty_for_invalid] * 3
 
     def test_statistics_tracking(self, mock_UME_model):
         """Test that statistics are properly tracked."""
         reward_func = UMERewardFunction(mock_UME_model)
-        completions = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"]
+        completions = [
+            "<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>",
+            "<smiles>CN1C=NC2=C1C(=O)N(C(=O)N2C)C</smiles>",
+        ]
         rewards = reward_func(completions)
 
         # Verify rewards were computed
@@ -117,6 +125,35 @@ class TestUMERewardFunction:
         assert stats["min"] <= stats["max"]
         assert "mean" in stats
 
+    def test_protein_and_dna_tags(self, mock_UME_model):
+        """Test reward function with <protein> and <dna> tags."""
+        reward_func = UMERewardFunction(mock_UME_model)
+        completions = [
+            "<protein>MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG</protein>",
+            "<dna>ATCGATCGATCG</dna>",
+        ]
+        rewards = reward_func(completions)
+        assert len(rewards) == 2
+        assert all(isinstance(r, (float, np.floating)) for r in rewards)
+
+    def test_mixed_tags_and_no_tags(self, mock_UME_model):
+        """Test a mix of valid tags and missing tags."""
+        reward_func = UMERewardFunction(mock_UME_model)
+        completions = [
+            "<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>",
+            "no_tag_content",
+            "<protein>MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG</protein>",
+            "<smiles></smiles>",
+            "<dna>ATCGATCGATCG</dna>",
+        ]
+        rewards = reward_func(completions)
+        assert len(rewards) == 5
+        assert isinstance(rewards[0], (float, np.floating))
+        assert rewards[1] == reward_func.penalty_for_invalid
+        assert isinstance(rewards[2], (float, np.floating))
+        assert rewards[3] == reward_func.penalty_for_invalid
+        assert isinstance(rewards[4], (float, np.floating))
+
     @patch("lobster.rl_training.reward_functions.wandb")
     @patch("lobster.rl_training.reward_functions.random.random")
     def test_wandb_logging(self, mock_random, mock_wandb, mock_UME_model):
@@ -125,7 +162,7 @@ class TestUMERewardFunction:
         mock_random.return_value = 0.05  # Less than 0.1, so logging will happen
 
         reward_func = UMERewardFunction(mock_UME_model, enable_wandb_logging=True)
-        completions = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]
+        completions = ["<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>"]
         rewards = reward_func(completions)
 
         # Verify rewards were computed
@@ -158,7 +195,7 @@ class TestCreateUmeRewardWrapper:
     def test_wrapper_functionality(self, mock_UME_model):
         """Test that the wrapper function works correctly."""
         wrapper = create_ume_reward_wrapper(mock_UME_model)
-        completions = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]
+        completions = ["<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>"]
         rewards = wrapper(completions)
 
         assert len(rewards) == 1
@@ -167,7 +204,7 @@ class TestCreateUmeRewardWrapper:
     def test_wrapper_with_kwargs(self, mock_UME_model):
         """Test that the wrapper handles additional kwargs correctly."""
         wrapper = create_ume_reward_wrapper(mock_UME_model)
-        completions = ["CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"]
+        completions = ["<smiles>CC(C)CC1=CC=C(C=C1)C(C)C(=O)O</smiles>"]
         rewards = wrapper(completions, extra_param="test")
 
         assert len(rewards) == 1

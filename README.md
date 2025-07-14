@@ -1,6 +1,16 @@
 # LBSTER 🦞
 **L**anguage models for **B**iological **S**equence **T**ransformation and **E**volutionary **R**epresentation
 
+[![CI](https://github.com/prescient-design/lobster/actions/workflows/push.yml/badge.svg?branch=main)](https://github.com/prescient-design/lobster/actions)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://badge.fury.io/py/lbster.svg)](https://badge.fury.io/py/lbster)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Ruff](https://img.shields.io/badge/ruff-enabled-green)](https://github.com/astral-sh/ruff)
+[![Hugging Face Models](https://img.shields.io/badge/Hugging%20Face-Models%20Available-orange)](https://huggingface.co/asalam91)
+[![MCP Ready](https://img.shields.io/badge/MCP-Integration%20Ready-purple)](docs/MCP_INTEGRATION.md)
+[![GitHub stars](https://img.shields.io/github/stars/prescient-design/lobster?style=social)](https://github.com/prescient-design/lobster/stargazers)
+<!-- [![codecov](https://codecov.io/gh/prescient-design/lobster/branch/main/graph/badge.svg)](https://codecov.io/gh/prescient-design/lobster) -->
+
 
 `lobster` is a "batteries included" language model library for proteins and other biological sequences. Led by [Nathan Frey](https://github.com/ncfrey), [Karina Zadorozhny](https://github.com/karinazad), [Taylor Joren](https://github.com/taylormjs), [Sidney Lisanza](https://github.com/Sidney-Lisanza), [Aya Abdlesalam Ismail](https://github.com/ayaabdelsalam91), [Joseph Kleinhenz](https://github.com/kleinhenz) and [Allen Goodman](https://github.com/0x00b1), with many valuable contributions from [Contributors](docs/CONTRIBUTORS.md) across [Prescient Design, Genentech](https://www.gene.com/scientists/our-scientists/prescient-design).
 
@@ -84,7 +94,9 @@ uv pip install -e .
 Alternatively, run installation directly with `uv sync`:
 ```bash
 uv sync
+uv sync --all-extras --no-cache  # to resolve flash-attn installation issues
 ```
+
 and then prefix every command with `uv run`. For example,
 
 ```bash
@@ -172,6 +184,51 @@ After setup, you can use Lobster models directly in Cursor or Claude Desktop wit
 - "Intervene on this sequence to reduce hydrophobicity"
 
 See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation.
+
+## DXT Extension for Claude Desktop
+
+Lobster is available as a **DXT (Desktop Extension Toolkit) extension** for Claude Desktop, providing a one-click installation experience:
+
+### Quick Install
+
+1. **Download**: Get the latest `.dxt` file from [GitHub Releases](https://github.com/prescient-design/lobster/releases)
+2. **Install**: Double-click the `.dxt` file or drag it into Claude Desktop
+3. **Use**: Start using Lobster models with natural language commands
+
+### Features
+
+- **One-click installation** - No command line setup required
+- **Self-contained** - Includes all dependencies (~500MB)
+- **Automatic updates** - New versions available through GitHub Releases
+- **Full functionality** - All MCP server capabilities included
+
+### Usage Examples
+
+Once installed, you can use natural language commands in Claude Desktop:
+
+```
+What Lobster models are available for protein analysis?
+
+Get embeddings for the sequence MKTVRQERLKSIVRIL using lobster_24M
+
+What concepts are supported by the cb_lobster_24M model?
+
+Intervene on MKTVRQERLKSIVRIL to reduce hydrophobicity using cb_lobster_24M
+```
+
+### Development
+
+For developers who want to build and test DXT extensions locally:
+
+```bash
+# Build DXT extension locally
+python scripts/build_dxt.py
+
+# Create a release (updates version, builds, and creates GitHub release)
+python scripts/release_dxt.py 0.1.0
+```
+
+See [DXT Distribution Guide](docs/DXT_DISTRIBUTION.md) for detailed build and distribution instructions.
 
 ## Example scripts
 

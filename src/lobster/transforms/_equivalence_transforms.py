@@ -533,3 +533,127 @@ class AminoAcidToNucleotideAndSmilesTransform(Transform):
             logger.warning(f"Conversion to SMILES failed for input: {input} with error: {e}")
 
         return input, nucleotide_sequence, smiles_sequence
+
+
+class NucleotideToAminoAcidAndSmilesTransform(Transform):
+    """
+    Transforms a nucleotide sequence string into a triplet of (nucleotide_sequence, amino_acid_sequence, SMILES).
+    If any conversion fails, the corresponding output will be None.
+    The nucleotide sequence is expected to start with ATG (start codon).
+    If the sequence doesn't start with ATG, the amino acid conversion will fail gracefully.
+    """
+
+    input_modality = Modality.NUCLEOTIDE
+    output_modalities = (
+        Modality.NUCLEOTIDE,
+        Modality.AMINO_ACID,
+        Modality.SMILES,
+    )
+
+    def __init__(
+        self,
+        max_input_length: int | None = None,
+        codon_table_path: str | None = None,
+        randomize_smiles: bool = False,
+        randomize_cap: bool = False,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        max_input_length : int | None
+            The maximum length of the input nucleotide sequence.
+            Sequences longer than this will be truncated prior to conversion.
+        codon_table_path : str | None
+            The path to the codon table file to use for translation mapping.
+            If None, uses the default CODON_TABLE_PATH.
+        randomize_smiles : bool
+            If True, the SMILES string will be randomized (non-canonical).
+        randomize_cap : bool
+            If True, the cap of the SMILES string will be randomized.
+            Randomization means that phosphate caps might be added to the 5' or 3' end.
+        """
+        super().__init__()
+
+        # This transform expects a single string input
+        self._transformed_types = (str,)
+
+        self._max_input_length = max_input_length
+        self._randomize_smiles = randomize_smiles
+        self._randomize_cap = randomize_cap
+
+        # Set default codon table path if None
+        if codon_table_path is None:
+            codon_table_path = CODON_TABLE_PATH
+
+        # Load codon mappings
+        self._residue_to_codon = json_load(codon_table_path)
+        self._codon_to_residue = invert_residue_to_codon_mapping(self._residue_to_codon)
+
+    def _check_inputs(self, inputs: list[Any]) -> None:
+        if not inputs:
+            raise ValueError(f"{self.__class__.__name__} expects one string input, got none.")
+        if len(inputs) > 1:
+            raise ValueError(
+                f"{self.__class__.__name__} expects a single string input, but got {len(inputs)} transformable inputs."
+            )
+        if not isinstance(inputs[0], str):
+            raise TypeError(f"{self.__class__.__name__} expects a string input, but got type {type(inputs[0])}.")
+
+    def _transform(self, input: str, parameters: dict[str, Any]) -> tuple[str, str | None, str | None]:
+        """
+        Converts a nucleotide sequence to both amino acid and SMILES representations.
+
+        Parameters
+        ----------
+        input : str
+            The nucleotide sequence string to convert.
+        parameters : dict[str, Any]
+             Not used in this transform but part of the interface.
+
+        Returns
+        -------
+        tuple[str, str | None, str | None]
+            A tuple containing:
+            - The original nucleotide sequence
+            - The converted amino acid sequence (or None if conversion failed)
+            - The converted SMILES string (or None if conversion failed)
+        """
+        # Canonicalize to upper
+        input = input.upper()
+
+        # Truncate if needed
+        if self._max_input_length is not None:
+            input = input[: self._max_input_length]
+
+        amino_acid_sequence = None
+        smiles_sequence = None
+
+        original_input = input
+
+        # Check if sequence starts with ATG (start codon)
+        if not input.startswith("ATG"):
+            logger.warning(f"Nucleotide sequence does not start with ATG start codon: {input[:10]}...")
+            amino_acid_sequence = None
+        else:
+            try:
+                # Convert to amino acid
+                amino_acid_sequence = convert_nt_to_aa(input, self._codon_to_residue)
+
+            except (KeyError, ValueError) as e:
+                amino_acid_sequence = None
+                logger.warning(f"Conversion to amino acid failed for input: {input} with error: {e}")
+
+        try:
+            # Convert to SMILES
+            if self._randomize_cap:
+                cap = random.choice(["5'", "3'", "both", None])
+            else:
+                cap = None
+
+            smiles_sequence = convert_nt_to_smiles(original_input, cap=cap, randomize_smiles=self._randomize_smiles)
+
+        except (KeyError, ValueError) as e:
+            smiles_sequence = None
+            logger.warning(f"Conversion to SMILES failed for input: {original_input} with error: {e}")
+
+        return original_input, amino_acid_sequence, smiles_sequence

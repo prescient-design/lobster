@@ -1420,6 +1420,12 @@ class LMBaseForMaskedLM(LMBasePreTrainedModel):
         )
 
 
+#    @classmethod
+#    def get_init_context(cls, is_quantized: bool, _is_ds_init_called: bool):
+#        # reproduce behavior before https://github.com/huggingface/transformers/pull/36963
+#        return []
+
+
 @add_start_docstrings(
     """LMBase Model with Conditional generatation`language modeling` head on top.""", LMBase_START_DOCSTRING
 )
@@ -1585,11 +1591,9 @@ class LMBaseLinearLMHead(nn.Module):
         self.decoder = nn.Linear((config.n_concepts * config.concept_emb) * 2, config.vocab_size, bias=False)
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
-        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-        self.decoder.bias = self.bias
-
     def forward(self, features, **kwargs):
-        x = self.decoder(features)
+        # hack to maintain parameter structure
+        x = torch.nn.functional.linear(features, self.decoder.weight, self.bias)
 
         return x
 
@@ -1606,15 +1610,13 @@ class LMBaseMLP(nn.Module):
 
         self.bias = nn.Parameter(torch.zeros(out_dim))
 
-        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-        self.decoder.bias = self.bias
-
     def forward(self, features, **kwargs):
         x = self.dense(features)
         x = gelu(x)
         x = self.layer_norm(x)
-        # project back to size of vocabulary with bias
-        x = self.decoder(x)
+
+        # hack to maintain parameter structure
+        x = torch.nn.functional.linear(x, self.decoder.weight, self.bias)
 
         return x
 
@@ -1630,16 +1632,15 @@ class LMBaseLMHead(nn.Module):
         self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
-        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-        self.decoder.bias = self.bias
-
     def forward(self, features, **kwargs):
         x = self.dense(features)
         x = gelu(x)
         x = self.layer_norm(x)
 
         # project back to size of vocabulary with bias
-        x = self.decoder(x)
+
+        # hack to maintain parameter structure
+        x = torch.nn.functional.linear(x, self.decoder.weight, self.bias)
 
         return x
 

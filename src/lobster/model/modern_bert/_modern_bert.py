@@ -266,7 +266,7 @@ class FlexBERT(pl.LightningModule):
 
 
     def tokens_to_latents(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        """Convert input_ids to latents. This function is used for inference.
+        """Convert input_ids to latents.
         
         Parameters
         ----------
@@ -281,28 +281,27 @@ class FlexBERT(pl.LightningModule):
             Latents of shape (batch_size * sequence_length, hidden_size) for unpadded models
             or (batch_size, sequence_length, hidden_size) for padded models.
         """
-        with torch.inference_mode():
-            if self.config.padding == "unpadded":
-                # For unpadded models, convert 3D to 2D if needed and let the encoder handle unpadding
-                if input_ids.dim() == 3:
-                    input_ids = input_ids.squeeze(1)
-                if attention_mask.dim() == 3:
-                    attention_mask = attention_mask.squeeze(1)
-                
-                # Call the model with 2D tensors - the unpadded encoder will handle unpadding automatically
-                return self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask
-                )
-            else:
-                # For padded models, also ensure we have 2D tensors
-                if input_ids.dim() == 3:
-                    input_ids = input_ids.squeeze(1)
-                if attention_mask.dim() == 3:
-                    attention_mask = attention_mask.squeeze(1)
-                
-                return self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask
-                )
+        if self.config.padding == "unpadded":
+            # For unpadded models, convert 3D to 2D if needed and let the encoder handle unpadding
+            if input_ids.dim() == 3:
+                input_ids = input_ids.squeeze(1)
+            if attention_mask.dim() == 3:
+                attention_mask = attention_mask.squeeze(1)
+            
+            # Call the model with 2D tensors - the unpadded encoder will handle unpadding automatically
+            return self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask
+            )
+        else:
+            # For padded models, also ensure we have 2D tensors
+            if input_ids.dim() == 3:
+                input_ids = input_ids.squeeze(1)
+            if attention_mask.dim() == 3:
+                attention_mask = attention_mask.squeeze(1)
+            
+            return self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask
+            )
             
