@@ -520,8 +520,8 @@ class UMETokenizerTransform(Module):
         self,
         sequences: tuple[str, str],
         modalities: tuple[
-            ModalityType | Literal["amino_acid", "smiles", "nucleotide"],
-            ModalityType | Literal["amino_acid", "smiles", "nucleotide"],
+            ModalityType | Modality,
+            ModalityType | Modality,
         ],
     ) -> dict[str, Tensor]:
         """
@@ -548,7 +548,7 @@ class UMETokenizerTransform(Module):
         ----------
         sequences : tuple[str, str]
             Pair of sequences to tokenize
-        modalities : tuple[ModalityType | str, ModalityType | str]
+        modalities : tuple[ModalityType | Modality, ModalityType | Modality]
             Modalities for each sequence
 
         Returns
