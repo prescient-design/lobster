@@ -5,15 +5,9 @@ Test script for UME DGEB implementation.
 This script performs basic tests to ensure the UME DGEB protein wrapper works correctly.
 """
 
-import pytest
 import torch
 import numpy as np
 from unittest.mock import Mock, patch
-import sys
-from pathlib import Path
-
-# Add the lobster package to the path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from lobster.model._ume_dgeb import (
     UMEProteinTransformer,
@@ -53,16 +47,6 @@ class MockUME:
     def to(self, device):
         self.device = device
         return self
-
-
-def test_imports():
-    """Test that all imports work correctly."""
-    try:
-        from lobster.model._ume_dgeb import UMEProteinTransformer, create_ume_protein_transformer
-
-        assert True
-    except ImportError as e:
-        pytest.fail(f"Failed to import UME DGEB classes: {e}")
 
 
 @patch("lobster.model._ume_dgeb.UME")
@@ -153,7 +137,7 @@ def test_checkpoint_loading(mock_ume_class):
     mock_ume_class.load_from_checkpoint.return_value = MockUME()
 
     # Test loading from checkpoint path
-    transformer = UMEProteinTransformer(model_name="path/to/checkpoint.ckpt", use_pretrained=True)
+    UMEProteinTransformer(model_name="path/to/checkpoint.ckpt", use_pretrained=True)
 
     # Should call load_from_checkpoint instead of from_pretrained
     mock_ume_class.load_from_checkpoint.assert_called_once()
@@ -175,7 +159,7 @@ def test_custom_parameters(mock_ume_class):
     # Check that parameters are stored
     assert transformer.max_seq_length == 512
     assert transformer.batch_size == 16
-    assert transformer.l2_norm == True
+    assert transformer.l2_norm is True
 
 
 def run_basic_test():
@@ -203,23 +187,3 @@ def run_basic_test():
         single_embeddings = transformer.encode(["MKTII"])
         assert single_embeddings.shape[0] == 1
         print("✓ Single sequence test passed")
-
-
-if __name__ == "__main__":
-    # Run basic tests
-    print("Running UME DGEB tests...")
-
-    # Test imports
-    test_imports()
-    print("✓ Imports work correctly")
-
-    # Run pytest if available
-    try:
-        import pytest
-
-        pytest.main([__file__, "-v"])
-    except ImportError:
-        print("pytest not available, running basic test manually")
-        run_basic_test()
-
-    print("All tests completed!")
