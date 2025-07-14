@@ -767,8 +767,11 @@ class UME(L.LightningModule):
         self.log(f"{stage}_perplexity", perplexity, rank_zero_only=True, sync_dist=True)
 
         # Process per-modality metrics
-        modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
-        self._process_batch_for_modality_metrics(logits, labels, modalities, stage)
+        try:
+            modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
+            self._process_batch_for_modality_metrics(logits, labels, modalities, stage)
+        except Exception as e:
+            logger.error(f"Error processing batch for modality metrics: {e}")
 
         return loss
 
