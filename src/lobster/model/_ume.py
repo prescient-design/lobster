@@ -3,7 +3,6 @@ import os
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
-
 import lightning as L
 import torch
 import transformers
@@ -17,7 +16,7 @@ from lobster.constants import (
 )
 from lobster.tokenization import UMETokenizerTransform
 
-from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
+from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry, get_s3_last_modified_timestamp
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
@@ -1024,6 +1023,7 @@ class UME(L.LightningModule):
         checkpoint_dict = get_ume_checkpoints()
 
         checkpoint_path = checkpoint_dict.get(model_name)
+
         if checkpoint_path is None:
             available_models = [
                 model_name for model_name in checkpoint_dict.keys() if checkpoint_dict[model_name] is not None
@@ -1034,7 +1034,9 @@ class UME(L.LightningModule):
         if cache_dir is None:
             cache_dir = os.path.join(os.getcwd(), "models", "ume")
 
-        local_filename = f"{model_name}.ckpt"
+        # Get S3 timestamp and include it in the filename
+        timestamp = get_s3_last_modified_timestamp(checkpoint_path)
+        local_filename = f"{model_name}_{timestamp}.ckpt"
 
         # Load the model with automatic retry on corruption
         # happens if previous download was stopped, for example

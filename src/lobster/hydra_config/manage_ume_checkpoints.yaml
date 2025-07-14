@@ -8,13 +8,13 @@
 #   uv run python src/lobster/cmdline/manage_ume_checkpoints.py action=add model_name=ume-test checkpoint_path=s3://bucket/path.ckpt dry_run=true
 
 # Required: Action to perform (list, add, update, delete, upload)
-action: list
+action: update
 
 # Required for add/update/delete: Model name
-model_name: null
+model_name: ume-small-base-90M
 
 # Required for add/update: Checkpoint path
-checkpoint_path: null
+checkpoint_path: s3://prescient-lobster/ume/runs/2025-07-04T06-45-26/epoch=2-step=150500-val_loss=0.0000.ckpt
 
 # Optional: Dry run mode (don't actually make changes)
 dry_run: false

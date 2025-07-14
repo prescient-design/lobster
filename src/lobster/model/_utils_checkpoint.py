@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from collections.abc import Callable
+from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError, CredentialRetrievalError, NoCredentialsError
@@ -10,6 +11,41 @@ from lobster.constants import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT
 from lobster.data._utils import download_from_s3
 
 logger = logging.getLogger(__name__)
+
+
+def get_s3_last_modified_timestamp(s3_url: str) -> str:
+    """Get the LastModified timestamp from an S3 object and format it for filename use.
+
+    Parameters
+    ----------
+    s3_url : str
+        S3 URL in format s3://bucket/key
+
+    Returns
+    -------
+    str
+        Formatted timestamp string (YYYYMMDD_HHMMSS)
+
+    Examples
+    --------
+    >>> timestamp = get_s3_last_modified_timestamp("s3://prescient-lobster/ume/runs/2025-06-29T00-03-44/epoch=0-step=24500-val_loss=0.7878.ckpt")
+    >>> print(timestamp)
+    '20250629_000344'
+    """
+    # Parse S3 URL
+    parsed = urlparse(s3_url)
+    bucket = parsed.netloc
+    key = parsed.path.lstrip("/")
+
+    # Get object metadata
+    s3 = boto3.client("s3")
+    response = s3.head_object(Bucket=bucket, Key=key)
+
+    # Format timestamp for filename use
+    timestamp = response["LastModified"]
+    formatted_timestamp = timestamp.strftime("%Y%m%d_%H%M%S")
+
+    return formatted_timestamp
 
 
 def get_ume_checkpoints() -> dict[str, str]:
