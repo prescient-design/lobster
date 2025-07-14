@@ -8,21 +8,21 @@ logger = logging.getLogger(__name__)
 
 
 class SmilesToRDKitDescriptorsTransform(Transform):
-    """
-    Transforms a SMILES string to its RDKit descriptors.
-    If the conversion fails, the output RDKit descriptors will be None.
-    """
+    """Transforms a SMILES string to its RDKit descriptors or ``None`` if the conversion fails."""
 
     def __init__(self, normalize: bool = True, invert: bool = False) -> None:
         """
         Parameters
         ----------
         normalize : bool
-            If True, the output RDKit descriptors will be normalized. If False (default), the RDKit descriptors will be
+            If ``True``, the output RDKit descriptors will be normalized. If ``False``, the RDKit descriptors will be
             returned as is.
         invert : bool
-            If True, the output RDKit descriptors will be inverted. If False (default), the RDKit descriptors will be
-            returned as is.
+            If ``True``, the normalized RDKit descriptors will be inverted into a Normal distribution. If ``False``,
+            the normalized RDKit descriptors will be returned as is.
+
+            .. note::
+                This is only applicable if ``normalize`` is ``True``.
         """
         super().__init__()
 
