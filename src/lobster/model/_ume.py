@@ -442,6 +442,130 @@ class UME(L.LightningModule):
 
         return embeddings
 
+    def forward(self, input_ids: Tensor, attention_mask: Tensor) -> Tensor:
+        """Forward pass for ONNX export and direct model inference.
+
+        This method provides a standard PyTorch forward interface that can be used
+        for ONNX export and direct model calls. It wraps the embed method for
+        compatibility with standard PyTorch workflows.
+
+        Parameters
+        ----------
+        input_ids : Tensor
+            Input token IDs of shape (batch_size, 1, sequence_length) or (batch_size, sequence_length)
+        attention_mask : Tensor
+            Attention mask of shape (batch_size, 1, sequence_length) or (batch_size, sequence_length)
+
+        Returns
+        -------
+        Tensor
+            Embeddings of shape (batch_size, hidden_size) with mean pooling applied
+        """
+        inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
+        return self.embed(inputs, aggregate=True)
+
+    def export_onnx(
+        self,
+        export_path: str,
+        modality: ModalityType | Modality,
+        sample_sequences: list[str] | None = None,
+        opset_version: int = 17,
+        device: torch.device | str | None = None,
+        dynamic_axes: dict | None = None,
+        **export_kwargs,
+    ) -> None:
+        """Export the UME model to ONNX format.
+
+        This method exports the model using sample sequences to create proper dummy inputs
+        that match the expected tokenization format for the specified modality.
+
+        Parameters
+        ----------
+        export_path : str
+            Path to save the ONNX model.
+        modality : ModalityType | Modality
+            Modality to use for creating dummy inputs. This ensures the ONNX model
+            is exported with inputs that match the tokenization format for this modality.
+        sample_sequences : list[str] | None, optional
+            Sample sequences to use for creating dummy inputs. If None, uses default
+            sequences for the specified modality.
+        opset_version : int, default=17
+            ONNX opset version to use for export.
+        device : torch.device | str | None, optional
+            Device for dummy inputs. If None, uses the model's device.
+        dynamic_axes : dict | None, optional
+            Dynamic axes configuration for ONNX export. If None, uses default configuration.
+        **export_kwargs
+            Additional keyword arguments to pass to torch.onnx.export.
+
+        Examples
+        --------
+        >>> from lobster.model import UME
+        >>> from lobster.constants import Modality
+        >>>
+        >>> # Initialize model
+        >>> ume = UME(model_name="UME_mini")
+        >>>
+        >>> # Export for SMILES sequences
+        >>> ume.export_onnx("ume_smiles.onnx", modality=Modality.SMILES)
+        >>>
+        >>> # Export for protein sequences with custom samples
+        >>> protein_samples = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"]
+        >>> ume.export_onnx("ume_protein.onnx", modality=Modality.AMINO_ACID,
+        ...                 sample_sequences=protein_samples)
+        """
+        device = device or next(self.parameters()).device
+        if isinstance(device, str):
+            device = torch.device(device)
+
+        # Use default sample sequences if none provided
+        if sample_sequences is None:
+            sample_sequences = {
+                Modality.SMILES: ["CC(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],  # Shorter SMILES for speed
+                Modality.AMINO_ACID: ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],  # Protein sequences
+                Modality.NUCLEOTIDE: ["ATGCATGC", "GCTAGCTA"],  # DNA sequences
+            }[modality]
+
+        # Tokenize the sample sequences to get proper input format
+        tokenizer_transform = self.tokenizer_transforms[modality]
+        encoded_batch = tokenizer_transform(sample_sequences)
+
+        input_ids = encoded_batch["input_ids"].to(device)
+        attention_mask = encoded_batch["attention_mask"].to(device)
+
+        # Ensure 3D format for ONNX export
+        if input_ids.dim() == 2:
+            input_ids = input_ids.unsqueeze(1)
+        if attention_mask.dim() == 2:
+            attention_mask = attention_mask.unsqueeze(1)
+
+        # Ensure correct dtype for ONNX
+        input_ids = input_ids.long()
+        attention_mask = attention_mask.long()
+
+        # Use default dynamic axes if none provided
+        if dynamic_axes is None:
+            dynamic_axes = {
+                "input_ids": {0: "batch", 2: "sequence"},
+                "attention_mask": {0: "batch", 2: "sequence"},
+                "embeddings": {0: "batch"},
+            }
+
+        # Export to ONNX
+        torch.onnx.export(
+            self,
+            (input_ids, attention_mask),
+            export_path,
+            input_names=["input_ids", "attention_mask"],
+            output_names=["embeddings"],
+            dynamic_axes=dynamic_axes,
+            opset_version=opset_version,
+            do_constant_folding=True,
+            export_params=True,
+            verbose=False,
+            **export_kwargs,
+        )
+
     def embed_sequences(
         self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
     ) -> Tensor:
