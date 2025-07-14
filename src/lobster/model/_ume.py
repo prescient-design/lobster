@@ -467,7 +467,7 @@ class UME(L.LightningModule):
     def export_onnx(
         self,
         export_path: str,
-        modality: ModalityType | Modality = Modality.SMILES,
+        modality: ModalityType | Modality,
         sample_sequences: list[str] | None = None,
         opset_version: int = 17,
         device: torch.device | str | None = None,
@@ -483,7 +483,7 @@ class UME(L.LightningModule):
         ----------
         export_path : str
             Path to save the ONNX model.
-        modality : ModalityType | Modality, default=Modality.SMILES
+        modality : ModalityType | Modality
             Modality to use for creating dummy inputs. This ensures the ONNX model
             is exported with inputs that match the tokenization format for this modality.
         sample_sequences : list[str] | None, optional

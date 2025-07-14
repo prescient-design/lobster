@@ -2,7 +2,7 @@
 """Example script demonstrating ONNX export and inference for UME models."""
 
 from lobster.model import UME
-from lobster.model.onnx_utils import run_onnx_inference, compare_onnx_pytorch, benchmark_onnx_pytorch
+from lobster.model._onnx_utils import run_onnx_inference, compare_onnx_pytorch, benchmark_onnx_pytorch
 from lobster.constants import Modality
 
 
