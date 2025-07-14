@@ -1,0 +1,23 @@
+# src/lobster/hydra_config/data/molecule_improvement.yaml
+defaults:
+  - _self_
+  - transform_fn: smiles_tokenizer_transform
+
+_target_: lobster.data._molecule_improvement_datamodule.MoleculeImprovementLightningDataModule
+
+# Data root directory
+root: "cache/qm9_data_test1"  # Directory containing molecules.parquet and pairs.parquet
+
+# Utility selection
+utility_key: "gap"  # Can be "gap", "homo", "lumo", "u0", "u", "h", "g", etc.
+
+# Filtering parameters
+delta: 0.3  # Distance threshold
+epsilon: 1  # Utility improvement threshold # this is included already in the parquet file generation..
+
+# Training parameters
+batch_size: 4
+shuffle: true
+num_workers: 4
+pin_memory: true
+drop_last: true

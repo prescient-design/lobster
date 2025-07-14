@@ -1,0 +1,29 @@
+defaults:
+  - _self_
+  - data: molecule_improvement.yaml
+  - model: clm_smiles.yaml
+  - callbacks: default.yaml
+  - logger: wandb.yaml
+  - trainer: default.yaml
+  - setup: default.yaml
+  - paths: default.yaml
+  - lr_scheduler: default.yaml
+  - plugins: null
+  - experiment: null
+
+# Training configuration
+dryrun: false
+run_test: true
+compile: false
+seed: 42
+
+# Logger configuration
+logger:
+  project: "molecule-improvement"
+  name: "molecule-improvement-${model.model_name}"
+  entity: null  # Set your wandb entity
+
+# Paths
+paths:
+  root_dir: "first_run"
+  output_dir: "outputs/molecule_improvement" 

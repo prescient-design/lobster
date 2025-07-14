@@ -1,0 +1,228 @@
+import rdkit
+from atomic_datasets import QM9
+from rdkit import Chem
+from rdkit.Chem import rdchem
+import selfies as sf
+import numpy as np
+import py3Dmol
+import pickle
+import os
+from tqdm import tqdm
+from atomic_datasets.utils.rdkit import is_molecule_sane
+
+import itertools
+from rdkit.Chem import AllChem, DataStructs, rdFingerprintGenerator
+import polars as pl
+#from rdkit.Chem.rdmolfiles import SDMolSupplier
+
+import time
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+def is_valency_ok(mol):
+    pt = Chem.GetPeriodicTable()
+    for atom in mol.GetAtoms():
+        atomic_num = atom.GetAtomicNum()
+
+        # Current valence: from the atom itself (new API)
+        try:
+            current_valence = atom.GetTotalValence() #atom.GetValence(which=rdchem.AtomValence.ALL)
+        except Exception as e:
+            print(f"Warning: cannot compute valence for atom {atomic_num}: {e}")
+            continue
+
+        # Allowed max valence
+        try:
+            max_valence = max([v for v in pt.GetValenceList(atomic_num)]) #pt.GetValence(atomic_num, which=Chem.GetPeriodicTable().ALL)
+        except Exception as e:
+            print(f"Warning: cannot get max valence for atom {atomic_num}: {e}")
+            continue
+
+        if current_valence > max_valence:
+            print(f'valence for atom {pt.GetElementSymbol(atomic_num)} is {current_valence} but max is {max_valence}')
+            return False
+    return True
+
+def visualize_mol(mol):
+    view = py3Dmol.view(data=Chem.MolToMolBlock(mol),style={'stick':{},'sphere':{'scale':0.3}})
+    view.zoomTo()
+    view.show()
+
+def human_readable_size(size_bytes):
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.2f} PB"
+
+# mol = dataset[0]['properties']['rdkit_mol']
+# mol.GetNumConformers()
+# np.linalg.norm(mol.GetConformer().GetPositions() - dataset[0]['nodes']['positions'])
+
+from rdkit import Chem
+from rdkit.Chem import Draw
+from PIL import Image, ImageDraw, ImageFont
+
+def my_mols_to_3d_grid(mol_pairs, rows=2, cols=4, spacing=5.0, col_titles=None, width=800, height=600):
+    """
+    Show a grid of molecules with their 3D conformers using py3Dmol.
+    Each molecule is translated to a unique grid location in 3D.
+
+    Args:   
+        mol_pairs: list of (mol_i, mol_j) tuples (RDKit Mol objects)
+        rows: number of rows in the grid
+        cols: number of columns in the grid
+        spacing: spacing between molecules in the grid
+        col_titles: list of strings for column titles (length should be >= cols)
+        width: width of the view in pixels (default: 800)
+        height: height of the view in pixels (default: 600)
+    """
+    view = py3Dmol.view(width=width, height=height)
+    count = 0
+
+    for row in range(rows):
+        for col in range(cols):
+            if count >= len(mol_pairs)*2:
+                break
+            mol = mol_pairs[col][row]
+            if mol.GetNumConformers() == 0:
+                AllChem.EmbedMolecule(mol)
+
+            # Translate molecule to grid position
+            conf = mol.GetConformer()
+            #dx, dy = j * spacing, -i * spacing
+
+            # Check if molecule is centered (zero center of mass) and center it if needed
+            positions = []
+            for k in range(mol.GetNumAtoms()):
+                pos = conf.GetAtomPosition(k)
+                positions.append([pos.x, pos.y, pos.z])
+            
+            positions = np.array(positions)
+            center_of_mass = np.mean(positions, axis=0)
+            
+            # Check if center of mass is close to zero (within tolerance)
+            tolerance = 1e-6
+            if np.any(np.abs(center_of_mass) > tolerance):
+                
+                # Center the molecule by subtracting the center of mass from all positions
+                for k in range(mol.GetNumAtoms()):
+                    pos = conf.GetAtomPosition(k)
+                    centered_pos = pos - Chem.rdGeometry.Point3D(*center_of_mass)
+                    conf.SetAtomPosition(k, centered_pos)
+
+            offset = np.array([col * spacing, -row * spacing, 0.0])
+            for k in range(mol.GetNumAtoms()):
+                pos = conf.GetAtomPosition(k)
+                conf.SetAtomPosition(k, pos + Chem.rdGeometry.Point3D(*offset)) #(pos.x + dx, pos.y + dy, pos.z))
+
+            # Add to viewer
+            mb = Chem.MolToMolBlock(mol)
+            view.addModel(mb, 'mol')
+            view.setStyle({'model': count}, {'stick': {}, 'sphere': {'scale': 0.3}})
+            count += 1
+
+    # Add column titles as text labels if provided
+    if col_titles and len(col_titles) >= cols:
+        title_height = spacing * 0.8  # Height above the grid for titles (proportional to spacing)
+        for col in range(cols):
+            if col < len(col_titles):
+                title = col_titles[col]
+                # Position title above the center of each column
+                title_x = col * spacing 
+                title_y = title_height
+                title_z = 0
+                
+                # Add text label
+                view.addLabel(
+                    title,
+                    {
+                        'position': {'x': title_x, 'y': title_y, 'z': title_z},
+                        'fontSize': 16,
+                        'fontColor': 'black',
+                        'backgroundColor': 'white',
+                        'borderThickness': 1,
+                        'borderColor': 'black'
+                    }
+                )
+    
+    view.zoomTo()
+    view.show()  # Auto-display the view
+    return view
+
+def visualize_mol_pairs_grid(
+    mol_pairs,
+    mols_per_row=2,
+    legends=None,
+    col_titles=None,
+    size=(300, 300),
+    title_fontsize=24
+):
+    """
+    Visualizes a grid of 3D conformers from molecule pairs, with optional column titles.
+    
+    Args:
+        mol_pairs: list of (mol_i, mol_j) tuples (RDKit Mol objects)
+        mols_per_row: number of molecules per row (should be 2 for pairs)
+        legends: list of string legends, length should be 2 * len(mol_pairs)
+        col_titles: list of column titles, e.g., ["Mol A", "Mol B"]
+        size: size of each sub-image (w, h)
+        title_fontsize: font size for the column titles
+    """
+    from rdkit.Chem import rdDepictor
+    from rdkit.Chem.Draw import MolsToGridImage
+
+    # Flatten mols
+    mols = [mol for pair in mol_pairs for mol in pair]
+
+    # Compute 2D coords if needed
+    # for mol in mols:
+    #     rdDepictor.Compute2DCoords(mol)
+
+    # Generate placeholder legends if not provided
+    if legends is None:
+        legends = [f"Mol {i}" for i in range(len(mols))]
+
+    # Generate main image
+    img = MolsToGridImage(
+        mols,
+        molsPerRow=mols_per_row,
+        subImgSize=size,
+        legends=legends,
+        useMolBlock=False,
+    )
+
+    # Add column titles above image (optional)
+    if col_titles:
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.truetype("arial.ttf", title_fontsize)
+        except IOError:
+            font = ImageFont.load_default()
+
+        spacing = 10
+        title_y = spacing
+        for i, title in enumerate(col_titles):
+            x = i * size[0] + size[0] // 2
+            text_width, _ = draw.textsize(title, font=font)
+            draw.text((x - text_width // 2, title_y), title, fill="black", font=font)
+
+    return img
+
+def display_mols_3d_grid(mol_pairs, rows=2, cols=4, spacing=5.0, col_titles=None, width=800, height=600):
+    """
+    Display a grid of molecules with their 3D conformers using py3Dmol.
+    This function automatically shows the visualization.
+    
+    Args:   
+        mol_pairs: list of (mol_i, mol_j) tuples (RDKit Mol objects)
+        rows: number of rows in the grid
+        cols: number of columns in the grid
+        spacing: spacing between molecules in the grid
+        col_titles: list of strings for column titles (length should be >= cols)
+        width: width of the view in pixels (default: 800)
+        height: height of the view in pixels (default: 600)
+    """
+    view = my_mols_to_3d_grid(mol_pairs, rows, cols, spacing, col_titles, width, height)
+    view.show()
+    return view
