@@ -52,6 +52,7 @@ from tokenizers.normalizers import Lowercase
 from tokenizers.pre_tokenizers import Split
 from tokenizers.processors import TemplateProcessing
 from torch import Tensor
+import torch
 from torch.nn import Module
 from transformers import PreTrainedTokenizerFast
 
@@ -613,6 +614,6 @@ class UMETokenizerTransform(Module):
             attention_mask = [1] * len(tokens)
 
         return {
-            "input_ids": Tensor(tokens).unsqueeze(0),
-            "attention_mask": Tensor(attention_mask).unsqueeze(0),
+            "input_ids": Tensor(tokens, dtype=torch.long).unsqueeze(0),
+            "attention_mask": Tensor(attention_mask, dtype=torch.long).unsqueeze(0),
         }
