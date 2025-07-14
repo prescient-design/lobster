@@ -570,16 +570,14 @@ class UMETokenizerTransform(Module):
             padding="do_not_pad",
             truncation=False,
             add_special_tokens=self.add_special_tokens,
-            return_tensors="pt",
-        )["input_ids"][0].tolist()
+        )["input_ids"]
 
         tokens2 = tokenizer2(
             sequence2,
             padding="do_not_pad",
             truncation=False,
             add_special_tokens=self.add_special_tokens,
-            return_tensors="pt",
-        )["input_ids"][0].tolist()
+        )["input_ids"]
 
         # Get special token IDs (using tokenizer1 as reference since all share same vocab structure)
         interact_id = tokenizer1.convert_tokens_to_ids(INTERACT_TOKEN)
@@ -590,30 +588,31 @@ class UMETokenizerTransform(Module):
         # Remove EOS tokens from individual sequences
         if tokens1 and tokens1[-1] == eos_id:
             tokens1 = tokens1[:-1]
+
         if tokens2 and tokens2[-1] == eos_id:
             tokens2 = tokens2[:-1]
 
         # Construct complex sequence: <cls_interact> seq1 <sep> seq2 <eos>
-        complex_tokens = [interact_id, *tokens1, sep_id, *tokens2, eos_id]
+        tokens = [interact_id, *tokens1, sep_id, *tokens2, eos_id]
 
         # Apply padding and truncation
         if self.max_length is not None:
-            if len(complex_tokens) > self.max_length:
+            if len(tokens) > self.max_length:
                 # Truncate but preserve the EOS token
-                complex_tokens = complex_tokens[: self.max_length - 1] + [eos_id]
+                tokens = tokens[: self.max_length - 1] + [eos_id]
 
             # Create attention mask before padding
-            attention_mask = [1] * len(complex_tokens)
+            attention_mask = [1] * len(tokens)
 
             # Pad if necessary
-            if len(complex_tokens) < self.max_length:
-                padding_length = self.max_length - len(complex_tokens)
-                complex_tokens.extend([pad_id] * padding_length)
+            if len(tokens) < self.max_length:
+                padding_length = self.max_length - len(tokens)
+                tokens.extend([pad_id] * padding_length)
                 attention_mask.extend([0] * padding_length)
         else:
-            attention_mask = [1] * len(complex_tokens)
+            attention_mask = [1] * len(tokens)
 
         return {
-            "input_ids": Tensor(complex_tokens).unsqueeze(0),
+            "input_ids": Tensor(tokens).unsqueeze(0),
             "attention_mask": Tensor(attention_mask).unsqueeze(0),
         }
