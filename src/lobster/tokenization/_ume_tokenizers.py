@@ -593,27 +593,27 @@ class UMETokenizerTransform(Module):
         if tokens2 and tokens2[-1] == eos_id:
             tokens2 = tokens2[:-1]
 
-        # Construct complex sequence: <cls_interact> seq1 <sep> seq2 <eos>
-        tokens = [interact_id, *tokens1, sep_id, *tokens2, eos_id]
+            # Construct complex sequence: <cls_interact> seq1 <sep> seq2 <eos>
+        complex_tokens = [interact_id, *tokens1, sep_id, *tokens2, eos_id]
 
         # Apply padding and truncation
         if self.max_length is not None:
-            if len(tokens) > self.max_length:
+            if len(complex_tokens) > self.max_length:
                 # Truncate but preserve the EOS token
-                tokens = tokens[: self.max_length - 1] + [eos_id]
+                complex_tokens = complex_tokens[: self.max_length - 1] + [eos_id]
 
             # Create attention mask before padding
-            attention_mask = [1] * len(tokens)
+            attention_mask = [1] * len(complex_tokens)
 
             # Pad if necessary
-            if len(tokens) < self.max_length:
-                padding_length = self.max_length - len(tokens)
-                tokens.extend([pad_id] * padding_length)
+            if len(complex_tokens) < self.max_length:
+                padding_length = self.max_length - len(complex_tokens)
+                complex_tokens.extend([pad_id] * padding_length)
                 attention_mask.extend([0] * padding_length)
         else:
-            attention_mask = [1] * len(tokens)
+            attention_mask = [1] * len(complex_tokens)
 
         return {
-            "input_ids": Tensor(tokens, dtype=torch.long).unsqueeze(0),
-            "attention_mask": Tensor(attention_mask, dtype=torch.long).unsqueeze(0),
+            "input_ids": torch.tensor(complex_tokens, dtype=torch.long).unsqueeze(0),
+            "attention_mask": torch.tensor(attention_mask, dtype=torch.long).unsqueeze(0),
         }
