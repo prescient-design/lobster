@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from collections.abc import Callable
+from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError, CredentialRetrievalError, NoCredentialsError
@@ -10,6 +11,41 @@ from lobster.constants import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT
 from lobster.data._utils import download_from_s3
 
 logger = logging.getLogger(__name__)
+
+
+def get_s3_last_modified_timestamp(s3_url: str) -> str:
+    """Get the LastModified timestamp from an S3 object and format it for filename use.
+
+    Parameters
+    ----------
+    s3_url : str
+        S3 URL in format s3://bucket/key
+
+    Returns
+    -------
+    str
+        Formatted timestamp string (YYYYMMDD_HHMMSS)
+
+    Examples
+    --------
+    >>> timestamp = get_s3_last_modified_timestamp("s3://prescient-lobster/ume/runs/2025-06-29T00-03-44/epoch=0-step=24500-val_loss=0.7878.ckpt")
+    >>> print(timestamp)
+    '20250629_000344'
+    """
+    # Parse S3 URL
+    parsed = urlparse(s3_url)
+    bucket = parsed.netloc
+    key = parsed.path.lstrip("/")
+
+    # Get object metadata
+    s3 = boto3.client("s3")
+    response = s3.head_object(Bucket=bucket, Key=key)
+
+    # Format timestamp for filename use
+    timestamp = response["LastModified"]
+    formatted_timestamp = timestamp.strftime("%Y%m%d-%H%M%S")
+
+    return formatted_timestamp
 
 
 def get_ume_checkpoints() -> dict[str, str]:
@@ -56,7 +92,7 @@ def _download_checkpoint(checkpoint_path: str, local_path: str, local_filename: 
 
         download_from_s3(checkpoint_path, local_path)
 
-        logger.info("Successfully downloaded model checkpoint.")
+        logger.debug("Successfully downloaded model checkpoint.")
 
     except (ClientError, NoCredentialsError, CredentialRetrievalError) as e:
         raise NotImplementedError(
@@ -93,20 +129,20 @@ def load_checkpoint_with_retry(
     # Get function name safely, handling mock objects
     func_name = getattr(load_func, "__name__", str(load_func))
 
-    logger.info("Loading checkpoint with retry:")
-    logger.info(f"  - S3 path: {checkpoint_path}")
-    logger.info(f"  - Local path: {local_path}")
-    logger.info(f"  - Load function: {func_name}")
+    logger.debug("Loading checkpoint with retry:")
+    logger.debug(f"  - S3 path: {checkpoint_path}")
+    logger.debug(f"  - Local path: {local_path}")
+    logger.debug(f"  - Load function: {func_name}")
 
     # First, ensure checkpoint is downloaded
-    logger.info("Ensuring checkpoint is downloaded...")
+    logger.debug("Ensuring checkpoint is downloaded...")
     download_checkpoint(checkpoint_path, local_directory, local_filename)
 
     # Try to load the model
-    logger.info("Attempting to load checkpoint...")
+    logger.debug("Attempting to load checkpoint...")
     try:
         model = load_func(local_path, *args, **kwargs)
-        logger.info("✅ Successfully loaded checkpoint on first attempt")
+        logger.debug("✅ Successfully loaded checkpoint.")
         return model
     except RuntimeError as e:
         if "PytorchStreamReader failed reading zip archive" in str(e):
@@ -115,18 +151,18 @@ def load_checkpoint_with_retry(
 
             # Remove corrupted file and redownload
             if os.path.exists(local_path):
-                logger.info(f"Removing corrupted file: {local_path}")
+                logger.debug(f"Removing corrupted file: {local_path}")
                 os.remove(local_path)
 
             # Force redownload
-            logger.info("Forcing redownload of checkpoint...")
+            logger.debug("Forcing redownload of checkpoint...")
             download_checkpoint(checkpoint_path, local_directory, local_filename, force_redownload=True)
 
             # Try loading again
-            logger.info("Attempting to load checkpoint after redownload...")
+            logger.debug("Attempting to load checkpoint after redownload...")
             try:
                 model = load_func(local_path, *args, **kwargs)
-                logger.info("✅ Successfully loaded checkpoint after redownload")
+                logger.debug("✅ Successfully loaded checkpoint after redownload")
                 return model
             except Exception as e2:
                 logger.error(f"❌ Failed to load checkpoint even after redownload: {e2}")

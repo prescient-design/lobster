@@ -294,27 +294,48 @@ class TestUME:
 
     @patch("lobster.model._ume.load_checkpoint_with_retry")
     @patch("lobster.model._ume.get_ume_checkpoints")
+    @patch("lobster.model._ume.get_s3_last_modified_timestamp")
     @patch("lobster.model._ume.os.path.join")
     @patch("lobster.model._ume.os.getcwd")
-    def test_from_pretrained(self, mock_getcwd, mock_join, mock_get_checkpoints, mock_load_checkpoint):
+    def test_from_pretrained(
+        self, mock_getcwd, mock_join, mock_get_timestamp, mock_get_checkpoints, mock_load_checkpoint
+    ):
         """Test from_pretrained method with mocked dependencies."""
         mock_get_checkpoints.return_value = {"ume-mini-base-12M": "s3://bucket/ume-mini-base-12M.ckpt"}
         mock_getcwd.return_value = "/current/working/dir"
         mock_join.return_value = "/current/working/dir/models/ume"
+        mock_get_timestamp.return_value = "20250711-061718"
 
+        # Create a properly mocked model with expected attributes for validation
         mock_model = MagicMock()
+
+        # Mock parameters to return correct parameter count for ume-mini-base-12M (should be 10M-20M)
+        mock_param = MagicMock()
+        mock_param.numel.return_value = 2_000_000  # 2M parameters per mock parameter
+        mock_param.device = torch.device("cpu")
+
+        # Return 6 parameters totaling 12M parameters (within expected range)
+        # Use a lambda to return a fresh iterator each time parameters() is called
+        mock_model.parameters = lambda: iter([mock_param] * 6)
+
+        # Mock other attributes accessed during validation
+        mock_model.embedding_dim = 384
+        mock_model.use_flash_attn = False
+        mock_model.model.config.num_hidden_layers = 6
+
         mock_load_checkpoint.return_value = mock_model
 
         result = UME.from_pretrained("ume-mini-base-12M")
 
         mock_get_checkpoints.assert_called_once()
+        mock_get_timestamp.assert_called_once_with("s3://bucket/ume-mini-base-12M.ckpt")
 
         mock_join.assert_called_once_with("/current/working/dir", "models", "ume")
 
         mock_load_checkpoint.assert_called_once_with(
             checkpoint_path="s3://bucket/ume-mini-base-12M.ckpt",
             local_directory="/current/working/dir/models/ume",
-            local_filename="ume-mini-base-12M.ckpt",
+            local_filename="ume-mini-base-12M-20250711-061718.ckpt",
             load_func=UME.load_from_checkpoint,
             device=None,
             use_flash_attn=None,

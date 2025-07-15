@@ -3,7 +3,6 @@ import os
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
-
 import lightning as L
 import torch
 import transformers
@@ -17,13 +16,17 @@ from lobster.constants import (
 )
 from lobster.tokenization import UMETokenizerTransform
 
-from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
+from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry, get_s3_last_modified_timestamp
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 
 
 class UME(L.LightningModule):
@@ -1143,21 +1146,15 @@ class UME(L.LightningModule):
         logger = logging.getLogger(__name__)
 
         logger.info(f"Loading pretrained UME model: {model_name}")
-        logger.info(f"  - Device: {device}")
-        logger.info(f"  - Use flash attention: {use_flash_attn}")
-        logger.info(f"  - Cache directory: {cache_dir}")
+        logger.debug(f"  - Device: {device}")
+        logger.debug(f"  - Use flash attention: {use_flash_attn}")
+        logger.debug(f"  - Cache directory: {cache_dir}")
 
-        # Warning that you're using pre-release checkpoints which
-        # are just placeholder checkpoints for now.
-        warnings.warn(
-            "You're using pre-release UME checkpoints which are just placeholder checkpoints for now. Stay tuned for UME release.",
-            stacklevel=2,
-        )
-
-        logger.info("Fetching checkpoint mapping from S3...")
+        logger.debug("Fetching checkpoint mapping from S3...")
         checkpoint_dict = get_ume_checkpoints()
 
         checkpoint_path = checkpoint_dict.get(model_name)
+
         if checkpoint_path is None:
             available_models = [
                 model_name for model_name in checkpoint_dict.keys() if checkpoint_dict[model_name] is not None
@@ -1166,20 +1163,22 @@ class UME(L.LightningModule):
             logger.error(f"Available models: {available_models}")
             raise ValueError(f"Unknown model name: {model_name}. Currently available models: {available_models}")
 
-        logger.info(f"Found checkpoint path: {checkpoint_path}")
+        logger.debug(f"Found checkpoint path: {checkpoint_path}")
 
         # Determine cache directory
         if cache_dir is None:
             cache_dir = os.path.join(os.getcwd(), "models", "ume")
 
-        logger.info(f"Using cache directory: {cache_dir}")
+        logger.debug(f"Using cache directory: {cache_dir}")
 
-        local_filename = f"{model_name}.ckpt"
-        logger.info(f"Local filename: {local_filename}")
+        # Get S3 timestamp and include it in the filename
+        timestamp = get_s3_last_modified_timestamp(checkpoint_path)
+        local_filename = f"{model_name}-{timestamp}.ckpt"
+        logger.debug(f"Local filename: {local_filename}")
 
         # Load the model with automatic retry on corruption
         # happens if previous download was stopped, for example
-        logger.info("Starting model loading with automatic retry...")
+        logger.debug("Starting model loading with automatic retry...")
         model = load_checkpoint_with_retry(
             checkpoint_path=checkpoint_path,
             local_directory=cache_dir,
@@ -1191,7 +1190,7 @@ class UME(L.LightningModule):
         )
 
         # Validate the loaded model
-        logger.info("Validating loaded model configuration...")
+        logger.debug("Validating loaded model configuration...")
         total_params = sum(p.numel() for p in model.parameters())
         embed_dim = model.embedding_dim
         num_layers = model.model.config.num_hidden_layers
@@ -1216,14 +1215,16 @@ class UME(L.LightningModule):
         if model_name in expected_params:
             min_expected, max_expected = expected_params[model_name]
             if min_expected <= total_params <= max_expected:
-                logger.info(
+                logger.debug(
                     f"✅ Model parameter count ({total_params / 1e6:.1f}M) matches expected range for {model_name}"
                 )
             else:
-                logger.warning(
-                    f"⚠️  Model parameter count ({total_params / 1e6:.1f}M) is outside expected range for {model_name} ({min_expected / 1e6:.1f}M-{max_expected / 1e6:.1f}M)"
+                logger.error(
+                    f"❌ Model parameter count ({total_params / 1e6:.1f}M) is outside expected range for {model_name} ({min_expected / 1e6:.1f}M-{max_expected / 1e6:.1f}M)"
                 )
-                logger.warning("   This might indicate a checkpoint mismatch or incorrect model configuration")
+                raise ValueError(
+                    f"Model parameter count mismatch: expected {min_expected / 1e6:.1f}M-{max_expected / 1e6:.1f}M parameters for {model_name}, but got {total_params / 1e6:.1f}M. This indicates a checkpoint mismatch or incorrect model configuration."
+                )
 
         logger.info(f"✅ Successfully loaded pretrained UME model: {model_name}")
         return model
