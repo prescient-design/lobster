@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5,6 +6,8 @@ import torch
 
 from lobster.constants import Modality
 from lobster.model import UME
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -279,12 +282,12 @@ class TestUME:
             # Log performance difference
             speedup = no_flash_time / flash_time
             diff = embeddings_flash - embeddings_no_flash
-            print(f"\nModality: {modality}")
-            print(f"Flash-attn time: {flash_time:.2f}ms")
-            print(f"No flash-attn time: {no_flash_time:.2f}ms")
-            print(f"Speedup: {speedup:.2f}x")
-            print(f"{diff.abs().max()=}")
-            print(f"{diff.abs().mean()=}")
+            logger.info(f"\nModality: {modality}")
+            logger.info(f"Flash-attn time: {flash_time:.2f}ms")
+            logger.info(f"No flash-attn time: {no_flash_time:.2f}ms")
+            logger.info(f"Speedup: {speedup:.2f}x")
+            logger.info(f"{diff.abs().max()=}")
+            logger.info(f"{diff.abs().mean()=}")
 
             # Test with aggregation
             embeddings_flash_agg = ume_flash.embed_sequences(sequences, modality, aggregate=True)
@@ -322,7 +325,7 @@ class TestUME:
         for modality, sequences in test_cases:
             # Test GPU flash attention vs CPU non-flash attention if GPU available
             if torch.cuda.is_available():
-                print(f"\nTesting {modality} with GPU vs CPU...")
+                logger.info(f"\nTesting {modality} with GPU vs CPU...")
 
                 # GPU model with flash attention
                 ume_gpu = UME(
@@ -354,9 +357,9 @@ class TestUME:
                 # Check similarity
                 cosine_sim = torch.nn.functional.cosine_similarity(embeddings_gpu, embeddings_cpu, dim=1)
 
-                print(f"  Cosine similarities: {cosine_sim.tolist()}")
-                print(f"  Average cosine similarity: {cosine_sim.mean().item():.6f}")
-                print(f"  Minimum cosine similarity: {cosine_sim.min().item():.6f}")
+                logger.info(f"  Cosine similarities: {cosine_sim.tolist()}")
+                logger.info(f"  Average cosine similarity: {cosine_sim.mean().item():.6f}")
+                logger.info(f"  Minimum cosine similarity: {cosine_sim.min().item():.6f}")
 
                 # Should be very similar after padding fix (>99.9% similarity for all sequences)
                 assert cosine_sim.min().item() > 0.999, (
@@ -375,7 +378,7 @@ class TestUME:
 
                 # Test token-level consistency
                 # Compute cosine similarity for each token position across all sequences
-                _batch_size, _seq_len, hidden_dim = embeddings_gpu_tokens.shape
+                batch_size, seq_len, hidden_dim = embeddings_gpu_tokens.shape
                 embeddings_gpu_flat = embeddings_gpu_tokens.view(-1, hidden_dim)
                 embeddings_cpu_flat = embeddings_cpu_tokens.view(-1, hidden_dim)
 
@@ -398,7 +401,7 @@ class TestUME:
                             gpu_nonzero_embeds, cpu_nonzero_embeds, dim=1
                         )
                         min_token_sim = token_cosine_sims.min().item()
-                        print(f"  Token-level min cosine similarity: {min_token_sim:.6f}")
+                        logger.info(f"  Token-level min cosine similarity: {min_token_sim:.6f}")
 
                         # Token-level embeddings should also be highly consistent
                         assert min_token_sim > 0.995, (
@@ -406,10 +409,10 @@ class TestUME:
                         )
 
             else:
-                print(f"Skipping GPU tests for {modality} - CUDA not available")
+                logger.info(f"Skipping GPU tests for {modality} - CUDA not available")
 
             # Test CPU flash attention vs non-flash attention (both should work on CPU)
-            print(f"Testing {modality} with CPU flash vs non-flash...")
+            logger.info(f"Testing {modality} with CPU flash vs non-flash...")
 
             # CPU model with flash attention disabled but unpadded architecture
             ume_cpu_unpadded = UME(
@@ -438,9 +441,9 @@ class TestUME:
 
             # Check similarity
             cosine_sim = torch.nn.functional.cosine_similarity(embeddings_unpadded, embeddings_padded, dim=1)
-            print(f"  Unpadded vs Padded cosine similarities: {cosine_sim.tolist()}")
-            print(f"  Average cosine similarity: {cosine_sim.mean().item():.6f}")
-            print(f"  Minimum cosine similarity: {cosine_sim.min().item():.6f}")
+            logger.info(f"  Unpadded vs Padded cosine similarities: {cosine_sim.tolist()}")
+            logger.info(f"  Average cosine similarity: {cosine_sim.mean().item():.6f}")
+            logger.info(f"  Minimum cosine similarity: {cosine_sim.min().item():.6f}")
 
             # Should be very similar after padding fix
             assert cosine_sim.min().item() > 0.999, (
@@ -453,7 +456,7 @@ class TestUME:
                 embeddings_padded_tokens = ume_cpu_padded.embed_sequences(sequences, modality, aggregate=False)
 
             # Check that padding tokens are properly zeroed and non-padding tokens are consistent
-            batch_size, seq_len, hidden_dim = embeddings_unpadded_tokens.shape
+            _batch_size, _seq_len, hidden_dim = embeddings_unpadded_tokens.shape
             unpadded_flat = embeddings_unpadded_tokens.view(-1, hidden_dim)
             padded_flat = embeddings_padded_tokens.view(-1, hidden_dim)
 
@@ -474,7 +477,7 @@ class TestUME:
                         unpadded_nonzero_embeds, padded_nonzero_embeds, dim=1
                     )
                     min_token_sim = token_cosine_sims.min().item()
-                    print(f"  Token-level unpadded vs padded min similarity: {min_token_sim:.6f}")
+                    logger.info(f"  Token-level unpadded vs padded min similarity: {min_token_sim:.6f}")
 
                     assert min_token_sim > 0.995, f"Token-level not consistent: {min_token_sim:.6f} < 0.995"
 
@@ -577,10 +580,10 @@ class TestUME:
             assert isinstance(embeddings, torch.Tensor)
             assert embeddings.shape[0] == 1
             assert embeddings.device.type == "cpu"
-            print("Basic embedding test passed")
+            logger.info("Basic embedding test passed")
         except Exception as e:
             # This is expected due to architecture mismatch between flash-attn training
             # and CPU inference without flash-attn
-            print(f"Expected inference compatibility issue: {type(e).__name__}")
+            logger.info(f"Expected inference compatibility issue: {type(e).__name__}")
             # The important part is that the model loaded successfully and
             # use_flash_attn attribute is correctly set
