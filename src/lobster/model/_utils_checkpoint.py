@@ -92,7 +92,7 @@ def _download_checkpoint(checkpoint_path: str, local_path: str, local_filename: 
 
         download_from_s3(checkpoint_path, local_path)
 
-        logger.info("Successfully downloaded model checkpoint.")
+        logger.debug("Successfully downloaded model checkpoint.")
 
     except (ClientError, NoCredentialsError, CredentialRetrievalError) as e:
         raise NotImplementedError(
@@ -142,7 +142,7 @@ def load_checkpoint_with_retry(
     logger.debug("Attempting to load checkpoint...")
     try:
         model = load_func(local_path, *args, **kwargs)
-        logger.info("✅ Successfully loaded checkpoint.")
+        logger.debug("✅ Successfully loaded checkpoint.")
         return model
     except RuntimeError as e:
         if "PytorchStreamReader failed reading zip archive" in str(e):
@@ -151,18 +151,18 @@ def load_checkpoint_with_retry(
 
             # Remove corrupted file and redownload
             if os.path.exists(local_path):
-                logger.info(f"Removing corrupted file: {local_path}")
+                logger.debug(f"Removing corrupted file: {local_path}")
                 os.remove(local_path)
 
             # Force redownload
-            logger.info("Forcing redownload of checkpoint...")
+            logger.debug("Forcing redownload of checkpoint...")
             download_checkpoint(checkpoint_path, local_directory, local_filename, force_redownload=True)
 
             # Try loading again
-            logger.info("Attempting to load checkpoint after redownload...")
+            logger.debug("Attempting to load checkpoint after redownload...")
             try:
                 model = load_func(local_path, *args, **kwargs)
-                logger.info("✅ Successfully loaded checkpoint after redownload")
+                logger.debug("✅ Successfully loaded checkpoint after redownload")
                 return model
             except Exception as e2:
                 logger.error(f"❌ Failed to load checkpoint even after redownload: {e2}")
