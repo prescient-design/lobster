@@ -28,6 +28,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+# Warning message for CPU inference - shown during loading and inference
+CPU_INFERENCE_WARNING = (
+    "⚠️  Running UME model on CPU. CPU inference is a fallback option only and "
+    "embeddings may differ significantly from GPU inference due to architectural "
+    "differences between SDPA and Flash Attention implementations. For production "
+    "use and consistent results, GPU inference is strongly recommended. "
+    "This is a temporary limitation and we are working on a solution."
+)
+
 
 class UME(L.LightningModule):
     """Universal Molecular Encoder.
@@ -416,6 +425,10 @@ class UME(L.LightningModule):
 
         x = {k: v.to(self.model.device) for k, v in inputs.items() if isinstance(v, Tensor)}
 
+        # Warn about CPU inference
+        if self.model.device.type == "cpu" or not self.use_flash_attn:
+            logger.warning(CPU_INFERENCE_WARNING)
+
         # Ensure input_ids and attention_mask are 3D (batch_size, 1, length)
         for key in ["input_ids", "attention_mask"]:
             if x[key].dim() == 2:
@@ -609,6 +622,10 @@ class UME(L.LightningModule):
             device = getattr(self.model, "device", torch.device("cpu"))
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
+
+        # Warn about CPU inference
+        if device.type == "cpu" or not self.use_flash_attn:
+            logger.warning(CPU_INFERENCE_WARNING)
 
         # Create inputs dictionary
         inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
@@ -1068,6 +1085,10 @@ class UME(L.LightningModule):
         # Determine flash attention setting
         if use_flash_attn is None:
             use_flash_attn = device == "cuda"
+
+        # Warn about CPU usage
+        if device == "cpu" or not use_flash_attn:
+            logger.warning(CPU_INFERENCE_WARNING)
 
         # Configure model based on device
         model_kwargs = kwargs.pop("model_kwargs", {})
