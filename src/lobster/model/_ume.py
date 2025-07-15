@@ -771,7 +771,7 @@ class UME(L.LightningModule):
             modalities = batch["metadata"]["modality"] if "metadata" in batch else batch["modality"]
             self._process_batch_for_modality_metrics(logits, labels, modalities, stage)
         except Exception as e:
-            logger.error(f"Error processing batch for modality metrics: {e}")
+            warnings.warn(f"Failed to log per-modality metrics: {e}", UserWarning, stacklevel=2)
 
         return loss
 
