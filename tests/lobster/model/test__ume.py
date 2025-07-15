@@ -306,7 +306,23 @@ class TestUME:
         mock_join.return_value = "/current/working/dir/models/ume"
         mock_get_timestamp.return_value = "20250711-061718"
 
+        # Create a properly mocked model with expected attributes for validation
         mock_model = MagicMock()
+
+        # Mock parameters to return correct parameter count for ume-mini-base-12M (should be 10M-20M)
+        mock_param = MagicMock()
+        mock_param.numel.return_value = 2_000_000  # 2M parameters per mock parameter
+        mock_param.device = torch.device("cpu")
+
+        # Return 6 parameters totaling 12M parameters (within expected range)
+        # Use a lambda to return a fresh iterator each time parameters() is called
+        mock_model.parameters = lambda: iter([mock_param] * 6)
+
+        # Mock other attributes accessed during validation
+        mock_model.embedding_dim = 384
+        mock_model.use_flash_attn = False
+        mock_model.model.config.num_hidden_layers = 6
+
         mock_load_checkpoint.return_value = mock_model
 
         result = UME.from_pretrained("ume-mini-base-12M")
