@@ -292,6 +292,126 @@ class TestUME:
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
 
+    def test_flash_attention_consistency_across_devices(self):
+        """Test that flash attention and non-flash attention produce consistent embeddings."""
+        # Test sequences with different lengths per modality to test batching and padding
+        test_cases = [
+            (
+                "amino_acid",
+                [
+                    "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG",  # Long protein (67 chars)
+                    "ACDEFGHIKL",  # Short protein (10 chars)
+                ],
+            ),
+            (
+                "nucleotide",
+                [
+                    "ATGCGATGAATTGCCAGGACGCTACCGGTTGGATTGCGCAGGTTCTGAACGCGTTTGGGATCCTTAACTAGTGGAATTCCCG",  # Long DNA (78 chars)
+                    "ATGCATGC",  # Short DNA (8 chars)
+                ],
+            ),
+            (
+                "SMILES",
+                [
+                    "CC(=O)OC1=CC=CC=C1C(=O)O",  # Aspirin (24 chars)
+                    "CCO",  # Ethanol (3 chars)
+                ],
+            ),
+        ]
+
+        for modality, sequences in test_cases:
+            # Test GPU flash attention vs CPU non-flash attention if GPU available
+            if torch.cuda.is_available():
+                print(f"\nTesting {modality} with GPU vs CPU...")
+
+                # GPU model with flash attention
+                ume_gpu = UME(
+                    model_name="UME_mini",
+                    max_length=512,
+                    use_flash_attn=True,
+                )
+                ume_gpu = ume_gpu.cuda()
+                ume_gpu.eval()
+
+                # CPU model without flash attention
+                ume_cpu = UME(
+                    model_name="UME_mini",
+                    max_length=512,
+                    use_flash_attn=False,
+                )
+                ume_cpu = ume_cpu.cpu()
+                ume_cpu.load_state_dict(ume_gpu.state_dict(), strict=False)
+                ume_cpu.eval()
+
+                # Get embeddings from both models
+                with torch.no_grad():
+                    embeddings_gpu = ume_gpu.embed_sequences(sequences, modality, aggregate=True)
+                    embeddings_cpu = ume_cpu.embed_sequences(sequences, modality, aggregate=True)
+
+                # Move to same device for comparison
+                embeddings_gpu = embeddings_gpu.cpu()
+
+                # Check similarity
+                cosine_sim = torch.nn.functional.cosine_similarity(embeddings_gpu, embeddings_cpu, dim=1)
+
+                print(f"  Cosine similarities: {cosine_sim.tolist()}")
+                print(f"  Average cosine similarity: {cosine_sim.mean().item():.6f}")
+                print(f"  Minimum cosine similarity: {cosine_sim.min().item():.6f}")
+
+                # Should be very similar after padding fix (>99.9% similarity for all sequences)
+                assert cosine_sim.min().item() > 0.999, (
+                    f"Embeddings not consistent enough: min={cosine_sim.min().item():.6f} < 0.999"
+                )
+
+                # Also test without aggregation
+                embeddings_gpu_tokens = ume_gpu.embed_sequences(sequences, modality, aggregate=False)
+                embeddings_cpu_tokens = ume_cpu.embed_sequences(sequences, modality, aggregate=False)
+
+                # Should have same shape
+                assert embeddings_gpu_tokens.shape == embeddings_cpu_tokens.shape
+
+            else:
+                print(f"Skipping GPU tests for {modality} - CUDA not available")
+
+            # Test CPU flash attention vs non-flash attention (both should work on CPU)
+            print(f"Testing {modality} with CPU flash vs non-flash...")
+
+            # CPU model with flash attention disabled but unpadded architecture
+            ume_cpu_unpadded = UME(
+                model_name="UME_mini",
+                max_length=512,
+                use_flash_attn=False,
+                model_kwargs={"padding": "unpadded", "use_sdpa_attn_mask": False},
+            )
+            ume_cpu_unpadded.eval()
+
+            # CPU model with padded architecture
+            ume_cpu_padded = UME(
+                model_name="UME_mini",
+                max_length=512,
+                use_flash_attn=False,
+                model_kwargs={"padding": "padded", "use_sdpa_attn_mask": True},
+            )
+            ume_cpu_padded.eval()
+
+            # Copy weights to ensure same model
+            ume_cpu_padded.load_state_dict(ume_cpu_unpadded.state_dict(), strict=False)
+
+            with torch.no_grad():
+                embeddings_unpadded = ume_cpu_unpadded.embed_sequences(sequences, modality, aggregate=True)
+                embeddings_padded = ume_cpu_padded.embed_sequences(sequences, modality, aggregate=True)
+
+            # Check similarity
+            cosine_sim = torch.nn.functional.cosine_similarity(embeddings_unpadded, embeddings_padded, dim=1)
+            print(f"  Unpadded vs Padded cosine similarities: {cosine_sim.tolist()}")
+            print(f"  Average cosine similarity: {cosine_sim.mean().item():.6f}")
+            print(f"  Minimum cosine similarity: {cosine_sim.min().item():.6f}")
+
+            # Should be very similar after padding fix
+            assert cosine_sim.min().item() > 0.999, (
+                f"Unpadded vs Padded not consistent: min={cosine_sim.min().item():.6f} < 0.999"
+            )
+
     @patch("lobster.model._ume.load_checkpoint_with_retry")
     @patch("lobster.model._ume.get_ume_checkpoints")
     @patch("lobster.model._ume.get_s3_last_modified_timestamp")
