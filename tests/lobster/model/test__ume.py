@@ -363,12 +363,47 @@ class TestUME:
                     f"Embeddings not consistent enough: min={cosine_sim.min().item():.6f} < 0.999"
                 )
 
-                # Also test without aggregation
+                # Also test without aggregation (token-level embeddings)
                 embeddings_gpu_tokens = ume_gpu.embed_sequences(sequences, modality, aggregate=False)
                 embeddings_cpu_tokens = ume_cpu.embed_sequences(sequences, modality, aggregate=False)
 
                 # Should have same shape
                 assert embeddings_gpu_tokens.shape == embeddings_cpu_tokens.shape
+
+                # Move to CPU for comparison
+                embeddings_gpu_tokens = embeddings_gpu_tokens.cpu()
+
+                # Test token-level consistency
+                # Compute cosine similarity for each token position across all sequences
+                _batch_size, _seq_len, hidden_dim = embeddings_gpu_tokens.shape
+                embeddings_gpu_flat = embeddings_gpu_tokens.view(-1, hidden_dim)
+                embeddings_cpu_flat = embeddings_cpu_tokens.view(-1, hidden_dim)
+
+                # Only compare non-zero positions (actual tokens, not padding)
+                # Padding positions should be zero in both models
+                gpu_nonzero = embeddings_gpu_flat.norm(dim=1) > 1e-6
+                cpu_nonzero = embeddings_cpu_flat.norm(dim=1) > 1e-6
+
+                # Both models should have the same non-zero positions
+                assert torch.equal(gpu_nonzero, cpu_nonzero), "Different non-zero token positions between models"
+
+                # For non-zero positions, embeddings should be highly similar
+                if gpu_nonzero.any():
+                    nonzero_indices = gpu_nonzero.nonzero().squeeze()
+                    if nonzero_indices.numel() > 0:
+                        gpu_nonzero_embeds = embeddings_gpu_flat[nonzero_indices]
+                        cpu_nonzero_embeds = embeddings_cpu_flat[nonzero_indices]
+
+                        token_cosine_sims = torch.nn.functional.cosine_similarity(
+                            gpu_nonzero_embeds, cpu_nonzero_embeds, dim=1
+                        )
+                        min_token_sim = token_cosine_sims.min().item()
+                        print(f"  Token-level min cosine similarity: {min_token_sim:.6f}")
+
+                        # Token-level embeddings should also be highly consistent
+                        assert min_token_sim > 0.995, (
+                            f"Token-level embeddings not consistent: {min_token_sim:.6f} < 0.995"
+                        )
 
             else:
                 print(f"Skipping GPU tests for {modality} - CUDA not available")
@@ -411,6 +446,37 @@ class TestUME:
             assert cosine_sim.min().item() > 0.999, (
                 f"Unpadded vs Padded not consistent: min={cosine_sim.min().item():.6f} < 0.999"
             )
+
+            # Also test token-level embeddings
+            with torch.no_grad():
+                embeddings_unpadded_tokens = ume_cpu_unpadded.embed_sequences(sequences, modality, aggregate=False)
+                embeddings_padded_tokens = ume_cpu_padded.embed_sequences(sequences, modality, aggregate=False)
+
+            # Check that padding tokens are properly zeroed and non-padding tokens are consistent
+            batch_size, seq_len, hidden_dim = embeddings_unpadded_tokens.shape
+            unpadded_flat = embeddings_unpadded_tokens.view(-1, hidden_dim)
+            padded_flat = embeddings_padded_tokens.view(-1, hidden_dim)
+
+            # Both should have the same zero/non-zero pattern after masking
+            unpadded_nonzero = unpadded_flat.norm(dim=1) > 1e-6
+            padded_nonzero = padded_flat.norm(dim=1) > 1e-6
+
+            assert torch.equal(unpadded_nonzero, padded_nonzero), "Different zero patterns between unpadded and padded"
+
+            # Non-zero tokens should be consistent
+            if unpadded_nonzero.any():
+                nonzero_indices = unpadded_nonzero.nonzero().squeeze()
+                if nonzero_indices.numel() > 0:
+                    unpadded_nonzero_embeds = unpadded_flat[nonzero_indices]
+                    padded_nonzero_embeds = padded_flat[nonzero_indices]
+
+                    token_cosine_sims = torch.nn.functional.cosine_similarity(
+                        unpadded_nonzero_embeds, padded_nonzero_embeds, dim=1
+                    )
+                    min_token_sim = token_cosine_sims.min().item()
+                    print(f"  Token-level unpadded vs padded min similarity: {min_token_sim:.6f}")
+
+                    assert min_token_sim > 0.995, f"Token-level not consistent: {min_token_sim:.6f} < 0.995"
 
     @patch("lobster.model._ume.load_checkpoint_with_retry")
     @patch("lobster.model._ume.get_ume_checkpoints")

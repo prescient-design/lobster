@@ -439,27 +439,27 @@ class UME(L.LightningModule):
         if self.model.config.padding == "unpadded":
             embeddings = embeddings.view(batch_size, seq_len, -1)
 
+        # Handle attention mask for both aggregated and token-level outputs
+        attention_mask = x["attention_mask"]
+        if attention_mask.dim() == 3:
+            attention_mask = attention_mask.squeeze(1)  # Remove middle dimension: (batch, seq_len)
+
+        # Ensure attention mask matches embedding sequence length
+        if attention_mask.shape[1] != embeddings.shape[1]:
+            # Truncate or pad attention mask to match embeddings
+            if attention_mask.shape[1] > embeddings.shape[1]:
+                attention_mask = attention_mask[:, : embeddings.shape[1]]
+            else:
+                pad_length = embeddings.shape[1] - attention_mask.shape[1]
+                padding = torch.zeros(
+                    attention_mask.shape[0], pad_length, dtype=attention_mask.dtype, device=attention_mask.device
+                )
+                attention_mask = torch.cat([attention_mask, padding], dim=1)
+
+        # Convert to float and add dimension for broadcasting: (batch, seq_len, 1)
+        mask = attention_mask.float().unsqueeze(-1)
+
         if aggregate:
-            # Use attention mask to exclude padding tokens from mean pooling
-            attention_mask = x["attention_mask"]
-            if attention_mask.dim() == 3:
-                attention_mask = attention_mask.squeeze(1)  # Remove middle dimension: (batch, seq_len)
-
-            # Ensure attention mask matches embedding sequence length
-            if attention_mask.shape[1] != embeddings.shape[1]:
-                # Truncate or pad attention mask to match embeddings
-                if attention_mask.shape[1] > embeddings.shape[1]:
-                    attention_mask = attention_mask[:, : embeddings.shape[1]]
-                else:
-                    pad_length = embeddings.shape[1] - attention_mask.shape[1]
-                    padding = torch.zeros(
-                        attention_mask.shape[0], pad_length, dtype=attention_mask.dtype, device=attention_mask.device
-                    )
-                    attention_mask = torch.cat([attention_mask, padding], dim=1)
-
-            # Convert to float and add dimension for broadcasting: (batch, seq_len, 1)
-            mask = attention_mask.float().unsqueeze(-1)
-
             # Apply mask and compute mean only over actual tokens
             masked_embeddings = embeddings * mask
             sum_embeddings = masked_embeddings.sum(dim=1)  # (batch, hidden_dim)
@@ -468,6 +468,10 @@ class UME(L.LightningModule):
             # Avoid division by zero for empty sequences
             token_counts = torch.clamp(token_counts, min=1.0)
             embeddings = sum_embeddings / token_counts
+        else:
+            # For token-level embeddings, zero out padding token positions
+            # This ensures consistency between flash attention and non-flash attention models
+            embeddings = embeddings * mask
 
         return embeddings
 
