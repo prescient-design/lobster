@@ -525,7 +525,8 @@ class UMETokenizerTransform(Module):
         ],
     ) -> dict[str, Tensor]:
         """
-        Tokenize a pair of sequences from  different modalities.
+        Tokenize a pair of sequences from  different modalities
+        where the two entitied interact together.
 
         Creates an interacting pair representation in the format:
         <cls_interact> <cls_modality1> seq1 <sep> <cls_modality2> seq2 <eos>
