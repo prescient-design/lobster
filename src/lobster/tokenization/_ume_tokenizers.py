@@ -516,7 +516,7 @@ class UMETokenizerTransform(Module):
 
         return output
 
-    def tokenize_complex(
+    def tokenize_interacting_pair(
         self,
         sequences: tuple[str, str],
         modalities: tuple[
@@ -527,7 +527,7 @@ class UMETokenizerTransform(Module):
         """
         Tokenize a pair of sequences from  different modalities.
 
-        Creates a complex representation in the format:
+        Creates an interacting pair representation in the format:
         <cls_interact> <cls_modality1> seq1 <sep> <cls_modality2> seq2 <eos>
 
         For example, with sequences=("MYK", "CCO") and modalities=("amino_acid", "smiles"):
@@ -536,7 +536,7 @@ class UMETokenizerTransform(Module):
         Examples
         --------
         >>> tokenizer = UMETokenizerTransform(modality="amino_acid", max_length=20)
-        >>> out = tokenizer.tokenize_complex(
+        >>> out = tokenizer.tokenize_interacting_pair(
         ...     sequences=("MYK", "CCO"),
         ...     modalities=("amino_acid", "smiles")
         ... )
@@ -593,27 +593,27 @@ class UMETokenizerTransform(Module):
         if tokens2 and tokens2[-1] == eos_id:
             tokens2 = tokens2[:-1]
 
-            # Construct complex sequence: <cls_interact> seq1 <sep> seq2 <eos>
-        complex_tokens = [interact_id, *tokens1, sep_id, *tokens2, eos_id]
+            # Construct interacting pair sequence: <cls_interact> seq1 <sep> seq2 <eos>
+        pair_tokens = [interact_id, *tokens1, sep_id, *tokens2, eos_id]
 
         # Apply padding and truncation
         if self.max_length is not None:
-            if len(complex_tokens) > self.max_length:
+            if len(pair_tokens) > self.max_length:
                 # Truncate but preserve the EOS token
-                complex_tokens = complex_tokens[: self.max_length - 1] + [eos_id]
+                pair_tokens = pair_tokens[: self.max_length - 1] + [eos_id]
 
             # Create attention mask before padding
-            attention_mask = [1] * len(complex_tokens)
+            attention_mask = [1] * len(pair_tokens)
 
             # Pad if necessary
-            if len(complex_tokens) < self.max_length:
-                padding_length = self.max_length - len(complex_tokens)
-                complex_tokens.extend([pad_id] * padding_length)
+            if len(pair_tokens) < self.max_length:
+                padding_length = self.max_length - len(pair_tokens)
+                pair_tokens.extend([pad_id] * padding_length)
                 attention_mask.extend([0] * padding_length)
         else:
-            attention_mask = [1] * len(complex_tokens)
+            attention_mask = [1] * len(pair_tokens)
 
         return {
-            "input_ids": torch.tensor(complex_tokens, dtype=torch.long).unsqueeze(0),
+            "input_ids": torch.tensor(pair_tokens, dtype=torch.long).unsqueeze(0),
             "attention_mask": torch.tensor(attention_mask, dtype=torch.long).unsqueeze(0),
         }
