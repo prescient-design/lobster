@@ -168,7 +168,7 @@ class TestPEEREvaluationCallback:
         assert isinstance(test_datasets, dict)
         assert "test" in test_datasets
 
-        cache_key = str(PEERTask.STABILITY)
+        cache_key = PEERTask.STABILITY.value
         assert cache_key in callback.datasets
 
         _, ss_test_datasets = callback._get_task_datasets(PEERTask.SECONDARY_STRUCTURE)
@@ -327,7 +327,7 @@ class TestPEEREvaluationCallback:
                     assert "test" in results
                     assert "mse" in results["test"]
                     assert "r2" in results["test"]
-                    assert str(PEERTask.STABILITY) in callback.probes
+                    assert PEERTask.STABILITY.value in callback.probes
 
     @patch("lobster.callbacks._peer_evaluation_callback.PEEREvaluationCallback._evaluate_task")
     @patch("lobster.callbacks._peer_evaluation_callback.tqdm")

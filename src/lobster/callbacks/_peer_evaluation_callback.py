@@ -41,6 +41,7 @@ from ._peer_utils import (
     calculate_category_averages,
     calculate_mean_metrics,
     get_peer_task_metric,
+    convert_numpy_to_python,
 )
 
 logger = logging.getLogger(__name__)
@@ -358,7 +359,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Tuple containing (train_dataset, test_datasets_dict)
             where test_datasets_dict maps split names to datasets
         """
-        cache_key = str(task)
+        cache_key = task.value
 
         if cache_key in self.datasets:
             return self.datasets[cache_key]
@@ -652,7 +653,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         # Fallback if predict_proba is not available
                         metrics["accuracy"] = accuracy_score(targets_np, predictions)
 
-        return metrics
+        # Convert NumPy scalars to Python types for clean YAML formatting
+        return convert_numpy_to_python(metrics)
 
     def _get_collate_fn(self, task: PEERTask):
         """Get the appropriate collation function for the task."""
@@ -709,7 +711,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 return {}
 
             probe = self._train_probe(train_embeddings, train_targets, task)
-            self.probes[str(task)] = probe
+            self.probes[task.value] = probe
 
             # Clear training data to free memory
             del train_embeddings, train_targets
@@ -769,7 +771,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             relevant_metric = get_peer_task_metric(task)
 
             # Store task metrics for return value
-            all_task_metrics[str(task)] = split_metrics
+            all_task_metrics[task.value] = split_metrics
 
             # Process metrics for each split, but only log the relevant metric
             for split_name, metrics in split_metrics.items():
@@ -793,11 +795,11 @@ class PEEREvaluationCallback(LinearProbeCallback):
             if task_avg_metrics:
                 task_avg_key = f"peer_linear_probe/{task}/average/{relevant_metric}"
                 trainer.logger.log_metrics({task_avg_key: task_avg_metrics[relevant_metric]}, step=step)
-                all_task_metrics[f"{task}/average"] = task_avg_metrics
+                all_task_metrics[f"{task.value}/average"] = task_avg_metrics
 
             # Clear dataset cache between tasks if enabled
             if self.clear_cache_between_tasks:
-                task_cache_key = str(task)
+                task_cache_key = task.value
                 if task_cache_key in self.datasets:
                     del self.datasets[task_cache_key]
                     logger.debug(f"Cleared dataset cache for task {task}")
@@ -829,7 +831,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Log total number of splits evaluated
         trainer.logger.log_metrics({"peer_linear_probe/total_splits_evaluated": split_count}, step=step)
 
-        return all_task_metrics
+        # Convert NumPy scalars to Python types for clean YAML formatting
+        return convert_numpy_to_python(all_task_metrics)
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         """Train and evaluate linear probes on PEER tasks at specified epochs.
