@@ -6,6 +6,7 @@ the main PEEREvaluationCallback class.
 
 import logging
 
+import numpy as np
 import torch
 from torch import Tensor
 import lightning as L
@@ -13,6 +14,22 @@ import lightning as L
 from lobster.constants import PEERTask, PEER_TASKS, PEER_TASK_METRICS
 
 logger = logging.getLogger(__name__)
+
+
+def convert_numpy_to_python(obj):
+    """Recursively convert NumPy scalars to Python types for clean YAML formatting."""
+    if isinstance(obj, dict):
+        return {key: convert_numpy_to_python(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_to_python(item) for item in obj]
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    else:
+        return obj
 
 
 def get_peer_task_metric(task: PEERTask) -> str:
@@ -446,7 +463,9 @@ def aggregate_task_metrics(split_metrics: dict, relevant_metric: str) -> dict:
     if any(relevant_metric in m for m in split_metrics.values()):
         values = [m.get(relevant_metric) for m in split_metrics.values() if relevant_metric in m]
         if values:
-            return {relevant_metric: sum(values) / len(values)}
+            # Convert to Python type to avoid NumPy scalars in output
+            avg_value = sum(values) / len(values)
+            return {relevant_metric: float(avg_value) if hasattr(avg_value, "item") else avg_value}
 
     return {}
 
@@ -470,7 +489,10 @@ def calculate_category_averages(category_metrics: dict) -> dict:
         for metric_name, values in metrics_dict.items():
             if values:
                 avg_value = sum(values) / len(values)
-                category_averages[str(category)][metric_name] = avg_value
+                # Convert to Python type to avoid NumPy scalars in output
+                category_averages[str(category)][metric_name] = (
+                    float(avg_value) if hasattr(avg_value, "item") else avg_value
+                )
     return category_averages
 
 
@@ -490,5 +512,7 @@ def calculate_mean_metrics(all_metrics: dict) -> dict:
     mean_metrics = {}
     for metric_name, values in all_metrics.items():
         if values:
-            mean_metrics[metric_name] = sum(values) / len(values)
+            avg_value = sum(values) / len(values)
+            # Convert to Python type to avoid NumPy scalars in output
+            mean_metrics[metric_name] = float(avg_value) if hasattr(avg_value, "item") else avg_value
     return mean_metrics
