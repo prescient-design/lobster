@@ -222,6 +222,33 @@ class TestUME:
             assert embeddings.dim() == 2  # [batch_size, hidden_size]
             assert embeddings.shape[0] == len(sequences)
 
+    def test_embed_dtype_match_model(self):
+        """Test UME's embed_sequences method returns embeddings with the same dtype as model weights."""
+        # Skip if not on GPU
+        if not torch.cuda.is_available():
+            pytest.skip("This test requires a GPU")
+
+        # Test sequences for each modality
+        test_modality = "SMILES"
+        test_sequences = ["CC(=O)OC1=CC=CC=C1C(=O)O"]
+
+        # Initialize UME with flash-attn enabled
+        ume = UME(
+            model_name="UME_mini",
+            max_length=10,
+        )
+        ume = ume.cuda()
+        ume.eval()
+
+        for want_dtype in [torch.bfloat16, torch.float16, torch.float32]:
+            ume = ume.to(dtype=want_dtype)
+
+            embeddings_no_agg = ume.embed_sequences(test_sequences, test_modality, aggregate=False)
+            assert embeddings_no_agg.dtype == want_dtype
+
+            embeddings_agg = ume.embed_sequences(test_sequences, test_modality, aggregate=True)
+            assert embeddings_agg.dtype == want_dtype
+
     def test_embed_sequences_gpu_flash_attn(self):
         """Test UME's embed_sequences method with and without flash-attn on GPU."""
         # Skip if not on GPU
