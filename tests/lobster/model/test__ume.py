@@ -228,11 +228,9 @@ class TestUME:
         if not torch.cuda.is_available():
             pytest.skip("This test requires a GPU")
 
-        # Test sequences for each modality
         test_modality = "SMILES"
         test_sequences = ["CC(=O)OC1=CC=CC=C1C(=O)O"]
 
-        # Initialize UME with flash-attn enabled
         ume = UME(
             model_name="UME_mini",
             max_length=10,
