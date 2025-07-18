@@ -457,7 +457,7 @@ class UME(L.LightningModule):
                 attention_mask = torch.cat([attention_mask, padding], dim=1)
 
         # Convert to float and add dimension for broadcasting: (batch, seq_len, 1)
-        mask = attention_mask.float().unsqueeze(-1)
+        mask = attention_mask.to(dtype=embeddings.dtype).unsqueeze(-1)
 
         if aggregate:
             # Apply mask and compute mean only over actual tokens
