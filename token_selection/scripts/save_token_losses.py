@@ -25,47 +25,53 @@ def get_args():
     parser.add_argument(
         "--fasta_file",
         type=str,
-        default="/data/lux70/data/uniref90/partial.fasta",
+        help="Path to the FASTA file containing sequences.",
     )
     parser.add_argument(
         "--offset_array_path",
         type=str,
-        default="/data/lux70/data/uniref90/partial.fasta.offsets.npy",
+        help="Path to the numpy array containing offsets for the FASTA file.",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/data/lux70/data/uniref90/token_losses",
+        help="Directory to save the output files.",
     )
     parser.add_argument(
         "--model_name",
         type=str,
         default="lightonai/RITA_l",
+        help="Name of the autoregressive model to use for token loss computation."
     )
     parser.add_argument(
         "--batch_size",
         type=int,
         default=512,
+        help="Batch size for processing sequences. Adjust based on GPU memory.",
     )
     parser.add_argument(
         "--max_length",
         type=int,
         default=512,
+        help="Maximum sequence length for the model. Sequences longer than this will be truncated.",
     )
     parser.add_argument(
         "--max_num_per_shard",
         type=int,
         default=100_000,
+        help="Maximum number of sequences to process in each shard. Adjust based on GPU memory.",
     )
     parser.add_argument(
         "--cur_num_in_shard",
         type=int,
         default=0,
+        help="Current number of sequences processed in the current shard. Used for resuming processing.",
     )
     parser.add_argument(
         "--cur_shard_num",
         type=int,
         default=0,
+        help="Current shard number. Used for resuming processing.",
     )
     return parser.parse_args()
 
