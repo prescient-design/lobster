@@ -14,10 +14,11 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel
 from torch.nn.functional import cross_entropy
 
-from lobster.datasets import FASTADataset 
+from lobster.datasets import FASTADataset
 
 
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision("high")
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -41,7 +42,7 @@ def get_args():
         "--model_name",
         type=str,
         default="lightonai/RITA_l",
-        help="Name of the autoregressive model to use for token loss computation."
+        help="Name of the autoregressive model to use for token loss computation.",
     )
     parser.add_argument(
         "--batch_size",
@@ -90,7 +91,7 @@ def load_model(model_name: str = "lightonai/RITA_xl", max_length: int = 512) -> 
     model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = "<PAD>"
-    tokenizer.pad_token_id = tokenizer.vocab['<PAD>']
+    tokenizer.pad_token_id = tokenizer.vocab["<PAD>"]
     tokenizer.max_length = max_length
     model.eval()
     return model, tokenizer
@@ -107,18 +108,15 @@ def compute_loss(batch, model, tokenizer, max_length, device=None) -> List[Dict[
 
     sequences = [s[:max_length] for s in sequences]
     inputs = tokenizer(sequences, return_tensors="pt", padding=True, truncation=False)
-    input_ids = inputs['input_ids'].to(device)
-    attn_mask = inputs['attention_mask'].to(device)
-    N, L = input_ids.shape[0], input_ids.shape[1] - 1   # remove EOS token
+    input_ids = inputs["input_ids"].to(device)
+    attn_mask = inputs["attention_mask"].to(device)
+    N, L = input_ids.shape[0], input_ids.shape[1] - 1  # remove EOS token
 
     with torch.no_grad():
-        output = model(
-            input_ids=input_ids,
-            attention_mask=attn_mask
-        )
+        output = model(input_ids=input_ids, attention_mask=attn_mask)
 
     targets = input_ids[:, 1:].reshape(-1)
-    logits = output['logits']
+    logits = output["logits"]
     logits = logits[:, :-1, :].reshape(-1, logits.shape[-1])
     per_token_loss = cross_entropy(logits, targets, reduction="none")
     per_token_loss = per_token_loss.reshape(-1, L).half()  # store as float16.
@@ -127,7 +125,7 @@ def compute_loss(batch, model, tokenizer, max_length, device=None) -> List[Dict[
         {
             "sequence": sequences[i],
             "header": headers[i],
-            "per_token_loss": per_token_loss[i, :min(len(sequences[i]), max_length)].cpu().tolist(),
+            "per_token_loss": per_token_loss[i, : min(len(sequences[i]), max_length)].cpu().tolist(),
         }
         for i in range(len(sequences))
     ]
@@ -137,7 +135,7 @@ def compute_loss(batch, model, tokenizer, max_length, device=None) -> List[Dict[
 def main(rank, args, world_size):
     if world_size > 1:
         setup(rank, world_size)
-    
+
     output_dir = Path(args.output_dir) / args.model_name.replace("/", "_")
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -148,7 +146,7 @@ def main(rank, args, world_size):
     print("Original offset array shape:", offset_array.shape)
     assert len(offset_array.shape) == 2
     assert offset_array.shape[0] == 2
-    
+
     # Partition data for this GPU
     per_gpu_size = offset_array.shape[1] // world_size
     start_idx = rank * per_gpu_size
@@ -159,20 +157,12 @@ def main(rank, args, world_size):
     print(f"Rank {rank} processing {local_offsets.shape[1]} sequences from {args.fasta_file}")
 
     # Create dataset and dataloader for this GPU
-    dataset = FASTADataset(
-        root=args.fasta_file,
-        offsets_arr=local_offsets,
-        use_text_descriptions=True
-    )
+    dataset = FASTADataset(root=args.fasta_file, offsets_arr=local_offsets, use_text_descriptions=True)
 
-    sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset, num_replicas=world_size, rank=rank
-    )
+    sampler = torch.utils.data.distributed.DistributedSampler(dataset, num_replicas=world_size, rank=rank)
 
-    dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.batch_size, sampler=sampler, shuffle=False
-    )
-    
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, shuffle=False)
+
     # Create model
     model, tokenizer = load_model(args.model_name, args.max_length)
     device = torch.device("cuda", rank)
@@ -186,11 +176,11 @@ def main(rank, args, world_size):
         ddp_model = model
 
     ddp_model = torch.compile(ddp_model)
-    
+
     # Inference loop
     results_tmp_list = []
-    cur_shard_num = 0 
-    cur_num_in_shard = 0 
+    cur_shard_num = 0
+    cur_num_in_shard = 0
 
     for batch in dataloader:
         with torch.no_grad():
@@ -201,15 +191,15 @@ def main(rank, args, world_size):
             if cur_num_in_shard >= args.max_num_per_shard:
                 print(f"Saving shard {cur_shard_num} to {output_file}...")
                 output_file = output_dir / f"rank_{rank:02}_shard_{cur_shard_num:06}.parquet"
-                pd.DataFrame(results_tmp_list).to_parquet(output_file, engine='pyarrow', index=False)
+                pd.DataFrame(results_tmp_list).to_parquet(output_file, engine="pyarrow", index=False)
 
                 cur_shard_num += 1
                 cur_num_in_shard = 0
                 results_tmp_list = []
-            
+
             else:
                 print(f"Rank {rank} processed {cur_num_in_shard} sequences in shard {cur_shard_num}")
-    
+
 
 if __name__ == "__main__":
     args = get_args()
@@ -219,12 +209,11 @@ if __name__ == "__main__":
         print("Only one GPU available. Running without DDP.")
         main(0, args, world_size)
         exit()
-    
+
     else:
         print(f"Using {world_size} GPUs for DDP.")
         rank = int(os.environ["LOCAL_RANK"])
         mp.spawn(main, (args, world_size), world_size, join=True)
-    
+
     if world_size > 1:
         cleanup()
-
