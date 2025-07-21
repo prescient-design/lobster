@@ -3,7 +3,6 @@ import os
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
-
 import lightning as L
 import torch
 import transformers
@@ -17,13 +16,17 @@ from lobster.constants import (
 )
 from lobster.tokenization import UMETokenizerTransform
 
-from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry
+from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry, get_s3_last_modified_timestamp
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 
 
 class UME(L.LightningModule):
@@ -436,11 +439,165 @@ class UME(L.LightningModule):
         if self.model.config.padding == "unpadded":
             embeddings = embeddings.view(batch_size, seq_len, -1)
 
+        # Handle attention mask for both aggregated and token-level outputs
+        attention_mask = x["attention_mask"]
+        if attention_mask.dim() == 3:
+            attention_mask = attention_mask.squeeze(1)  # Remove middle dimension: (batch, seq_len)
+
+        # Ensure attention mask matches embedding sequence length
+        if attention_mask.shape[1] != embeddings.shape[1]:
+            # Truncate or pad attention mask to match embeddings
+            if attention_mask.shape[1] > embeddings.shape[1]:
+                attention_mask = attention_mask[:, : embeddings.shape[1]]
+            else:
+                pad_length = embeddings.shape[1] - attention_mask.shape[1]
+                padding = torch.zeros(
+                    attention_mask.shape[0], pad_length, dtype=attention_mask.dtype, device=attention_mask.device
+                )
+                attention_mask = torch.cat([attention_mask, padding], dim=1)
+
+        # Convert to float and add dimension for broadcasting: (batch, seq_len, 1)
+        mask = attention_mask.to(dtype=embeddings.dtype).unsqueeze(-1)
+
         if aggregate:
-            # Use mean pooling over sequence length dimension
-            embeddings = embeddings.mean(dim=1)
+            # Apply mask and compute mean only over actual tokens
+            masked_embeddings = embeddings * mask
+            sum_embeddings = masked_embeddings.sum(dim=1)  # (batch, hidden_dim)
+            token_counts = mask.sum(dim=1)  # (batch, 1)
+
+            # Avoid division by zero for empty sequences
+            token_counts = torch.clamp(token_counts, min=1.0)
+            embeddings = sum_embeddings / token_counts
+        else:
+            # For token-level embeddings, zero out padding token positions
+            # This ensures consistency between flash attention and non-flash attention models
+            embeddings = embeddings * mask
 
         return embeddings
+
+    def forward(self, input_ids: Tensor, attention_mask: Tensor) -> Tensor:
+        """Forward pass for ONNX export and direct model inference.
+
+        This method provides a standard PyTorch forward interface that can be used
+        for ONNX export and direct model calls. It wraps the embed method for
+        compatibility with standard PyTorch workflows.
+
+        Parameters
+        ----------
+        input_ids : Tensor
+            Input token IDs of shape (batch_size, 1, sequence_length) or (batch_size, sequence_length)
+        attention_mask : Tensor
+            Attention mask of shape (batch_size, 1, sequence_length) or (batch_size, sequence_length)
+
+        Returns
+        -------
+        Tensor
+            Embeddings of shape (batch_size, hidden_size) with mean pooling applied
+        """
+        inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
+        return self.embed(inputs, aggregate=True)
+
+    def export_onnx(
+        self,
+        export_path: str,
+        modality: ModalityType | Modality,
+        sample_sequences: list[str] | None = None,
+        opset_version: int = 17,
+        device: torch.device | str | None = None,
+        dynamic_axes: dict | None = None,
+        **export_kwargs,
+    ) -> None:
+        """Export the UME model to ONNX format.
+
+        This method exports the model using sample sequences to create proper dummy inputs
+        that match the expected tokenization format for the specified modality.
+
+        Parameters
+        ----------
+        export_path : str
+            Path to save the ONNX model.
+        modality : ModalityType | Modality
+            Modality to use for creating dummy inputs. This ensures the ONNX model
+            is exported with inputs that match the tokenization format for this modality.
+        sample_sequences : list[str] | None, optional
+            Sample sequences to use for creating dummy inputs. If None, uses default
+            sequences for the specified modality.
+        opset_version : int, default=17
+            ONNX opset version to use for export.
+        device : torch.device | str | None, optional
+            Device for dummy inputs. If None, uses the model's device.
+        dynamic_axes : dict | None, optional
+            Dynamic axes configuration for ONNX export. If None, uses default configuration.
+        **export_kwargs
+            Additional keyword arguments to pass to torch.onnx.export.
+
+        Examples
+        --------
+        >>> from lobster.model import UME
+        >>> from lobster.constants import Modality
+        >>>
+        >>> # Initialize model
+        >>> ume = UME(model_name="UME_mini")
+        >>>
+        >>> # Export for SMILES sequences
+        >>> ume.export_onnx("ume_smiles.onnx", modality=Modality.SMILES)
+        >>>
+        >>> # Export for protein sequences with custom samples
+        >>> protein_samples = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"]
+        >>> ume.export_onnx("ume_protein.onnx", modality=Modality.AMINO_ACID,
+        ...                 sample_sequences=protein_samples)
+        """
+        device = device or next(self.parameters()).device
+        if isinstance(device, str):
+            device = torch.device(device)
+
+        # Use default sample sequences if none provided
+        if sample_sequences is None:
+            sample_sequences = {
+                Modality.SMILES: ["CC(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],  # Shorter SMILES for speed
+                Modality.AMINO_ACID: ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],  # Protein sequences
+                Modality.NUCLEOTIDE: ["ATGCATGC", "GCTAGCTA"],  # DNA sequences
+            }[modality]
+
+        # Tokenize the sample sequences to get proper input format
+        tokenizer_transform = self.tokenizer_transforms[modality]
+        encoded_batch = tokenizer_transform(sample_sequences)
+
+        input_ids = encoded_batch["input_ids"].to(device)
+        attention_mask = encoded_batch["attention_mask"].to(device)
+
+        # Ensure 3D format for ONNX export
+        if input_ids.dim() == 2:
+            input_ids = input_ids.unsqueeze(1)
+        if attention_mask.dim() == 2:
+            attention_mask = attention_mask.unsqueeze(1)
+
+        # Ensure correct dtype for ONNX
+        input_ids = input_ids.long()
+        attention_mask = attention_mask.long()
+
+        # Use default dynamic axes if none provided
+        if dynamic_axes is None:
+            dynamic_axes = {
+                "input_ids": {0: "batch", 2: "sequence"},
+                "attention_mask": {0: "batch", 2: "sequence"},
+                "embeddings": {0: "batch"},
+            }
+
+        # Export to ONNX
+        torch.onnx.export(
+            self,
+            (input_ids, attention_mask),
+            export_path,
+            input_names=["input_ids", "attention_mask"],
+            output_names=["embeddings"],
+            dynamic_axes=dynamic_axes,
+            opset_version=opset_version,
+            do_constant_folding=True,
+            export_params=True,
+            verbose=False,
+            **export_kwargs,
+        )
 
     def embed_sequences(
         self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
@@ -965,7 +1122,7 @@ class UME(L.LightningModule):
     @classmethod
     def from_pretrained(
         cls,
-        model_name: Literal["ume-mini-base-12M", "ume-medium-base-480M", "ume-large-base-740M"],
+        model_name: Literal["ume-mini-base-12M", "ume-small-base-90M", "ume-medium-base-480M", "ume-large-base-740M"],
         *,
         device: str | None = None,
         use_flash_attn: bool | None = None,
@@ -1014,31 +1171,45 @@ class UME(L.LightningModule):
         >>> # Load with custom cache directory
         >>> model = UME.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
+        import logging
 
-        # Warning that you're using pre-release checkpoints which
-        # are just placeholder checkpoints for now.
-        warnings.warn(
-            "You're using pre-release UME checkpoints which are just placeholder checkpoints for now. Stay tuned for UME release.",
-            stacklevel=2,
-        )
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"Loading pretrained UME model: {model_name}")
+        logger.debug(f"  - Device: {device}")
+        logger.debug(f"  - Use flash attention: {use_flash_attn}")
+        logger.debug(f"  - Cache directory: {cache_dir}")
+
+        logger.debug("Fetching checkpoint mapping from S3...")
         checkpoint_dict = get_ume_checkpoints()
 
         checkpoint_path = checkpoint_dict.get(model_name)
+
         if checkpoint_path is None:
             available_models = [
                 model_name for model_name in checkpoint_dict.keys() if checkpoint_dict[model_name] is not None
             ]
+            logger.error(f"Unknown model name: {model_name}")
+            logger.error(f"Available models: {available_models}")
             raise ValueError(f"Unknown model name: {model_name}. Currently available models: {available_models}")
+
+        logger.debug(f"Found checkpoint path: {checkpoint_path}")
 
         # Determine cache directory
         if cache_dir is None:
             cache_dir = os.path.join(os.getcwd(), "models", "ume")
 
-        local_filename = f"{model_name}.ckpt"
+        logger.debug(f"Using cache directory: {cache_dir}")
+
+        # Get S3 timestamp and include it in the filename
+        timestamp = get_s3_last_modified_timestamp(checkpoint_path)
+        local_filename = f"{model_name}-{timestamp}.ckpt"
+        logger.debug(f"Local filename: {local_filename}")
 
         # Load the model with automatic retry on corruption
         # happens if previous download was stopped, for example
-        return load_checkpoint_with_retry(
+        logger.debug("Starting model loading with automatic retry...")
+        model = load_checkpoint_with_retry(
             checkpoint_path=checkpoint_path,
             local_directory=cache_dir,
             local_filename=local_filename,
@@ -1047,3 +1218,43 @@ class UME(L.LightningModule):
             use_flash_attn=use_flash_attn,
             **kwargs,
         )
+
+        # Validate the loaded model
+        logger.debug("Validating loaded model configuration...")
+        total_params = sum(p.numel() for p in model.parameters())
+        embed_dim = model.embedding_dim
+        num_layers = model.model.config.num_hidden_layers
+
+        logger.info("Loaded model configuration:")
+        logger.info(f"  - Model name: {model_name}")
+        logger.info(f"  - Embedding dimension: {embed_dim}")
+        logger.info(f"  - Number of layers: {num_layers}")
+        logger.info(f"  - Total parameters: {total_params:,}")
+        logger.info(f"  - Parameters in millions: {total_params / 1e6:.1f}M")
+        logger.info(f"  - Device: {next(model.parameters()).device}")
+        logger.info(f"  - Use flash attention: {model.use_flash_attn}")
+
+        # Validate expected model size based on name
+        expected_params = {
+            "ume-mini-base-12M": (10e6, 20e6),  # 10-20M parameters
+            "ume-small-base-90M": (80e6, 100e6),  # 80-100M parameters
+            "ume-medium-base-480M": (450e6, 500e6),  # 450-500M parameters
+            "ume-large-base-740M": (700e6, 800e6),  # 700-800M parameters
+        }
+
+        if model_name in expected_params:
+            min_expected, max_expected = expected_params[model_name]
+            if min_expected <= total_params <= max_expected:
+                logger.debug(
+                    f"✅ Model parameter count ({total_params / 1e6:.1f}M) matches expected range for {model_name}"
+                )
+            else:
+                logger.error(
+                    f"❌ Model parameter count ({total_params / 1e6:.1f}M) is outside expected range for {model_name} ({min_expected / 1e6:.1f}M-{max_expected / 1e6:.1f}M)"
+                )
+                raise ValueError(
+                    f"Model parameter count mismatch: expected {min_expected / 1e6:.1f}M-{max_expected / 1e6:.1f}M parameters for {model_name}, but got {total_params / 1e6:.1f}M. This indicates a checkpoint mismatch or incorrect model configuration."
+                )
+
+        logger.info(f"✅ Successfully loaded pretrained UME model: {model_name}")
+        return model

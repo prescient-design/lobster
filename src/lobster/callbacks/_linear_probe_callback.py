@@ -65,11 +65,18 @@ class LinearProbeCallback(Callback):
             self.auroc = None
 
         elif task_type in {"binary", "multiclass", "multilabel"}:
-            # For multilabel, we use num_classes as num_labels
+            # Use correct parameter names for different task types
             metric_task = task_type
-            self.accuracy = Accuracy(task=metric_task, num_labels=num_classes)
-            self.f1 = F1Score(task=metric_task, num_labels=num_classes)
-            self.auroc = AUROC(task=metric_task, num_labels=num_classes)
+            if task_type == "multilabel":
+                # For multilabel, use num_labels parameter
+                self.accuracy = Accuracy(task=metric_task, num_labels=num_classes)
+                self.f1 = F1Score(task=metric_task, num_labels=num_classes)
+                self.auroc = AUROC(task=metric_task, num_labels=num_classes)
+            else:
+                # For binary and multiclass, use num_classes parameter
+                self.accuracy = Accuracy(task=metric_task, num_classes=num_classes)
+                self.f1 = F1Score(task=metric_task, num_classes=num_classes)
+                self.auroc = AUROC(task=metric_task, num_classes=num_classes)
             self.mse = None
             self.r2 = None
             self.spearman = None

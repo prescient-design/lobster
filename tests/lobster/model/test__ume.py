@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -221,6 +222,29 @@ class TestUME:
             assert embeddings.dim() == 2  # [batch_size, hidden_size]
             assert embeddings.shape[0] == len(sequences)
 
+    def test_embed_dtype_match_model(self):
+        """Test UME's embed_sequences method returns embeddings with the same dtype as model weights."""
+        # Skip if not on GPU
+
+        test_modality = "SMILES"
+        test_sequences = ["CC(=O)OC1=CC=CC=C1C(=O)O"]
+
+        ume = UME(
+            model_name="UME_mini",
+            max_length=10,
+            use_flash_attn=False,
+        )
+        ume.eval()
+
+        for want_dtype in [torch.bfloat16, torch.float16, torch.float32]:
+            ume = ume.to(dtype=want_dtype)
+
+            embeddings_no_agg = ume.embed_sequences(test_sequences, test_modality, aggregate=False)
+            assert embeddings_no_agg.dtype == want_dtype
+
+            embeddings_agg = ume.embed_sequences(test_sequences, test_modality, aggregate=True)
+            assert embeddings_agg.dtype == want_dtype
+
     def test_embed_sequences_gpu_flash_attn(self):
         """Test UME's embed_sequences method with and without flash-attn on GPU."""
         # Skip if not on GPU
@@ -263,28 +287,16 @@ class TestUME:
             embeddings_flash = ume_flash.embed_sequences(sequences, modality, aggregate=False)
             end_time.record()
             torch.cuda.synchronize()
-            flash_time = start_time.elapsed_time(end_time)
 
             # Get embeddings without flash-attn
             start_time.record()
             embeddings_no_flash = ume_no_flash.embed_sequences(sequences, modality, aggregate=False)
             end_time.record()
             torch.cuda.synchronize()
-            no_flash_time = start_time.elapsed_time(end_time)
 
             # Verify shapes and values
             assert embeddings_flash.shape == embeddings_no_flash.shape
             torch.testing.assert_close(embeddings_flash, embeddings_no_flash, rtol=1e-2, atol=1e-2)
-
-            # Log performance difference
-            speedup = no_flash_time / flash_time
-            diff = embeddings_flash - embeddings_no_flash
-            print(f"\nModality: {modality}")
-            print(f"Flash-attn time: {flash_time:.2f}ms")
-            print(f"No flash-attn time: {no_flash_time:.2f}ms")
-            print(f"Speedup: {speedup:.2f}x")
-            print(f"{diff.abs().max()=}")
-            print(f"{diff.abs().mean()=}")
 
             # Test with aggregation
             embeddings_flash_agg = ume_flash.embed_sequences(sequences, modality, aggregate=True)
@@ -292,29 +304,219 @@ class TestUME:
 
             assert embeddings_flash_agg.shape == embeddings_no_flash_agg.shape
 
+    def test_flash_attention_consistency_across_devices(self):
+        """Test that flash attention and non-flash attention produce consistent embeddings."""
+        # Test sequences with different lengths per modality to test batching and padding
+        test_cases = [
+            (
+                "amino_acid",
+                [
+                    "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG",  # Long protein (67 chars)
+                    "ACDEFGHIKL",  # Short protein (10 chars)
+                ],
+            ),
+            (
+                "nucleotide",
+                [
+                    "ATGCGATGAATTGCCAGGACGCTACCGGTTGGATTGCGCAGGTTCTGAACGCGTTTGGGATCCTTAACTAGTGGAATTCCCG",  # Long DNA (78 chars)
+                    "ATGCATGC",  # Short DNA (8 chars)
+                ],
+            ),
+            (
+                "SMILES",
+                [
+                    "CC(=O)OC1=CC=CC=C1C(=O)O",  # Aspirin (24 chars)
+                    "CCO",  # Ethanol (3 chars)
+                ],
+            ),
+        ]
+
+        for modality, sequences in test_cases:
+            # Test GPU flash attention vs CPU non-flash attention if GPU available
+            if torch.cuda.is_available():
+                # GPU model with flash attention
+                ume_gpu = UME(
+                    model_name="UME_mini",
+                    max_length=512,
+                    use_flash_attn=True,
+                )
+                ume_gpu = ume_gpu.cuda()
+                ume_gpu.eval()
+
+                # CPU model without flash attention
+                ume_cpu = UME(
+                    model_name="UME_mini",
+                    max_length=512,
+                    use_flash_attn=False,
+                )
+                ume_cpu = ume_cpu.cpu()
+                ume_cpu.load_state_dict(ume_gpu.state_dict(), strict=False)
+                ume_cpu.eval()
+
+                # Get embeddings from both models
+                with torch.no_grad():
+                    embeddings_gpu = ume_gpu.embed_sequences(sequences, modality, aggregate=True)
+                    embeddings_cpu = ume_cpu.embed_sequences(sequences, modality, aggregate=True)
+
+                # Move to same device for comparison
+                embeddings_gpu = embeddings_gpu.cpu()
+
+                # Check similarity
+                cosine_sim = torch.nn.functional.cosine_similarity(embeddings_gpu, embeddings_cpu, dim=1)
+
+                # Should be very similar after padding fix (>99.9% similarity for all sequences)
+                assert cosine_sim.min().item() > 0.999, (
+                    f"Embeddings not consistent enough: min={cosine_sim.min().item():.6f} < 0.999"
+                )
+
+                # Also test without aggregation (token-level embeddings)
+                embeddings_gpu_tokens = ume_gpu.embed_sequences(sequences, modality, aggregate=False)
+                embeddings_cpu_tokens = ume_cpu.embed_sequences(sequences, modality, aggregate=False)
+
+                # Should have same shape
+                assert embeddings_gpu_tokens.shape == embeddings_cpu_tokens.shape
+
+                # Move to CPU for comparison
+                embeddings_gpu_tokens = embeddings_gpu_tokens.cpu()
+
+                # Test token-level consistency
+                # Compute cosine similarity for each token position across all sequences
+                batch_size, seq_len, hidden_dim = embeddings_gpu_tokens.shape
+                embeddings_gpu_flat = embeddings_gpu_tokens.view(-1, hidden_dim)
+                embeddings_cpu_flat = embeddings_cpu_tokens.view(-1, hidden_dim)
+
+                # Only compare non-zero positions (actual tokens, not padding)
+                # Padding positions should be zero in both models
+                gpu_nonzero = embeddings_gpu_flat.norm(dim=1) > 1e-6
+                cpu_nonzero = embeddings_cpu_flat.norm(dim=1) > 1e-6
+
+                # Both models should have the same non-zero positions
+                assert torch.equal(gpu_nonzero, cpu_nonzero), "Different non-zero token positions between models"
+
+                # For non-zero positions, embeddings should be highly similar
+                if gpu_nonzero.any():
+                    nonzero_indices = gpu_nonzero.nonzero().squeeze()
+                    if nonzero_indices.numel() > 0:
+                        gpu_nonzero_embeds = embeddings_gpu_flat[nonzero_indices]
+                        cpu_nonzero_embeds = embeddings_cpu_flat[nonzero_indices]
+
+                        token_cosine_sims = torch.nn.functional.cosine_similarity(
+                            gpu_nonzero_embeds, cpu_nonzero_embeds, dim=1
+                        )
+                        min_token_sim = token_cosine_sims.min().item()
+
+                        # Token-level embeddings should also be highly consistent
+                        assert min_token_sim > 0.995, (
+                            f"Token-level embeddings not consistent: {min_token_sim:.6f} < 0.995"
+                        )
+
+            # CPU model with flash attention disabled but unpadded architecture
+            ume_cpu_unpadded = UME(
+                model_name="UME_mini",
+                max_length=512,
+                use_flash_attn=False,
+                model_kwargs={"padding": "unpadded", "use_sdpa_attn_mask": False},
+            )
+            ume_cpu_unpadded.eval()
+
+            # CPU model with padded architecture
+            ume_cpu_padded = UME(
+                model_name="UME_mini",
+                max_length=512,
+                use_flash_attn=False,
+                model_kwargs={"padding": "padded", "use_sdpa_attn_mask": True},
+            )
+            ume_cpu_padded.eval()
+
+            # Copy weights to ensure same model
+            ume_cpu_padded.load_state_dict(ume_cpu_unpadded.state_dict(), strict=False)
+
+            with torch.no_grad():
+                embeddings_unpadded = ume_cpu_unpadded.embed_sequences(sequences, modality, aggregate=True)
+                embeddings_padded = ume_cpu_padded.embed_sequences(sequences, modality, aggregate=True)
+
+            # Check similarity
+            cosine_sim = torch.nn.functional.cosine_similarity(embeddings_unpadded, embeddings_padded, dim=1)
+
+            # Should be very similar after padding fix
+            assert cosine_sim.min().item() > 0.999, (
+                f"Unpadded vs Padded not consistent: min={cosine_sim.min().item():.6f} < 0.999"
+            )
+
+            # Also test token-level embeddings
+            with torch.no_grad():
+                embeddings_unpadded_tokens = ume_cpu_unpadded.embed_sequences(sequences, modality, aggregate=False)
+                embeddings_padded_tokens = ume_cpu_padded.embed_sequences(sequences, modality, aggregate=False)
+
+            # Check that padding tokens are properly zeroed and non-padding tokens are consistent
+            _batch_size, _seq_len, hidden_dim = embeddings_unpadded_tokens.shape
+            unpadded_flat = embeddings_unpadded_tokens.view(-1, hidden_dim)
+            padded_flat = embeddings_padded_tokens.view(-1, hidden_dim)
+
+            # Both should have the same zero/non-zero pattern after masking
+            unpadded_nonzero = unpadded_flat.norm(dim=1) > 1e-6
+            padded_nonzero = padded_flat.norm(dim=1) > 1e-6
+
+            assert torch.equal(unpadded_nonzero, padded_nonzero), "Different zero patterns between unpadded and padded"
+
+            # Non-zero tokens should be consistent
+            if unpadded_nonzero.any():
+                nonzero_indices = unpadded_nonzero.nonzero().squeeze()
+                if nonzero_indices.numel() > 0:
+                    unpadded_nonzero_embeds = unpadded_flat[nonzero_indices]
+                    padded_nonzero_embeds = padded_flat[nonzero_indices]
+
+                    token_cosine_sims = torch.nn.functional.cosine_similarity(
+                        unpadded_nonzero_embeds, padded_nonzero_embeds, dim=1
+                    )
+                    min_token_sim = token_cosine_sims.min().item()
+
+                    assert min_token_sim > 0.995, f"Token-level not consistent: {min_token_sim:.6f} < 0.995"
+
     @patch("lobster.model._ume.load_checkpoint_with_retry")
     @patch("lobster.model._ume.get_ume_checkpoints")
+    @patch("lobster.model._ume.get_s3_last_modified_timestamp")
     @patch("lobster.model._ume.os.path.join")
     @patch("lobster.model._ume.os.getcwd")
-    def test_from_pretrained(self, mock_getcwd, mock_join, mock_get_checkpoints, mock_load_checkpoint):
+    def test_from_pretrained(
+        self, mock_getcwd, mock_join, mock_get_timestamp, mock_get_checkpoints, mock_load_checkpoint
+    ):
         """Test from_pretrained method with mocked dependencies."""
         mock_get_checkpoints.return_value = {"ume-mini-base-12M": "s3://bucket/ume-mini-base-12M.ckpt"}
         mock_getcwd.return_value = "/current/working/dir"
         mock_join.return_value = "/current/working/dir/models/ume"
+        mock_get_timestamp.return_value = "20250711-061718"
 
+        # Create a properly mocked model with expected attributes for validation
         mock_model = MagicMock()
+
+        # Mock parameters to return correct parameter count for ume-mini-base-12M (should be 10M-20M)
+        mock_param = MagicMock()
+        mock_param.numel.return_value = 2_000_000  # 2M parameters per mock parameter
+        mock_param.device = torch.device("cpu")
+
+        # Return 6 parameters totaling 12M parameters (within expected range)
+        # Use a lambda to return a fresh iterator each time parameters() is called
+        mock_model.parameters = lambda: iter([mock_param] * 6)
+
+        # Mock other attributes accessed during validation
+        mock_model.embedding_dim = 384
+        mock_model.use_flash_attn = False
+        mock_model.model.config.num_hidden_layers = 6
+
         mock_load_checkpoint.return_value = mock_model
 
         result = UME.from_pretrained("ume-mini-base-12M")
 
         mock_get_checkpoints.assert_called_once()
+        mock_get_timestamp.assert_called_once_with("s3://bucket/ume-mini-base-12M.ckpt")
 
         mock_join.assert_called_once_with("/current/working/dir", "models", "ume")
 
         mock_load_checkpoint.assert_called_once_with(
             checkpoint_path="s3://bucket/ume-mini-base-12M.ckpt",
             local_directory="/current/working/dir/models/ume",
-            local_filename="ume-mini-base-12M.ckpt",
+            local_filename="ume-mini-base-12M-20250711-061718.ckpt",
             load_func=UME.load_from_checkpoint,
             device=None,
             use_flash_attn=None,
@@ -325,7 +527,6 @@ class TestUME:
     def test_load_checkpoint_disable_flash_attn_cpu_inference(self):
         """Test loading UME checkpoint trained with flash-attn, disabling it, and running inference on CPU."""
         # Suppress boto3/S3 debug logging
-        import logging
 
         logging.getLogger("boto3").setLevel(logging.WARNING)
         logging.getLogger("botocore").setLevel(logging.WARNING)
@@ -370,10 +571,9 @@ class TestUME:
             assert isinstance(embeddings, torch.Tensor)
             assert embeddings.shape[0] == 1
             assert embeddings.device.type == "cpu"
-            print("Basic embedding test passed")
         except Exception as e:
             # This is expected due to architecture mismatch between flash-attn training
             # and CPU inference without flash-attn
-            print(f"Expected inference compatibility issue: {type(e).__name__}")
             # The important part is that the model loaded successfully and
             # use_flash_attn attribute is correctly set
+            print(e)
