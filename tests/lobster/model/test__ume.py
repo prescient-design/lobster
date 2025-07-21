@@ -225,8 +225,6 @@ class TestUME:
     def test_embed_dtype_match_model(self):
         """Test UME's embed_sequences method returns embeddings with the same dtype as model weights."""
         # Skip if not on GPU
-        if not torch.cuda.is_available():
-            pytest.skip("This test requires a GPU")
 
         test_modality = "SMILES"
         test_sequences = ["CC(=O)OC1=CC=CC=C1C(=O)O"]
@@ -234,8 +232,8 @@ class TestUME:
         ume = UME(
             model_name="UME_mini",
             max_length=10,
+            use_flash_attn=False,
         )
-        ume = ume.cuda()
         ume.eval()
 
         for want_dtype in [torch.bfloat16, torch.float16, torch.float32]:
