@@ -18,18 +18,19 @@ logger = logging.getLogger(__name__)
 
 def convert_numpy_to_python(obj):
     """Recursively convert NumPy scalars to Python types for clean YAML formatting."""
-    if isinstance(obj, dict):
-        return {key: convert_numpy_to_python(value) for key, value in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [convert_numpy_to_python(item) for item in obj]
-    elif isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        return float(obj)
-    elif isinstance(obj, np.bool_):
-        return bool(obj)
-    else:
-        return obj
+    match obj:
+        case dict():
+            return {key: convert_numpy_to_python(value) for key, value in obj.items()}
+        case list() | tuple():
+            return [convert_numpy_to_python(item) for item in obj]
+        case np.integer():
+            return int(obj)
+        case np.floating():
+            return float(obj)
+        case np.bool_():
+            return bool(obj)
+        case _:
+            return obj
 
 
 def get_peer_task_metric(task: PEERTask) -> str:

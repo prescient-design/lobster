@@ -152,12 +152,20 @@ class TestPEEREvaluationCallback:
         assert stability_splits[0] == "test"
 
         ss_splits = callback._get_task_test_splits(PEERTask.SECONDARY_STRUCTURE)
-        assert len(ss_splits) == 3
-        assert all(split in ss_splits for split in ["casp12", "cb513", "ts115"])
+        assert len(ss_splits) == 1
+        assert ss_splits[0] == "cb513"
 
         ppi_splits = callback._get_task_test_splits(PEERTask.HUMANPPI)
-        assert len(ppi_splits) == 2
-        assert all(split in ppi_splits for split in ["test", "cross_species_test"])
+        assert len(ppi_splits) == 1
+        assert ppi_splits[0] == "test"
+
+        fold_splits = callback._get_task_test_splits(PEERTask.FOLD)
+        assert len(fold_splits) == 1
+        assert fold_splits[0] == "test_superfamily_holdout"
+
+        bindingdb_splits = callback._get_task_test_splits(PEERTask.BINDINGDB)
+        assert len(bindingdb_splits) == 1
+        assert bindingdb_splits[0] == "holdout_test"
 
     @patch("lobster.callbacks._peer_evaluation_callback.PEERDataset", MockPEERDataset)
     def test_get_task_datasets(self, callback):
@@ -172,8 +180,8 @@ class TestPEEREvaluationCallback:
         assert cache_key in callback.datasets
 
         _, ss_test_datasets = callback._get_task_datasets(PEERTask.SECONDARY_STRUCTURE)
-        assert len(ss_test_datasets) == 3
-        assert all(split in ss_test_datasets for split in ["casp12", "cb513", "ts115"])
+        assert len(ss_test_datasets) == 1
+        assert "cb513" in ss_test_datasets
 
     @patch("lobster.callbacks._peer_evaluation_callback.DataLoader")
     def test_get_embeddings_standard_task(self, mock_dataloader, callback, mock_model):
@@ -320,13 +328,14 @@ class TestPEEREvaluationCallback:
                 mock_train_probe.return_value = mock_probe
 
                 with patch.object(callback, "_evaluate_probe") as mock_evaluate_probe:
-                    mock_evaluate_probe.return_value = {"mse": 0.1, "r2": 0.85}
+                    # STABILITY task should only return spearman metric
+                    mock_evaluate_probe.return_value = {"spearman": 0.85}
 
                     results = callback._evaluate_task(PEERTask.STABILITY, mock_trainer, mock_model)
 
                     assert "test" in results
-                    assert "mse" in results["test"]
-                    assert "r2" in results["test"]
+                    assert "spearman" in results["test"]
+                    assert len(results["test"]) == 1  # Only one metric should be returned
                     assert PEERTask.STABILITY.value in callback.probes
 
     @patch("lobster.callbacks._peer_evaluation_callback.PEEREvaluationCallback._evaluate_task")
@@ -335,13 +344,9 @@ class TestPEEREvaluationCallback:
         mock_tqdm.return_value = callback.selected_tasks
 
         mock_evaluate_task.side_effect = [
-            {"test": {"mse": 0.1, "r2": 0.85}},
-            {
-                "casp12": {"accuracy": 0.75, "precision": 0.7},
-                "cb513": {"accuracy": 0.72, "precision": 0.68},
-                "ts115": {"accuracy": 0.78, "precision": 0.73},
-            },
-            {"test": {"accuracy": 0.8, "precision": 0.75}},
+            {"test": {"spearman": 0.85}},  # STABILITY task returns spearman
+            {"cb513": {"accuracy": 0.75}},  # SECONDARY_STRUCTURE task returns accuracy (CB513 only)
+            {"test": {"accuracy": 0.8}},  # HUMANPPI task returns accuracy (test only)
         ]
 
         callback.on_validation_epoch_end(mock_trainer, mock_model)
