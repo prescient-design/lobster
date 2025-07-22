@@ -10,11 +10,11 @@ import scipy.stats
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 
-from lobster.constants import DESCRIPTOR_DISTRIBUTIONS
+from lobster.constants import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 
 
 def smiles_to_rdkit_descs(smiles_seq: str) -> list[float] | None:
-    """Get RDKit descriptors for a SMILES sequence.
+    """Get the full set of RDKit descriptors for a SMILES sequence.
 
     Parameters
     ----------
@@ -36,7 +36,7 @@ def smiles_to_rdkit_descs(smiles_seq: str) -> list[float] | None:
 
 # NOTE(degraff): This function can be made more eficient by taking batches of inputs, if needed.
 def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> list[float] | None:
-    r"""Get normalized RDKit descriptors for a SMILES sequence.
+    r"""Get the normalized RDKit descriptors for a SMILES sequence.
 
     A normalized RDKit descriptor is either (a) the CDF of the clamped input value under a given descriptor's
     distribution (i.e., the probability integral transform):
@@ -53,9 +53,10 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
     :math:`x_\text{min}` and :math:`x_\text{max}` are the minimum and maximum values of the
     descriptor, respectively; and :math:`\Phi^{-1}` is the inverse Gaussian CDF.
 
-    .. note::
-        The returned list of descriptors will be a subset of the full set of RDKit descriptors based on the keys of the
-        :data:`lobster.constants.DESCRIPTOR_DISTRIBUTIONS` dictionary.
+    .. important::
+        The returned list of descriptors will be a **subset** of the full set of RDKit descriptors based on the keys of
+        the :data:`lobster.constants.RDKIT_DESCRIPTOR_DISTRIBUTIONS` dictionary. That is, the returned list is not
+        necessarily the same or in the same order as the list returned from :func:`smiles_to_rdkit_descs`.
 
     Parameters
     ----------
@@ -71,7 +72,7 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
 
     See Also
     --------
-    :data:`lobster.constants.DESCRIPTOR_DISTRIBUTIONS`
+    :data:`lobster.constants.RDKIT_DESCRIPTOR_DISTRIBUTIONS`
         The distributions used to normalize the RDKit descriptors.
     """
     mol = Chem.MolFromSmiles(smiles_seq)
@@ -83,7 +84,7 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
     xs = []
     for name, x in descs.items():
         try:
-            dist, (x_min, x_max, *_) = DESCRIPTOR_DISTRIBUTIONS[name]
+            dist, (x_min, x_max, *_) = RDKIT_DESCRIPTOR_DISTRIBUTIONS[name]
         except KeyError:
             continue
 

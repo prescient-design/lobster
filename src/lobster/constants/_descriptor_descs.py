@@ -14,7 +14,7 @@ class SupportsCDF(Protocol):
     def cdf(self, x: float | ArrayLike) -> float | np.ndarray: ...
 
 
-DESCRIPTOR_DISTRIBUTIONS = {
+RDKIT_DESCRIPTOR_DISTRIBUTIONS = {
     "VSA_EState1": (
         scipy.stats.betaprime(0.129794, 2.00845, -1.78743e-34, 0.402201),
         (0, 0, 0, 0),
@@ -830,6 +830,6 @@ DESCRIPTOR_DISTRIBUTIONS = {
 """A mapping from a RDKit descriptor name to a 2-tuple of its parameterized distribution and a tuple of its clipping
 parameters."""
 
-DESCRIPTOR_DISTRIBUTIONS: Mapping[str, tuple[SupportsCDF, tuple[float, ...]]] = MappingProxyType(
-    DESCRIPTOR_DISTRIBUTIONS
+RDKIT_DESCRIPTOR_DISTRIBUTIONS: Mapping[str, tuple[SupportsCDF, tuple[float, ...]]] = MappingProxyType(
+    RDKIT_DESCRIPTOR_DISTRIBUTIONS
 )
