@@ -162,7 +162,7 @@ Check out this [jupyter notebook tutorial](notebooks/01-inference.ipynb) for an 
 
 Check out this [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for an example on how to intervene on different concepts for our concept-bottleneck models class.
 
-## MCP Integration
+## MCP Integration <a name="mcp-integration"></a>
 
 Lobster supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for seamless integration with Claude Desktop and other AI tools:
 
@@ -174,16 +174,29 @@ uv sync --extra mcp
 uv run lobster_mcp_setup
 ```
 
-<!-- ### One-click install for Cursor -->
-<!-- TODO -->
-<!-- [![Add Lobster MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsIi0tZXh0cmEiLCJtY3AiLCJsb2JzdGVyX21jcF9zZXJ2ZXIiXX0=) -->
+### Setup for Cursor
 
-After setup, you can use Lobster models directly in Cursor or Claude Desktop with natural language commands like:
+To configure Lobster MCP server in Cursor:
+
+1. **Install dependencies**: `uv sync --extra mcp`
+2. **Run setup script**: `uv run lobster_mcp_setup` and select option 2 (Cursor)
+3. **Restart Cursor** to load the new server
+4. **Use `@lobster-inference`** in chat to access protein language models
+
+This ensures the MCP server runs from the correct directory with all dependencies available.
+
+After setup, you can use Lobster models directly in Claude Desktop or Cursor with natural language commands like:
 - "Get embeddings for this protein sequence using lobster_24M"
 - "What concepts are supported by the cb_lobster_24M model?"
 - "Intervene on this sequence to reduce hydrophobicity"
 
-See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation.
+**Key Features:**
+- **Modular architecture** - Clean separation of models, tools, and schemas
+- **Multiple model types** - Access to both MLM and concept bottleneck models
+- **5 core tools** - Embeddings, concepts, interventions, naturalness, and model listing
+- **Type-safe validation** - Pydantic schemas for reliable interactions
+
+See the [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation or [MCP README](src/lobster/mcp/README.md) for quick start instructions.
 
 ## DXT Extension for Claude Desktop
 

@@ -23,22 +23,15 @@ def test_imports():
         print("❌ PyTorch not available")
         raise AssertionError("PyTorch not available") from e
 
-    # Test Lobster model imports
+    # Test Lobster MCP modular imports
     try:
-        # Import from the actual source location
-        import os
-        import sys
+        from lobster.mcp.models import ModelManager, AVAILABLE_MODELS  # noqa: F401
+        from lobster.mcp.server import app  # noqa: F401
 
-        # Add the src directory to the path
-        lobster_src = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "src")
-        sys.path.insert(0, lobster_src)
-
-        from lobster.model import LobsterCBMPMLM, LobsterPMLM  # noqa: F401
-
-        print("✅ Lobster model classes available")
+        print("✅ Lobster MCP modular structure available")
     except ImportError as e:
-        print(f"❌ Lobster models not available: {e}")
-        raise AssertionError(f"Lobster models not available: {e}") from e
+        print(f"❌ Lobster MCP modules not available: {e}")
+        raise AssertionError(f"Lobster MCP modules not available: {e}") from e
 
 
 def test_device():
@@ -70,20 +63,13 @@ def _check_imports():
         return False
 
     try:
-        # Import from the actual source location
-        import os
-        import sys
+        from lobster.mcp.models import ModelManager, AVAILABLE_MODELS  # noqa: F401
+        from lobster.mcp.server import app  # noqa: F401
 
-        # Add the src directory to the path
-        lobster_src = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "src")
-        sys.path.insert(0, lobster_src)
-
-        from lobster.model import LobsterCBMPMLM, LobsterPMLM  # noqa: F401
-
-        print("✅ Lobster model classes available")
+        print("✅ Lobster MCP modular structure available")
         return True
     except ImportError as e:
-        print(f"❌ Lobster models not available: {e}")
+        print(f"❌ Lobster MCP modules not available: {e}")
         return False
 
 

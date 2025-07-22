@@ -12,7 +12,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 try:
-    from lobster.mcp.inference_server import AVAILABLE_MODELS, LobsterInferenceServer
+    from lobster.mcp.models import AVAILABLE_MODELS, ModelManager
 
     LOBSTER_AVAILABLE = True
 except ImportError:
@@ -20,15 +20,15 @@ except ImportError:
 
 
 @pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
-class TestLobsterInferenceServer:
-    """Test the Lobster MCP inference server"""
+class TestModelManager:
+    """Test the Lobster MCP ModelManager"""
 
     def test_initialization(self):
-        """Test server initialization"""
-        server = LobsterInferenceServer()
-        assert hasattr(server, "device")
-        assert hasattr(server, "loaded_models")
-        assert isinstance(server.loaded_models, dict)
+        """Test ModelManager initialization"""
+        model_manager = ModelManager()
+        assert hasattr(model_manager, "device")
+        assert hasattr(model_manager, "loaded_models")
+        assert isinstance(model_manager.loaded_models, dict)
 
     def test_available_models(self):
         """Test that available models are properly defined"""
@@ -40,8 +40,8 @@ class TestLobsterInferenceServer:
         assert "lobster_24M" in AVAILABLE_MODELS["masked_lm"]
         assert "cb_lobster_24M" in AVAILABLE_MODELS["concept_bottleneck"]
 
-    @patch("lobster.mcp.inference_server.LobsterPMLM")
-    @patch("lobster.mcp.inference_server.torch")
+    @patch("lobster.mcp.models.manager.LobsterPMLM")
+    @patch("lobster.mcp.models.manager.torch")
     def test_model_loading_masked_lm(self, mock_torch, mock_lobster_pmlm):
         """Test loading masked language model"""
         # Setup mocks
@@ -50,10 +50,10 @@ class TestLobsterInferenceServer:
         mock_lobster_pmlm.return_value = mock_model
         mock_model.to.return_value = mock_model
 
-        server = LobsterInferenceServer()
+        model_manager = ModelManager()
 
         # Test loading
-        model = server._get_or_load_model("lobster_24M", "masked_lm")
+        model = model_manager.get_or_load_model("lobster_24M", "masked_lm")
 
         # Verify calls
         mock_lobster_pmlm.assert_called_once_with("asalam91/lobster_24M")
@@ -62,8 +62,8 @@ class TestLobsterInferenceServer:
 
         assert model == mock_model
 
-    @patch("lobster.mcp.inference_server.LobsterCBMPMLM")
-    @patch("lobster.mcp.inference_server.torch")
+    @patch("lobster.mcp.models.manager.LobsterCBMPMLM")
+    @patch("lobster.mcp.models.manager.torch")
     def test_model_loading_concept_bottleneck(self, mock_torch, mock_lobster_cbm):
         """Test loading concept bottleneck model"""
         # Setup mocks
@@ -72,10 +72,10 @@ class TestLobsterInferenceServer:
         mock_lobster_cbm.return_value = mock_model
         mock_model.to.return_value = mock_model
 
-        server = LobsterInferenceServer()
+        model_manager = ModelManager()
 
         # Test loading
-        model = server._get_or_load_model("cb_lobster_24M", "concept_bottleneck")
+        model = model_manager.get_or_load_model("cb_lobster_24M", "concept_bottleneck")
 
         # Verify calls
         mock_lobster_cbm.assert_called_once_with("asalam91/cb_lobster_24M")
@@ -86,17 +86,17 @@ class TestLobsterInferenceServer:
 
     def test_invalid_model_type(self):
         """Test error handling for invalid model type"""
-        server = LobsterInferenceServer()
+        model_manager = ModelManager()
 
         with pytest.raises(ValueError, match="Unknown model type"):
-            server._get_or_load_model("some_model", "invalid_type")
+            model_manager.get_or_load_model("some_model", "invalid_type")
 
     def test_invalid_model_name(self):
         """Test error handling for invalid model name"""
-        server = LobsterInferenceServer()
+        model_manager = ModelManager()
 
         with pytest.raises(ValueError, match="Unknown masked LM model"):
-            server._get_or_load_model("invalid_model", "masked_lm")
+            model_manager.get_or_load_model("invalid_model", "masked_lm")
 
 
 class TestModuleImports:
@@ -131,14 +131,14 @@ class TestIntegration:
     """Integration tests that require actual model loading"""
 
     @pytest.fixture
-    def server(self):
-        """Create a server instance for testing"""
-        return LobsterInferenceServer()
+    def model_manager(self):
+        """Create a ModelManager instance for testing"""
+        return ModelManager()
 
     @pytest.mark.gpu
-    def test_device_detection(self, server):
+    def test_device_detection(self, model_manager):
         """Test device detection"""
-        assert server.device in ["cuda", "cpu"]
+        assert model_manager.device in ["cuda", "cpu"]
 
     # Note: Actual model loading tests would require significant resources
     # and internet connectivity, so they're marked as slow/integration tests

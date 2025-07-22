@@ -9,9 +9,11 @@ Available when the 'mcp' extra is installed:
 """
 
 try:
-    from .inference_server import LobsterInferenceServer
+    # Import new modular components
+    from .models import ModelManager, AVAILABLE_MODELS
+    from .server import app as mcp_app
 
-    __all__ = ["LobsterInferenceServer"]
+    __all__ = ["ModelManager", "AVAILABLE_MODELS", "mcp_app"]
 except ImportError:
     # MCP dependencies not installed
     __all__ = []
