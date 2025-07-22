@@ -1,6 +1,7 @@
 from ._architecture_analyzer import GPUType, ModelType
 from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
+from ._descriptor_descs import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 from ._modality import Modality, ModalityType
 from ._moleculeace_tasks import MOLECULEACE_TASKS
 from ._peer_tasks import (
@@ -44,4 +45,5 @@ __all__ = [
     "UME_CHECKPOINT_DICT_S3_URI",
     "UME_CHECKPOINT_DICT_S3_BUCKET",
     "UME_CHECKPOINT_DICT_S3_KEY",
+    "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
 ]

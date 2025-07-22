@@ -16,6 +16,10 @@ from ._convert_seqs import (
     replace_target_symbol,
     replace_unknown_symbols,
 )
+from ._rdkit_descs import (
+    smiles_to_normalized_rdkit_descs,
+    smiles_to_rdkit_descs,
+)
 from ._sample_item import sample_item
 from ._sample_tokenized_input import sample_tokenized_input
 from ._utils import (
@@ -50,4 +54,6 @@ __all__ = [
     "random_boolean_choice",
     "sample_list_with_probs",
     "uniform_sample",
+    "smiles_to_normalized_rdkit_descs",
+    "smiles_to_rdkit_descs",
 ]
