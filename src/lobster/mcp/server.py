@@ -16,15 +16,15 @@ import logging
 
 from fastmcp import FastMCP
 
-from models import ModelManager
-from schemas import (
+from .models import ModelManager
+from .schemas import (
     InterventionRequest,
     NaturalnessRequest,
     SequenceConceptsRequest,
     SequenceRepresentationRequest,
     SupportedConceptsRequest,
 )
-from tools import (
+from .tools import (
     compute_naturalness,
     get_sequence_concepts,
     get_sequence_representations,

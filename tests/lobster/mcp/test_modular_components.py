@@ -110,12 +110,22 @@ class TestTools:
         # Setup mocks
         mock_torch.no_grad.return_value.__enter__ = Mock()
         mock_torch.no_grad.return_value.__exit__ = Mock()
-        mock_torch.mean.return_value.cpu.return_value.numpy.return_value = [[0.1, 0.2, 0.3]]
+
+        # Create a proper mock for torch.mean that returns a tensor-like object
+        mock_mean_result = Mock()
+        mock_mean_result.cpu.return_value.numpy.return_value = [[0.1, 0.2, 0.3]]
+        mock_torch.mean.return_value = mock_mean_result
 
         mock_model_manager.get_or_load_model.return_value = mock_model
+
+        # Create a more complete mock for the representation tensor
+        mock_representation = Mock()
+        mock_representation.cpu.return_value.numpy.return_value = [[0.1, 0.2, 0.3]]
+        # Mock the indexing operation for cls token
+        mock_representation.__getitem__ = Mock(return_value=mock_representation)
         mock_model.sequences_to_latents.return_value = [
             Mock(),
-            Mock(cpu=Mock(numpy=Mock(return_value=[[0.1, 0.2, 0.3]]))),
+            mock_representation,
         ]
 
         request = SequenceRepresentationRequest(
