@@ -32,9 +32,9 @@ class PEERTask(str, Enum):
     PPIAFFINITY = "ppiaffinity"
     YEASTPPI = "yeastppi"
     # Structure prediction tasks
-    FOLD = "fold"
+    FOLD = "fold"  # Remote homology detection (superfamily holdout, used in the PEER paper)
     PROTEINNET = "proteinnet"
-    SECONDARY_STRUCTURE = "secondarystructure"
+    SECONDARY_STRUCTURE = "secondarystructure"  # CB513 benchmark, as used in the PEER paper
 
 
 # Map tasks to their categories
