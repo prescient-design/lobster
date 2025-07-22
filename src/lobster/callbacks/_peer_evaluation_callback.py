@@ -37,10 +37,9 @@ from ._peer_utils import (
     process_secondary_structure_item,
     process_proteinnet_item,
     process_fold_item,
-    aggregate_task_metrics,
-    calculate_category_averages,
     calculate_mean_metrics,
     get_peer_task_metric,
+    convert_numpy_to_python,
 )
 
 logger = logging.getLogger(__name__)
@@ -329,27 +328,27 @@ class PEEREvaluationCallback(LinearProbeCallback):
             return torch.tensor([]), torch.tensor([])
 
     def _get_task_test_splits(self, task: PEERTask) -> list[str]:
-        """Get all appropriate test splits for a task.
+        """Get the most relevant test split for each task.
 
-        For most tasks, this will be a single 'test' split.
-        For tasks with multiple test splits, returns all of them.
+        Returns only the single most important test split for each task
+        to simplify evaluation results.
         """
         match task:
             case PEERTask.SECONDARY_STRUCTURE:
-                return ["casp12", "cb513", "ts115"]
+                return ["cb513"]  # Only CB513 benchmark
 
             case PEERTask.BINDINGDB:
-                return ["random_test", "holdout_test"]
+                return ["holdout_test"]  # Only holdout test split
 
             case PEERTask.FOLD:
-                return [split for split in PEER_TASK_SPLITS[task] if "test" in split and "holdout" in split]
+                return ["test_superfamily_holdout"]  # Only superfamily holdout for remote homology
 
             case PEERTask.HUMANPPI | PEERTask.YEASTPPI:
-                return ["test", "cross_species_test"]
+                return ["test"]  # Only standard test split
 
             case _:
-                # Default case: return anything with test
-                return [split for split in PEER_TASK_SPLITS[task] if split not in ["train", "valid"]]
+                # Default case: return single test split
+                return [split for split in PEER_TASK_SPLITS[task] if split not in ["train", "valid"]][:1]
 
     def _get_task_datasets(self, task: PEERTask) -> tuple[PEERDataset, dict[str, PEERDataset]]:
         """Get or create train and test datasets for a given task.
@@ -358,7 +357,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Tuple containing (train_dataset, test_datasets_dict)
             where test_datasets_dict maps split names to datasets
         """
-        cache_key = str(task)
+        cache_key = task.value
 
         if cache_key in self.datasets:
             return self.datasets[cache_key]
@@ -652,7 +651,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
                         # Fallback if predict_proba is not available
                         metrics["accuracy"] = accuracy_score(targets_np, predictions)
 
-        return metrics
+        # Convert NumPy scalars to Python types for clean YAML formatting
+        return convert_numpy_to_python(metrics)
 
     def _get_collate_fn(self, task: PEERTask):
         """Get the appropriate collation function for the task."""
@@ -709,7 +709,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 return {}
 
             probe = self._train_probe(train_embeddings, train_targets, task)
-            self.probes[str(task)] = probe
+            self.probes[task.value] = probe
 
             # Clear training data to free memory
             del train_embeddings, train_targets
@@ -755,49 +755,37 @@ class PEEREvaluationCallback(LinearProbeCallback):
     ) -> dict[str, dict[str, float]]:
         """Core evaluation logic used by both on_validation_epoch_end and evaluate."""
         # Track metrics
-        category_metrics = defaultdict(lambda: defaultdict(list))
         all_metrics = defaultdict(list)
         all_task_metrics = {}
         split_count = 0
 
         # Evaluate each selected task
         for task in tqdm(self.selected_tasks, desc=f"{self.__class__.__name__}"):
-            task_category = PEER_TASK_CATEGORIES[task]
             split_metrics = self._evaluate_task(task, trainer, pl_module)
 
             # Get the relevant metric for this task
             relevant_metric = get_peer_task_metric(task)
 
-            # Store task metrics for return value
-            all_task_metrics[str(task)] = split_metrics
+            # Store task metrics for return value (simplified since we only have one split per task)
+            if split_metrics:
+                # Get the single split result and store it directly under the task name
+                split_name, metrics = next(iter(split_metrics.items()))
+                all_task_metrics[task.value] = metrics
 
-            # Process metrics for each split, but only log the relevant metric
-            for split_name, metrics in split_metrics.items():
                 # Only log the relevant metric for this task
                 if relevant_metric in metrics:
                     value = metrics[relevant_metric]
-                    metric_key = f"peer_linear_probe/{task}/{split_name}/{relevant_metric}"
+                    metric_key = f"peer_linear_probe/{task}/{relevant_metric}"
                     trainer.logger.log_metrics({metric_key: value}, step=step)
-
-                    # Collect metrics for category averages
-                    if len(split_metrics) > 1:
-                        category_metrics[task_category][f"{relevant_metric}_by_split"].append(value)
 
                     # Collect metrics for global averages - using the metric type as the key
                     all_metrics[relevant_metric].append(value)
 
                 split_count += 1
 
-            # Calculate and log task averages across splits if there are multiple splits
-            task_avg_metrics = aggregate_task_metrics(split_metrics, relevant_metric)
-            if task_avg_metrics:
-                task_avg_key = f"peer_linear_probe/{task}/average/{relevant_metric}"
-                trainer.logger.log_metrics({task_avg_key: task_avg_metrics[relevant_metric]}, step=step)
-                all_task_metrics[f"{task}/average"] = task_avg_metrics
-
             # Clear dataset cache between tasks if enabled
             if self.clear_cache_between_tasks:
-                task_cache_key = str(task)
+                task_cache_key = task.value
                 if task_cache_key in self.datasets:
                     del self.datasets[task_cache_key]
                     logger.debug(f"Cleared dataset cache for task {task}")
@@ -806,16 +794,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
             if task in self.memory_intensive_tasks:
                 self._clear_memory_cache()
                 logger.debug(f"Completed memory-intensive task {task} and cleared memory")
-
-        # Log category averages - but only for metrics that are relevant to tasks in that category
-        category_metrics_dict = calculate_category_averages(category_metrics)
-        for category, metrics_dict in category_metrics_dict.items():
-            for metric_name, avg_value in metrics_dict.items():
-                metric_key = f"peer_linear_probe/category/{category}/{metric_name}"
-                trainer.logger.log_metrics({metric_key: avg_value}, step=step)
-
-        if category_metrics_dict:
-            all_task_metrics["categories"] = category_metrics_dict
 
         # Calculate and log overall averages for each metric type
         mean_metrics = calculate_mean_metrics(all_metrics)
@@ -829,7 +807,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
         # Log total number of splits evaluated
         trainer.logger.log_metrics({"peer_linear_probe/total_splits_evaluated": split_count}, step=step)
 
-        return all_task_metrics
+        # Convert NumPy scalars to Python types for clean YAML formatting
+        return convert_numpy_to_python(all_task_metrics)
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         """Train and evaluate linear probes on PEER tasks at specified epochs.
