@@ -51,6 +51,7 @@ def run_evaluation(
     pool_type: str = "mean",
     devices: list[int] | None = None,
     seed: int = 42,
+    layers: list[int] | Literal["mid"] | Literal["last"] | None = None,
 ) -> dict[str, Any]:
     """Run DGEB evaluation on a UME model.
 
@@ -78,6 +79,12 @@ def run_evaluation(
         Device IDs for inference. If None, uses [0].
     seed : int, default=42
         Random seed for reproducibility.
+    layers : list[int] | Literal["mid"] | Literal["last"] | None, default=None
+        Which layers to extract embeddings from. Options:
+        - None: Use last layer (default)
+        - "last": Use last layer explicitly
+        - "mid": Use middle layer
+        - list[int]: Use specific layer numbers (e.g., [6, 12])
 
     Returns
     -------
@@ -116,6 +123,7 @@ def run_evaluation(
             l2_norm=l2_norm,
             pool_type=pool_type,
             devices=devices,
+            layers=layers,
         )
         logger.info("UMEAdapterDGEB instance created successfully")
         logger.info(f"Successfully initialized UME adapter with embedding dim: {model.embed_dim}")
@@ -486,6 +494,13 @@ def main():
     )
 
     parser.add_argument(
+        "--layers",
+        type=str,
+        default=None,
+        help="Which layers to extract embeddings from. Options: 'last' (default), 'mid', or comma-separated layer numbers (e.g., '6,12')",
+    )
+
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -501,6 +516,19 @@ def main():
     # Handle flash attention flag
     use_flash_attn = args.use_flash_attn if args.use_flash_attn else None
 
+    # Parse layers argument
+    layers = None
+    if args.layers:
+        if args.layers in ["last", "mid"]:
+            layers = args.layers
+        else:
+            # Try to parse as comma-separated integers
+            try:
+                layers = [int(x.strip()) for x in args.layers.split(",")]
+            except ValueError:
+                logger.error(f"Invalid layers argument: {args.layers}. Must be 'last', 'mid', or comma-separated integers.")
+                raise
+
     # Run evaluation
     try:
         results_summary = run_evaluation(
@@ -515,6 +543,7 @@ def main():
             pool_type=args.pool_type,
             devices=args.devices,
             seed=args.seed,
+            layers=layers,
         )
 
         # Create output directory and report subdirectory
