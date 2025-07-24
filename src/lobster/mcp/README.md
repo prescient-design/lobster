@@ -151,7 +151,7 @@ python -m lobster.mcp.setup
 #### 🚀 One-Click Install (Recommended)
 Click the button below to automatically install the Lobster MCP server in Cursor:
 
-[![Add Lobster to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-MCP%20Server-blue?style=for-the-badge&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjogInV2IiwgImFyZ3MiOiBbInJ1biIsICItLWV4dHJhIiwgIm1jcCIsICJsb2JzdGVyX21jcF9zZXJ2ZXIiXX0=)
+[![Add Lobster to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-MCP%20Server-blue?style=for-the-badge&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjogInV2IiwgImFyZ3MiOiBbInJ1biIsICItLXByb2plY3QiLCAiLiIsICItLWV4dHJhIiwgIm1jcCIsICJsb2JzdGVyX21jcF9zZXJ2ZXIiXSwgImVudiI6IHt9LCAiY3dkIjogIiR7d29ya3NwYWNlRm9sZGVyfSJ9Cg==)
 
 After clicking, restart Cursor and use `@lobster-inference` to access MCP tools.
 

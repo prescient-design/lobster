@@ -44,12 +44,12 @@ class TestToolFactory:
 
         # Verify all expected tools are registered
         expected_tools = {
-            "list_models": list_available_models,
-            "get_representations": get_sequence_representations,
-            "get_concepts": get_sequence_concepts,
-            "intervene_sequence": intervene_on_sequence,
-            "get_supported_concepts_list": get_supported_concepts,
-            "compute_sequence_naturalness": compute_naturalness,
+            "list_available_models": list_available_models,
+            "get_sequence_representations": get_sequence_representations,
+            "get_sequence_concepts": get_sequence_concepts,
+            "intervene_on_sequence": intervene_on_sequence,
+            "get_supported_concepts": get_supported_concepts,
+            "compute_naturalness": compute_naturalness,
         }
 
         assert len(self.factory._registered_tools) == 6
@@ -89,12 +89,12 @@ class TestToolFactory:
 
         # Should have all expected tools
         assert len(tools) == 6
-        assert "list_models" in tools
-        assert "get_representations" in tools
-        assert "get_concepts" in tools
-        assert "intervene_sequence" in tools
-        assert "get_supported_concepts_list" in tools
-        assert "compute_sequence_naturalness" in tools
+        assert "list_available_models" in tools
+        assert "get_sequence_representations" in tools
+        assert "get_sequence_concepts" in tools
+        assert "intervene_on_sequence" in tools
+        assert "get_supported_concepts" in tools
+        assert "compute_naturalness" in tools
 
     def test_get_tool_info(self):
         """Test get_tool_info returns correct information."""
@@ -106,7 +106,7 @@ class TestToolFactory:
         assert len(tool_info) == 6
 
         # Test structure of tool info for one tool
-        list_models_info = tool_info["list_models"]
+        list_models_info = tool_info["list_available_models"]
         assert "parameters" in list_models_info
         assert "doc" in list_models_info
         assert "name" in list_models_info
@@ -120,11 +120,11 @@ class TestToolFactory:
         tool_info = self.factory.get_tool_info()
 
         # Test parameters for list_available_models (no parameters)
-        list_models_params = tool_info["list_models"]["parameters"]
+        list_models_params = tool_info["list_available_models"]["parameters"]
         assert len(list_models_params) == 0
 
         # Test parameters for get_sequence_representations (has parameters)
-        representations_params = tool_info["get_representations"]["parameters"]
+        representations_params = tool_info["get_sequence_representations"]["parameters"]
         assert "model_name" in representations_params
         assert "sequences" in representations_params
         assert "model_type" in representations_params
@@ -227,7 +227,7 @@ class TestToolFactoryIntegration:
         tools = factory.get_registered_tools()
 
         # Test that list_available_models still works
-        list_models_func = tools["list_models"]
+        list_models_func = tools["list_available_models"]
         result = list_models_func()
 
         # Should return a response with available models
@@ -376,10 +376,10 @@ class TestToolFactoryDocumentation:
         tool_info = factory.get_tool_info()
 
         # Check that docstrings are preserved
-        list_models_doc = tool_info["list_models"]["doc"]
+        list_models_doc = tool_info["list_available_models"]["doc"]
         assert "List all available pretrained Lobster models" in list_models_doc
 
-        representations_doc = tool_info["get_representations"]["doc"]
+        representations_doc = tool_info["get_sequence_representations"]["doc"]
         assert "Get sequence representations from a model" in representations_doc
 
     def test_tool_factory_function_names_preserved(self):
@@ -391,9 +391,9 @@ class TestToolFactoryDocumentation:
         tool_info = factory.get_tool_info()
 
         # Check that function names are preserved
-        assert tool_info["list_models"]["name"] == "list_available_models"
-        assert tool_info["get_representations"]["name"] == "get_sequence_representations"
-        assert tool_info["get_concepts"]["name"] == "get_sequence_concepts"
-        assert tool_info["intervene_sequence"]["name"] == "intervene_on_sequence"
-        assert tool_info["get_supported_concepts_list"]["name"] == "get_supported_concepts"
-        assert tool_info["compute_sequence_naturalness"]["name"] == "compute_naturalness"
+        assert tool_info["list_available_models"]["name"] == "list_available_models"
+        assert tool_info["get_sequence_representations"]["name"] == "get_sequence_representations"
+        assert tool_info["get_sequence_concepts"]["name"] == "get_sequence_concepts"
+        assert tool_info["intervene_on_sequence"]["name"] == "intervene_on_sequence"
+        assert tool_info["get_supported_concepts"]["name"] == "get_supported_concepts"
+        assert tool_info["compute_naturalness"]["name"] == "compute_naturalness"
