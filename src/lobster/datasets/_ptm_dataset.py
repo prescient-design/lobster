@@ -56,6 +56,7 @@ class PTMDataset(Dataset):
                 fname="ptm_labels.csv",
                 path=self.root / self.__class__.__name__,
                 progressbar=True,
+                known_hash=None,
             )
 
         csv_path = self.root / self.__class__.__name__ / "ptm_labels.csv"
