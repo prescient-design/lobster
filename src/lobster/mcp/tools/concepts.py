@@ -1,17 +1,15 @@
-"""Concept-related tools for Lobster MCP server."""
+"""Concept-related tools for Lobster MCP server using FastMCP best practices."""
 
 import logging
-from typing import Any
 
 import torch
 
-from ..models import ModelManager
-from ..schemas import SequenceConceptsRequest, SupportedConceptsRequest
+from .tool_utils import _load_model
 
 logger = logging.getLogger("lobster-fastmcp-server")
 
 
-def get_sequence_concepts(request: SequenceConceptsRequest, model_manager: ModelManager) -> dict[str, Any]:
+def get_sequence_concepts(model_name: str, sequences: list[str]) -> dict:
     """Get concept predictions from a concept bottleneck model.
 
     This function takes a sequence of biological sequences and returns their
@@ -21,24 +19,20 @@ def get_sequence_concepts(request: SequenceConceptsRequest, model_manager: Model
 
     Parameters
     ----------
-    request : SequenceConceptsRequest
-        The request object containing the model name and sequences to analyze.
-        Must have the following attributes:
-        - model_name (str): Name of the concept bottleneck model to use
-        - sequences (List[str]): List of biological sequences to analyze
-    model_manager : ModelManager
-        The model manager instance responsible for loading and managing models.
-        Used to retrieve the specified concept bottleneck model.
+    model_name : str
+        Name of the concept bottleneck model to use
+    sequences : List[str]
+        List of biological sequences to analyze
 
     Returns
     -------
-    dict[str, Any]
-        A dictionary containing the concept analysis results with the following keys:
-        - concepts (List[List[float]]): Concept predictions for each sequence
-        - concept_embeddings (List[List[float]]): Concept embeddings for each sequence
-        - num_sequences (int): Number of sequences analyzed
-        - num_concepts (int): Number of concepts in the model
-        - model_used (str): Identifier of the model used for analysis
+    dict
+        A dictionary containing the concept analysis results with the following fields:
+        - concepts: Concept predictions for each sequence
+        - concept_embeddings: Concept embeddings for each sequence
+        - num_sequences: Number of sequences analyzed
+        - num_concepts: Number of concepts in the model
+        - model_used: Identifier of the model used for analysis
 
     Raises
     ------
@@ -51,13 +45,10 @@ def get_sequence_concepts(request: SequenceConceptsRequest, model_manager: Model
     For MCP server usage, this function is typically called through the MCP protocol:
 
     >>> # Example MCP request structure
-    >>> request = SequenceConceptsRequest(
-    ...     model_name="protein_concept_model",
+    >>> result = get_sequence_concepts(
+    ...     model_name="cb_lobster_24M",
     ...     sequences=["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
     ... )
-    >>>
-    >>> # The function would be called by the MCP server
-    >>> result = get_sequence_concepts(request, model_manager)
     >>>
     >>> # Example response structure
     >>> {
@@ -65,7 +56,7 @@ def get_sequence_concepts(request: SequenceConceptsRequest, model_manager: Model
     ...     "concept_embeddings": [[0.5, 0.3, 0.8, 0.2, 0.6]],
     ...     "num_sequences": 1,
     ...     "num_concepts": 5,
-    ...     "model_used": "concept_bottleneck_protein_concept_model"
+    ...     "model_used": "concept_bottleneck_cb_lobster_24M"
     ... }
 
     Notes
@@ -76,18 +67,18 @@ def get_sequence_concepts(request: SequenceConceptsRequest, model_manager: Model
     - All tensors are converted to CPU and then to Python lists for JSON serialization
     """
     try:
-        model = model_manager.get_or_load_model(request.model_name, "concept_bottleneck")
+        model = _load_model(model_name, "concept_bottleneck")
 
         with torch.no_grad():
-            concepts = model.sequences_to_concepts(request.sequences)[-1]
-            concept_embeddings = model.sequences_to_concepts_emb(request.sequences)[-1]
+            concepts = model.sequences_to_concepts(sequences)[-1]
+            concept_embeddings = model.sequences_to_concepts_emb(sequences)[-1]
 
             return {
                 "concepts": concepts.cpu().numpy().tolist(),
                 "concept_embeddings": concept_embeddings.cpu().numpy().tolist(),
-                "num_sequences": len(request.sequences),
+                "num_sequences": len(sequences),
                 "num_concepts": concepts.shape[-1],
-                "model_used": f"concept_bottleneck_{request.model_name}",
+                "model_used": f"concept_bottleneck_{model_name}",
             }
 
     except Exception as e:
@@ -95,7 +86,7 @@ def get_sequence_concepts(request: SequenceConceptsRequest, model_manager: Model
         raise
 
 
-def get_supported_concepts(request: SupportedConceptsRequest, model_manager: ModelManager) -> dict[str, Any]:
+def get_supported_concepts(model_name: str) -> dict:
     """Get list of supported concepts for a concept bottleneck model.
 
     This function retrieves the list of concepts that a specific concept bottleneck
@@ -104,21 +95,16 @@ def get_supported_concepts(request: SupportedConceptsRequest, model_manager: Mod
 
     Parameters
     ----------
-    request : SupportedConceptsRequest
-        The request object containing the model name to query.
-        Must have the following attributes:
-        - model_name (str): Name of the concept bottleneck model to query
-    model_manager : ModelManager
-        The model manager instance responsible for loading and managing models.
-        Used to retrieve the specified concept bottleneck model.
+    model_name : str
+        Name of the concept bottleneck model to query
 
     Returns
     -------
-    dict[str, Any]
-        A dictionary containing the supported concepts information with the following keys:
-        - supported_concepts (List[str] or Any): List of concept names/identifiers
-        - num_concepts (int or None): Number of supported concepts (None if concepts is not a list)
-        - model_used (str): Identifier of the model used for querying
+    dict
+        A dictionary containing the supported concepts information with the following fields:
+        - concepts: List of concept names/identifiers
+        - model_name: Name of the model
+        - num_concepts: Number of supported concepts
 
     Raises
     ------
@@ -131,16 +117,11 @@ def get_supported_concepts(request: SupportedConceptsRequest, model_manager: Mod
     For MCP server usage, this function is typically called through the MCP protocol:
 
     >>> # Example MCP request structure
-    >>> request = SupportedConceptsRequest(
-    ...     model_name="protein_concept_model"
-    ... )
-    >>>
-    >>> # The function would be called by the MCP server
-    >>> result = get_supported_concepts(request, model_manager)
+    >>> result = get_supported_concepts("cb_lobster_24M")
     >>>
     >>> # Example response structure
     >>> {
-    ...     "supported_concepts": [
+    ...     "concepts": [
     ...         "hydrophobicity",
     ...         "secondary_structure",
     ...         "binding_site",
@@ -148,7 +129,7 @@ def get_supported_concepts(request: SupportedConceptsRequest, model_manager: Mod
     ...         "transmembrane_region"
     ...     ],
     ...     "num_concepts": 5,
-    ...     "model_used": "concept_bottleneck_protein_concept_model"
+    ...     "model_used": "concept_bottleneck_cb_lobster_24M"
     ... }
 
     Notes
@@ -161,13 +142,25 @@ def get_supported_concepts(request: SupportedConceptsRequest, model_manager: Mod
       by setting num_concepts to None in such cases
     """
     try:
-        model = model_manager.get_or_load_model(request.model_name, "concept_bottleneck")
+        model = _load_model(model_name, "concept_bottleneck")
         concepts = model.list_supported_concept()
 
+        # Handle different return types from model.list_supported_concept()
+        if concepts is None:
+            concepts_list = []
+            num_concepts = 0
+        elif isinstance(concepts, list):
+            concepts_list = concepts
+            num_concepts = len(concepts)
+        else:
+            # For non-list returns (e.g., string), wrap in list for backward compatibility
+            concepts_list = [concepts] if concepts else []
+            num_concepts = 1 if concepts else 0
+
         return {
-            "supported_concepts": concepts,
-            "num_concepts": len(concepts) if isinstance(concepts, list) else None,
-            "model_used": f"concept_bottleneck_{request.model_name}",
+            "concepts": concepts_list,
+            "model_name": model_name,
+            "num_concepts": num_concepts,
         }
 
     except Exception as e:

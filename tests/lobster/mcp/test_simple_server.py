@@ -25,7 +25,7 @@ def test_imports():
 
     # Test Lobster MCP modular imports
     try:
-        from lobster.mcp.models import ModelManager, AVAILABLE_MODELS  # noqa: F401
+        from lobster.mcp.models import AVAILABLE_MODELS  # noqa: F401
         from lobster.mcp.server import app  # noqa: F401
 
         print("✅ Lobster MCP modular structure available")
@@ -63,7 +63,7 @@ def _check_imports():
         return False
 
     try:
-        from lobster.mcp.models import ModelManager, AVAILABLE_MODELS  # noqa: F401
+        from lobster.mcp.models import AVAILABLE_MODELS  # noqa: F401
         from lobster.mcp.server import app  # noqa: F401
 
         print("✅ Lobster MCP modular structure available")

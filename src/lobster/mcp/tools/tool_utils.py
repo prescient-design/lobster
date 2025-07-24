@@ -1,63 +1,99 @@
 """Utility tools for Lobster MCP server."""
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
-from ..models import AVAILABLE_MODELS, ModelManager
-from ..schemas import NaturalnessRequest
+try:
+    from lobster.model import LobsterCBMPMLM, LobsterPMLM
+except ImportError as e:
+    raise ImportError("Please install lobster: pip install -e .") from e
+
+from ..models.config import AVAILABLE_MODELS
 
 logger = logging.getLogger("lobster-fastmcp-server")
 
 
-def list_available_models(model_manager: ModelManager) -> dict[str, Any]:
+def _get_device() -> str:
+    """Get the current device (CUDA if available, else CPU)."""
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def _load_model(model_name: str, model_type: str):
+    """Load a model directly using the AVAILABLE_MODELS config.
+
+    Parameters
+    ----------
+    model_name : str
+        Name of the model to load
+    model_type : str
+        Type of model: 'masked_lm' or 'concept_bottleneck'
+
+    Returns
+    -------
+    LobsterPMLM | LobsterCBMPMLM
+        The loaded model
+    """
+    device = _get_device()
+
+    if model_type == "masked_lm":
+        if model_name not in AVAILABLE_MODELS["masked_lm"]:
+            raise ValueError(f"Unknown masked LM model: {model_name}")
+        model_path = AVAILABLE_MODELS["masked_lm"][model_name]
+        model = LobsterPMLM(model_path).to(device)
+
+    elif model_type == "concept_bottleneck":
+        if model_name not in AVAILABLE_MODELS["concept_bottleneck"]:
+            raise ValueError(f"Unknown concept bottleneck model: {model_name}")
+        model_path = AVAILABLE_MODELS["concept_bottleneck"][model_name]
+        model = LobsterCBMPMLM(model_path).to(device)
+
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    model.eval()
+    return model
+
+
+def list_available_models() -> dict[str, Any]:
     """List all available pretrained Lobster models and current device information.
 
     This function provides information about all available pretrained models in the
     Lobster framework, along with current device configuration. This is useful for
     discovering which models can be used and understanding the computational setup.
 
-    Parameters
-    ----------
-    model_manager : ModelManager
-        The model manager instance that contains device information and access
-        to the available models registry.
-
     Returns
     -------
-    dict[str, Any]
-        A dictionary containing model and device information with the following keys:
-        - available_models (dict): Dictionary mapping model names to their configurations
-          and metadata (model type, description, etc.)
-        - device (str): Current device being used (e.g., 'cuda:0', 'cpu')
-        - device_type (str): Type of device ('cuda', 'cpu', 'mps')
-        - Additional device-specific information from model_manager.get_device_info()
+    Dict[str, Any]
+        A dictionary containing model and device information with the following fields:
+        - available_models: Dictionary mapping model names to their configurations and metadata
+        - device: Current device being used (e.g., 'cuda:0', 'cpu')
+        - device_type: Type of device ('cuda', 'cpu', 'mps')
 
     Examples
     --------
     For MCP server usage, this function is typically called through the MCP protocol:
 
     >>> # The function would be called by the MCP server
-    >>> result = list_available_models(model_manager)
+    >>> result = list_available_models()
     >>>
     >>> # Example response structure
     >>> {
     ...     "available_models": {
-    ...         "protein_transformer": {
-    ...             "type": "transformer",
-    ...             "description": "Protein sequence transformer model",
-    ...             "version": "1.0.0"
+    ...         "masked_lm": {
+    ...             "lobster_24M": "asalam91/lobster_24M",
+    ...             "lobster_150M": "asalam91/lobster_150M"
     ...         },
-    ...         "dna_cnn": {
-    ...             "type": "cnn",
-    ...             "description": "DNA sequence CNN model",
-    ...             "version": "1.0.0"
+    ...         "concept_bottleneck": {
+    ...             "cb_lobster_24M": "asalam91/cb_lobster_24M",
+    ...             "cb_lobster_150M": "asalam91/cb_lobster_150M",
+    ...             "cb_lobster_650M": "asalam91/cb_lobster_650M",
+    ...             "cb_lobster_3B": "asalam91/cb_lobster_3B"
     ...         }
     ...     },
     ...     "device": "cuda:0",
-    ...     "device_type": "cuda",
-    ...     "gpu_memory_available": "8GB"
+    ...     "device_type": "cuda"
     ... }
 
     Notes
@@ -68,10 +104,15 @@ def list_available_models(model_manager: ModelManager) -> dict[str, Any]:
     - The available_models dictionary can be used to validate model names in other requests
     - This tool is typically called first to understand the system capabilities
     """
-    return {"available_models": AVAILABLE_MODELS, **model_manager.get_device_info()}
+    device = _get_device()
+    device_type = "cuda" if device.startswith("cuda") else device
+
+    return {"available_models": AVAILABLE_MODELS, "device": device, "device_type": device_type}
 
 
-def compute_naturalness(request: NaturalnessRequest, model_manager: ModelManager) -> dict[str, Any]:
+def compute_naturalness(
+    model_name: str, sequences: list[str], model_type: Literal["masked_lm", "concept_bottleneck"]
+) -> dict[str, Any]:
     """Compute naturalness/likelihood scores for biological sequences.
 
     This function calculates how "natural" or likely biological sequences are according
@@ -81,24 +122,20 @@ def compute_naturalness(request: NaturalnessRequest, model_manager: ModelManager
 
     Parameters
     ----------
-    request : NaturalnessRequest
-        The request object containing parameters for naturalness computation.
-        Must have the following attributes:
-        - model_name (str): Name of the model to use for naturalness computation
-        - model_type (str): Type of model (e.g., 'transformer', 'cnn', 'lstm')
-        - sequences (List[str]): List of biological sequences to evaluate
-    model_manager : ModelManager
-        The model manager instance responsible for loading and managing models.
-        Used to retrieve the specified model for naturalness computation.
+    model_name : str
+        Name of the model to use for naturalness computation
+    sequences : List[str]
+        List of biological sequences to evaluate
+    model_type : str
+        Type of model: 'masked_lm' or 'concept_bottleneck'
 
     Returns
     -------
-    dict[str, Any]
-        A dictionary containing the naturalness computation results with the following keys:
-        - sequences (List[str]): The input sequences that were evaluated
-        - scores (List[float]): Naturalness/likelihood scores for each sequence
-          (higher scores indicate more natural/likely sequences)
-        - model_used (str): Identifier of the model used for computation
+    Dict[str, Any]
+        A dictionary containing the naturalness computation results with the following fields:
+        - sequences: The input sequences that were evaluated
+        - scores: Naturalness/likelihood scores for each sequence (higher scores indicate more natural/likely sequences)
+        - model_used: Identifier of the model used for computation
 
     Raises
     ------
@@ -114,17 +151,14 @@ def compute_naturalness(request: NaturalnessRequest, model_manager: ModelManager
     For MCP server usage, this function is typically called through the MCP protocol:
 
     >>> # Example MCP request structure
-    >>> request = NaturalnessRequest(
-    ...     model_name="protein_transformer",
-    ...     model_type="transformer",
+    >>> result = compute_naturalness(
+    ...     model_name="lobster_24M",
+    ...     model_type="masked_lm",
     ...     sequences=[
     ...         "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG",
     ...         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     ...     ]
     ... )
-    >>>
-    >>> # The function would be called by the MCP server
-    >>> result = compute_naturalness(request, model_manager)
     >>>
     >>> # Example response structure
     >>> {
@@ -133,7 +167,7 @@ def compute_naturalness(request: NaturalnessRequest, model_manager: ModelManager
     ...         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     ...     ],
     ...     "scores": [0.85, 0.12],
-    ...     "model_used": "transformer_protein_transformer"
+    ...     "model_used": "masked_lm_lobster_24M"
     ... }
 
     Notes
@@ -150,19 +184,19 @@ def compute_naturalness(request: NaturalnessRequest, model_manager: ModelManager
       * Understanding model confidence in sequence predictions
     """
     try:
-        model = model_manager.get_or_load_model(request.model_name, request.model_type)
+        model = _load_model(model_name, model_type)
 
         if hasattr(model, "naturalness"):
-            scores = model.naturalness(request.sequences)
+            scores = model.naturalness(sequences)
         elif hasattr(model, "likelihood"):
-            scores = model.likelihood(request.sequences)
+            scores = model.likelihood(sequences)
         else:
-            raise ValueError(f"Model {request.model_name} does not support naturalness/likelihood computation")
+            raise ValueError(f"Model {model_name} does not support naturalness/likelihood computation")
 
         return {
-            "sequences": request.sequences,
+            "sequences": sequences,
             "scores": scores.tolist() if torch.is_tensor(scores) else scores,
-            "model_used": f"{request.model_type}_{request.model_name}",
+            "model_used": f"{model_type}_{model_name}",
         }
 
     except Exception as e:

@@ -1,79 +1,71 @@
 #!/usr/bin/env python3
 """
-Test script for the Lobster MCP Server
+Test script for the Lobster MCP Server (FastMCP version)
 
 This script tests the basic functionality of the MCP server components
-without requiring the full MCP protocol setup.
+using the new FastMCP approach with native type hints instead of Pydantic models.
 """
 
-from lobster.mcp.models import ModelManager
-from lobster.mcp.schemas import (
-    SequenceRepresentationRequest,
-    SequenceConceptsRequest,
-    InterventionRequest,
-    SupportedConceptsRequest,
-)
-from lobster.mcp.tools import (
-    get_sequence_representations,
-    get_sequence_concepts,
-    intervene_on_sequence,
-    get_supported_concepts,
-)
+from lobster.mcp.tools.concepts import get_sequence_concepts, get_supported_concepts
+from lobster.mcp.tools.interventions import intervene_on_sequence
+from lobster.mcp.tools.representations import get_sequence_representations
+from lobster.mcp.tools.tool_utils import list_available_models
 
 
 def test_server():
-    """Test the basic functionality of the Lobster MCP server components"""
+    """Test the basic functionality of the Lobster MCP server components using FastMCP approach"""
 
-    print("🦞 Testing Lobster MCP Server Components...")
-    model_manager = ModelManager()
+    print("🦞 Testing Lobster MCP Server Components (FastMCP version)...")
+
+    # Get device info from list_available_models
+    device_info = list_available_models()
 
     # Test protein sequence
     test_sequence = "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"
 
-    print(f"\n📋 Device: {model_manager.device}")
+    print(f"\n📋 Device: {device_info['device']}")
     print(f"📋 Test sequence: {test_sequence[:50]}...")
 
     try:
         # Test 1: Get sequence representations with masked LM
-        print("\n🧪 Test 1: Getting sequence representations (Masked LM)...")
-        request = SequenceRepresentationRequest(
-            sequences=[test_sequence], model_name="lobster_24M", model_type="masked_lm", representation_type="pooled"
+        print("\n🧪 Test 1: Getting sequence representations (FastMCP version)...")
+        result = get_sequence_representations(
+            model_name="lobster_24M", sequences=[test_sequence], model_type="masked_lm", representation_type="pooled"
         )
-        result = get_sequence_representations(request, model_manager)
-        print(f"✅ Got embeddings with shape: {len(result['embeddings'][0])} dimensions")
+        print(f"✅ Got embeddings with shape: {len(result.embeddings[0])} dimensions")
+        print(f"📋 Model used: {result.model_used}")
 
     except Exception as e:
         print(f"❌ Test 1 failed: {e}")
 
     try:
         # Test 2: Get supported concepts
-        print("\n🧪 Test 2: Getting supported concepts...")
-        request = SupportedConceptsRequest(model_name="cb_lobster_24M")
-        result = get_supported_concepts(request, model_manager)
-        concepts = result["supported_concepts"]
+        print("\n🧪 Test 2: Getting supported concepts (FastMCP version)...")
+        result = get_supported_concepts("cb_lobster_24M")
+        concepts = result["concepts"]
         print(f"✅ Found {len(concepts) if concepts else 0} supported concepts")
         if concepts and len(concepts) > 0:
             print(f"📋 First few concepts: {concepts[:5] if isinstance(concepts, list) else str(concepts)[:100]}")
 
         # Test 3: Get concept predictions
-        print("\n🧪 Test 3: Getting concept predictions...")
-        request = SequenceConceptsRequest(sequences=[test_sequence], model_name="cb_lobster_24M")
-        result = get_sequence_concepts(request, model_manager)
+        print("\n🧪 Test 3: Getting concept predictions (FastMCP version)...")
+        result = get_sequence_concepts(model_name="cb_lobster_24M", sequences=[test_sequence])
         print(f"✅ Got concept predictions with {result['num_concepts']} concepts")
 
         # Test 4: Concept intervention (if concepts are available)
         if concepts and isinstance(concepts, list) and len(concepts) > 0:
             # Use first available concept for testing
             test_concept = concepts[0] if isinstance(concepts[0], str) else "gravy"
-            print(f"\n🧪 Test 4: Performing concept intervention on '{test_concept}'...")
-            request = InterventionRequest(
+            print(f"\n🧪 Test 4: Performing concept intervention on '{test_concept}' (FastMCP version)...")
+
+            result = intervene_on_sequence(
+                model_name="cb_lobster_24M",
                 sequence=test_sequence,
                 concept=test_concept,
-                model_name="cb_lobster_24M",
                 edits=3,
                 intervention_type="negative",
             )
-            result = intervene_on_sequence(request, model_manager)
+
             print("✅ Intervention successful!")
             print(f"📋 Original length: {len(result['original_sequence'])}")
             print(f"📋 Modified length: {len(result['modified_sequence'])}")
@@ -83,7 +75,7 @@ def test_server():
     except Exception as e:
         print(f"❌ Concept-related tests failed: {e}")
 
-    print("\n🎉 Testing complete!")
+    print("\n🎉 FastMCP Testing complete!")
 
 
 if __name__ == "__main__":

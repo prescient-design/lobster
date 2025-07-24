@@ -1,15 +1,20 @@
-"""Intervention tools for Lobster MCP server."""
+"""Intervention tools for Lobster MCP server using FastMCP best practices."""
 
 import logging
-from typing import Any
+from typing import Literal
 
-from ..models import ModelManager
-from ..schemas import InterventionRequest
+from .tool_utils import _load_model
 
 logger = logging.getLogger("lobster-fastmcp-server")
 
 
-def intervene_on_sequence(request: InterventionRequest, model_manager: ModelManager) -> dict[str, Any]:
+def intervene_on_sequence(
+    model_name: str,
+    sequence: str,
+    concept: str,
+    edits: int = 5,
+    intervention_type: Literal["positive", "negative"] = "negative",
+) -> dict:
     """Perform concept intervention on a sequence.
 
     This function performs concept-based interventions on biological sequences using
@@ -19,29 +24,28 @@ def intervene_on_sequence(request: InterventionRequest, model_manager: ModelMana
 
     Parameters
     ----------
-    request : InterventionRequest
-        The request object containing all parameters for the intervention.
-        Must have the following attributes:
-        - model_name (str): Name of the concept bottleneck model to use
-        - sequence (str): The biological sequence to intervene on
-        - concept (str): The specific concept to target for intervention
-        - edits (int): Number of edits to perform during intervention
-        - intervention_type (str): Type of intervention ('increase' or 'decrease')
-    model_manager : ModelManager
-        The model manager instance responsible for loading and managing models.
-        Used to retrieve the specified concept bottleneck model.
+    model_name : str
+        Name of the concept bottleneck model to use
+    sequence : str
+        The biological sequence to intervene on
+    concept : str
+        The specific concept to target for intervention
+    edits : int, default=5
+        Number of edits to perform during intervention
+    intervention_type : str, default="negative"
+        Type of intervention ('positive' or 'negative')
 
     Returns
     -------
-    dict[str, Any]
-        A dictionary containing the intervention results with the following keys:
-        - original_sequence (str): The input sequence before intervention
-        - modified_sequence (str or None): The sequence after intervention
-        - concept (str): The concept that was targeted
-        - intervention_type (str): The type of intervention performed
-        - num_edits (int): Number of edits that were applied
-        - edit_distance (int or None): Levenshtein distance between original and modified sequences
-        - model_used (str): Identifier of the model used for intervention
+    dict
+        A dictionary containing the intervention results with the following fields:
+        - original_sequence: The input sequence before intervention
+        - modified_sequence: The sequence after intervention (None if intervention failed)
+        - concept: The concept that was targeted
+        - intervention_type: The type of intervention performed
+        - num_edits: Number of edits that were applied
+        - edit_distance: Levenshtein distance between original and modified sequences (None if Levenshtein not available)
+        - model_used: Identifier of the model used for intervention
 
     Raises
     ------
@@ -54,33 +58,30 @@ def intervene_on_sequence(request: InterventionRequest, model_manager: ModelMana
     For MCP server usage, this function is typically called through the MCP protocol:
 
     >>> # Example MCP request structure
-    >>> request = InterventionRequest(
-    ...     model_name="protein_concept_model",
+    >>> result = intervene_on_sequence(
+    ...     model_name="cb_lobster_24M",
     ...     sequence="MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG",
     ...     concept="hydrophobicity",
     ...     edits=3,
-    ...     intervention_type="increase"
+    ...     intervention_type="positive"
     ... )
-    >>>
-    >>> # The function would be called by the MCP server
-    >>> result = intervene_on_sequence(request, model_manager)
     >>>
     >>> # Example response structure
     >>> {
     ...     "original_sequence": "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG",
     ...     "modified_sequence": "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG",
     ...     "concept": "hydrophobicity",
-    ...     "intervention_type": "increase",
+    ...     "intervention_type": "positive",
     ...     "num_edits": 3,
     ...     "edit_distance": 2,
-    ...     "model_used": "concept_bottleneck_protein_concept_model"
+    ...     "model_used": "concept_bottleneck_cb_lobster_24M"
     ... }
 
     Notes
     -----
     - Concept interventions modify sequences to increase or decrease the presence
       of specific interpretable concepts learned by the model
-    - The intervention_type should be either 'increase' or 'decrease' to specify
+    - The intervention_type should be either 'positive' or 'negative' to specify
       the direction of the concept modification
     - Edit distance calculation requires the Levenshtein library; if not available,
       edit_distance will be None but the intervention will still be performed
@@ -90,12 +91,10 @@ def intervene_on_sequence(request: InterventionRequest, model_manager: ModelMana
       sequence properties and for generating concept-guided sequence variants
     """
     try:
-        model = model_manager.get_or_load_model(request.model_name, "concept_bottleneck")
+        model = _load_model(model_name, "concept_bottleneck")
 
         # Perform intervention
-        results = model.intervene_on_sequences(
-            [request.sequence], request.concept, edits=request.edits, intervention_type=request.intervention_type
-        )
+        results = model.intervene_on_sequences([sequence], concept, edits=edits, intervention_type=intervention_type)
 
         new_sequence = results[0] if results else None
 
@@ -104,18 +103,18 @@ def intervene_on_sequence(request: InterventionRequest, model_manager: ModelMana
         try:
             import Levenshtein
 
-            edit_distance = Levenshtein.distance(request.sequence, new_sequence)
+            edit_distance = Levenshtein.distance(sequence, new_sequence)
         except ImportError:
             logger.warning("Levenshtein not available for edit distance calculation")
 
         return {
-            "original_sequence": request.sequence,
+            "original_sequence": sequence,
             "modified_sequence": new_sequence,
-            "concept": request.concept,
-            "intervention_type": request.intervention_type,
-            "num_edits": request.edits,
+            "concept": concept,
+            "intervention_type": intervention_type,
+            "num_edits": edits,
             "edit_distance": edit_distance,
-            "model_used": f"concept_bottleneck_{request.model_name}",
+            "model_used": f"concept_bottleneck_{model_name}",
         }
 
     except Exception as e:
