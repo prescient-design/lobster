@@ -11,13 +11,13 @@ from lobster.transforms import Transform
 
 T = TypeVar("T")
 
-class PTMDataset(Dataset):
 
+class PTMDataset(Dataset):
     """
     PTM Dataset from PTM-mamba paper (Nature Methods, 2024).
-    
+
     Automatically downloads PTM labels from Zenodo if not already cached.
-    
+
     Parameters
     ----------
     root : str or Path or None, optional
@@ -32,24 +32,24 @@ class PTMDataset(Dataset):
 
     def __init__(
         self,
-        root: str | Path | None = None,  
+        root: str | Path | None = None,
         *,
         download: bool = True,
-        transform: Callable | Transform | None = None,  
+        transform: Callable | Transform | None = None,
         columns: Sequence[str] | None = None,
     ) -> None:
         super().__init__()
 
         if root is None:
             root = pooch.os_cache("lobster")
-        
+
         if isinstance(root, str):
             root = Path(root)
 
-        self.root = root.resolve()  
+        self.root = root.resolve()
 
         url = "https://zenodo.org/records/14794992/files/ptm_labels.csv?download=1"
-        
+
         if download:
             pooch.retrieve(
                 url=url,
@@ -57,9 +57,9 @@ class PTMDataset(Dataset):
                 path=self.root / self.__class__.__name__,
                 progressbar=True,
             )
-        
+
         csv_path = self.root / self.__class__.__name__ / "ptm_labels.csv"
-        
+
         self.data = pd.read_csv(csv_path)
 
         self.columns = ["protein_id", "position", "ptm_type", "sequence"] if columns is None else columns
@@ -68,25 +68,16 @@ class PTMDataset(Dataset):
 
         self._x = list(self.data[self.columns].apply(tuple, axis=1))
 
-
-    
-    def __len__(self) ->int:
-        
+    def __len__(self) -> int:
         return len(self._x)
-    
-    def __getitem__(self,index:int) ->tuple[str, ...] | str:
 
+    def __getitem__(self, index: int) -> tuple[str, ...] | str:
         x = self._x[index]
 
-        if len(x)==1:
-
+        if len(x) == 1:
             x = x[0]
-        
-        if self.transform is not None:
 
+        if self.transform is not None:
             x = self.transform(x)
-            
-           
 
         return x
-        

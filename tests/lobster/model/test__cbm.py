@@ -47,15 +47,15 @@ class TestLobsterCBMPMLM:
     def test_concept_names_property(self):
         """Test that concept_names property returns expected concept names."""
         model = LobsterCBMPMLM(model_name="MLM_mini")
-        
+
         concept_names = model.concept_names
-        
-        assert hasattr(model, 'concept_names')
+
+        assert hasattr(model, "concept_names")
         assert isinstance(concept_names, (list, tuple))
         assert len(concept_names) > 0
-        
+
         assert concept_names == model._concept_names
-        
+
         assert concept_names is model._concept_names
 
 
