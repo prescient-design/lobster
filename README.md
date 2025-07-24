@@ -164,7 +164,7 @@ Check out this [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for 
 
 ## MCP Integration <a name="mcp-integration"></a>
 
-Lobster supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for seamless integration with Claude Desktop and other AI tools:
+Lobster supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for seamless integration with Claude Desktop, Cursor, and other AI tools:
 
 ```bash
 # Install with MCP support
@@ -176,14 +176,16 @@ uv run lobster_mcp_setup
 
 ### Setup for Cursor
 
-To configure Lobster MCP server in Cursor:
+#### Option 1: One-Click Install (Recommended)
 
-1. **Install dependencies**: `uv sync --extra mcp`
-2. **Run setup script**: `uv run lobster_mcp_setup` and select option 2 (Cursor)
-3. **Restart Cursor** to load the new server
-4. **Use `@lobster-inference`** in chat to access protein language models
+[![Add Lobster to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-MCP%20Server-blue?style=for-the-badge&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjogInV2IiwgImFyZ3MiOiBbInJ1biIsICItLWFsbC1leHRyYXMiLCAibG9ic3Rlcl9tY3Bfc2VydmVyIl19Cg==)
 
-This ensures the MCP server runs from the correct directory with all dependencies available.
+Click the button above to automatically add the Lobster MCP server to Cursor.
+
+**Requirements:**
+- [Cursor](https://cursor.com/) installed
+- [uv](https://docs.astral.sh/uv/) package manager available in PATH  
+- Lobster repository cloned locally with all dependencies installed (`uv sync --all-extras`)
 
 After setup, you can use Lobster models directly in Claude Desktop or Cursor with natural language commands like:
 - "Get embeddings for this protein sequence using lobster_24M"
@@ -198,24 +200,24 @@ After setup, you can use Lobster models directly in Claude Desktop or Cursor wit
 
 See the [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation or [MCP README](src/lobster/mcp/README.md) for quick start instructions.
 
-## DXT Extension for Claude Desktop
+### DXT Extension for Claude Desktop
 
 Lobster is available as a **DXT (Desktop Extension Toolkit) extension** for Claude Desktop, providing a one-click installation experience:
 
-### Quick Install
+#### Quick Install
 
 1. **Download**: Get the latest `.dxt` file from [GitHub Releases](https://github.com/prescient-design/lobster/releases)
 2. **Install**: Double-click the `.dxt` file or drag it into Claude Desktop
 3. **Use**: Start using Lobster models with natural language commands
 
-### Features
+#### Features
 
 - **One-click installation** - No command line setup required
 - **Self-contained** - Includes all dependencies (~500MB)
 - **Automatic updates** - New versions available through GitHub Releases
 - **Full functionality** - All MCP server capabilities included
 
-### Usage Examples
+#### Usage Examples
 
 Once installed, you can use natural language commands in Claude Desktop:
 
@@ -229,7 +231,7 @@ What concepts are supported by the cb_lobster_24M model?
 Intervene on MKTVRQERLKSIVRIL to reduce hydrophobicity using cb_lobster_24M
 ```
 
-### Development
+#### Development
 
 For developers who want to build and test DXT extensions locally:
 

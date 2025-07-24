@@ -89,14 +89,14 @@ After running setup, restart Claude Desktop and you can use commands like:
 
 #### Option 1: One-Click Install (Recommended)
 
-[![Add Lobster to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-MCP%20Server-blue?style=for-the-badge&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjogInV2IiwgImFyZ3MiOiBbInJ1biIsICItLWV4dHJhIiwgIm1jcCIsICJsb2JzdGVyX21jcF9zZXJ2ZXIiXX0=)
+[![Add Lobster to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-MCP%20Server-blue?style=for-the-badge&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjogInV2IiwgImFyZ3MiOiBbInJ1biIsICItLWFsbC1leHRyYXMiLCAibG9ic3Rlcl9tY3Bfc2VydmVyIl19Cg==)
 
 Click the button above to automatically add the Lobster MCP server to Cursor.
 
 **Requirements:**
 - [Cursor](https://cursor.com/) installed
 - [uv](https://docs.astral.sh/uv/) package manager available in PATH  
-- Lobster repository cloned locally with MCP dependencies installed (`uv sync --extra mcp`)
+- Lobster repository cloned locally with all dependencies installed (`uv sync --all-extras`)
 
 #### Option 2: Automated Setup Script
 
@@ -120,7 +120,7 @@ If you prefer to configure manually, create or edit the file `~/.cursor/mcp.json
       "args": [
         "run",
         "--project", "/path/to/lobster",
-        "--extra", "mcp",
+        "--all-extras",
         "lobster_mcp_server"
       ]
     }

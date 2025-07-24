@@ -18,7 +18,7 @@ import logging
 
 from fastmcp import FastMCP
 
-from .tool_factory import create_and_register_tools
+from lobster.mcp.tool_factory import create_and_register_tools
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

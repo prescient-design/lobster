@@ -38,12 +38,12 @@ class ToolFactory:
         """Register all available Lobster tools with FastMCP."""
         # Define tools to register
         tools_to_register = [
-            (list_available_models, "list_models"),
-            (get_sequence_representations, "get_representations"),
-            (get_sequence_concepts, "get_concepts"),
-            (intervene_on_sequence, "intervene_sequence"),
-            (get_supported_concepts, "get_supported_concepts_list"),
-            (compute_naturalness, "compute_sequence_naturalness"),
+            (list_available_models, "list_available_models"),
+            (get_sequence_representations, "get_sequence_representations"),
+            (get_sequence_concepts, "get_sequence_concepts"),
+            (intervene_on_sequence, "intervene_on_sequence"),
+            (get_supported_concepts, "get_supported_concepts"),
+            (compute_naturalness, "compute_naturalness"),
         ]
 
         # Register each tool directly
