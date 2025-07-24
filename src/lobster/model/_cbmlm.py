@@ -525,3 +525,8 @@ class LobsterCBMPMLM(pl.LightningModule):
         concepts_path = Path(save_directory).resolve() / "concepts.json"
         with open(concepts_path, "w") as f:
             json.dump(self._concepts_name, f)
+
+    @property
+    def concept_names(self):
+         """Get the names of all concepts in the model."""
+         return self._concept_names
