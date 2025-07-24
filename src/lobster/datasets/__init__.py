@@ -36,4 +36,5 @@ __all__ = [
     "ZINCIterableDataset",
     "OpenGenome2IterableDataset",
     "UMEStreamingDataset",
+    "PTMDataset",
 ]
