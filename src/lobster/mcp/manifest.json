@@ -20,27 +20,27 @@
   },
   "tools": [
     {
-      "name": "list_models",
+      "name": "list_available_models",
       "description": "List all available pretrained Lobster models and current device information"
     },
     {
-      "name": "get_representations",
+      "name": "get_sequence_representations",
       "description": "Get vector embeddings for protein sequences using Lobster models"
     },
     {
-      "name": "get_concepts",
+      "name": "get_sequence_concepts",
       "description": "Analyze biological concepts present in sequences using concept bottleneck models"
     },
     {
-      "name": "intervene_sequence",
+      "name": "intervene_on_sequence",
       "description": "Modify sequences to increase/decrease specific biological concepts"
     },
     {
-      "name": "get_supported_concepts_list",
+      "name": "get_supported_concepts",
       "description": "Get list of supported concepts for a concept bottleneck model"
     },
     {
-      "name": "compute_sequence_naturalness",
+      "name": "compute_naturalness",
       "description": "Compute likelihood/naturalness scores for protein sequences"
     }
   ],

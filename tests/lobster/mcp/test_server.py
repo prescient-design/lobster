@@ -25,12 +25,12 @@ class TestServer:
         """Test that all expected tools are registered."""
         registered_tools = tool_factory.get_registered_tools()
         expected_tools = [
-            "list_models",
-            "get_representations",
-            "get_concepts",
-            "intervene_sequence",
-            "get_supported_concepts_list",
-            "compute_sequence_naturalness",
+            "list_available_models",
+            "get_sequence_representations",
+            "get_sequence_concepts",
+            "intervene_on_sequence",
+            "get_supported_concepts",
+            "compute_naturalness",
         ]
 
         for tool_name in expected_tools:
@@ -70,12 +70,12 @@ class TestToolFactory:
         self.factory.register_all_tools()
 
         expected_tools = [
-            "list_models",
-            "get_representations",
-            "get_concepts",
-            "intervene_sequence",
-            "get_supported_concepts_list",
-            "compute_sequence_naturalness",
+            "list_available_models",
+            "get_sequence_representations",
+            "get_sequence_concepts",
+            "intervene_on_sequence",
+            "get_supported_concepts",
+            "compute_naturalness",
         ]
 
         for tool_name in expected_tools:
@@ -96,12 +96,12 @@ class TestToolFactory:
         tool_info = self.factory.get_tool_info()
 
         expected_tools = [
-            "list_models",
-            "get_representations",
-            "get_concepts",
-            "intervene_sequence",
-            "get_supported_concepts_list",
-            "compute_sequence_naturalness",
+            "list_available_models",
+            "get_sequence_representations",
+            "get_sequence_concepts",
+            "intervene_on_sequence",
+            "get_supported_concepts",
+            "compute_naturalness",
         ]
 
         for tool_name in expected_tools:

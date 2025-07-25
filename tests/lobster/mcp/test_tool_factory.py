@@ -4,24 +4,18 @@ import inspect
 from unittest.mock import Mock
 import pytest
 
-try:
-    from lobster.mcp.tool_factory import ToolFactory, create_and_register_tools
-    from lobster.mcp.tools import (
-        list_available_models,
-        get_sequence_representations,
-        get_sequence_concepts,
-        intervene_on_sequence,
-        get_supported_concepts,
-        compute_naturalness,
-    )
-    from fastmcp import FastMCP
-
-    LOBSTER_AVAILABLE = True
-except ImportError:
-    LOBSTER_AVAILABLE = False
+from lobster.mcp.tool_factory import ToolFactory, create_and_register_tools
+from lobster.mcp.tools import (
+    list_available_models,
+    get_sequence_representations,
+    get_sequence_concepts,
+    intervene_on_sequence,
+    get_supported_concepts,
+    compute_naturalness,
+)
+from fastmcp import FastMCP
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestToolFactory:
     """Test the ToolFactory class."""
 
@@ -164,7 +158,6 @@ class TestToolFactory:
         assert tools == {}
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestCreateAndRegisterTools:
     """Test the create_and_register_tools function."""
 
@@ -197,7 +190,6 @@ class TestCreateAndRegisterTools:
         assert len(tools) == 6
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestToolFactoryIntegration:
     """Integration tests for ToolFactory."""
 
@@ -269,7 +261,6 @@ class TestToolFactoryIntegration:
         assert tool_calls == expected_order
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestToolFactoryEdgeCases:
     """Test edge cases and error conditions."""
 
@@ -353,7 +344,6 @@ class TestToolFactoryEdgeCases:
         assert factory._registered_tools is not tools2
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestToolFactoryDocumentation:
     """Test documentation and docstring handling."""
 

@@ -5,17 +5,10 @@ from unittest.mock import Mock, patch
 import pytest
 import torch
 
-try:
-    from lobster.mcp.tools.concepts import get_sequence_concepts, get_supported_concepts
-    from lobster.mcp.models import ModelManager
-    from lobster.model import LobsterCBMPMLM
-
-    LOBSTER_AVAILABLE = True
-except ImportError:
-    LOBSTER_AVAILABLE = False
+from lobster.mcp.tools.concepts import get_sequence_concepts, get_supported_concepts
+from lobster.model import LobsterCBMPMLM
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestGetSequenceConcepts:
     """Test the get_sequence_concepts function."""
 
@@ -34,15 +27,8 @@ class TestGetSequenceConcepts:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_sequence_concepts(model_name, sequences)
-
-        # Verify ModelManager was called correctly
-        mock_model_manager.get_or_load_model.assert_called_once_with(model_name, "concept_bottleneck")
 
         # Verify model methods were called
         mock_model.sequences_to_concepts.assert_called_once_with(sequences)
@@ -82,11 +68,7 @@ class TestGetSequenceConcepts:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_sequence_concepts(model_name, sequences)
 
         # Verify result structure
@@ -110,11 +92,7 @@ class TestGetSequenceConcepts:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_sequence_concepts(model_name, sequences)
 
         # Verify result structure
@@ -129,11 +107,7 @@ class TestGetSequenceConcepts:
         model_name = "nonexistent_model"
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Model not found")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=ValueError("Model not found")):
             with pytest.raises(ValueError, match="Model not found"):
                 get_sequence_concepts(model_name, sequences)
 
@@ -146,11 +120,7 @@ class TestGetSequenceConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.sequences_to_concepts.side_effect = RuntimeError("CUDA out of memory")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             with pytest.raises(RuntimeError, match="CUDA out of memory"):
                 get_sequence_concepts(model_name, sequences)
 
@@ -168,12 +138,8 @@ class TestGetSequenceConcepts:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
         # Mock torch.no_grad to verify it's called
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             with patch("torch.no_grad") as mock_no_grad:
                 mock_no_grad.return_value.__enter__ = Mock()
                 mock_no_grad.return_value.__exit__ = Mock()
@@ -197,11 +163,7 @@ class TestGetSequenceConcepts:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_sequence_concepts(model_name, sequences)
 
         # Verify tensors were converted to lists
@@ -228,11 +190,7 @@ class TestGetSequenceConcepts:
         model_name = "test_concept_model"
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=Exception("Test error")):
             with patch("lobster.mcp.tools.concepts.logger") as mock_logger:
                 with pytest.raises(Exception, match="Test error"):
                     get_sequence_concepts(model_name, sequences)
@@ -241,7 +199,6 @@ class TestGetSequenceConcepts:
                 mock_logger.error.assert_called_once_with("Error getting concepts: Test error")
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestGetSupportedConcepts:
     """Test the get_supported_concepts function."""
 
@@ -254,15 +211,8 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.return_value = concepts_list
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_supported_concepts(model_name)
-
-        # Verify ModelManager was called correctly
-        mock_model_manager.get_or_load_model.assert_called_once_with(model_name, "concept_bottleneck")
 
         # Verify model method was called
         mock_model.list_supported_concept.assert_called_once()
@@ -280,11 +230,7 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.return_value = None
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_supported_concepts(model_name)
 
         # Verify result structure
@@ -301,11 +247,7 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.return_value = concept_string
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_supported_concepts(model_name)
 
         # Verify result structure
@@ -321,11 +263,7 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.return_value = ""
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_supported_concepts(model_name)
 
         # Verify result structure
@@ -341,11 +279,7 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.return_value = []
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_supported_concepts(model_name)
 
         # Verify result structure
@@ -357,11 +291,7 @@ class TestGetSupportedConcepts:
         """Test error handling when model loading fails."""
         model_name = "nonexistent_model"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Model not found")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=ValueError("Model not found")):
             with pytest.raises(ValueError, match="Model not found"):
                 get_supported_concepts(model_name)
 
@@ -373,11 +303,7 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.side_effect = AttributeError("Method not found")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             with pytest.raises(AttributeError, match="Method not found"):
                 get_supported_concepts(model_name)
 
@@ -385,11 +311,7 @@ class TestGetSupportedConcepts:
         """Test that errors are properly logged."""
         model_name = "test_concept_model"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=Exception("Test error")):
             with patch("lobster.mcp.tools.concepts.logger") as mock_logger:
                 with pytest.raises(Exception, match="Test error"):
                     get_supported_concepts(model_name)
@@ -405,11 +327,7 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.return_value = 42
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_supported_concepts(model_name)
 
         # Verify result structure - should wrap the value in a list
@@ -425,11 +343,7 @@ class TestGetSupportedConcepts:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.list_supported_concept.return_value = 0
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_supported_concepts(model_name)
 
         # Verify result structure - 0 is falsy, so it should be treated as empty
@@ -438,7 +352,6 @@ class TestGetSupportedConcepts:
         assert result["num_concepts"] == 0
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestConceptsIntegration:
     """Integration tests for concept-related functions."""
 
@@ -458,11 +371,7 @@ class TestConceptsIntegration:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             # First, get supported concepts
             supported_result = get_supported_concepts(model_name)
 
@@ -511,11 +420,7 @@ class TestConceptsIntegration:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             # Get supported concepts
             supported_result = get_supported_concepts(model_name)
 
@@ -542,7 +447,6 @@ class TestConceptsIntegration:
             assert len(concept_emb) == num_concepts
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestConceptsErrorHandling:
     """Test error handling and edge cases."""
 
@@ -551,11 +455,7 @@ class TestConceptsErrorHandling:
         model_name = ""
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
 
-        # Mock ModelManager to raise an exception for invalid model name
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Invalid model name")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=ValueError("Invalid model name")):
             with pytest.raises(ValueError, match="Invalid model name"):
                 get_sequence_concepts(model_name, sequences)
 
@@ -568,11 +468,7 @@ class TestConceptsErrorHandling:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.sequences_to_concepts.side_effect = TypeError("Sequences must be strings")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             with pytest.raises(TypeError, match="Sequences must be strings"):
                 get_sequence_concepts(model_name, sequences)
 
@@ -580,11 +476,7 @@ class TestConceptsErrorHandling:
         """Test handling of invalid model names in get_supported_concepts."""
         model_name = ""
 
-        # Mock ModelManager to raise an exception for invalid model name
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Invalid model name")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=ValueError("Invalid model name")):
             with pytest.raises(ValueError, match="Invalid model name"):
                 get_supported_concepts(model_name)
 
@@ -597,11 +489,7 @@ class TestConceptsErrorHandling:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.sequences_to_concepts.side_effect = torch.cuda.OutOfMemoryError("CUDA out of memory")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             with pytest.raises(torch.cuda.OutOfMemoryError, match="CUDA out of memory"):
                 get_sequence_concepts(model_name, sequences)
 
@@ -619,11 +507,7 @@ class TestConceptsErrorHandling:
         mock_model.sequences_to_concepts.return_value = [mock_concepts]
         mock_model.sequences_to_concepts_emb.return_value = [mock_concept_embeddings]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", return_value=mock_model):
             result = get_sequence_concepts(model_name, sequences)
 
         # The function should still work, but the shapes will be different
@@ -632,7 +516,6 @@ class TestConceptsErrorHandling:
         assert result["num_concepts"] == 5  # Based on concepts tensor
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestConceptsLogging:
     """Test logging behavior of concept functions."""
 
@@ -648,13 +531,9 @@ class TestConceptsLogging:
         model_name = "test_concept_model"
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error message")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=Exception("Test error message")):
             with patch("lobster.mcp.tools.concepts.logger") as mock_logger:
-                with pytest.raises(ValueError, match="Test error message"):
+                with pytest.raises(Exception, match="Test error message"):
                     get_sequence_concepts(model_name, sequences)
 
                 # Verify the error message format
@@ -664,13 +543,9 @@ class TestConceptsLogging:
         """Test that error messages are logged with the correct format for get_supported_concepts."""
         model_name = "test_concept_model"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error message")
-
-        with patch("lobster.mcp.tools.concepts.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.concepts._load_model", side_effect=Exception("Test error message")):
             with patch("lobster.mcp.tools.concepts.logger") as mock_logger:
-                with pytest.raises(ValueError, match="Test error message"):
+                with pytest.raises(Exception, match="Test error message"):
                     get_supported_concepts(model_name)
 
                 # Verify the error message format

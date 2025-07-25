@@ -5,15 +5,9 @@ from unittest.mock import Mock, patch
 import pytest
 import torch
 
-try:
-    from lobster.mcp.tools.tool_utils import list_available_models, compute_naturalness, _load_model
-
-    LOBSTER_AVAILABLE = True
-except ImportError:
-    LOBSTER_AVAILABLE = False
+from lobster.mcp.tools.tool_utils import list_available_models, compute_naturalness, _load_model
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestListAvailableModels:
     """Test the list_available_models function."""
 
@@ -44,7 +38,6 @@ class TestListAvailableModels:
         assert len(result["available_models"]["concept_bottleneck"]) > 0
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestComputeNaturalness:
     """Test the compute_naturalness function."""
 
@@ -232,7 +225,6 @@ class TestComputeNaturalness:
         assert result2["model_used"] == "concept_bottleneck_test_model"
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestLoadModel:
     """Test the _load_model utility function."""
 
@@ -295,7 +287,6 @@ class TestLoadModel:
             _load_model("test_model", "invalid_type")
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestToolUtilsIntegration:
     """Integration tests for tool utilities."""
 
@@ -365,7 +356,6 @@ class TestToolUtilsIntegration:
         assert result["model_used"] == "masked_lm_lobster_24M"
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestToolUtilsErrorHandling:
     """Test error handling in tool utilities."""
 
@@ -448,7 +438,6 @@ class TestToolUtilsErrorHandling:
         assert abs(result["scores"][2] - 0.9) < 1e-6
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestToolUtilsLogging:
     """Test logging behavior in tool utilities."""
 

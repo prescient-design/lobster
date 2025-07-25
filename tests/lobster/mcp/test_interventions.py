@@ -4,17 +4,10 @@ import logging
 from unittest.mock import Mock, patch
 import pytest
 
-try:
-    from lobster.mcp.tools.interventions import intervene_on_sequence
-    from lobster.mcp.models import ModelManager
-    from lobster.model import LobsterCBMPMLM
-
-    LOBSTER_AVAILABLE = True
-except ImportError:
-    LOBSTER_AVAILABLE = False
+from lobster.mcp.tools.interventions import intervene_on_sequence
+from lobster.model import LobsterCBMPMLM
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestInterveneOnSequence:
     """Test the intervene_on_sequence function."""
 
@@ -34,11 +27,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -46,9 +35,6 @@ class TestInterveneOnSequence:
                 mock_import.return_value = mock_levenshtein
 
                 result = intervene_on_sequence(model_name, sequence, concept, edits, intervention_type)
-
-        # Verify ModelManager was called correctly
-        mock_model_manager.get_or_load_model.assert_called_once_with(model_name, "concept_bottleneck")
 
         # Verify model method was called
         mock_model.intervene_on_sequences.assert_called_once_with(
@@ -80,11 +66,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -116,11 +98,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -140,11 +118,7 @@ class TestInterveneOnSequence:
         sequence = "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"
         concept = "hydrophobicity"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Model not found")
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", side_effect=ValueError("Model not found")):
             with pytest.raises(ValueError, match="Model not found"):
                 intervene_on_sequence(model_name, sequence, concept)
 
@@ -158,11 +132,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.side_effect = RuntimeError("Intervention failed")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with pytest.raises(RuntimeError, match="Intervention failed"):
                 intervene_on_sequence(model_name, sequence, concept)
 
@@ -176,11 +146,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = []
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -207,11 +173,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = None
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -241,11 +203,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__", side_effect=ImportError("No module named 'Levenshtein'")):
                 with patch("lobster.mcp.tools.interventions.logger") as mock_logger:
                     result = intervene_on_sequence(model_name, sequence, concept)
@@ -274,11 +232,7 @@ class TestInterveneOnSequence:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import that raises an exception during distance calculation
                 mock_levenshtein = Mock()
@@ -295,11 +249,7 @@ class TestInterveneOnSequence:
         sequence = "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"
         concept = "hydrophobicity"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error")
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", side_effect=Exception("Test error")):
             with patch("lobster.mcp.tools.interventions.logger") as mock_logger:
                 with pytest.raises(Exception, match="Test error"):
                     intervene_on_sequence(model_name, sequence, concept)
@@ -322,11 +272,7 @@ class TestInterveneOnSequence:
             mock_model = Mock(spec=LobsterCBMPMLM)
             mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-            # Mock ModelManager
-            mock_model_manager = Mock(spec=ModelManager)
-            mock_model_manager.get_or_load_model.return_value = mock_model
-
-            with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+            with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
                 with patch("builtins.__import__") as mock_import:
                     # Mock Levenshtein import
                     mock_levenshtein = Mock()
@@ -356,11 +302,7 @@ class TestInterveneOnSequence:
             mock_model = Mock(spec=LobsterCBMPMLM)
             mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-            # Mock ModelManager
-            mock_model_manager = Mock(spec=ModelManager)
-            mock_model_manager.get_or_load_model.return_value = mock_model
-
-            with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+            with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
                 with patch("builtins.__import__") as mock_import:
                     # Mock Levenshtein import
                     mock_levenshtein = Mock()
@@ -376,7 +318,6 @@ class TestInterveneOnSequence:
             )
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestInterventionsIntegration:
     """Integration tests for intervention functions."""
 
@@ -393,11 +334,7 @@ class TestInterventionsIntegration:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -429,11 +366,7 @@ class TestInterventionsIntegration:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -453,7 +386,6 @@ class TestInterventionsIntegration:
         assert result["model_used"] == f"concept_bottleneck_{model_name}"
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestInterventionsErrorHandling:
     """Test error handling and edge cases."""
 
@@ -463,11 +395,7 @@ class TestInterventionsErrorHandling:
         sequence = "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"
         concept = "hydrophobicity"
 
-        # Mock ModelManager to raise an exception for invalid model name
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Invalid model name")
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", side_effect=ValueError("Invalid model name")):
             with pytest.raises(ValueError, match="Invalid model name"):
                 intervene_on_sequence(model_name, sequence, concept)
 
@@ -484,11 +412,7 @@ class TestInterventionsErrorHandling:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -518,11 +442,7 @@ class TestInterventionsErrorHandling:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -553,11 +473,7 @@ class TestInterventionsErrorHandling:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__") as mock_import:
                 # Mock Levenshtein import
                 mock_levenshtein = Mock()
@@ -584,11 +500,7 @@ class TestInterventionsErrorHandling:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.side_effect = RuntimeError("CUDA out of memory")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with pytest.raises(RuntimeError, match="CUDA out of memory"):
                 intervene_on_sequence(model_name, sequence, concept)
 
@@ -602,16 +514,11 @@ class TestInterventionsErrorHandling:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.side_effect = ValueError("Concept not found")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with pytest.raises(ValueError, match="Concept not found"):
                 intervene_on_sequence(model_name, sequence, concept)
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestInterventionsLogging:
     """Test logging behavior of intervention functions."""
 
@@ -628,13 +535,9 @@ class TestInterventionsLogging:
         sequence = "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"
         concept = "hydrophobicity"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error message")
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", side_effect=Exception("Test error message")):
             with patch("lobster.mcp.tools.interventions.logger") as mock_logger:
-                with pytest.raises(ValueError, match="Test error message"):
+                with pytest.raises(Exception, match="Test error message"):
                     intervene_on_sequence(model_name, sequence, concept)
 
                 # Verify the error message format
@@ -653,11 +556,7 @@ class TestInterventionsLogging:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.intervene_on_sequences.return_value = [modified_sequence]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.interventions.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.interventions._load_model", return_value=mock_model):
             with patch("builtins.__import__", side_effect=ImportError("No module named 'Levenshtein'")):
                 with patch("lobster.mcp.tools.interventions.logger") as mock_logger:
                     result = intervene_on_sequence(model_name, sequence, concept)

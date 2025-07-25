@@ -5,17 +5,10 @@ from unittest.mock import Mock, patch
 import pytest
 import torch
 
-try:
-    from lobster.mcp.tools.representations import get_sequence_representations, SequenceRepresentationResult
-    from lobster.mcp.models import ModelManager
-    from lobster.model import LobsterCBMPMLM, LobsterPMLM
-
-    LOBSTER_AVAILABLE = True
-except ImportError:
-    LOBSTER_AVAILABLE = False
+from lobster.mcp.tools.representations import get_sequence_representations, SequenceRepresentationResult
+from lobster.model import LobsterCBMPMLM, LobsterPMLM
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestGetSequenceRepresentations:
     """Test the get_sequence_representations function."""
 
@@ -34,15 +27,8 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type, representation_type)
-
-        # Verify ModelManager was called correctly
-        mock_model_manager.get_or_load_model.assert_called_once_with(model_name, model_type)
 
         # Verify model method was called
         mock_model.sequences_to_latents.assert_called_once_with(sequences)
@@ -71,11 +57,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type, representation_type)
 
         # Verify result structure
@@ -103,11 +85,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type, representation_type)
 
         # Verify result structure for full representation
@@ -134,11 +112,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type)
 
         # Verify default parameters were used
@@ -151,11 +125,7 @@ class TestGetSequenceRepresentations:
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
         model_type = "masked_lm"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Model not found")
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", side_effect=ValueError("Model not found")):
             with pytest.raises(ValueError, match="Model not found"):
                 get_sequence_representations(model_name, sequences, model_type)
 
@@ -169,11 +139,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.side_effect = RuntimeError("Inference failed")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             with pytest.raises(RuntimeError, match="Inference failed"):
                 get_sequence_representations(model_name, sequences, model_type)
 
@@ -191,11 +157,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             with pytest.raises(ValueError, match="Unknown representation type: invalid_type"):
                 get_sequence_representations(model_name, sequences, model_type, representation_type)
 
@@ -212,11 +174,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type)
 
         # Verify result structure
@@ -240,11 +198,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type)
 
         # Verify result structure
@@ -262,11 +216,7 @@ class TestGetSequenceRepresentations:
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
         model_type = "masked_lm"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error")
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", side_effect=Exception("Test error")):
             with patch("lobster.mcp.tools.representations.logger") as mock_logger:
                 with pytest.raises(Exception, match="Test error"):
                     get_sequence_representations(model_name, sequences, model_type)
@@ -287,11 +237,7 @@ class TestGetSequenceRepresentations:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             with patch("lobster.mcp.tools.representations.torch.no_grad") as mock_no_grad:
                 get_sequence_representations(model_name, sequences, model_type)
 
@@ -313,11 +259,7 @@ class TestGetSequenceRepresentations:
             mock_model = Mock(spec=mock_model_class)
             mock_model.sequences_to_latents.return_value = [mock_representations]
 
-            # Mock ModelManager
-            mock_model_manager = Mock(spec=ModelManager)
-            mock_model_manager.get_or_load_model.return_value = mock_model
-
-            with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+            with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
                 result = get_sequence_representations(model_name, sequences, model_type)
 
             # Verify model type was handled correctly
@@ -339,11 +281,7 @@ class TestGetSequenceRepresentations:
             mock_model = Mock(spec=LobsterPMLM)
             mock_model.sequences_to_latents.return_value = [mock_representations]
 
-            # Mock ModelManager
-            mock_model_manager = Mock(spec=ModelManager)
-            mock_model_manager.get_or_load_model.return_value = mock_model
-
-            with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+            with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
                 result = get_sequence_representations(model_name, sequences, model_type, representation_type)
 
             # Verify representation type was handled correctly
@@ -351,7 +289,6 @@ class TestGetSequenceRepresentations:
             assert result.embedding_dimension == 512
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestRepresentationsIntegration:
     """Integration tests for representation functions."""
 
@@ -369,11 +306,7 @@ class TestRepresentationsIntegration:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type, representation_type)
 
         # Verify complete result structure
@@ -402,11 +335,7 @@ class TestRepresentationsIntegration:
         mock_model = Mock(spec=LobsterCBMPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type, representation_type)
 
         # Verify result structure
@@ -419,7 +348,6 @@ class TestRepresentationsIntegration:
         assert result.model_used == f"{model_type}_{model_name}"
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestRepresentationsErrorHandling:
     """Test error handling and edge cases."""
 
@@ -429,11 +357,7 @@ class TestRepresentationsErrorHandling:
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
         model_type = "masked_lm"
 
-        # Mock ModelManager to raise an exception for invalid model name
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = ValueError("Invalid model name")
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", side_effect=ValueError("Invalid model name")):
             with pytest.raises(ValueError, match="Invalid model name"):
                 get_sequence_representations(model_name, sequences, model_type)
 
@@ -447,11 +371,7 @@ class TestRepresentationsErrorHandling:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.side_effect = RuntimeError("CUDA out of memory")
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             with pytest.raises(RuntimeError, match="CUDA out of memory"):
                 get_sequence_representations(model_name, sequences, model_type)
 
@@ -468,11 +388,7 @@ class TestRepresentationsErrorHandling:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             with patch("torch.Tensor.cpu") as mock_cpu:
                 # Mock the cpu() method to raise an exception
                 mock_cpu.side_effect = Exception("Tensor conversion failed")
@@ -495,11 +411,7 @@ class TestRepresentationsErrorHandling:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type)
 
         # Verify result structure
@@ -522,11 +434,7 @@ class TestRepresentationsErrorHandling:
         mock_model = Mock(spec=LobsterPMLM)
         mock_model.sequences_to_latents.return_value = [mock_representations]
 
-        # Mock ModelManager
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.return_value = mock_model
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", return_value=mock_model):
             result = get_sequence_representations(model_name, sequences, model_type)
 
         # Verify result structure
@@ -537,7 +445,6 @@ class TestRepresentationsErrorHandling:
         assert result.num_sequences == 3
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestRepresentationsLogging:
     """Test logging behavior of representation functions."""
 
@@ -554,20 +461,15 @@ class TestRepresentationsLogging:
         sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"]
         model_type = "masked_lm"
 
-        # Mock ModelManager to raise an exception
-        mock_model_manager = Mock(spec=ModelManager)
-        mock_model_manager.get_or_load_model.side_effect = Exception("Test error message")
-
-        with patch("lobster.mcp.tools.representations.ModelManager", return_value=mock_model_manager):
+        with patch("lobster.mcp.tools.representations._load_model", side_effect=Exception("Test error message")):
             with patch("lobster.mcp.tools.representations.logger") as mock_logger:
-                with pytest.raises(ValueError, match="Test error message"):
+                with pytest.raises(Exception, match="Test error message"):
                     get_sequence_representations(model_name, sequences, model_type)
 
                 # Verify the error message format
                 mock_logger.error.assert_called_once_with("Error getting representations: Test error message")
 
 
-@pytest.mark.skipif(not LOBSTER_AVAILABLE, reason="Lobster not available")
 class TestSequenceRepresentationResult:
     """Test the SequenceRepresentationResult dataclass."""
 

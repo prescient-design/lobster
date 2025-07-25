@@ -36,7 +36,7 @@ class ToolFactory:
 
     def register_all_tools(self) -> None:
         """Register all available Lobster tools with FastMCP."""
-        # Define tools to register
+        # Define tools to register with their actual function names
         tools_to_register = [
             (list_available_models, "list_available_models"),
             (get_sequence_representations, "get_sequence_representations"),
