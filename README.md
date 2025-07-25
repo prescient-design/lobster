@@ -162,9 +162,9 @@ Check out this [jupyter notebook tutorial](notebooks/01-inference.ipynb) for an 
 
 Check out this [jupyter notebook tutorial](notebooks/02-intervention.ipynb) for an example on how to intervene on different concepts for our concept-bottleneck models class.
 
-## MCP Integration
+## MCP Integration <a name="mcp-integration"></a>
 
-Lobster supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for seamless integration with Claude Desktop and other AI tools:
+Lobster supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for seamless integration with Claude Desktop, Cursor, and other AI tools:
 
 ```bash
 # Install with MCP support
@@ -174,35 +174,50 @@ uv sync --extra mcp
 uv run lobster_mcp_setup
 ```
 
-<!-- ### One-click install for Cursor -->
-<!-- TODO -->
-<!-- [![Add Lobster MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsIi0tZXh0cmEiLCJtY3AiLCJsb2JzdGVyX21jcF9zZXJ2ZXIiXX0=) -->
+### Setup for Cursor
 
-After setup, you can use Lobster models directly in Cursor or Claude Desktop with natural language commands like:
+#### Option 1: One-Click Install (Recommended)
+
+[![Add Lobster to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-MCP%20Server-blue?style=for-the-badge&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjogInV2IiwgImFyZ3MiOiBbInJ1biIsICItLXByb2plY3QiLCAiLiIsICItLWV4dHJhIiwgIm1jcCIsICJsb2JzdGVyX21jcF9zZXJ2ZXIiXSwgImVudiI6IHt9LCAiY3dkIjogIiR7d29ya3NwYWNlRm9sZGVyfSJ9Cg==)
+
+Click the button above to automatically add the Lobster MCP server to Cursor.
+
+**Requirements:**
+- [Cursor](https://cursor.com/) installed
+- [uv](https://docs.astral.sh/uv/) package manager available in PATH  
+- Lobster repository cloned locally with all dependencies installed (`uv sync --all-extras`)
+
+After setup, you can use Lobster models directly in Claude Desktop or Cursor with natural language commands like:
 - "Get embeddings for this protein sequence using lobster_24M"
 - "What concepts are supported by the cb_lobster_24M model?"
 - "Intervene on this sequence to reduce hydrophobicity"
 
-See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation.
+**Key Features:**
+- **Modular architecture** - Clean separation of models, tools, and schemas
+- **Multiple model types** - Access to both MLM and concept bottleneck models
+- **5 core tools** - Embeddings, concepts, interventions, naturalness, and model listing
+- **Type-safe validation** - Pydantic schemas for reliable interactions
 
-## DXT Extension for Claude Desktop
+See the [MCP Integration Guide](docs/MCP_INTEGRATION.md) for complete documentation or [MCP README](src/lobster/mcp/README.md) for quick start instructions.
+
+### DXT Extension for Claude Desktop
 
 Lobster is available as a **DXT (Desktop Extension Toolkit) extension** for Claude Desktop, providing a one-click installation experience:
 
-### Quick Install
+#### Quick Install
 
 1. **Download**: Get the latest `.dxt` file from [GitHub Releases](https://github.com/prescient-design/lobster/releases)
 2. **Install**: Double-click the `.dxt` file or drag it into Claude Desktop
 3. **Use**: Start using Lobster models with natural language commands
 
-### Features
+#### Features
 
 - **One-click installation** - No command line setup required
 - **Self-contained** - Includes all dependencies (~500MB)
 - **Automatic updates** - New versions available through GitHub Releases
 - **Full functionality** - All MCP server capabilities included
 
-### Usage Examples
+#### Usage Examples
 
 Once installed, you can use natural language commands in Claude Desktop:
 
@@ -216,7 +231,7 @@ What concepts are supported by the cb_lobster_24M model?
 Intervene on MKTVRQERLKSIVRIL to reduce hydrophobicity using cb_lobster_24M
 ```
 
-### Development
+#### Development
 
 For developers who want to build and test DXT extensions locally:
 

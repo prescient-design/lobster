@@ -1,17 +1,9 @@
-"""
-Lobster MCP (Model Context Protocol) Integration
+"""Lobster MCP Server Package
 
-This module provides MCP servers that expose Lobster's pretrained models
-for sequence representation, concept analysis, and interventions.
-
-Available when the 'mcp' extra is installed:
-    uv sync --extra mcp
+This package provides a FastMCP server for Lobster model inference and interventions.
 """
 
-try:
-    from .inference_server import LobsterInferenceServer
+from .models import AVAILABLE_MODELS
+from .server import app as mcp_app
 
-    __all__ = ["LobsterInferenceServer"]
-except ImportError:
-    # MCP dependencies not installed
-    __all__ = []
+__all__ = ["AVAILABLE_MODELS", "mcp_app"]

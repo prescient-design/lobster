@@ -1,0 +1,61 @@
+{
+  "dxt_version": "0.1",
+  "name": "lobster-inference",
+  "version": "1.0.0",
+  "display_name": "Lobster Protein Language Models",
+  "description": "Access pretrained protein language models for sequence analysis, embeddings, concept prediction, and interventions",
+  "long_description": "A comprehensive MCP server providing access to Lobster protein language models including masked language models (PMLM) and concept bottleneck models (CBM-PMLM). Supports sequence embeddings, biological concept analysis, sequence interventions, and naturalness scoring with models ranging from 24M to 3B parameters.",
+  "author": {
+    "name": "Prescient Design",
+    "email": "info@prescient.design",
+    "url": "https://github.com/prescient-design/lobster"
+  },
+  "server": {
+    "type": "python",
+    "entry_point": "run_server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--project", "${__dirname}/../../../..", "--extra", "mcp", "python", "${__dirname}/run_server.py"]
+    }
+  },
+  "tools": [
+    {
+      "name": "list_available_models",
+      "description": "List all available pretrained Lobster models and current device information"
+    },
+    {
+      "name": "get_sequence_representations",
+      "description": "Get vector embeddings for protein sequences using Lobster models"
+    },
+    {
+      "name": "get_sequence_concepts",
+      "description": "Analyze biological concepts present in sequences using concept bottleneck models"
+    },
+    {
+      "name": "intervene_on_sequence",
+      "description": "Modify sequences to increase/decrease specific biological concepts"
+    },
+    {
+      "name": "get_supported_concepts",
+      "description": "Get list of supported concepts for a concept bottleneck model"
+    },
+    {
+      "name": "compute_naturalness",
+      "description": "Compute likelihood/naturalness scores for protein sequences"
+    }
+  ],
+  "keywords": ["protein", "language-models", "bioinformatics", "embeddings", "mcp", "pytorch", "transformers", "biology"],
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/prescient-design/lobster",
+  "documentation": "https://github.com/prescient-design/lobster/blob/main/src/lobster/mcp/README.md",
+  "support": "https://github.com/prescient-design/lobster/issues",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prescient-design/lobster.git"
+  },
+  "compatibility": {
+    "min_dxt_version": "0.1",
+    "python": ">=3.10"
+  }
+}
