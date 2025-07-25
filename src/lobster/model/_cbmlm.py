@@ -529,4 +529,4 @@ class LobsterCBMPMLM(pl.LightningModule):
     @property
     def concept_names(self):
         """Get the names of all concepts in the model."""
-         return self._concept_names
+        return self._concept_names
