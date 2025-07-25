@@ -44,7 +44,7 @@ def test_smiles_to_normalized_rdkit_descs_invalid_smiles():
 
 
 @patch(
-    "lobster.transforms.functional._rdkit_descs.DESCRIPTOR_DISTRIBUTIONS",
+    "lobster.transforms.functional._rdkit_descs.RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     {"desc1": (scipy.stats.norm(0, 1), (0, 1, 0, 0))},
 )
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
@@ -55,7 +55,7 @@ def test_smiles_to_normalized_rdkit_descs_disjoint_descriptors(mock_calc):
 
 
 @patch(
-    "lobster.transforms.functional._rdkit_descs.DESCRIPTOR_DISTRIBUTIONS",
+    "lobster.transforms.functional._rdkit_descs.RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     {"desc1": (scipy.stats.norm(0, 1), (-1, 1, 0, 0))},
 )
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
@@ -70,7 +70,7 @@ def test_smiles_to_normalized_rdkit_descs_no_invert(mock_calc):
 
 
 @patch(
-    "lobster.transforms.functional._rdkit_descs.DESCRIPTOR_DISTRIBUTIONS",
+    "lobster.transforms.functional._rdkit_descs.RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     {"desc1": (scipy.stats.norm(0, 1), (0, 1, 0, 0))},
 )
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
@@ -89,7 +89,7 @@ def test_smiles_to_normalized_rdkit_descs_clipping(mock_calc):
 
 
 @patch(
-    "lobster.transforms.functional._rdkit_descs.DESCRIPTOR_DISTRIBUTIONS",
+    "lobster.transforms.functional._rdkit_descs.RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     {"desc1": (scipy.stats.norm(0, 1), (-1, 1, 0, 0))},
 )
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
@@ -103,7 +103,7 @@ def test_smiles_to_normalized_rdkit_descs_invert(mock_calc):
 
 
 @patch(
-    "lobster.transforms.functional._rdkit_descs.DESCRIPTOR_DISTRIBUTIONS",
+    "lobster.transforms.functional._rdkit_descs.RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     {"desc1": (scipy.stats.norm(0, 1), (0, 1, 0, 0))},
 )
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
@@ -122,7 +122,7 @@ def test_smiles_to_normalized_rdkit_descs_invert_inf(mock_calc):
 
 
 @patch(
-    "lobster.transforms.functional._rdkit_descs.DESCRIPTOR_DISTRIBUTIONS",
+    "lobster.transforms.functional._rdkit_descs.RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     {"desc1": (scipy.stats.norm(0, 1), (0, 1, 0, 0))},
 )
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
@@ -136,7 +136,7 @@ def test_smiles_to_normalized_rdkit_descs_nan_handling(mock_calc):
 
 
 @patch(
-    "lobster.transforms.functional._rdkit_descs.DESCRIPTOR_DISTRIBUTIONS",
+    "lobster.transforms.functional._rdkit_descs.RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     {"desc1": (MagicMock(), (0, 1, 0, 0)), "desc2": (MagicMock(), (0, 1, 0, 0))},
 )
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
