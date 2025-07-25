@@ -14,6 +14,7 @@ from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDatase
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
 from ._ume_streaming_dataset import UMEStreamingDataset
 from ._zinc_dataset import ZINCIterableDataset
+from ._ptm_dataset import PTMDataset
 
 __all__ = [
     "CalmDataset",
@@ -36,4 +37,5 @@ __all__ = [
     "ZINCIterableDataset",
     "OpenGenome2IterableDataset",
     "UMEStreamingDataset",
+    "PTMDataset",
 ]
