@@ -63,7 +63,7 @@ class PTMDataset(Dataset):
 
         self.data = pd.read_csv(csv_path)
 
-        self.columns = ["AC_ID", "pos", "label", "ori_seq"] if columns is None else columns
+        self.columns = ["AC_ID", "pos", "label", "ori_seq","token"] if columns is None else columns
 
         self.transform = transform
 
