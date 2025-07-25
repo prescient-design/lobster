@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+- Run uv run ruff to lint code and resolve linting errors
