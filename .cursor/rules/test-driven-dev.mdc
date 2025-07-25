@@ -1,0 +1,5 @@
+---
+description: when writing new functions or classes
+alwaysApply: false
+---
+- Write tests first, then functions with numpy style docstrings, then complete the functions and iterate until tests pass

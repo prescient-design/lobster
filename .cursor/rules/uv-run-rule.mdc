@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+- Enforce use of `uv run` for all command-line Python execution
