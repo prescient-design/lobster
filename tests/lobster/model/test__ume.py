@@ -577,3 +577,171 @@ class TestUME:
             # The important part is that the model loaded successfully and
             # use_flash_attn attribute is correctly set
             print(e)
+
+    # Add these test methods to the existing TestUME class
+# Focus: Observe and document behavior, don't make arbitrary judgments
+
+
+
+    def test_malformed_smiles_behavior(self):
+        """Document how UME handles malformed SMILES"""
+        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+
+        
+        test_cases = [
+            ("CC(=O", "unclosed_parenthesis"),
+            ("CC)=O)O", "extra_closing_parenthesis"),
+            ("CC[=O]O", "invalid_bond_notation"),
+            ("C1CCCCC", "unclosed_ring"),
+            ("", "empty_string"),
+            ("   ", "whitespace_only"),
+            ("C" * 1000, "extremely_long"),
+            ("CC@#$%^&*", "invalid_characters"),
+            ("INVALID_SMILES", "completely_invalid"),
+            ("c1ccccc1", "lowercase_aromatic"),
+            ("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "valid_smiles"),  # Control
+        ]
+
+        results = {}
+
+        for smiles, case_type in test_cases:
+            try:
+                embeddings = ume.embed_sequences([smiles], "SMILES")
+
+                # Just validate it's a proper tensor if it succeeds
+                assert isinstance(embeddings, torch.Tensor)
+                assert embeddings.shape == (1, ume.embedding_dim)
+                assert not torch.isnan(embeddings).any()
+                assert not torch.isinf(embeddings).any()
+
+                results[case_type] = {
+                    "outcome": "accepted",
+                    "embedding_norm": torch.norm(embeddings).item()
+                }
+
+            except Exception as e:
+                results[case_type] = {
+                    "outcome": "rejected", 
+                    "error_type": type(e).__name__,
+                    "error_msg": str(e)[:100]  # Truncate long error messages
+                }
+
+       
+        print(f"\n=== UME SMILES Handling Behavior ===")
+        for case_type, result in results.items():
+            if result["outcome"] == "accepted":
+                print(f"{case_type:20}: accepted (norm: {result['embedding_norm']:.3f})")
+            else:
+                print(f"{case_type:20}: rejected ({result['error_type']})")
+
+      
+        if results["valid_smiles"]["outcome"] != "accepted":
+            pytest.fail("Rejected valid sequence")
+
+    def test_malformed_protein_behavior(self):
+        """Document how UME handles invalid protein sequences"""
+        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+
+        test_cases = [
+            ("MKTVRQXYZ", "invalid_amino_acids"),
+            ("MKTVRQ123", "numbers_mixed"),
+            ("MKTVRQ@#$", "special_characters"),
+            ("MKTVRQ-ACDEFG", "dash_separator"),
+            ("MKTVRQ ACDEFG", "space_separator"),
+            ("M*T*V*R*Q", "asterisk_unknowns"),
+            ("", "empty_sequence"),
+            ("mktvrq", "all_lowercase"),
+            ("MKTVBJOUXZ", "multiple_invalid"),
+            ("MKTVRQERLK", "valid_protein"),  # Control
+        ]
+
+        results = {}
+
+        for protein, case_type in test_cases:
+            try:
+                embeddings = ume.embed_sequences([protein], "amino_acid")
+                results[case_type] = {
+                    "outcome": "accepted",
+                    "embedding_norm": torch.norm(embeddings).item()
+                }
+            except Exception as e:
+                results[case_type] = {
+                    "outcome": "rejected",
+                    "error_type": type(e).__name__
+                }
+
+        print(f"\n=== UME Protein Handling Behavior ===")
+        for case_type, result in results.items():
+            if result["outcome"] == "accepted":
+                print(f"{case_type:20}: accepted (norm: {result['embedding_norm']:.3f})")
+            else:
+                print(f"{case_type:20}:  rejected ({result['error_type']})")
+
+        # Only fail if valid protein is rejected
+        if results["valid_protein"]["outcome"] != "accepted":
+            pytest.fail("Rejected a valid protein sequence")
+
+    def test_memory_usage_scaling(self):
+        """Document memory usage patterns"""
+        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+
+        sequence = "MKTVRQERLKSIVRILERSKEPVSGAQL"
+        batch_sizes = [1, 5, 10, 25, 50, 100, 200, 500, 1000]
+
+        memory_data = {}
+        max_successful_batch = 0
+
+        for batch_size in batch_sizes:
+            sequences = [sequence] * batch_size
+
+            try:
+                # Measure memory if on GPU
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    memory_before = torch.cuda.memory_allocated()
+
+                embeddings = ume.embed_sequences(sequences, "amino_acid")
+
+                if torch.cuda.is_available():
+                    memory_after = torch.cuda.memory_allocated()
+                    memory_used_mb = (memory_after - memory_before) / (1024**2)
+                    memory_per_seq = memory_used_mb / batch_size
+                else:
+                    memory_used_mb = None
+                    memory_per_seq = None
+
+                memory_data[batch_size] = {
+                    "status": "success",
+                    "total_memory_mb": memory_used_mb,
+                    "memory_per_seq_mb": memory_per_seq,
+                    "output_shape": embeddings.shape
+                }
+
+                max_successful_batch = batch_size
+
+                # Clean up
+                del embeddings
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+            except Exception as e:
+                memory_data[batch_size] = {
+                    "status": "failed",
+                    "error_type": type(e).__name__,
+                    "error_msg": str(e)[:100]
+                }
+                break  # Stop at first failure
+            
+        print(f"\n=== UME Memory Usage Scaling ===")
+        print(f"Test sequence length: {len(sequence)}")
+
+        for batch_size, data in memory_data.items():
+            if data["status"] == "success":
+                if data["total_memory_mb"] is not None:
+                    print(f"Batch {batch_size:4d}:  {data['total_memory_mb']:.1f} MB total ({data['memory_per_seq_mb']:.2f} MB/seq)")
+                else:
+                    print(f"Batch {batch_size:4d}: (CPU - memory not measured)")
+            else:
+                print(f"Batch {batch_size:4d}: {data['error_type']}")
+
+        print(f"\nMax successful batch size: {max_successful_batch}")
