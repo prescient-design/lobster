@@ -1,0 +1,21 @@
+# MCP SDK for DXT compatibility
+mcp>=1.0.0
+
+# PyTorch CPU version for broad compatibility
+torch>=2.0.0,<3.0.0
+torchvision>=0.15.0,<1.0.0
+
+# Core ML dependencies
+transformers>=4.30.0,<5.0.0
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0,<2.0.0
+
+# Data handling
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
+
+# Logging and utilities
+rich>=13.0.0,<14.0.0
+
+# Optional: GPU support (user can upgrade manually)
+# torch-audio and other extensions can be added as needed

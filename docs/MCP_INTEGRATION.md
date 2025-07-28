@@ -12,6 +12,8 @@ Lobster provides MCP servers that expose pretrained models for:
 - **Concept Interventions**: Modify sequences based on specific biological concepts
 - **Naturalness Scoring**: Compute likelihood/naturalness scores for sequences
 
+> 💡 **Quick Start Guide**: For a more concise setup and usage guide, see the [MCP README](../src/lobster/mcp/README.md) in the MCP directory.
+
 ### Available Models
 
 **Masked Language Models (MLM):**
@@ -54,6 +56,14 @@ uv sync --extra mcp --extra flash
 
 ## Usage with Claude Desktop
 
+### 🚀 One-Click Install (Recommended)
+Download and install the DXT package for automatic setup:
+
+[📦 Download Lobster DXT Package](../src/lobster/mcp/lobster-inference.dxt)
+
+After downloading, double-click the `.dxt` file to install in Claude Desktop, then restart Claude.
+
+### Manual Setup
 The setup script will automatically configure Claude Desktop:
 
 ```bash
@@ -77,6 +87,19 @@ After running setup, restart Claude Desktop and you can use commands like:
 
 ### Automated Setup (Recommended)
 
+#### Option 1: One-Click Install (Recommended)
+
+[![Add Lobster to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-MCP%20Server-blue?style=for-the-badge&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=lobster-inference&config=eyJjb21tYW5kIjogInV2IiwgImFyZ3MiOiBbInJ1biIsICItLXByb2plY3QiLCAiLiIsICItLWV4dHJhIiwgIm1jcCIsICJsb2JzdGVyX21jcF9zZXJ2ZXIiXSwgImVudiI6IHt9LCAiY3dkIjogIiR7d29ya3NwYWNlRm9sZGVyfSJ9Cg==)
+
+Click the button above to automatically add the Lobster MCP server to Cursor.
+
+**Requirements:**
+- [Cursor](https://cursor.com/) installed
+- [uv](https://docs.astral.sh/uv/) package manager available in PATH  
+- Lobster repository cloned locally with all dependencies installed (`uv sync --all-extras`)
+
+#### Option 2: Automated Setup Script
+
 Use the setup script to automatically configure Cursor:
 
 ```bash
@@ -97,7 +120,7 @@ If you prefer to configure manually, create or edit the file `~/.cursor/mcp.json
       "args": [
         "run",
         "--project", "/path/to/lobster",
-        "--extra", "mcp",
+        "--all-extras",
         "lobster_mcp_server"
       ]
     }
@@ -115,12 +138,12 @@ After setup and restarting Cursor:
 2. **MCP Commands**: Type "MCP" to see available MCP-related commands
 3. **Chat Integration**: Use `@lobster-inference` in chat to reference the server
 4. **Available Tools**: The server provides the same tools as Claude Desktop:
-   - `list_available_models` - List all available Lobster models
-   - `get_sequence_representations` - Get embeddings for protein sequences
-   - `get_sequence_concepts` - Extract biological concepts from sequences
-   - `intervene_on_sequence` - Modify sequences based on concepts
-   - `get_supported_concepts` - List supported concepts for CBM models
-   - `compute_naturalness` - Calculate sequence naturalness scores
+   - `list_models` - List all available Lobster models
+   - `get_representations` - Get embeddings for protein sequences
+   - `get_concepts` - Extract biological concepts from sequences
+   - `intervene_sequence` - Modify sequences based on concepts
+   - `get_supported_concepts_list` - List supported concepts for CBM models
+   - `compute_sequence_naturalness` - Calculate sequence naturalness scores
 
 ### Example Usage in Cursor
 
@@ -145,12 +168,12 @@ Once configured, you can use natural language commands in Cursor:
 uv run lobster_mcp_server
 
 # Use MCP CLI dev mode for testing (if compatible)
-uv run mcp dev src/lobster/mcp/inference_server.py:app --with-editable .
+uv run mcp dev src/lobster/mcp/server.py:app --with-editable .
 ```
 
 ## Available Tools
 
-### get_sequence_representations
+### get_representations
 Get embedding representations for protein sequences.
 
 **Parameters:**
@@ -169,14 +192,14 @@ Get embedding representations for protein sequences.
 }
 ```
 
-### get_sequence_concepts
+### get_concepts
 Get concept predictions for protein sequences.
 
 **Parameters:**
 - `sequences`: List of protein sequences
 - `model_name`: Name of the concept bottleneck model
 
-### intervene_on_sequence
+### intervene_sequence
 Perform concept interventions on protein sequences.
 
 **Parameters:**
@@ -186,13 +209,13 @@ Perform concept interventions on protein sequences.
 - `edits`: Number of edits to make (default: 5)
 - `intervention_type`: "positive" or "negative" (default: "negative")
 
-### get_supported_concepts
+### get_supported_concepts_list
 Get list of supported concepts for a concept bottleneck model.
 
 **Parameters:**
 - `model_name`: Name of the concept bottleneck model
 
-### compute_naturalness
+### compute_sequence_naturalness
 Compute naturalness/likelihood scores for protein sequences.
 
 **Parameters:**
@@ -200,7 +223,7 @@ Compute naturalness/likelihood scores for protein sequences.
 - `model_name`: Name of the model
 - `model_type`: "masked_lm" or "concept_bottleneck"
 
-### list_available_models
+### list_models
 List all available pretrained Lobster models and current device.
 
 ## Example Usage
@@ -254,9 +277,9 @@ uv run mypy src/lobster/mcp/
 
 To add new tools or models:
 
-1. Add the tool definition to `handle_list_tools()` in `src/lobster/mcp/inference_server.py`
-2. Add the implementation to `handle_call_tool()`
-3. Update the `LobsterInferenceServer` class with new methods
+1. Create tool functions in `src/lobster/mcp/tools/` directory
+2. Add request/response schemas in `src/lobster/mcp/schemas/`
+3. Register tools in `src/lobster/mcp/server.py` with `@app.tool()` decorator
 4. Add tests in `tests/lobster/mcp/`
 5. Test with: `uv run lobster_mcp_server`
 
@@ -265,49 +288,121 @@ To add new tools or models:
 ```
 src/lobster/mcp/
 ├── __init__.py                         # MCP module init
-├── inference_server.py                 # FastMCP-based MCP server
-├── setup.py                           # Setup script for Claude Desktop
-├── example_server.py                  # Usage examples
-└── claude_desktop_config.json         # Config template
+├── server.py                          # Main FastMCP server
+├── models/                            # Model management
+│   ├── __init__.py
+│   ├── config.py                      # Model configurations
+│   └── manager.py                     # Model loading and caching
+├── schemas/                           # Request/response validation
+│   ├── __init__.py
+│   └── requests.py                    # Pydantic schemas
+├── tools/                             # MCP tool implementations
+│   ├── __init__.py
+│   ├── representations.py            # Sequence embeddings
+│   ├── concepts.py                    # Concept predictions
+│   ├── interventions.py              # Sequence modifications
+│   └── utils.py                       # Utility tools
+├── setup.py                           # Setup script for clients
+├── example_server.py                  # Functional testing script
+├── inference_server.py                # Legacy file (backward compatibility)
+├── README.md                          # Comprehensive usage guide
+└── claude_desktop_config.json         # Example configuration
 
 tests/lobster/mcp/
 ├── __init__.py
-├── test_inference_server.py           # Unit tests
-└── simple_test.py                     # Basic functionality tests
+├── test_inference_server.py           # Legacy server tests
+├── test_modular_components.py         # Modular component tests
+└── test_simple_server.py              # Basic functionality tests
 ```
 
 ### MCP Server Implementation
 
-The package provides a FastMCP-based server implementation:
+The package provides a modular FastMCP-based server implementation:
 
-- **lobster_mcp_server** - FastMCP-based server
-  - Better performance and simpler debugging
-  - Uses Pydantic models for input validation
-  - Compatible with modern MCP tooling
+- **server.py** - Main FastMCP server with clean modular architecture
+- **models/** - Model management with caching and loading strategies
+- **tools/** - Individual MCP tool implementations grouped by functionality
+- **schemas/** - Pydantic models for type-safe request/response validation
+
+Key benefits of the modular design:
+- **Separation of concerns** - Each module has a single responsibility
+- **Easy testing** - Individual components can be unit tested in isolation
+- **Better maintainability** - Changes to one area don't affect others
+- **Scalability** - Easy to add new tools or model types
 
 ## Technical Details
 
 ### MCP Server Architecture
 
-The Lobster MCP server is built using FastMCP and follows these principles:
+The Lobster MCP server follows a clean modular architecture using FastMCP:
 
-- **Lazy Loading**: Models are only loaded when first requested
-- **Caching**: Models remain in memory once loaded for efficiency
-- **Error Handling**: Comprehensive error handling with informative messages
-- **Type Safety**: Full type hints and validation using Pydantic
-- **Testing**: Comprehensive unit tests with mocking for CI/CD
+- **ModelManager**: Handles lazy loading, caching, and GPU/CPU management
+- **Tool Functions**: Individual functions for each MCP tool (representations, concepts, etc.)
+- **Schema Validation**: Pydantic models ensure type safety and input validation
+- **FastMCP Integration**: Modern MCP framework with automatic tool registration
+- **Comprehensive Testing**: Unit tests for each modular component
 
 ### Model Loading Strategy
 
 - Models are downloaded from HuggingFace Hub on first use
-- GPU/CPU selection is automatic based on availability
+- GPU/CPU selection is automatic based on availability  
 - Memory management through model caching and cleanup
 - Support for different model types (MLM, CBM) with unified interface
+
+### Modular Design Pattern
+
+The refactored architecture follows these design principles:
+
+**models/** - Model Management Layer
+- `config.py`: Centralized model configurations and constants
+- `manager.py`: ModelManager class for loading, caching, and device management
+
+**schemas/** - Data Validation Layer  
+- `requests.py`: Pydantic models for all request/response schemas
+- Type-safe validation with clear error messages
+
+**tools/** - Business Logic Layer
+- `representations.py`: Sequence embedding tools
+- `concepts.py`: Concept prediction and analysis tools
+- `interventions.py`: Sequence modification tools
+- `utils.py`: Utility tools (model listing, naturalness scoring)
+
+**server.py** - Presentation Layer
+- FastMCP server setup and tool registration
+- Minimal orchestration code that delegates to tool functions
+- Clean separation from business logic
+
+### Development Workflow
+
+Adding a new MCP tool involves these steps:
+
+1. **Define schemas** in `schemas/requests.py`:
+   ```python
+   class NewToolRequest(BaseModel):
+       sequence: str = Field(..., description="Protein sequence")
+       parameter: int = Field(default=5, description="Tool parameter")
+   ```
+
+2. **Implement tool function** in appropriate `tools/` file:
+   ```python
+   def new_tool(request: NewToolRequest, model_manager: ModelManager) -> dict[str, Any]:
+       # Implementation here
+       return {"result": "success"}
+   ```
+
+3. **Register tool** in `server.py`:
+   ```python
+   @app.tool()
+   def new_tool_endpoint(request: NewToolRequest):
+       return new_tool(request, model_manager)
+   ```
+
+4. **Add tests** in `tests/lobster/mcp/test_modular_components.py`
 
 ### Integration with Claude
 
 The MCP server integrates seamlessly with Claude Desktop and other MCP clients:
 - Automatic tool discovery and schema validation
 - Structured input/output with JSON schemas
-- Async/await support for non-blocking operations
-- Proper error propagation to the client
+- Clean error handling and propagation
+- Modern FastMCP framework compatibility
