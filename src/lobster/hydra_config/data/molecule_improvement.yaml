@@ -6,13 +6,13 @@ defaults:
 _target_: lobster.data._molecule_improvement_datamodule.MoleculeImprovementLightningDataModule
 
 # Data root directory
-root: "cache/qm9_data_test1"  # Directory containing molecules.parquet and pairs.parquet
-
+root: "/data/lawrenh6/cache/qm9_pairs_0_001_7_18"  # Directory containing molecules.parquet and pairs.parquet
+pair_filename: "pairs_filtered_107k_shape_percentile_1.parquet"
 # Utility selection
 utility_key: "gap"  # Can be "gap", "homo", "lumo", "u0", "u", "h", "g", etc.
 
 # Filtering parameters
-delta: 0.3  # Distance threshold
+delta: None #0.3  # Distance threshold
 epsilon: 1  # Utility improvement threshold # this is included already in the parquet file generation..
 
 # Training parameters

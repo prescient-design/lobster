@@ -166,7 +166,7 @@ class QM9ParquetGenerator:
         
         logger.info(f"Processed {len(self.smiles_list)} molecules ({num_errors} SELFIES errors)")
         
-    def create_train_val_test_splits(self, train_ratio: float = 0.8, val_ratio: float = 0.1, seed: int = 42):
+    def create_train_val_test_splits(self, seed: int = 42):
         """Create train/val/test splits for molecules."""
         logger.info("Creating train/val/test splits...")
         
@@ -199,8 +199,8 @@ class QM9ParquetGenerator:
             logger.info(f"Test mode splits - Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}")
         else:
             # Normal mode: use ratios
-            train_end = int(n_molecules * train_ratio)
-            val_end = train_end + int(n_molecules * val_ratio)
+            train_end = int(n_molecules * 0.8) # Default to 80% for train
+            val_end = train_end + int(n_molecules * 0.1) # Default to 10% for val
             
             train_indices = indices[:train_end]
             val_indices = indices[train_end:val_end]
@@ -299,7 +299,7 @@ class QM9ParquetGenerator:
         for row in split_counts.iter_rows(named=True):
             logger.info(f"  {row['split']}: {row['count']}")
         
-    def generate_parquet_files(self, train_ratio: float = 0.8, val_ratio: float = 0.1, seed: int = 42):
+    def generate_parquet_files(self, seed: int = 42):
         """Generate both parquet files."""
         if self.test_mode:
             logger.info(f"🧪 TEST MODE: Generating small subsets for testing")
@@ -318,7 +318,7 @@ class QM9ParquetGenerator:
         self.load_qm9_dataset()
         
         # Create splits
-        splits = self.create_train_val_test_splits(train_ratio, val_ratio, seed)
+        splits = self.create_train_val_test_splits(seed)
         
         # Generate molecules parquet
         self.generate_molecules_parquet(splits)
@@ -362,8 +362,6 @@ def main():
     
     # Generate parquet files
     generator.generate_parquet_files(
-        train_ratio=0.8,
-        val_ratio=0.1,
         seed=42
     )
     

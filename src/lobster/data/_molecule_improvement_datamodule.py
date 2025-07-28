@@ -30,10 +30,12 @@ class MoleculeImprovementDataset(Dataset):
         self,
         root: str,  # Data root directory containing molecules.parquet and pairs.parquet
         split: str,  # "train", "val", or "test"
+        pair_filename: str = "pairs.parquet", # name of the pairs file within root
         utility_key: str = "utility_0",  # Which utility column to use
-        delta: float = 0.3,  # Distance threshold
+        delta: float = None,  # Distance threshold
         epsilon: float = 0.1,  # Utility improvement threshold
         transform_fn: Optional[Callable] = None,  # Tokenizer transform function
+        distance_type: Optional[str] = None,  # "morgan_tanimoto_distance" or "shape_tanimoto_distance"
     ):
         """
         Initialize the dataset.
@@ -51,10 +53,11 @@ class MoleculeImprovementDataset(Dataset):
         self.utility_key = utility_key
         self.delta = delta
         self.epsilon = epsilon
+        self.distance_type = distance_type
         
         # Set up file paths using standardized naming
         self.molecules_parquet_path = self.root / "molecules.parquet"
-        self.pairs_parquet_path = self.root / "pairs.parquet"
+        self.pairs_parquet_path = self.root / pair_filename
         
         # Check if files exist
         if not self.molecules_parquet_path.exists():
@@ -90,7 +93,12 @@ class MoleculeImprovementDataset(Dataset):
         
         # Load molecules table
         molecules_df = pl.read_parquet(self.molecules_parquet_path)
-        molecules_df = molecules_df.filter(pl.col("split") == self.split)
+
+        # I think this is unnecessary
+        if "split" in molecules_df.columns:
+            molecules_df = molecules_df.filter(pl.col("split") == self.split)
+        else:
+            molecules_df = molecules_df.filter(pl.col(self.split) == True)
         
         # Check if utility column exists
         if self.utility_key not in molecules_df.columns:
@@ -103,20 +111,24 @@ class MoleculeImprovementDataset(Dataset):
         
         # Load pairs table
         pairs_df = pl.read_parquet(self.pairs_parquet_path)
-        pairs_df = pairs_df.filter(pl.col("split") == self.split)
+        # removing because pairs should only be created from train split already, by qm9_pair_gen script
+        #pairs_df = pairs_df.filter(pl.col("split") == self.split)
         
         print(f"Loaded {len(pairs_df)} pairs for split '{self.split}' using utility '{self.utility_key}'")
         
-        # Filter by distance threshold
-        pairs_df = pairs_df.filter(pl.col("distance") < self.delta)
-        print(f"After distance filtering (< {self.delta}): {len(pairs_df)} pairs")
+        # Filter by distance threshold if specified
+        if self.delta is not None and self.delta != 'None':
+            if self.distance_type is None:
+                raise ValueError(f"Distance type must be specified if delta is provided as {self.delta}")
+            pairs_df = pairs_df.filter(pl.col(self.distance_type) < self.delta)
+            print(f"After distance filtering (< {self.delta}): {len(pairs_df)} pairs")
         
         # Filter by utility improvement and ensure correct ordering
         training_pairs = []
         for row in pairs_df.iter_rows(named=True):
-            item_i = row['item_i']
-            item_j = row['item_j']
-            distance = row['distance']
+            item_i = row['molecule_a_idx']
+            item_j = row['molecule_b_idx']
+            #distance = row['distance']
             
             # Get SMILES and utilities
             smiles_i = smiles_lookup.get(item_i)
@@ -190,6 +202,7 @@ class MoleculeImprovementLightningDataModule(pl.LightningDataModule):
     def __init__(
         self,
         root: str,  # Data root directory
+        pair_filename: str = "pairs.parquet", # name of the pairs file within root
         utility_key: str = "utility_0",  # Which utility column to use
         delta: float = 0.3,
         epsilon: float = 0.1,
@@ -216,8 +229,9 @@ class MoleculeImprovementLightningDataModule(pl.LightningDataModule):
             drop_last: Whether to drop the last incomplete batch
         """
         super().__init__()
-            
+
         self._root = root
+        self._pair_filename = pair_filename
         self._utility_key = utility_key
         self._delta = delta
         self._epsilon = epsilon
@@ -244,6 +258,7 @@ class MoleculeImprovementLightningDataModule(pl.LightningDataModule):
             # Create datasets for each split
             self._train_dataset = MoleculeImprovementDataset(
                 root=self._root,
+                pair_filename=self._pair_filename,
                 split="train",
                 utility_key=self._utility_key,
                 delta=self._delta,
@@ -253,6 +268,7 @@ class MoleculeImprovementLightningDataModule(pl.LightningDataModule):
             
             self._val_dataset = MoleculeImprovementDataset(
                 root=self._root,
+                pair_filename=self._pair_filename,
                 split="val",
                 utility_key=self._utility_key,
                 delta=self._delta,
@@ -262,6 +278,7 @@ class MoleculeImprovementLightningDataModule(pl.LightningDataModule):
             
             self._test_dataset = MoleculeImprovementDataset(
                 root=self._root,
+                pair_filename=self._pair_filename,
                 split="test",
                 utility_key=self._utility_key,
                 delta=self._delta,
@@ -273,6 +290,7 @@ class MoleculeImprovementLightningDataModule(pl.LightningDataModule):
             # For prediction, use the test dataset
             self._test_dataset = MoleculeImprovementDataset(
                 root=self._root,
+                pair_filename=self._pair_filename,
                 split="test",
                 utility_key=self._utility_key,
                 delta=self._delta,

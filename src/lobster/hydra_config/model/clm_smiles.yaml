@@ -1,4 +1,4 @@
-_target_: lobster.model.LobsterPCLM
+_target_: lobster.model.LobsterPCLM2
 
 # Model parameters
 model_name: "CLM_mini"  # Start with smaller model for faster training
@@ -11,7 +11,8 @@ num_training_steps: ${trainer.max_steps}
 num_warmup_steps: 1000
 
 # Tokenizer configuration - use SMILES tokenizer instead of protein tokenizer
-tokenizer_dir: "smiles_tokenizer"  # This will use the SMILES tokenizer
+tokenizer_dir: "garbage_test" #"smiles_tokenizer"  # This will use the SMILES tokenizer
+transform_fn: ${data.transform_fn}
 
 # Model-specific configuration parameters
 model_kwargs:

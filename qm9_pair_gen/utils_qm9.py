@@ -1,7 +1,7 @@
 import rdkit
 from atomic_datasets import QM9
 from rdkit import Chem
-from rdkit.Chem import rdchem
+from rdkit.Chem import rdchem, rdFMCS
 import selfies as sf
 import numpy as np
 import py3Dmol
@@ -18,6 +18,7 @@ import polars as pl
 import time
 import pyarrow as pa
 import pyarrow.parquet as pq
+from rdkit.Chem.rdShapeHelpers import ShapeTanimotoDist
 
 def is_valency_ok(mol):
     pt = Chem.GetPeriodicTable()
@@ -39,6 +40,7 @@ def is_valency_ok(mol):
             continue
 
         if current_valence > max_valence:
+            # get partial or formal charge. if current valence > max_valence + current charge, then it's not ok
             print(f'valence for atom {pt.GetElementSymbol(atomic_num)} is {current_valence} but max is {max_valence}')
             return False
     return True
@@ -224,5 +226,127 @@ def display_mols_3d_grid(mol_pairs, rows=2, cols=4, spacing=5.0, col_titles=None
         height: height of the view in pixels (default: 600)
     """
     view = my_mols_to_3d_grid(mol_pairs, rows, cols, spacing, col_titles, width, height)
+    view.show()
+    return view
+
+def get_shape_tanimoto(molA, molB, return_matches=True):
+    mcs_params = rdFMCS.MCSParameters()
+    mcs_params.AtomCompare = rdFMCS.AtomCompare.CompareElements
+    mcs_params.BondCompare = rdFMCS.BondCompare.CompareOrder
+    mcs_result = rdFMCS.FindMCS([molA, molB], parameters=mcs_params)
+    mcs_mol = Chem.MolFromSmarts(mcs_result.smartsString)
+    
+    # Find matching atoms
+    matchA = molA.GetSubstructMatch(mcs_mol)
+    matchB = molB.GetSubstructMatch(mcs_mol)
+
+    try:
+        rmsd = AllChem.AlignMol(molB, molA, atomMap=list(zip(matchB, matchA)))
+        shape_tani_dist = ShapeTanimotoDist(molA, molB)
+        if return_matches:
+            return shape_tani_dist, matchA, matchB
+        else:
+            return shape_tani_dist
+    except Exception as e:
+        if return_matches:
+            return 100, [], []
+        else:
+            return 100
+
+
+def visualize_mol_grid(mols, titles=None, num_rows=None, num_cols=None, spacing=5.0, width=800, height=600, title_height=None):
+    """
+    Visualize a grid of molecules using py3Dmol.
+    
+    Args:
+        mols: list of RDKit Mol objects to visualize
+        titles: optional list of strings for titles above each molecule
+        num_rows: optional number of rows (auto-calculated if None)
+        num_cols: optional number of columns (auto-calculated if None)
+        spacing: spacing between molecules in the grid
+        width: width of the view in pixels
+        height: height of the view in pixels
+        title_height: optional float, controls vertical space for titles/row spacing (default: spacing*0.8 if titles, else 0)
+    
+    Returns:
+        py3Dmol view object
+    """
+    if not mols:
+        raise ValueError("mols list cannot be empty")
+    
+    # Auto-calculate grid dimensions if not provided
+    if num_rows is None and num_cols is None:
+        n_mols = len(mols)
+        num_cols = int(np.ceil(np.sqrt(n_mols)))
+        num_rows = int(np.ceil(n_mols / num_cols))
+        if num_rows > num_cols:
+            num_cols, num_rows = num_rows, num_cols
+    elif num_rows is None:
+        num_rows = int(np.ceil(len(mols) / num_cols))
+    elif num_cols is None:
+        num_cols = int(np.ceil(len(mols) / num_rows))
+    
+    view = py3Dmol.view(width=width, height=height)
+    count = 0
+    
+    # Calculate title spacing if titles are provided
+    if title_height is not None:
+        row_title_spacing = title_height if titles else 0
+    else:
+        row_title_spacing = spacing * 0.8 if titles else 0
+    
+    for row in range(num_rows):
+        for col in range(num_cols):
+            mol_idx = row * num_cols + col
+            if mol_idx >= len(mols):
+                break
+            mol = mols[mol_idx]
+            if mol.GetNumConformers() == 0:
+                AllChem.EmbedMolecule(mol)
+            conf = mol.GetConformer()
+            positions = []
+            for k in range(mol.GetNumAtoms()):
+                pos = conf.GetAtomPosition(k)
+                positions.append([pos.x, pos.y, pos.z])
+            positions = np.array(positions)
+            center_of_mass = np.mean(positions, axis=0)
+            tolerance = 1e-6
+            if np.any(np.abs(center_of_mass) > tolerance):
+                for k in range(mol.GetNumAtoms()):
+                    pos = conf.GetAtomPosition(k)
+                    centered_pos = pos - Chem.rdGeometry.Point3D(*center_of_mass)
+                    conf.SetAtomPosition(k, centered_pos)
+            # Position molecule in grid
+            offset = np.array([col * spacing, -(row * spacing + row_title_spacing), 0.0])
+            for k in range(mol.GetNumAtoms()):
+                pos = conf.GetAtomPosition(k)
+                conf.SetAtomPosition(k, pos + Chem.rdGeometry.Point3D(*offset))
+            mb = Chem.MolToMolBlock(mol)
+            view.addModel(mb, 'mol')
+            view.setStyle({'model': count}, {'stick': {}, 'sphere': {'scale': 0.3}})
+            count += 1
+    # Add titles if provided
+    if titles:
+        for row in range(num_rows):
+            for col in range(num_cols):
+                mol_idx = row * num_cols + col
+                if mol_idx >= len(mols):
+                    break
+                if mol_idx < len(titles) and titles[mol_idx]:
+                    title = titles[mol_idx]
+                    title_x = col * spacing
+                    title_y = -(row * spacing + row_title_spacing * 0.5)  # Position above molecule
+                    view.addLabel(
+                        title,
+                        {
+                            'position': {'x': title_x, 'y': title_y, 'z': 0},
+                            'fontSize': 14,
+                            'fontColor': 'black',
+                            'backgroundColor': 'white',
+                            'borderThickness': 1,
+                            'borderColor': 'black'
+                        }
+                    )
+    view.zoomTo()
     view.show()
     return view

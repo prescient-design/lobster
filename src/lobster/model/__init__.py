@@ -1,6 +1,7 @@
 from ._cbmlm import LobsterCBMPMLM
 from ._clip import MiniCLIP
 from ._clm import LobsterPCLM
+from ._clm2 import LobsterPCLM2
 from ._clm_configuration import PCLM_CONFIG_ARGS
 from ._conditioanalclassifiermlm import LobsterConditionalClassifierPMLM
 from ._conditioanalmlm import LobsterConditionalPMLM
