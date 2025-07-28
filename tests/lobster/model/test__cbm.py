@@ -58,6 +58,7 @@ class TestLobsterCBMPMLM:
 
         assert concepts_name is model._concepts_name
 
+
 def test_cbmlm_checkpoint(tmp_path):
     print(f"{tmp_path=}")
     model = LobsterCBMPMLM("MLM_mini")
