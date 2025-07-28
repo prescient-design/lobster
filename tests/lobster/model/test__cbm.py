@@ -54,9 +54,9 @@ class TestLobsterCBMPMLM:
         assert isinstance(concept_names, (list, tuple))
         assert len(concept_names) > 0
 
-        assert concept_names == model._concept_names
+        assert concept_names == model._concepts_name  
 
-        assert concept_names is model._concept_names
+        assert concept_names is model._concepts_name  
 
 
 def test_cbmlm_checkpoint(tmp_path):
