@@ -1,7 +1,7 @@
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar, Optional
+from typing import TypeVar
 
 import numpy
 from beignet.datasets._sized_sequence_dataset import SizedSequenceDataset
@@ -17,7 +17,7 @@ class FASTADataset(SizedSequenceDataset):
         *,
         transform: Callable | None = None,
         use_text_descriptions: bool = True,
-        offsets_arr: Optional[numpy.ndarray] = None,
+        offsets_arr: numpy.ndarray | None = None,
     ) -> None:
         if isinstance(root, str):
             root = Path(root)

@@ -1,7 +1,7 @@
 import importlib
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, TypeVar, Optional
+from typing import Any, TypeVar
 
 import pandas as pd
 import numpy as np
@@ -44,7 +44,7 @@ class FastaLightningDataModule(LightningDataModule):
         is_relative_model: bool = False,
         tokenizer_dir: str | None = "pmlm_tokenizer",
         mlm: bool = True,
-        offsets_arr: Optional[np.ndarray] = None,
+        offsets_arr: np.ndarray | None = None,
     ) -> None:
         """
         :param path_to_fasta: path to fasta file
@@ -162,16 +162,31 @@ class FastaLightningDataModule(LightningDataModule):
         if stage == "fit":
             if any(["train" in self._path_to_fasta]):  # pre computed splits
                 self._train_dataset = torch.utils.data.ConcatDataset(
-                    [FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr) for p in self._path_to_fasta if "train" in p]
+                    [
+                        FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr)
+                        for p in self._path_to_fasta
+                        if "train" in p
+                    ]
                 )
                 self._val_dataset = torch.utils.data.ConcatDataset(
-                    [FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr) for p in self._path_to_fasta if "val" in p]
+                    [
+                        FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr)
+                        for p in self._path_to_fasta
+                        if "val" in p
+                    ]
                 )
                 self._test_dataset = torch.utils.data.ConcatDataset(
-                    [FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr) for p in self._path_to_fasta if "test" in p]
+                    [
+                        FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr)
+                        for p in self._path_to_fasta
+                        if "test" in p
+                    ]
                 )
             else:  # iid split
-                datasets = [FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr) for p in self._path_to_fasta]
+                datasets = [
+                    FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr)
+                    for p in self._path_to_fasta
+                ]
                 dataset = torch.utils.data.ConcatDataset(datasets)
                 (
                     self._train_dataset,
@@ -184,7 +199,10 @@ class FastaLightningDataModule(LightningDataModule):
                 )
 
         if stage == "predict":
-            datasets = [FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr) for p in self._path_to_fasta]
+            datasets = [
+                FASTADataset(root=p, transform=self._transform_fn, offsets_arr=self._offsets_arr)
+                for p in self._path_to_fasta
+            ]
             dataset = torch.utils.data.ConcatDataset(datasets)
             self._predict_dataset = dataset
 
