@@ -1,5 +1,4 @@
 import logging
-from collections.abc import Sequence
 from typing import Literal
 import lightning as L
 import torch
@@ -9,8 +8,6 @@ from torchmetrics.text import Perplexity
 
 from lobster.constants import (
     Modality,
-    ModalityType,
-    SchedulerType,
 )
 
 from ..losses import InfoNCELoss, SymileLoss
@@ -30,19 +27,7 @@ class UMELightningModule(L.LightningModule):
     model_name : Literal["mini", "small", "medium", "large"],
         default="mini"
         Name of the model to initialize.
-    max_length : int, default=512
-        Maximum sequence length for tokenization.
-    lr : float, default=1e-3
-        Learning rate for optimizer.
-    beta1 : float, default=0.9
-        Beta1 parameter for Adam optimizer.
-    beta2 : float, default=0.98
-        Beta2 parameter for Adam optimizer.
-    eps : float, default=1e-12
-        Epsilon parameter for Adam optimizer.
-    mask_percentage : float, default=0.25
-        Percentage of tokens to mask during training.
-    contrastive_loss_type : ContrastiveLossType, default=None
+    contrastive_loss_type : Literal[None, "symile", "clip", "disco_clip"], default=None
         Type of contrastive loss to use. Options:
         - None: Only use MLM loss
         - "symile": Use Symile loss for multiple modality views of the same input (>= 2 views)
@@ -57,23 +42,12 @@ class UMELightningModule(L.LightningModule):
         - If 0 < contrastive_loss_weight < 1, both are used
     contrastive_temperature : float, default=0.07
         Temperature for the contrastive loss.
-    scheduler : str, default="constant_with_warmup"
-        Type of learning rate scheduler to use.
-    num_training_steps : int | None, default=None
-        Total number of training steps.
-    num_warmup_steps : int | None, default=1_000
-        Number of warmup steps for learning rate scheduler.
-    model_kwargs : dict | None, default=None
-        Additional keyword arguments to pass to the FlexBERT model.
-    scheduler_kwargs : dict | None, default=None
-        Additional keyword arguments to pass to the learning rate scheduler.
-    use_flash_attn : bool, default=True
-        Whether to use flash-attn for attention computation. If False, will use standard attention.
-        This is useful for CPU-only operation where flash-attn is not available.
-    ckpt_path : str | None, default=None
-        Path to a checkpoint file to load. Unused.
-    weight_decay : float, default=0.0
-        Weight decay for optimizer.
+    **kwargs
+        Additional keyword arguments to pass to the underlying UME model.
+        See UME class documentation for available parameters:
+        model_name, max_length, lr, beta1, beta2, eps, mask_percentage,
+        scheduler, num_training_steps, num_warmup_steps, model_kwargs,
+        scheduler_kwargs, use_flash_attn, ckpt_path, weight_decay.
 
     Attributes
     ----------
@@ -83,62 +57,36 @@ class UMELightningModule(L.LightningModule):
 
     def __init__(
         self,
-        model_name: Literal["mini", "small", "medium", "large"] = "mini",
-        max_length: int = 8192,
-        lr: float = 1e-3,
-        beta1: float = 0.9,
-        beta2: float = 0.98,
-        eps: float = 1e-12,
-        mask_percentage: float = 0.25,
         contrastive_loss_type: Literal[None, "symile", "clip", "disco_clip"] = None,
         contrastive_loss_weight: float = 0.0,
         contrastive_temperature: float = 0.07,
-        scheduler: SchedulerType = "constant_with_warmup",
-        num_training_steps: int | None = None,
-        num_warmup_steps: int | None = 1_000,
-        model_kwargs: dict | None = None,
-        scheduler_kwargs: dict | None = None,
-        use_flash_attn: bool = True,
-        ckpt_path: str | None = None,
-        weight_decay: float = 0.0,
+        **kwargs,
     ) -> None:
         """Initialize the UME Lightning Module"""
         super().__init__()
 
         self.save_hyperparameters()
 
-        # Initialize the core UME model
-        self.ume = UME(
-            model_name=f"UME_{model_name}",
-            max_length=max_length,
-            lr=lr,
-            beta1=beta1,
-            beta2=beta2,
-            eps=eps,
-            mask_percentage=mask_percentage,
-            scheduler=scheduler,
-            num_training_steps=num_training_steps,
-            num_warmup_steps=num_warmup_steps,
-            model_kwargs=model_kwargs,
-            scheduler_kwargs=scheduler_kwargs,
-            use_flash_attn=use_flash_attn,
-            ckpt_path=ckpt_path,
-            weight_decay=weight_decay,
-        )
-
-        # Store Lightning-specific parameters
+        # Extract Lightning-specific parameters that aren't passed to UME
         self.contrastive_loss_type = contrastive_loss_type
         self.contrastive_loss_weight = contrastive_loss_weight
         self.contrastive_temperature = contrastive_temperature
-        self.weight_decay = weight_decay
-        self.lr = lr
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.eps = eps
-        self.num_training_steps = num_training_steps
-        self.num_warmup_steps = num_warmup_steps
-        self.scheduler = scheduler
-        self.scheduler_kwargs = scheduler_kwargs or {}
+
+        # Extract parameters we need to store for Lightning optimizer/scheduler setup
+        self.weight_decay = kwargs.get("weight_decay", 0.0)
+        self.lr = kwargs.get("lr", 1e-3)
+        self.beta1 = kwargs.get("beta1", 0.9)
+        self.beta2 = kwargs.get("beta2", 0.98)
+        self.eps = kwargs.get("eps", 1e-12)
+        self.num_training_steps = kwargs.get("num_training_steps", None)
+        self.num_warmup_steps = kwargs.get("num_warmup_steps", 1_000)
+        self.scheduler = kwargs.get("scheduler", "constant_with_warmup")
+        self.scheduler_kwargs = kwargs.get("scheduler_kwargs", {}) or {}
+
+        # Initialize the core UME model with all kwargs
+        self.ume = UME(
+            **kwargs,
+        )
 
         # Initialize loss functions
         self.symile_loss_fn = SymileLoss(logit_scale=1.0 / contrastive_temperature)
@@ -156,54 +104,26 @@ class UMELightningModule(L.LightningModule):
         """Forward pass - delegate to UME model"""
         return self.ume(*args, **kwargs)
 
-    def freeze(self) -> None:
-        """Freeze the underlying UME model"""
-        self.ume.freeze()
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(
+            self.ume.model.parameters(),
+            lr=self.lr,
+            betas=(self.beta1, self.beta2),
+            eps=self.eps,
+            weight_decay=self.weight_decay,
+        )
 
-    def unfreeze(self) -> None:
-        """Unfreeze the underlying UME model"""
-        self.ume.unfreeze()
+        scheduler = transformers.get_scheduler(
+            self.scheduler,
+            optimizer,
+            num_training_steps=self.num_training_steps,
+            num_warmup_steps=self.num_warmup_steps,
+            scheduler_specific_kwargs=self.scheduler_kwargs,
+        )
 
-    @property
-    def frozen(self) -> bool:
-        """Check if the underlying UME model is frozen"""
-        return self.ume.frozen
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
 
-    @property
-    def embedding_dim(self) -> int:
-        """Get embedding dimension from UME model"""
-        return self.ume.embedding_dim
-
-    @property
-    def modalities(self) -> list[str]:
-        """Get supported modalities from UME model"""
-        return self.ume.modalities
-
-    def get_tokenizer(self, modality: ModalityType | Modality):
-        """Get tokenizer from UME model"""
-        return self.ume.get_tokenizer(modality)
-
-    def get_vocab(self) -> dict[int, str]:
-        """Get vocabulary from UME model"""
-        return self.ume.get_vocab()
-
-    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True) -> Tensor:
-        """Get embeddings from UME model"""
-        return self.ume.embed(inputs, aggregate=aggregate)
-
-    def embed_sequences(
-        self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
-    ) -> Tensor:
-        """Embed sequences using UME model"""
-        return self.ume.embed_sequences(sequences, modality, aggregate=aggregate)
-
-    def compute_pseudo_likelihood(self, sequences: list[str], modality: Modality) -> list[float]:
-        """Compute pseudo-likelihood using UME model"""
-        return self.ume.compute_pseudo_likelihood(sequences, modality)
-
-    def export_onnx(self, *args, **kwargs) -> None:
-        """Export UME model to ONNX"""
-        return self.ume.export_onnx(*args, **kwargs)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     def extract_batch_components(
         self,
@@ -231,27 +151,6 @@ class UMELightningModule(L.LightningModule):
         num_splits = combined_batch["input_ids"].shape[1]
 
         return tuple(self.extract_batch_components(combined_batch, i) for i in range(num_splits))
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.ume.model.parameters(),
-            lr=self.lr,
-            betas=(self.beta1, self.beta2),
-            eps=self.eps,
-            weight_decay=self.weight_decay,
-        )
-
-        scheduler = transformers.get_scheduler(
-            self.scheduler,
-            optimizer,
-            num_training_steps=self.num_training_steps,
-            num_warmup_steps=self.num_warmup_steps,
-            scheduler_specific_kwargs=self.scheduler_kwargs,
-        )
-
-        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
-
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     def compute_infonce_loss(
         self,
@@ -481,9 +380,6 @@ class UMELightningModule(L.LightningModule):
     def load_from_checkpoint(
         cls,
         checkpoint_path: str,
-        *args,
-        use_flash_attn: bool | None = None,
-        device: str | None = None,
         **kwargs,
     ):
         """Load a model from a checkpoint with device-specific configuration.
@@ -496,14 +392,9 @@ class UMELightningModule(L.LightningModule):
         ----------
         checkpoint_path : str
             Path to the checkpoint file.
-        use_flash_attn : bool | None, optional
-            Whether to use flash attention. If None, will be determined based on device.
-        device : str | None, optional
-            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
-        *args
-            Additional positional arguments to pass to the parent class's load_from_checkpoint.
         **kwargs
-            Additional keyword arguments to pass to the parent class's load_from_checkpoint.
+            Additional keyword arguments including use_flash_attn, device, and other
+            parameters to pass to the parent class's load_from_checkpoint and UME model.
 
         Returns
         -------
@@ -515,6 +406,10 @@ class UMELightningModule(L.LightningModule):
         ValueError
             If an invalid device is specified.
         """
+        # Extract device and use_flash_attn from kwargs
+        device = kwargs.get("device")
+        use_flash_attn = kwargs.get("use_flash_attn")
+
         # Determine device
         if device is not None:
             if device not in ["cpu", "cuda"]:
@@ -523,10 +418,12 @@ class UMELightningModule(L.LightningModule):
                 raise ValueError("CUDA device requested but not available")
         else:
             device = "cuda" if torch.cuda.is_available() else "cpu"
+            kwargs["device"] = device
 
         # Determine flash attention setting
         if use_flash_attn is None:
             use_flash_attn = device == "cuda"
+            kwargs["use_flash_attn"] = use_flash_attn
 
         # Configure model based on device
         model_kwargs = kwargs.pop("model_kwargs", {})
@@ -538,10 +435,9 @@ class UMELightningModule(L.LightningModule):
             }
         )
         kwargs["model_kwargs"] = model_kwargs
-        kwargs["use_flash_attn"] = use_flash_attn
 
         # Load the model using the parent class's method
-        model = super().load_from_checkpoint(checkpoint_path, *args, **kwargs)
+        model = super().load_from_checkpoint(checkpoint_path, **kwargs)
 
         # Move model to specified device
         model = model.to(device)
@@ -552,10 +448,6 @@ class UMELightningModule(L.LightningModule):
     def from_pretrained(
         cls,
         model_name: Literal["ume-mini-base-12M", "ume-small-base-90M", "ume-medium-base-480M", "ume-large-base-740M"],
-        *,
-        device: str | None = None,
-        use_flash_attn: bool | None = None,
-        cache_dir: str | None = None,
         **kwargs,
     ):
         """Load a pretrained UME model from a model name and wrap it in Lightning module.
@@ -575,14 +467,10 @@ class UMELightningModule(L.LightningModule):
             Model name from registry.
             Examples:
             - "ume-mini-base-12M" -> loads UME_mini with default checkpoint
-        device : str | None, optional
-            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
-        use_flash_attn : bool | None, optional
-            Whether to use flash attention. If None, will be determined based on device.
-        cache_dir : str | None, optional
-            Directory to cache downloaded models. If None, uses 'models/ume' in current directory.
         **kwargs
-            Additional keyword arguments to pass to the Lightning module.
+            Additional keyword arguments to pass to the Lightning module and underlying UME model.
+            This includes parameters like device, use_flash_attn, cache_dir, and all other
+            UME and Lightning-specific parameters.
 
         Returns
         -------
@@ -601,16 +489,22 @@ class UMELightningModule(L.LightningModule):
         >>> model = UMELightningModule.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
         # Load the core UME model
-        ume_model = UMELightningModule.from_pretrained(
+        ume_model = UME.from_pretrained(
             model_name=model_name,
-            device=device,
-            use_flash_attn=use_flash_attn,
-            cache_dir=cache_dir,
             **kwargs,
         )
 
-        # Create Lightning wrapper with the same hyperparameters
-        lightning_module = cls(**ume_model.hparams, **kwargs)
+        # Map pretrained model name to Lightning model name
+        model_name_mapping = {
+            "ume-mini-base-12M": "mini",
+            "ume-small-base-90M": "small",
+            "ume-medium-base-480M": "medium",
+            "ume-large-base-740M": "large",
+        }
+        lightning_model_name = model_name_mapping.get(model_name, "mini")
+
+        # Create Lightning wrapper
+        lightning_module = cls(model_name=lightning_model_name, **kwargs)
 
         # Replace the UME instance with the loaded one
         lightning_module.ume = ume_model

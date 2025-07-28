@@ -1,10 +1,11 @@
 import logging
 import os
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Literal
 import torch
 from torch import Tensor
+from torch.nn import Module
 
 from lobster.constants import (
     Modality,
@@ -25,7 +26,7 @@ logging.basicConfig(
 )
 
 
-class UME(torch.nn.Module):
+class UME(Module):
     """Universal Molecular Encoder.
 
     A PyTorch module wrapping FlexBert model with useful high-level functions
@@ -33,7 +34,7 @@ class UME(torch.nn.Module):
 
     Parameters
     ----------
-    model_name : Literal["UME_mini", "UME_small", "UME_medium", "UME_large"],
+    model_name : Literal["mini", "small", "medium", "UME_large"],
         default="UME_mini"
         Name of the model to initialize.
     max_length : int, default=512
@@ -95,7 +96,7 @@ class UME(torch.nn.Module):
 
     def __init__(
         self,
-        model_name: Literal["UME_mini", "UME_small", "UME_medium", "UME_large"] = "UME_mini",
+        model_name: Literal["mini", "small", "medium", "large"] = "mini",
         max_length: int = 8192,
         lr: float = 1e-3,
         beta1: float = 0.9,
@@ -114,60 +115,20 @@ class UME(torch.nn.Module):
         """Initialize the Universal Molecular Encoder"""
         super().__init__()
 
-        # Store hyperparameters for Lightning wrapper
-        self.hparams = {
-            "model_name": model_name,
-            "max_length": max_length,
-            "lr": lr,
-            "beta1": beta1,
-            "beta2": beta2,
-            "eps": eps,
-            "mask_percentage": mask_percentage,
-            "scheduler": scheduler,
-            "num_training_steps": num_training_steps,
-            "num_warmup_steps": num_warmup_steps,
-            "model_kwargs": model_kwargs,
-            "scheduler_kwargs": scheduler_kwargs,
-            "use_flash_attn": use_flash_attn,
-            "ckpt_path": ckpt_path,
-            "weight_decay": weight_decay,
-        }
-
         # Instantiate tokenizer transforms for each modality
         self.tokenizer_transforms = {
             modality: UMETokenizerTransform(modality, max_length=max_length, return_modality=True)
             for modality in [Modality.AMINO_ACID, Modality.SMILES, Modality.NUCLEOTIDE]
         }
-
         # Get any tokenizer to get the special tokens
         tokenizer = list(self.tokenizer_transforms.values())[0].tokenizer
 
-        # Prepare model kwargs with flash-attn setting
-        model_kwargs = model_kwargs or {}
-        model_kwargs["use_fa2"] = use_flash_attn
-
-        # Important: If loading from checkpoint, preserve the original architecture
-        # A checkpoint trained with flash attention has unpadded layers that can't be changed
-        # We can still disable flash attention at the layer level while keeping unpadded architecture
-        if ckpt_path is not None:
-            # Always use unpadded architecture when loading from checkpoint
-            # The individual attention layers will respect the use_fa2 setting
-            model_kwargs["padding"] = "unpadded"
-            if not use_flash_attn:
-                model_kwargs["use_sdpa_attn_mask"] = True
-        else:
-            # When creating a new model, choose the appropriate architecture
-            if use_flash_attn:
-                # Flash attention works with unpadded architecture
-                model_kwargs["padding"] = "unpadded"
-            else:
-                # SDPA requires padded architecture to work correctly
-                model_kwargs["padding"] = "padded"
-                model_kwargs["use_sdpa_attn_mask"] = True
+        # Configure model kwargs using helper method
+        model_kwargs = self._configure_model_kwargs(model_kwargs, use_flash_attn, ckpt_path)
 
         # Instantiate the model
         self.model = FlexBERT(
-            model_name=model_name,
+            model_name=f"UME_{model_name}",
             max_length=max_length,
             vocab_size=len(self.get_vocab()),
             lr=lr,
@@ -191,66 +152,46 @@ class UME(torch.nn.Module):
         self.frozen = False
         self.use_flash_attn = use_flash_attn
 
-    @property
-    def modalities(self) -> list[str]:
-        """List of supported modalities.
-
-        Returns
-        -------
-        list[str]
-            The list of supported modality names as strings.
-
-        Examples
-        --------
-        >>> encoder = UME(model_name="UME_mini")
-        >>> print(encoder.modalities)
-        ['SMILES', 'amino_acid', 'nucleotide', '3d_coordinates']
-        """
-        return [modality.value for modality in Modality]
-
-    def get_tokenizer(self, modality: ModalityType | Modality) -> Callable:
-        """Get the appropriate tokenizer for the given modality.
+    def _configure_model_kwargs(self, model_kwargs: dict | None, use_flash_attn: bool, ckpt_path: str | None) -> dict:
+        """Configure model kwargs based on flash attention and checkpoint settings.
 
         Parameters
         ----------
-        modality : str | Modality
-            The modality to use for encoding. Can be a string ("SMILES", "amino_acid",
-            "nucleotide", "3d_coordinates") or a Modality enum.
+        model_kwargs : dict | None
+            Base model kwargs to extend.
+        use_flash_attn : bool
+            Whether to use flash attention.
+        ckpt_path : str | None
+            Path to checkpoint file if loading from checkpoint.
 
         Returns
         -------
-        Callable
-            The appropriate tokenizer for the specified modality.
-
-        Examples
-        --------
-        >>> encoder = UME(model_name="UME_mini")
-        >>>
-        >>> # Get tokenizer for amino acid sequences
-        >>> tokenizer = encoder.get_tokenizer("amino_acid")
-        >>> sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQL"]
-        >>> tokens = tokenizer(sequences, return_tensors="pt")
-        >>> print(tokens.keys())
-        dict_keys(['input_ids', 'attention_mask'])
-        >>>
-        >>> # Get tokenizer for nucleotide sequences using Modality enum
-        >>> from lobster.constants import Modality
-        >>> dna_tokenizer = encoder.get_tokenizer(Modality.NUCLEOTIDE)
-        >>> dna_sequences = ["ATGCATTGCA"]
-        >>> dna_tokens = dna_tokenizer(dna_sequences, return_tensors="pt")
-        >>> print(dna_tokens["input_ids"].shape)
-        torch.Size([1, 12])  # Including special tokens
-        >>>
-        >>> # Process SMILES strings with tokenizer
-        >>> tokenizer = encoder.get_tokenizer("SMILES")
-        >>> smiles = ["CC(=O)OC1=CC=CC=C1C(=O)O"]  # Aspirin
-        >>> tokens = tokenizer(smiles, return_tensors="pt")
-        >>> print(tokens["attention_mask"].sum())  # Number of non-padding tokens
-        tensor(23)
+        dict
+            Configured model kwargs.
         """
-        modality_enum = Modality(modality) if isinstance(modality, str) else modality
+        model_kwargs = model_kwargs or {}
+        model_kwargs["use_fa2"] = use_flash_attn
 
-        return self.tokenizer_transforms[modality_enum].tokenizer
+        # Important: If loading from checkpoint, preserve the original architecture
+        # A checkpoint trained with flash attention has unpadded layers that can't be changed
+        # We can still disable flash attention at the layer level while keeping unpadded architecture
+        if ckpt_path is not None:
+            # Always use unpadded architecture when loading from checkpoint
+            # The individual attention layers will respect the use_fa2 setting
+            model_kwargs["padding"] = "unpadded"
+            if not use_flash_attn:
+                model_kwargs["use_sdpa_attn_mask"] = True
+        else:
+            # When creating a new model, choose the appropriate architecture
+            if use_flash_attn:
+                # Flash attention works with unpadded architecture
+                model_kwargs["padding"] = "unpadded"
+            else:
+                # SDPA requires padded architecture to work correctly
+                model_kwargs["padding"] = "padded"
+                model_kwargs["use_sdpa_attn_mask"] = True
+
+        return model_kwargs
 
     def get_vocab(self) -> dict[int, str]:
         """Get a consolidated vocabulary from all tokenizers.
@@ -439,108 +380,6 @@ class UME(torch.nn.Module):
         inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
         return self.embed(inputs, aggregate=True)
 
-    def export_onnx(
-        self,
-        export_path: str,
-        modality: ModalityType | Modality,
-        sample_sequences: list[str] | None = None,
-        opset_version: int = 17,
-        device: torch.device | str | None = None,
-        dynamic_axes: dict | None = None,
-        **export_kwargs,
-    ) -> None:
-        """Export the UME model to ONNX format.
-
-        This method exports the model using sample sequences to create proper dummy inputs
-        that match the expected tokenization format for the specified modality.
-
-        Parameters
-        ----------
-        export_path : str
-            Path to save the ONNX model.
-        modality : ModalityType | Modality
-            Modality to use for creating dummy inputs. This ensures the ONNX model
-            is exported with inputs that match the tokenization format for this modality.
-        sample_sequences : list[str] | None, optional
-            Sample sequences to use for creating dummy inputs. If None, uses default
-            sequences for the specified modality.
-        opset_version : int, default=17
-            ONNX opset version to use for export.
-        device : torch.device | str | None, optional
-            Device for dummy inputs. If None, uses the model's device.
-        dynamic_axes : dict | None, optional
-            Dynamic axes configuration for ONNX export. If None, uses default configuration.
-        **export_kwargs
-            Additional keyword arguments to pass to torch.onnx.export.
-
-        Examples
-        --------
-        >>> from lobster.model import UME
-        >>> from lobster.constants import Modality
-        >>>
-        >>> # Initialize model
-        >>> ume = UME(model_name="UME_mini")
-        >>>
-        >>> # Export for SMILES sequences
-        >>> ume.export_onnx("ume_smiles.onnx", modality=Modality.SMILES)
-        >>>
-        >>> # Export for protein sequences with custom samples
-        >>> protein_samples = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"]
-        >>> ume.export_onnx("ume_protein.onnx", modality=Modality.AMINO_ACID,
-        ...                 sample_sequences=protein_samples)
-        """
-        device = device or next(self.parameters()).device
-        if isinstance(device, str):
-            device = torch.device(device)
-
-        # Use default sample sequences if none provided
-        if sample_sequences is None:
-            sample_sequences = {
-                Modality.SMILES: ["CC(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],  # Shorter SMILES for speed
-                Modality.AMINO_ACID: ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],  # Protein sequences
-                Modality.NUCLEOTIDE: ["ATGCATGC", "GCTAGCTA"],  # DNA sequences
-            }[modality]
-
-        # Tokenize the sample sequences to get proper input format
-        tokenizer_transform = self.tokenizer_transforms[modality]
-        encoded_batch = tokenizer_transform(sample_sequences)
-
-        input_ids = encoded_batch["input_ids"].to(device)
-        attention_mask = encoded_batch["attention_mask"].to(device)
-
-        # Ensure 3D format for ONNX export
-        if input_ids.dim() == 2:
-            input_ids = input_ids.unsqueeze(1)
-        if attention_mask.dim() == 2:
-            attention_mask = attention_mask.unsqueeze(1)
-
-        # Ensure correct dtype for ONNX
-        input_ids = input_ids.long()
-        attention_mask = attention_mask.long()
-
-        # Use default dynamic axes if none provided
-        if dynamic_axes is None:
-            dynamic_axes = {
-                "input_ids": {0: "batch", 2: "sequence"},
-                "attention_mask": {0: "batch", 2: "sequence"},
-                "embeddings": {0: "batch"},
-            }
-
-        # Export to ONNX
-        torch.onnx.export(
-            self,
-            (input_ids, attention_mask),
-            export_path,
-            input_names=["input_ids", "attention_mask"],
-            output_names=["embeddings"],
-            dynamic_axes=dynamic_axes,
-            opset_version=opset_version,
-            do_constant_folding=True,
-            export_params=True,
-            verbose=False,
-            **export_kwargs,
-        )
-
     def embed_sequences(
         self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
     ) -> Tensor:
@@ -718,6 +557,108 @@ class UME(torch.nn.Module):
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 # Return zero rewards for failed computations
                 return [0.0] * len(sequences)
+
+    def export_onnx(
+        self,
+        export_path: str,
+        modality: ModalityType | Modality,
+        sample_sequences: list[str] | None = None,
+        opset_version: int = 17,
+        device: torch.device | str | None = None,
+        dynamic_axes: dict | None = None,
+        **export_kwargs,
+    ) -> None:
+        """Export the UME model to ONNX format.
+
+        This method exports the model using sample sequences to create proper dummy inputs
+        that match the expected tokenization format for the specified modality.
+
+        Parameters
+        ----------
+        export_path : str
+            Path to save the ONNX model.
+        modality : ModalityType | Modality
+            Modality to use for creating dummy inputs. This ensures the ONNX model
+            is exported with inputs that match the tokenization format for this modality.
+        sample_sequences : list[str] | None, optional
+            Sample sequences to use for creating dummy inputs. If None, uses default
+            sequences for the specified modality.
+        opset_version : int, default=17
+            ONNX opset version to use for export.
+        device : torch.device | str | None, optional
+            Device for dummy inputs. If None, uses the model's device.
+        dynamic_axes : dict | None, optional
+            Dynamic axes configuration for ONNX export. If None, uses default configuration.
+        **export_kwargs
+            Additional keyword arguments to pass to torch.onnx.export.
+
+        Examples
+        --------
+        >>> from lobster.model import UME
+        >>> from lobster.constants import Modality
+        >>>
+        >>> # Initialize model
+        >>> ume = UME(model_name="UME_mini")
+        >>>
+        >>> # Export for SMILES sequences
+        >>> ume.export_onnx("ume_smiles.onnx", modality=Modality.SMILES)
+        >>>
+        >>> # Export for protein sequences with custom samples
+        >>> protein_samples = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"]
+        >>> ume.export_onnx("ume_protein.onnx", modality=Modality.AMINO_ACID,
+        ...                 sample_sequences=protein_samples)
+        """
+        device = device or next(self.parameters()).device
+        if isinstance(device, str):
+            device = torch.device(device)
+
+        # Use default sample sequences if none provided
+        if sample_sequences is None:
+            sample_sequences = {
+                Modality.SMILES: ["CC(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],  # Shorter SMILES for speed
+                Modality.AMINO_ACID: ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],  # Protein sequences
+                Modality.NUCLEOTIDE: ["ATGCATGC", "GCTAGCTA"],  # DNA sequences
+            }[modality]
+
+        # Tokenize the sample sequences to get proper input format
+        tokenizer_transform = self.tokenizer_transforms[modality]
+        encoded_batch = tokenizer_transform(sample_sequences)
+
+        input_ids = encoded_batch["input_ids"].to(device)
+        attention_mask = encoded_batch["attention_mask"].to(device)
+
+        # Ensure 3D format for ONNX export
+        if input_ids.dim() == 2:
+            input_ids = input_ids.unsqueeze(1)
+        if attention_mask.dim() == 2:
+            attention_mask = attention_mask.unsqueeze(1)
+
+        # Ensure correct dtype for ONNX
+        input_ids = input_ids.long()
+        attention_mask = attention_mask.long()
+
+        # Use default dynamic axes if none provided
+        if dynamic_axes is None:
+            dynamic_axes = {
+                "input_ids": {0: "batch", 2: "sequence"},
+                "attention_mask": {0: "batch", 2: "sequence"},
+                "embeddings": {0: "batch"},
+            }
+
+        # Export to ONNX
+        torch.onnx.export(
+            self,
+            (input_ids, attention_mask),
+            export_path,
+            input_names=["input_ids", "attention_mask"],
+            output_names=["embeddings"],
+            dynamic_axes=dynamic_axes,
+            opset_version=opset_version,
+            do_constant_folding=True,
+            export_params=True,
+            verbose=False,
+            **export_kwargs,
+        )
 
     @classmethod
     def from_pretrained(
