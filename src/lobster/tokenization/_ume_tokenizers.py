@@ -52,6 +52,7 @@ from tokenizers.normalizers import Lowercase
 from tokenizers.pre_tokenizers import Split
 from tokenizers.processors import TemplateProcessing
 from torch import Tensor
+import torch
 from torch.nn import Module
 from transformers import PreTrainedTokenizerFast
 
@@ -391,6 +392,31 @@ class UMENucleotideTokenizerFast(PreTrainedTokenizerFast):
         )
 
 
+def _get_tokenizer_for_modality(modality: ModalityType | str) -> PreTrainedTokenizerFast:
+    """
+    Get the appropriate tokenizer for a given modality.
+
+    Parameters
+    ----------
+    modality : ModalityType or str
+        The modality to get tokenizer for
+
+    Returns
+    -------
+    PreTrainedTokenizerFast
+        The appropriate tokenizer instance
+    """
+    mod = Modality(modality) if isinstance(modality, str) else modality
+
+    match mod:
+        case Modality.AMINO_ACID:
+            return UMEAminoAcidTokenizerFast()
+        case Modality.SMILES:
+            return UMESmilesTokenizerFast()
+        case Modality.NUCLEOTIDE:
+            return UMENucleotideTokenizerFast()
+
+
 class UMETokenizerTransform(Module):
     """
     UME tokenizer transform for single modality inputs.
@@ -450,16 +476,7 @@ class UMETokenizerTransform(Module):
         self.seed = seed
 
         self.modality = Modality(modality) if isinstance(modality, str) else modality
-
-        modality = Modality(modality) if isinstance(modality, str) else modality
-
-        match modality:
-            case Modality.AMINO_ACID:
-                self.tokenizer = UMEAminoAcidTokenizerFast()
-            case Modality.SMILES:
-                self.tokenizer = UMESmilesTokenizerFast()
-            case Modality.NUCLEOTIDE:
-                self.tokenizer = UMENucleotideTokenizerFast()
+        self.tokenizer = _get_tokenizer_for_modality(self.modality)
 
     def _encode(self, item: str | list[str]) -> dict[str, Tensor]:
         """Tokenize and encode input."""
@@ -498,3 +515,106 @@ class UMETokenizerTransform(Module):
             output["modality"] = self.modality
 
         return output
+
+    def tokenize_interacting_pair(
+        self,
+        sequences: tuple[str, str],
+        modalities: tuple[
+            ModalityType | Modality,
+            ModalityType | Modality,
+        ],
+    ) -> dict[str, Tensor]:
+        """
+        Tokenize a pair of sequences from  different modalities
+        where the two entitied interact together.
+
+        Creates an interacting pair representation in the format:
+        <cls_interact> <cls_modality1> seq1 <sep> <cls_modality2> seq2 <eos>
+
+        For example, with sequences=("MYK", "CCO") and modalities=("amino_acid", "smiles"):
+        <cls_interact> <cls_amino_acid> M Y K <sep> <cls_smiles> C C O <eos>
+
+        Examples
+        --------
+        >>> tokenizer = UMETokenizerTransform(modality="amino_acid", max_length=20)
+        >>> out = tokenizer.tokenize_interacting_pair(
+        ...     sequences=("MYK", "CCO"),
+        ...     modalities=("amino_acid", "smiles")
+        ... )
+        >>> out
+        {'input_ids': tensor([[ 10, 1, 41, 40, 36, 7, 2, 58, 58, 59, 2, 1, 1, ...]]),
+         'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, ...]])}
+
+        Parameters
+        ----------
+        sequences : tuple[str, str]
+            Pair of sequences to tokenize
+        modalities : tuple[ModalityType | Modality, ModalityType | Modality]
+            Modalities for each sequence
+
+        Returns
+        -------
+        dict[str, Tensor]
+            Dictionary containing:
+            - "input_ids": Tensor of token IDs
+            - "attention_mask": Tensor of attention masks
+        """
+        sequence1, sequence2 = sequences
+        modality1, modality2 = modalities
+
+        # Get tokenizers for each modality
+        tokenizer1 = _get_tokenizer_for_modality(modality1)
+        tokenizer2 = _get_tokenizer_for_modality(modality2)
+
+        # Tokenize each sequence individually (without padding/truncation)
+        tokens1 = tokenizer1(
+            sequence1,
+            padding="do_not_pad",
+            truncation=False,
+            add_special_tokens=self.add_special_tokens,
+        )["input_ids"]
+
+        tokens2 = tokenizer2(
+            sequence2,
+            padding="do_not_pad",
+            truncation=False,
+            add_special_tokens=self.add_special_tokens,
+        )["input_ids"]
+
+        # Get special token IDs (using tokenizer1 as reference since all share same vocab structure)
+        interact_id = tokenizer1.convert_tokens_to_ids(INTERACT_TOKEN)
+        sep_id = tokenizer1.convert_tokens_to_ids(SEP_TOKEN)
+        eos_id = tokenizer1.convert_tokens_to_ids(EOS_TOKEN)
+        pad_id = tokenizer1.convert_tokens_to_ids(PAD_TOKEN)
+
+        # Remove EOS tokens from individual sequences
+        if tokens1 and tokens1[-1] == eos_id:
+            tokens1 = tokens1[:-1]
+
+        if tokens2 and tokens2[-1] == eos_id:
+            tokens2 = tokens2[:-1]
+
+            # Construct interacting pair sequence: <cls_interact> seq1 <sep> seq2 <eos>
+        pair_tokens = [interact_id, *tokens1, sep_id, *tokens2, eos_id]
+
+        # Apply padding and truncation
+        if self.max_length is not None:
+            if len(pair_tokens) > self.max_length:
+                # Truncate but preserve the EOS token
+                pair_tokens = pair_tokens[: self.max_length - 1] + [eos_id]
+
+            # Create attention mask before padding
+            attention_mask = [1] * len(pair_tokens)
+
+            # Pad if necessary
+            if len(pair_tokens) < self.max_length:
+                padding_length = self.max_length - len(pair_tokens)
+                pair_tokens.extend([pad_id] * padding_length)
+                attention_mask.extend([0] * padding_length)
+        else:
+            attention_mask = [1] * len(pair_tokens)
+
+        return {
+            "input_ids": torch.tensor(pair_tokens, dtype=torch.long).unsqueeze(0),
+            "attention_mask": torch.tensor(attention_mask, dtype=torch.long).unsqueeze(0),
+        }
