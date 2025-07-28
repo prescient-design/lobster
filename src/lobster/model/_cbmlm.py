@@ -117,9 +117,9 @@ class LobsterCBMPMLM(pl.LightningModule):
                 max_length=self._max_length,
                 concepts_name=concepts,
             )
-            self._concepts_name = self._transform_fn.concepts_name
-            self._n_concepts = len(self._concepts_name)
-            self._seq_concepts = len(self._concepts_name)
+            self.concepts_name = self._transform_fn.concepts_name
+            self._n_concepts = len(self.concepts_name)
+            self._seq_concepts = len(self.concepts_name)
         else:
             assert self._tokenizer_dir is not None
             path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
@@ -130,14 +130,14 @@ class LobsterCBMPMLM(pl.LightningModule):
             self.transform_fn_inf = PmlmConceptTokenizerTransform(
                 path, padding="max_length", truncation=True, max_length=self._max_length
             )
-            self._concepts_name = self._transform_fn.concepts_name
-            self._n_concepts = len(self._concepts_name)
-            self._seq_concepts = len(self._concepts_name)
+            self.concepts_name = self._transform_fn.concepts_name
+            self._n_concepts = len(self.concepts_name)
+            self._seq_concepts = len(self.concepts_name)
 
         if descriptors_transform is not None:
             for descriptor in descriptors_transform:
                 des = CUSTOM_TOKENIZER[descriptor]()
-                self._concepts_name.extend(des.concepts_names_full)
+                self.concepts_name.extend(des.concepts_names_full)
                 self._n_concepts += len(des.concepts_names_full)
                 self._descriptor_highlevel_concepts = des.concepts_names
 
@@ -277,8 +277,8 @@ class LobsterCBMPMLM(pl.LightningModule):
         }
 
         for c in range(self._seq_concepts):
-            concept_loss = F.mse_loss(pred_concept[:, c].unsqueeze(-1), batch[self._concepts_name[c]])
-            auxiliary_loss_dict[self._concepts_name[c]] = concept_loss
+            concept_loss = F.mse_loss(pred_concept[:, c].unsqueeze(-1), batch[self.concepts_name[c]])
+            auxiliary_loss_dict[self.concepts_name[c]] = concept_loss
 
         logging_dicts = []
         loss = (
@@ -524,9 +524,4 @@ class LobsterCBMPMLM(pl.LightningModule):
 
         concepts_path = Path(save_directory).resolve() / "concepts.json"
         with open(concepts_path, "w") as f:
-            json.dump(self._concepts_name, f)
-
-    @property
-    def concept_names(self):
-         """Get the names of all concepts in the model."""
-         return self._concept_names
+            json.dump(self.concepts_name, f)

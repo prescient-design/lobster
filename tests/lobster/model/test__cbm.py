@@ -44,19 +44,19 @@ class TestLobsterCBMPMLM:
 
         assert model.config.hidden_size == 408
 
-    def test_concept_names_property(self):
-        """Test that concept_names property returns expected concept names."""
+    def test_concepts_name_property(self):
+        """Test that concepts_name property returns expected concept names."""
         model = LobsterCBMPMLM(model_name="MLM_mini")
-        
-        concept_names = model.concept_names
-        
-        assert hasattr(model, 'concept_names')
-        assert isinstance(concept_names, (list, tuple))
-        assert len(concept_names) > 0
-        
-        assert concept_names == model._concept_names
-        
-        assert concept_names is model._concept_names
+
+        concepts_name = model.concepts_name
+
+        assert hasattr(model, "concepts_name")
+        assert isinstance(concepts_name, (list, tuple))
+        assert len(concepts_name) > 0
+
+        assert concepts_name == model.concepts_name
+
+        assert concepts_name is model.concepts_name
 
 
 def test_cbmlm_checkpoint(tmp_path):
