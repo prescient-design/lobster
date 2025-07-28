@@ -14,7 +14,7 @@ from lobster.constants import (
 )
 
 from ..losses import InfoNCELoss, SymileLoss
-from ._ume import UME
+from ._ume_module import UME
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,8 @@ class UMELightningModule(L.LightningModule):
 
     Parameters
     ----------
-    model_name : Literal["UME_mini", "UME_small", "UME_medium", "UME_large"],
-        default="UME_mini"
+    model_name : Literal["mini", "small", "medium", "large"],
+        default="mini"
         Name of the model to initialize.
     max_length : int, default=512
         Maximum sequence length for tokenization.
@@ -77,13 +77,13 @@ class UMELightningModule(L.LightningModule):
 
     Attributes
     ----------
-    ume : UME
+    ume :
         The underlying UME PyTorch module.
     """
 
     def __init__(
         self,
-        model_name: Literal["UME_mini", "UME_small", "UME_medium", "UME_large"] = "UME_mini",
+        model_name: Literal["mini", "small", "medium", "large"] = "mini",
         max_length: int = 8192,
         lr: float = 1e-3,
         beta1: float = 0.9,
@@ -109,7 +109,7 @@ class UMELightningModule(L.LightningModule):
 
         # Initialize the core UME model
         self.ume = UME(
-            model_name=model_name,
+            model_name=f"UME_{model_name}",
             max_length=max_length,
             lr=lr,
             beta1=beta1,
@@ -485,7 +485,7 @@ class UMELightningModule(L.LightningModule):
         use_flash_attn: bool | None = None,
         device: str | None = None,
         **kwargs,
-    ) -> "UMELightningModule":
+    ):
         """Load a model from a checkpoint with device-specific configuration.
 
         This method configures the model based on the specified or available device:
@@ -557,7 +557,7 @@ class UMELightningModule(L.LightningModule):
         use_flash_attn: bool | None = None,
         cache_dir: str | None = None,
         **kwargs,
-    ) -> "UMELightningModule":
+    ):
         """Load a pretrained UME model from a model name and wrap it in Lightning module.
 
         Currently, we support the following model names:
@@ -601,7 +601,7 @@ class UMELightningModule(L.LightningModule):
         >>> model = UMELightningModule.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
         # Load the core UME model
-        ume_model = UME.from_pretrained(
+        ume_model = UMELightningModule.from_pretrained(
             model_name=model_name,
             device=device,
             use_flash_attn=use_flash_attn,
