@@ -50,7 +50,7 @@ class TestLobsterCBMPMLM:
 
         concepts_name = model.concepts_name
 
-        assert hasattr(model, "concept_names")
+        assert hasattr(model, "concepts_name")
         assert isinstance(concepts_name, (list, tuple))
         assert len(concepts_name) > 0
 
