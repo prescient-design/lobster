@@ -4,13 +4,16 @@ from collections.abc import Callable
 import lightning.pytorch as pl
 import torch
 from torch.nn import CrossEntropyLoss
-from transformers import LlamaConfig, LlamaForCausalLM, get_scheduler, pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM, get_scheduler, pipeline
 
 from lobster.constants import SchedulerType
 from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform
 from lobster.transforms import Transform
 
 from ._clm_configuration import PCLM_CONFIG_ARGS
+
+
+ALLOWABLE_MODEL_NAMES = list(PCLM_CONFIG_ARGS.keys()) + ["ProtGPT2"]
 
 
 class LobsterPCLM(pl.LightningModule):
@@ -68,36 +71,45 @@ class LobsterPCLM(pl.LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
         model_kwargs = model_kwargs or {}
 
-        if self._tokenizer_dir is not None:
-            path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
-            self.tokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
-            self._transform_fn = transform_fn or PmlmTokenizerTransform(
-                path,
-                padding="max_length",
-                truncation=True,
-                max_length=self._max_length,
-                mlm=False,
+        assert model_name in ALLOWABLE_MODEL_NAMES, f"model_name must be one of {ALLOWABLE_MODEL_NAMES}"
+
+        if model_name == "ProtGPT2":
+            self.tokenizer = AutoTokenizer.from_pretrained("nferruz/ProtGPT2")
+            self.model = AutoModelForCausalLM.from_pretrained("nferruz/ProtGPT2")
+            self.config = self.model.config
+
+        else:
+            # Create PCLM model
+            if self._tokenizer_dir is not None:
+                path = importlib.resources.files("lobster") / "assets" / self._tokenizer_dir
+                self.tokenizer = PmlmTokenizer.from_pretrained(path, do_lower_case=False)
+                self._transform_fn = transform_fn or PmlmTokenizerTransform(
+                    path,
+                    padding="max_length",
+                    truncation=True,
+                    max_length=self._max_length,
+                    mlm=False,
+                )
+
+            config_args = PCLM_CONFIG_ARGS[model_name]
+            if num_key_value_heads is None:
+                num_key_value_heads = config_args["num_attention_heads"]
+            self._num_key_value_heads = num_key_value_heads
+
+            config = LlamaConfig(
+                **config_args,
+                mask_token_id=self.tokenizer.mask_token_id,
+                pad_token_id=self.tokenizer.pad_token_id,
+                cls_token_id=self.tokenizer.cls_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                vocab_size=len(self.tokenizer.get_vocab()),
+                max_position_embeddings=self._max_length,
+                num_key_value_heads=self._num_key_value_heads,
+                attention_bias=self._attention_bias,
+                **model_kwargs,
             )
-
-        config_args = PCLM_CONFIG_ARGS[model_name]
-        if num_key_value_heads is None:
-            num_key_value_heads = config_args["num_attention_heads"]
-        self._num_key_value_heads = num_key_value_heads
-
-        config = LlamaConfig(
-            **config_args,
-            mask_token_id=self.tokenizer.mask_token_id,
-            pad_token_id=self.tokenizer.pad_token_id,
-            cls_token_id=self.tokenizer.cls_token_id,
-            eos_token_id=self.tokenizer.eos_token_id,
-            vocab_size=len(self.tokenizer.get_vocab()),
-            max_position_embeddings=self._max_length,
-            num_key_value_heads=self._num_key_value_heads,
-            attention_bias=self._attention_bias,
-            **model_kwargs,
-        )
-        self.model = LlamaForCausalLM(config)
-        self.config = self.model.config
+            self.model = LlamaForCausalLM(config)
+            self.config = self.model.config
 
         self.save_hyperparameters(logger=False)
 
