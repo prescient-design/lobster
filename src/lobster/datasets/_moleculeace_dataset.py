@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas
 import pooch
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from torch import Tensor
 from torch.utils.data import Dataset
 
