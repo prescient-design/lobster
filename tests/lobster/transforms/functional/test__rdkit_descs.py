@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 import scipy.stats
+import torch
 
 from lobster.transforms.functional._rdkit_descs import (
     smiles_to_normalized_rdkit_descs,
@@ -26,7 +27,11 @@ def test_smiles_to_rdkit_descs(mock_calc, smiles, expected):
     mock_calc.return_value = {"desc1": 1.0, "desc2": 2.0}
     result = smiles_to_rdkit_descs(smiles)
 
-    assert result is None if expected is None else result == expected
+    if expected is None:
+        assert result is None
+    else:
+        assert result is not None
+        assert torch.allclose(result, torch.tensor(expected))
 
 
 @patch("lobster.transforms.functional._rdkit_descs.Descriptors.CalcMolDescriptors")
@@ -51,7 +56,7 @@ def test_smiles_to_normalized_rdkit_descs_invalid_smiles():
 def test_smiles_to_normalized_rdkit_descs_disjoint_descriptors(mock_calc):
     mock_calc.return_value = {"desc2": 2.0}
     result = smiles_to_normalized_rdkit_descs(VALID_SMILES)
-    assert result == []
+    assert torch.equal(result, torch.tensor([]))
 
 
 @patch(

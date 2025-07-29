@@ -7,13 +7,15 @@ The normalization logic is taken from the `descriptastorus` [1]_ package.
 
 import numpy as np
 import scipy.stats
+import torch
+from torch import Tensor
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 
 from lobster.constants import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 
 
-def smiles_to_rdkit_descs(smiles_seq: str) -> list[float] | None:
+def smiles_to_rdkit_descs(smiles_seq: str) -> Tensor | None:
     """Get the full set of RDKit descriptors for a SMILES sequence.
 
     Parameters
@@ -31,7 +33,9 @@ def smiles_to_rdkit_descs(smiles_seq: str) -> list[float] | None:
     if mol is None:
         return None
 
-    return list(Descriptors.CalcMolDescriptors(mol, missingVal=np.nan).values())
+    out = list(Descriptors.CalcMolDescriptors(mol, missingVal=np.nan).values())
+
+    return torch.tensor(out)
 
 
 # NOTE(degraff): This function can be made more eficient by taking batches of inputs, if needed.
@@ -76,12 +80,14 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
         The distributions used to normalize the RDKit descriptors.
     """
     mol = Chem.MolFromSmiles(smiles_seq)
+
     if mol is None:
         return None
 
     descs = Descriptors.CalcMolDescriptors(mol, missingVal=np.nan)
 
     xs = []
+
     for name, x in descs.items():
         try:
             dist, (x_min, x_max, *_) = RDKIT_DESCRIPTOR_DISTRIBUTIONS[name]
@@ -91,4 +97,4 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
         p = dist.cdf(np.clip(x, x_min, x_max))
         xs.append(p if not invert else scipy.stats.norm.ppf(p))
 
-    return xs
+    return torch.tensor(xs)
