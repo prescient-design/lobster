@@ -369,22 +369,22 @@ Brief description of changes made
 - [ ] Documentation update
 - [ ] Performance improvement
 - [ ] Code refactoring
-
-## Testing
-- [ ] Tests pass locally
-- [ ] Added new tests for new functionality
-- [ ] Updated existing tests if needed
-
-## Checklist
-- [ ] Code follows style guidelines
-- [ ] Self-review completed
-- [ ] Documentation updated if needed
-- [ ] No breaking changes (or clearly documented)
 ```
 
 ## Code Review Process
 
+- **Complete the following checklist**
+- [ ] Code follows style guidelines
+- [ ] Self-review completed
+- [ ] Documentation updated if needed
+- [ ] No breaking changes (or clearly documented)
+- [ ] New tests added (if there is new functionality) or updated existing tests
+- [ ] Tests run and pass locally
+- [ ] Tests and ruff checks pass in the CI
+
 - **Request reviews**: If you don't have a specific person in mind to request feedback, tag `@ncfrey` or `@karinazad` in your pull request or issue
+
+
 - **Ask questions**: Don't hesitate to ask for clarification in PR comments
 
 
