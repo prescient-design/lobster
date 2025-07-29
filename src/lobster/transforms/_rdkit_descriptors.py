@@ -1,6 +1,8 @@
 import logging
 from typing import Any
 
+from torch import Tensor
+
 from lobster.transforms._transform import Transform
 from lobster.transforms.functional import smiles_to_normalized_rdkit_descs, smiles_to_rdkit_descs
 
@@ -42,7 +44,7 @@ class SmilesToRDKitDescriptorsTransform(Transform):
         if not isinstance(inputs[0], str):
             raise TypeError(f"{type(self).__name__} expects a string input, but got type {type(inputs[0])}.")
 
-    def _transform(self, input: str, parameters: dict[str, Any]) -> list[float] | None:
+    def _transform(self, input: str, parameters: dict[str, Any]) -> Tensor | None:
         """Convert a SMILES string to its RDKit descriptors.
 
         Parameters
@@ -59,4 +61,5 @@ class SmilesToRDKitDescriptorsTransform(Transform):
         """
         if self._normalize:
             return smiles_to_normalized_rdkit_descs(input, self._invert)
+
         return smiles_to_rdkit_descs(input)
