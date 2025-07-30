@@ -1,7 +1,7 @@
 """Intervention tools for Lobster MCP server using FastMCP best practices."""
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from .tool_utils import _load_model
 
@@ -14,7 +14,7 @@ def intervene_on_sequence(
     concept: str,
     edits: int = 5,
     intervention_type: Literal["positive", "negative"] = "negative",
-) -> dict:
+) -> dict[str, Any]:
     """Perform concept intervention on a sequence.
 
     This function performs concept-based interventions on biological sequences using
