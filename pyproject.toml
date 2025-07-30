@@ -39,6 +39,7 @@ dependencies = [
     "litdata>=0.2.49",
     "seaborn>=0.13.2",
     "dgeb>=0.2.0",
+    "rdkit>=2025.3.3",
 ]
 
 [build-system]
