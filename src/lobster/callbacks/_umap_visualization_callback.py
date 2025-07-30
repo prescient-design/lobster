@@ -498,6 +498,55 @@ class UmapVisualizationCallback(Callback):
 
         return reducer.fit_transform(embeddings)
 
+    def _save_embeddings(
+        self,
+        embeddings: dict[str, torch.Tensor] | torch.Tensor,
+        output_file: str | UPath,
+        model_name: str = "model",
+    ) -> UPath:
+        """Save embeddings to disk as PyTorch tensors.
+
+        Parameters
+        ----------
+        embeddings : dict[str, torch.Tensor] | torch.Tensor
+            Embeddings to save, either grouped or ungrouped
+        output_file : str | UPath
+            Base path for saving embeddings (without extension)
+        model_name : str
+            Name of the model for the filename
+
+        Returns
+        -------
+        UPath
+            Path to the saved embeddings file
+        """
+        # Convert output_file to UPath and modify extension
+        output_path = UPath(output_file)
+        embeddings_file = output_path.with_suffix(".pt")
+
+        logger.info(f"Saving embeddings for {model_name} to {embeddings_file}")
+
+        # Prepare embeddings for saving (just the raw tensors)
+        if isinstance(embeddings, dict):
+            # Keep tensors as tensors, just move to CPU
+            save_data = {
+                group: emb.cpu() if isinstance(emb, torch.Tensor) else torch.tensor(emb)
+                for group, emb in embeddings.items()
+            }
+        else:
+            # Single tensor
+            save_data = embeddings.cpu() if isinstance(embeddings, torch.Tensor) else torch.tensor(embeddings)
+
+        # Save to disk using torch.save
+        if str(embeddings_file).startswith("s3://"):
+            raise NotImplementedError("S3 support for saving embeddings is not implemented yet")
+        else:
+            torch.save(save_data, embeddings_file)
+
+        logger.info(f"Saved embeddings to {embeddings_file}")
+
+        return embeddings_file
+
     def _generate_visualization(
         self,
         model: L.LightningModule,
@@ -555,13 +604,16 @@ class UmapVisualizationCallback(Callback):
         # Set plot title based on epoch
         plot_title = f"{model_name} (Epoch {epoch})" if epoch is not None else model_name
 
+        # Save embeddings to disk
+        embeddings_file = self._save_embeddings(embeddings, output_file, model_name=plot_title)
+
         # Generate visualization
         self._plot_umap(embeddings, output_file, model_name=plot_title)
 
-        # Log visualization path if requested
+        # Log visualization path and embeddings path if requested
         if trainer is not None and trainer.logger:
             trainer.logger.log_metrics(
-                {"umap_visualization_UPath": str(output_file)},
+                {"umap_visualization_UPath": str(output_file), "umap_embeddings_UPath": str(embeddings_file)},
                 step=trainer.global_step,
             )
 
