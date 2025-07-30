@@ -1,0 +1,17 @@
+{
+  "auto_map": {
+    "AutoTokenizer": [
+      "tokenization_ume.UMETokenizer",
+      null
+    ]
+  },
+  "cls_token": "<cls>",
+  "eos_token": "<eos>",
+  "mask_token": "<mask>",
+  "model_max_length": 8192,
+  "pad_token": "<pad>",
+  "sep_token": "<sep>",
+  "tokenizer_class": "UMETokenizer",
+  "unk_token": "<unk>",
+  "use_fast": false
+} 
