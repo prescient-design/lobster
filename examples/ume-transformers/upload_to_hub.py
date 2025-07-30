@@ -10,6 +10,9 @@ import os
 import sys
 from pathlib import Path
 
+from huggingface_hub import HfApi, create_repo, whoami
+
+
 def check_prerequisites():
     """Check if all prerequisites are met before uploading."""
     print("🔍 Checking prerequisites...")
@@ -57,7 +60,6 @@ def check_authentication():
     print("\n🔐 Checking HuggingFace authentication...")
     
     try:
-        from huggingface_hub import whoami
         user_info = whoami()
         username = user_info["name"]
         print(f"✅ Authenticated as: {username}")
@@ -69,8 +71,6 @@ def check_authentication():
 
 def upload_to_hub(username, repo_name="ume-base"):
     """Upload model files to HuggingFace Hub."""
-    from huggingface_hub import HfApi, create_repo
-    
     repo_id = f"{username}/{repo_name}"
     print(f"\n📤 Uploading to: https://huggingface.co/{repo_id}")
     
@@ -148,6 +148,7 @@ def main():
     else:
         print(f"\n❌ Upload failed. Check the errors above.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main() 

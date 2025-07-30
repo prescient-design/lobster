@@ -10,6 +10,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+import torch
+import transformers
+from huggingface_hub import HfApi, whoami
+from transformers import AutoConfig, AutoModel, AutoTokenizer
+
+
 def check_prerequisites():
     """Check if prerequisites are met."""
     print("🔍 Checking prerequisites...")
@@ -29,8 +35,6 @@ def check_prerequisites():
     
     # Check dependencies
     try:
-        import transformers
-        import torch
         import huggingface_hub
         print(f"✅ Dependencies available")
         print(f"   transformers: {transformers.__version__}")
@@ -46,8 +50,6 @@ def create_demo_model():
     print("\n🏗️  Creating demo model...")
     
     try:
-        from transformers import AutoConfig, AutoModel
-        
         # Load config from model directory
         config = AutoConfig.from_pretrained("model")
         print(f"✅ Config loaded: {config.model_type}")
@@ -79,7 +81,6 @@ def save_demo_model(model, repo_id):
             print(f"✅ Model saved to temporary directory")
             
             # Upload to Hub
-            from huggingface_hub import HfApi
             api = HfApi()
             
             print(f"📤 Uploading demo weights to {repo_id}...")
@@ -107,8 +108,6 @@ def test_deployed_model(repo_id):
     print(f"\n🧪 Testing deployed model from Hub...")
     
     try:
-        from transformers import AutoModel, AutoTokenizer
-        
         # Load from Hub
         print(f"   Loading model from {repo_id}...")
         model = AutoModel.from_pretrained(repo_id)
@@ -118,7 +117,6 @@ def test_deployed_model(repo_id):
         test_protein = "MKTVRQERLKSIVRILERSKEPVSGAQL"
         inputs = tokenizer([test_protein], modality="amino_acid", return_tensors="pt")
         
-        import torch
         model.eval()
         with torch.no_grad():
             outputs = model(**inputs)
@@ -146,7 +144,6 @@ def main():
     
     # Check authentication
     try:
-        from huggingface_hub import whoami
         user_info = whoami()
         username = user_info["name"]
         print(f"✅ Authenticated as: {username}")
@@ -193,6 +190,7 @@ def main():
     else:
         print(f"❌ Failed to upload demo weights.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main() 

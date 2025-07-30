@@ -8,8 +8,12 @@ with standard HuggingFace transformers library.
 
 import json
 import sys
-import torch
 from pathlib import Path
+
+import torch
+import torch.nn.functional as F
+from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM, AutoTokenizer
+
 
 def test_config_loading():
     """Test that config.json loads correctly."""
@@ -52,13 +56,8 @@ def test_tokenizer_loading():
         return False
     
     try:
-        # Add model directory to path so we can import
-        sys.path.insert(0, str(Path("model").absolute()))
-        
-        from tokenization_ume import UMETokenizer
-        
-        # Create tokenizer
-        tokenizer = UMETokenizer()
+        # Load tokenizer using standard HF method
+        tokenizer = AutoTokenizer.from_pretrained("model", trust_remote_code=True)
         print(f"✅ {tokenizer.__class__.__name__}")
         print(f"   Vocab size: {tokenizer.vocab_size}")
         
@@ -72,18 +71,12 @@ def test_tokenizer_loading():
     except Exception as e:
         print(f"❌ Tokenizer loading failed: {e}")
         return False
-    finally:
-        # Clean up path
-        if str(Path("model").absolute()) in sys.path:
-            sys.path.remove(str(Path("model").absolute()))
 
 def test_model_creation():
     """Test model creation from config."""
     print("\n🔧 Testing model creation...")
     
     try:
-        from transformers import AutoConfig, AutoModelForMaskedLM, AutoModel
-        
         # Load config from local file
         config = AutoConfig.from_pretrained("model")
         print(f"✅ Config loaded from model/")
@@ -108,11 +101,7 @@ def test_multi_modal_tokenization():
     print("\n🔧 Testing multi-modal tokenization...")
     
     try:
-        # Import tokenizer  
-        sys.path.insert(0, str(Path("model").absolute()))
-        from tokenization_ume import UMETokenizer
-        
-        tokenizer = UMETokenizer()
+        tokenizer = AutoTokenizer.from_pretrained("model", trust_remote_code=True)
         
         # Test sequences for different modalities
         test_sequences = {
@@ -136,25 +125,16 @@ def test_multi_modal_tokenization():
     except Exception as e:
         print(f"❌ Multi-modal tokenization failed: {e}")
         return False
-    finally:
-        if str(Path("model").absolute()) in sys.path:
-            sys.path.remove(str(Path("model").absolute()))
 
 def test_inference():
     """Test full inference pipeline."""
     print("\n🔧 Testing inference...")
     
     try:
-        from transformers import AutoConfig, AutoModel
-        
-        # Import tokenizer
-        sys.path.insert(0, str(Path("model").absolute()))
-        from tokenization_ume import UMETokenizer
-        
-        # Load model and tokenizer
+        # Load model and tokenizer using standard HF methods
         config = AutoConfig.from_pretrained("model")
         model = AutoModel.from_config(config)
-        tokenizer = UMETokenizer()
+        tokenizer = AutoTokenizer.from_pretrained("model", trust_remote_code=True)
         
         # Test inference
         test_sequence = "MKTVRQERLKSIVRILERSKEPVSGAQL"
@@ -174,26 +154,16 @@ def test_inference():
     except Exception as e:
         print(f"❌ Inference failed: {e}")
         return False
-    finally:
-        if str(Path("model").absolute()) in sys.path:
-            sys.path.remove(str(Path("model").absolute()))
 
 def test_embedding_extraction():
     """Test embedding extraction for molecular similarity."""
     print("\n🔧 Testing embedding extraction...")
     
     try:
-        from transformers import AutoConfig, AutoModel
-        import torch.nn.functional as F
-        
-        # Import tokenizer
-        sys.path.insert(0, str(Path("model").absolute()))
-        from tokenization_ume import UMETokenizer
-        
-        # Load model and tokenizer
+        # Load model and tokenizer using standard HF methods
         config = AutoConfig.from_pretrained("model")
         model = AutoModel.from_config(config)
-        tokenizer = UMETokenizer()
+        tokenizer = AutoTokenizer.from_pretrained("model", trust_remote_code=True)
         
         # Test with similar proteins
         protein1 = "MKTVRQERLKSIVRILERSKEPVSGAQL"
@@ -229,9 +199,6 @@ def test_embedding_extraction():
     except Exception as e:
         print(f"❌ Embedding extraction failed: {e}")
         return False
-    finally:
-        if str(Path("model").absolute()) in sys.path:
-            sys.path.remove(str(Path("model").absolute()))
 
 def main():
     """Run all tests."""
@@ -276,6 +243,7 @@ def main():
     else:
         print("❌ Some tests failed. Please fix the issues before deploying.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main() 
