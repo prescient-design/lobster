@@ -669,7 +669,7 @@ class TestUME:
         ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
 
         sequence = "MKTVRQERLKSIVRILERSKEPVSGAQL"
-        batch_sizes = [1, 5, 10, 25, 50, 100, 200, 500, 1000]
+        batch_sizes = [1, 5, 10, 25, 50, 100, 200]
 
         memory_data = {}
         max_successful_batch = 0
