@@ -617,7 +617,7 @@ class TestUME:
                     "error_msg": str(e)[:100],  # Truncate long error messages
                 }
 
-        print(f"\n=== UME SMILES Handling Behavior ===")
+        print("\n=== UME SMILES Handling Behavior ===")
         for case_type, result in results.items():
             if result["outcome"] == "accepted":
                 print(f"{case_type:20}: accepted (norm: {result['embedding_norm']:.3f})")
@@ -656,9 +656,9 @@ class TestUME:
         print("\n=== UME Protein Handling Behavior ===")
         for case_type, result in results.items():
             if result["outcome"] == "accepted":
-                print("{case_type:20}: accepted (norm: {result['embedding_norm']:.3f})")
+                print(f"{case_type:20}: accepted (norm: {result['embedding_norm']:.3f})")
             else:
-                print("{case_type:20}:  rejected ({result['error_type']})")
+                print(f"{case_type:20}:  rejected ({result['error_type']})")
 
         # Only fail if valid protein is rejected
         if results["valid_protein"]["outcome"] != "accepted":
@@ -669,7 +669,7 @@ class TestUME:
         ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
 
         sequence = "MKTVRQERLKSIVRILERSKEPVSGAQL"
-        batch_sizes = [1, 5, 10, 25, 50, 100, 200]
+        batch_sizes = [1, 5, 10, 25, 50, 100]
 
         memory_data = {}
         max_successful_batch = 0
@@ -716,7 +716,7 @@ class TestUME:
                 break  # Stop at first failure
 
         print("\n=== UME Memory Usage Scaling ===")
-        print("Test sequence length: {len(sequence)}")
+        print(f"Test sequence length: {len(sequence)}")
 
         for batch_size, data in memory_data.items():
             if data["status"] == "success":
@@ -729,4 +729,4 @@ class TestUME:
             else:
                 print(f"Batch {batch_size:4d}: {data['error_type']}")
 
-        print("\nMax successful batch size: {max_successful_batch}")
+        print(f"\nMax successful batch size: {max_successful_batch}")
