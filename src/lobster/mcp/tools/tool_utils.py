@@ -1,6 +1,7 @@
 """Utility tools for Lobster MCP server."""
 
 import logging
+from functools import cache
 from typing import Any, Literal
 
 import torch
@@ -20,7 +21,8 @@ def _get_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def _load_model(model_name: str, model_type: str):
+@cache
+def _load_model(model_name: str, model_type: str) -> LobsterPMLM | LobsterCBMPMLM:
     """Load a model directly using the AVAILABLE_MODELS config.
 
     Parameters

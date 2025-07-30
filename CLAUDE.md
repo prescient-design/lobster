@@ -31,7 +31,7 @@ LBSTER (Lobster) is a "batteries included" language model library for proteins a
 - **Build package**: `uv run python -m build .`
 
 ### Development Setup
-- **Sync all dependencies**: `uv sync` (installs all optional groups automatically)
+- **Sync all dependencies**: `uv sync --all-extras`
 - **Alternative install for development**: `python -m pip install --editable '.[all]'`
 
 ## Common Commands
