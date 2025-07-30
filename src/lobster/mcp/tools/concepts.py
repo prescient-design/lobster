@@ -1,6 +1,7 @@
 """Concept-related tools for Lobster MCP server using FastMCP best practices."""
 
 import logging
+from typing import Any
 
 import torch
 
@@ -9,7 +10,7 @@ from .tool_utils import _load_model
 logger = logging.getLogger("lobster-fastmcp-server")
 
 
-def get_sequence_concepts(model_name: str, sequences: list[str]) -> dict:
+def get_sequence_concepts(model_name: str, sequences: list[str]) -> dict[str, Any]:
     """Get concept predictions from a concept bottleneck model.
 
     This function takes a sequence of biological sequences and returns their
@@ -86,7 +87,7 @@ def get_sequence_concepts(model_name: str, sequences: list[str]) -> dict:
         raise
 
 
-def get_supported_concepts(model_name: str) -> dict:
+def get_supported_concepts(model_name: str) -> dict[str, Any]:
     """Get list of supported concepts for a concept bottleneck model.
 
     This function retrieves the list of concepts that a specific concept bottleneck
