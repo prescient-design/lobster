@@ -71,6 +71,9 @@ class PEEREvaluationCallback(LinearProbeCallback):
     - UME models: Use requires_tokenization=True (default)
     - ESM models: Use requires_tokenization=False
     
+    WARNING: Using ESM models with requires_tokenization=True will cause runtime errors!
+    ESM models expect raw sequences, not tokenized inputs.
+    
     Both UME and ESM models must implement:
     - embed_sequences(sequences, modality, aggregate) method
     - embed(inputs, aggregate) method (UME for tokenized inputs, ESM for raw sequences)
@@ -127,9 +130,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 modality="amino_acid",
                 max_length=max_length,
             )
-        elif not requires_tokenization and transform_fn is None:
-            # For models that don't require tokenization (ESM), use identity transform
-            transform_fn = lambda x: x  # Pass sequences through unchanged
+        # If requires_tokenization=False and transform_fn=None, leave it as None
+        # If transform_fn is provided, use it as-is
 
         super().__init__(
             transform_fn=transform_fn,
@@ -233,6 +235,20 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Embeddings tensor of shape (batch_size, hidden_size) if aggregate=True
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
+        # Safety check: Detect potentially incompatible model/tokenization combinations
+        model_name = getattr(pl_module, '__class__', {}).get('__name__', str(type(pl_module)))
+        is_tokenized_input = isinstance(inputs, (dict, BatchEncoding))
+        is_raw_input = isinstance(inputs, (list, str))
+        
+        # Check for dangerous combinations
+        if "ESM" in model_name and self.requires_tokenization and is_tokenized_input:
+            raise ValueError(
+                f"ESM models expect raw sequences, not tokenized inputs. "
+                f"Set requires_tokenization=False when using {model_name}. "
+                f"Current config: requires_tokenization={self.requires_tokenization}, "
+                f"inputs are tokenized={is_tokenized_input}"
+            )
+
         # Handle raw sequences directly using embed_sequences method
         if isinstance(inputs, (str, list)) and not isinstance(inputs, dict):
             # Use embed_sequences method directly for raw sequences (UME and ESM)
