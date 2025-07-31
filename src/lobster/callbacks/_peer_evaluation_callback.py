@@ -70,10 +70,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
     Model compatibility:
     - UME models: Use requires_tokenization=True (default)
     - ESM models: Use requires_tokenization=False
-    
+
     WARNING: Using ESM models with requires_tokenization=True will cause runtime errors!
     ESM models expect raw sequences, not tokenized inputs.
-    
+
     Both UME and ESM models must implement:
     - embed_sequences(sequences, modality, aggregate) method
     - embed(inputs, aggregate) method (UME for tokenized inputs, ESM for raw sequences)
@@ -236,10 +236,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
         # Safety check: Detect potentially incompatible model/tokenization combinations
-        model_name = getattr(pl_module, '__class__', {}).get('__name__', str(type(pl_module)))
+        model_name = getattr(pl_module.__class__, "__name__", str(type(pl_module)))
         is_tokenized_input = isinstance(inputs, (dict, BatchEncoding))
-        is_raw_input = isinstance(inputs, (list, str))
-        
+        isinstance(inputs, (list, str))
+
         # Check for dangerous combinations
         if "ESM" in model_name and self.requires_tokenization and is_tokenized_input:
             raise ValueError(
@@ -265,8 +265,10 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     sequences = inputs.original_sequence
                     return pl_module.embed_sequences(sequences, modality=modality, aggregate=aggregate)
                 else:
-                    raise ValueError(f"Model {type(pl_module)} doesn't support tokenized inputs "
-                                   f"and no original sequences available in the data")
+                    raise ValueError(
+                        f"Model {type(pl_module)} doesn't support tokenized inputs "
+                        f"and no original sequences available in the data"
+                    )
 
         # Handle mixed case - try to extract sequences if possible
         else:
