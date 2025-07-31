@@ -4,7 +4,7 @@ from typing import ClassVar
 
 import pandas
 import pooch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from torch.utils.data import Dataset
 
 from lobster.datasets._huggingface_iterable_dataset import HuggingFaceIterableDataset
