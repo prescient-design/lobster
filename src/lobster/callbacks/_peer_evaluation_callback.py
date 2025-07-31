@@ -259,7 +259,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
             # For tokenized inputs, use embed method (UME)
             try:
                 return pl_module.embed(inputs, aggregate=aggregate)
-            except NotImplementedError:
+            except NotImplementedError as err:
                 # ESM doesn't support tokenized inputs, so extract sequences if available
                 if hasattr(inputs, "original_sequence"):
                     sequences = inputs.original_sequence
@@ -268,7 +268,7 @@ class PEEREvaluationCallback(LinearProbeCallback):
                     raise ValueError(
                         f"Model {type(pl_module)} doesn't support tokenized inputs "
                         f"and no original sequences available in the data"
-                    )
+                    ) from err
 
         # Handle mixed case - try to extract sequences if possible
         else:
