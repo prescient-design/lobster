@@ -3,50 +3,71 @@ Register UME model and tokenizer with AutoClass API and upload to HuggingFace Hu
 """
 
 from huggingface_hub import HfApi
-from transformers import AutoConfig, AutoModel
+from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 from lobster.model.integrations.ume_huggingface.configuration_ume import UMEConfig
 from lobster.model.integrations.ume_huggingface.modeling_ume import UMEModel
 
-# from lobster.model.integrations.ume_huggingface.tokenization_ume import UMETokenizer
-from lobster.constants import HF_UME_REPO_ID, HF_UME_MODEL_FILEPATH
+from lobster.model.integrations.ume_huggingface.tokenization_ume import (
+    UMEAminoAcidTokenizer,
+    UMESmilesTokenizer,
+    UMENucleotideTokenizer,
+)
+from lobster.constants import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
+import os
 
 
 def register_and_save_model(upload_to_hf: bool = False):
-    """Register the model and tokenizer with AutoClass and save them"""
+    """Register the model and tokenizers with AutoClass and save them"""
     # Register model
     AutoConfig.register("ume", UMEConfig)
     AutoModel.register(UMEConfig, UMEModel)
-
-    # # Register tokenizer
-    # AutoTokenizer.register(UMEConfig, UMETokenizer)
-
     config = UMEConfig(model_name="ume-mini-base-12M")
     config.register_for_auto_class()
 
     model = UMEModel(config)
     model.register_for_auto_class("AutoModel")
 
-    # # Create and register tokenizer
-    # tokenizer = UMETokenizer(max_length=512)
-    # tokenizer.register_for_auto_class()
+    # Register individual tokenizers for each modality
+    AutoTokenizer.register(UMEAminoAcidTokenizer, UMEAminoAcidTokenizer)
+    AutoTokenizer.register(UMESmilesTokenizer, UMESmilesTokenizer)
+    AutoTokenizer.register(UMENucleotideTokenizer, UMENucleotideTokenizer)
 
-    # Save everything
-    config.save_pretrained(HF_UME_MODEL_FILEPATH)
-    model.save_pretrained(HF_UME_MODEL_FILEPATH)
-    # tokenizer.save_pretrained(HF_UME_MODEL_FILEPATH)
+    # Create tokenizer instances for each modality
+    tokenizers = {
+        "amino_acid": UMEAminoAcidTokenizer(),
+        "smiles": UMESmilesTokenizer(),
+        "nucleotide": UMENucleotideTokenizer(),
+    }
 
-    print("Model and config registered and saved successfully!")
+    # Register each tokenizer for auto class
+    for tokenizer in tokenizers.values():
+        tokenizer.register_for_auto_class()
+
+    # Save model and config to main directory
+    config.save_pretrained(HF_UME_MODEL_DIRPATH)
+    model.save_pretrained(HF_UME_MODEL_DIRPATH)
+
+    # Save each tokenizer to its own modality-specific subdirectory
+    for modality, tokenizer in tokenizers.items():
+        modality_dir = os.path.join(HF_UME_MODEL_DIRPATH, f"tokenizer_{modality}")
+        tokenizer.save_pretrained(modality_dir)
+
+    # Save one tokenizer directly (not ideal but we need this)
+    tokenizer.save_pretrained(HF_UME_MODEL_DIRPATH)
+
+    print("Model and all tokenizers registered and saved successfully!")
+    print(f"Tokenizers saved to: {', '.join([f'tokenizer_{mod}' for mod in tokenizers.keys()])}")
 
     if upload_to_hf:
-        print("Uploading model folder to HuggingFace Hub...")
+        print("Uploading `model` folder to HuggingFace Hub...")
 
         api = HfApi()
         api.upload_folder(
-            folder_path=HF_UME_MODEL_FILEPATH,
+            folder_path=HF_UME_MODEL_DIRPATH,
             repo_id=HF_UME_REPO_ID,
         )
-        print("Model folder uploaded to HuggingFace Hub successfully!")
+        print("Folder uploaded to HuggingFace Hub successfully!")
 
 
 if __name__ == "__main__":

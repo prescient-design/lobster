@@ -13,7 +13,7 @@ class UMEModel(PreTrainedModel):
     def _get_onnx_path(self, model_name: str) -> str:
         """Download ONNX file from HuggingFace Hub"""
         onnx_filename = f"{model_name}.onnx"
-        repo_id = "karina-zadorozhny/ume-mini-base-12M-test"
+        repo_id = "karina-zadorozhny/ume"
 
         # HF handles caching automatically
         return hf_hub_download(
@@ -31,9 +31,11 @@ class UMEModel(PreTrainedModel):
         self.dummy_param = torch.nn.Parameter(torch.zeros(1), requires_grad=False)
 
     def forward(self, input_ids: Tensor, attention_mask: Tensor) -> Tensor:
-        input_ids = input_ids.detach().cpu().numpy()
-        attention_mask = attention_mask.detach().cpu().numpy()
+        ort_inputs = {
+            "input_ids": input_ids.detach().numpy(),
+            "attention_mask": attention_mask.detach().numpy(),
+        }
 
-        outputs = self.onnx_session.run(None, {"input_ids": input_ids, "attention_mask": attention_mask})
+        outputs = self.onnx_session.run(None, ort_inputs)
 
         return torch.from_numpy(outputs[0])

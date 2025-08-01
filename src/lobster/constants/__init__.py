@@ -16,13 +16,19 @@ from ._peer_tasks import (
 )
 from ._scheduler_type import SchedulerType
 from ._split import Split
-from ._ume_models import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT_S3_KEY, UME_CHECKPOINT_DICT_S3_URI
+from ._ume_models import (
+    UME_CHECKPOINT_DICT_S3_BUCKET,
+    UME_CHECKPOINT_DICT_S3_KEY,
+    UME_CHECKPOINT_DICT_S3_URI,
+    UME_MODEL_VERSIONS,
+    UME_MODEL_VERSIONS_TYPES,
+)
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
-from ._hf import HF_UME_REPO_ID, HF_UME_MODEL_FILEPATH
+from ._hf import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
 
 __all__ = [
     "HF_UME_REPO_ID",
-    "HF_UME_MODEL_FILEPATH",
+    "HF_UME_MODEL_DIRPATH",
     "Modality",
     "ModalityType",
     "WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE",
@@ -48,5 +54,7 @@ __all__ = [
     "UME_CHECKPOINT_DICT_S3_URI",
     "UME_CHECKPOINT_DICT_S3_BUCKET",
     "UME_CHECKPOINT_DICT_S3_KEY",
+    "UME_MODEL_VERSIONS",
+    "UME_MODEL_VERSIONS_TYPES",
     "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
 ]
