@@ -140,14 +140,7 @@ class UME(L.LightningModule):
 
         self.save_hyperparameters()
 
-        # Instantiate tokenizer transforms for each modality
-        self.tokenizer_transforms = {
-            modality: UMETokenizerTransform(modality, max_length=max_length, return_modality=True)
-            for modality in [Modality.AMINO_ACID, Modality.SMILES, Modality.NUCLEOTIDE]
-        }
-
-        # Get any tokenizer to get the special tokens
-        tokenizer = list(self.tokenizer_transforms.values())[0].tokenizer
+        self.tokenizer_transform = UMETokenizerTransform(max_length=max_length, return_modality=True)
 
         # Prepare model kwargs with flash-attn setting
         model_kwargs = model_kwargs or {}
@@ -187,10 +180,10 @@ class UME(L.LightningModule):
             scheduler=scheduler,
             model_kwargs=model_kwargs,
             scheduler_kwargs=scheduler_kwargs,
-            pad_token_id=tokenizer.pad_token_id,
-            mask_token_id=tokenizer.mask_token_id,
-            cls_token_id=tokenizer.cls_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer_transform.pad_token_id,
+            mask_token_id=self.tokenizer_transform.mask_token_id,
+            cls_token_id=self.tokenizer_transform.cls_token_id,
+            eos_token_id=self.tokenizer_transform.eos_token_id,
         )
 
         self.max_length = max_length
@@ -281,7 +274,7 @@ class UME(L.LightningModule):
         """
         modality_enum = Modality(modality) if isinstance(modality, str) else modality
 
-        return self.tokenizer_transforms[modality_enum].tokenizer
+        return self.tokenizer_transform.tokenizers[modality_enum]
 
     def get_vocab(self) -> dict[int, str]:
         """Get a consolidated vocabulary from all tokenizers.
@@ -302,14 +295,7 @@ class UME(L.LightningModule):
         >>> print(len(vocab))  # Size of vocabulary
         1536  # Example size
         """
-        tokenizers = [transform.tokenizer for transform in self.tokenizer_transforms.values()]
-
-        vocab = {
-            token_id: token
-            for tokenizer in tokenizers
-            for token, token_id in tokenizer.get_vocab().items()
-            if "reserved" not in token
-        }
+        vocab = self.tokenizer_transform.get_vocab()
 
         return dict(sorted(vocab.items(), key=lambda item: item[0]))
 
@@ -500,7 +486,6 @@ class UME(L.LightningModule):
     def export_onnx(
         self,
         export_path: str,
-        modality: ModalityType | Modality,
         sample_sequences: list[str] | None = None,
         opset_version: int = 17,
         device: torch.device | str | None = None,
@@ -509,19 +494,16 @@ class UME(L.LightningModule):
     ) -> None:
         """Export the UME model to ONNX format.
 
-        This method exports the model using sample sequences to create proper dummy inputs
-        that match the expected tokenization format for the specified modality.
+        This method exports the model using sample sequences to create proper dummy inputs.
+        The tokenizer will automatically detect the modality of the sample sequences.
 
         Parameters
         ----------
         export_path : str
             Path to save the ONNX model.
-        modality : ModalityType | Modality
-            Modality to use for creating dummy inputs. This ensures the ONNX model
-            is exported with inputs that match the tokenization format for this modality.
         sample_sequences : list[str] | None, optional
             Sample sequences to use for creating dummy inputs. If None, uses default
-            sequences for the specified modality.
+            sequences with mixed modalities to ensure the exported model works with all types.
         opset_version : int, default=17
             ONNX opset version to use for export.
         device : torch.device | str | None, optional
@@ -534,34 +516,25 @@ class UME(L.LightningModule):
         Examples
         --------
         >>> from lobster.model import UME
-        >>> from lobster.constants import Modality
         >>>
         >>> # Initialize model
         >>> ume = UME(model_name="UME_mini")
         >>>
-        >>> # Export for SMILES sequences
-        >>> ume.export_onnx("ume_smiles.onnx", modality=Modality.SMILES)
-        >>>
-        >>> # Export for protein sequences with custom samples
-        >>> protein_samples = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"]
-        >>> ume.export_onnx("ume_protein.onnx", modality=Modality.AMINO_ACID,
-        ...                 sample_sequences=protein_samples)
+        >>> # Export to ONNX
+        >>> ume.export_onnx("model.onnx")
         """
         device = device or next(self.parameters()).device
         if isinstance(device, str):
             device = torch.device(device)
 
-        # Use default sample sequences if none provided
         if sample_sequences is None:
-            sample_sequences = {
-                Modality.SMILES: ["CC(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],  # Shorter SMILES for speed
-                Modality.AMINO_ACID: ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],  # Protein sequences
-                Modality.NUCLEOTIDE: ["ATGCATGC", "GCTAGCTA"],  # DNA sequences
-            }[modality]
+            sample_sequences = [
+                "CC(=O)O",
+                "MKTVRQERLKSIVRILERSKEPVSGAQL",
+                "ATGCATGC",
+            ]
 
-        # Tokenize the sample sequences to get proper input format
-        tokenizer_transform = self.tokenizer_transforms[modality]
-        encoded_batch = tokenizer_transform(sample_sequences)
+        encoded_batch = self.tokenizer_transform(sample_sequences)
 
         input_ids = encoded_batch["input_ids"].to(device)
         attention_mask = encoded_batch["attention_mask"].to(device)
@@ -600,16 +573,17 @@ class UME(L.LightningModule):
         )
 
     def embed_sequences(
-        self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
+        self, sequences: Sequence[str] | str, modality: ModalityType | Modality | None = None, aggregate: bool = True
     ) -> Tensor:
-        """Embed sequences using the specified modality.
+        """Embed sequences with optional modality specification.
 
         Parameters
         ----------
         sequences : Sequence[str] | str
             Input sequences to embed.
-        modality : ModalityType | Modality
-            Modality of the input sequences.
+        modality : ModalityType | Modality | None, optional
+            Modality of the input sequences. If None, the tokenizer will auto-detect
+            the modality for each sequence.
         aggregate : bool, default=True
             Whether to aggregate the embeddings (mean pooling).
 
@@ -621,11 +595,8 @@ class UME(L.LightningModule):
         if isinstance(sequences, str):
             sequences = [sequences]
 
-        # Get the tokenizer transform for the specified modality
-        tokenizer_transform = self.tokenizer_transforms[modality]
-
-        # Tokenize the sequences
-        encoded_batch = tokenizer_transform(sequences)
+        # Tokenize the sequences - auto-detect modality if not specified
+        encoded_batch = self.tokenizer_transform(sequences, modality=modality)
 
         # Get input_ids and attention_mask
         input_ids = encoded_batch["input_ids"]
@@ -648,7 +619,7 @@ class UME(L.LightningModule):
 
         return embeddings
 
-    def compute_pseudo_likelihood(self, sequences: list[str], modality: Modality) -> list[float]:
+    def compute_pseudo_likelihood(self, sequences: list[str], modality: Modality | None = None) -> list[float]:
         """
         Compute pseudo-likelihood for a batch of sequences.
 
@@ -656,8 +627,9 @@ class UME(L.LightningModule):
         -----------
         sequences : List[str]
             List of sequences to evaluate
-        modality : Modality
-            The modality of the sequences
+        modality : Modality | None, optional
+            The modality of the sequences. If None, the tokenizer will auto-detect
+            the modality for each sequence.
 
         Returns:
         --------
@@ -671,13 +643,13 @@ class UME(L.LightningModule):
                 if not valid_sequences:
                     return [0.0] * len(sequences)
 
-                logger.debug(f"Processing {len(valid_sequences)} sequences for modality {modality.value}")
+                if modality:
+                    logger.debug(f"Processing {len(valid_sequences)} sequences for modality {modality.value}")
+                else:
+                    logger.debug(f"Processing {len(valid_sequences)} sequences with auto-detected modalities")
 
-                # Tokenize the sequences using the appropriate tokenizer
-                tokenizer_transform = self.tokenizer_transforms[modality]
-                logger.debug(f"Using tokenizer transform: {type(tokenizer_transform)}")
-
-                encoded_batch = tokenizer_transform(valid_sequences)
+                # Tokenize the sequences - modality auto-detected if not specified
+                encoded_batch = self.tokenizer_transform(valid_sequences, modality=modality)
                 logger.debug(f"Encoded batch keys: {list(encoded_batch.keys())}")
 
                 # Get input_ids and attention_mask

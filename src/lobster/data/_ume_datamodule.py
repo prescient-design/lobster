@@ -181,10 +181,7 @@ class UMELightningDataModule(LightningDataModule):
         self._download = download
 
         # Initialize tokenizer transforms for each modality
-        self._tokenizer_transforms = {
-            modality: UMETokenizerTransform(modality, max_length=tokenizer_max_length, return_modality=True)
-            for modality in Modality
-        }
+        self._tokenizer_transform = UMETokenizerTransform(max_length=tokenizer_max_length, return_modality=True)
 
         self._train_datasets: list[IterableDataset] = []
         self._val_datasets: list[IterableDataset] = []
@@ -201,12 +198,11 @@ class UMELightningDataModule(LightningDataModule):
         """Get a dataset instance with appropriate tokenizer transform."""
 
         dataset_class = dataset_info.dataset_class
-        transform = self._tokenizer_transforms[dataset_info.modality]
 
         return dataset_class(
             root=self._root,
             download=self._download,
-            transform=transform,
+            transform=self._tokenizer_transform,
             split=split.value,
             shuffle=(split == Split.TRAIN),
             shuffle_buffer_size=self._shuffle_buffer_size,
