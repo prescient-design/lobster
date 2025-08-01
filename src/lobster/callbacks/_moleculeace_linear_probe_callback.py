@@ -7,7 +7,6 @@ from tqdm import tqdm
 
 from lobster.constants import MOLECULEACE_TASKS
 from lobster.datasets import MoleculeACEDataset
-from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -32,18 +31,14 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
 
     def __init__(
         self,
-        max_length: int,
+        max_length: int = None,  # Keep for API compatibility but not used
         tasks: Sequence[str] | None = None,
         batch_size: int = 32,
         run_every_n_epochs: int | None = None,
     ):
-        tokenizer_transform = UMETokenizerTransform(
-            modality="SMILES",
-            max_length=max_length,
-        )
-
+        # Don't use transform_fn - we'll handle raw sequences with explicit modality
         super().__init__(
-            transform_fn=tokenizer_transform,
+            transform_fn=None,
             task_type="regression",
             batch_size=batch_size,
             run_every_n_epochs=run_every_n_epochs,
@@ -78,16 +73,16 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         all_task_metrics = {}
 
         for task in tqdm(self.tasks, desc=f"{self.__class__.__name__}"):
-            # Create datasets
-            train_dataset = MoleculeACEDataset(task=task, transform_fn=self.transform_fn, train=True)
+            # Create datasets - no transform_fn, we want raw SMILES sequences
+            train_dataset = MoleculeACEDataset(task=task, train=True)
             train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-            test_dataset = MoleculeACEDataset(task=task, transform_fn=self.transform_fn, train=False)
+            test_dataset = MoleculeACEDataset(task=task, train=False)
             test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
             try:
-                # Get embeddings
-                train_embeddings, train_targets = self._get_embeddings(module, train_loader)
-                test_embeddings, test_targets = self._get_embeddings(module, test_loader)
+                # Get embeddings with explicit SMILES modality
+                train_embeddings, train_targets = self._get_embeddings(module, train_loader, modality="SMILES")
+                test_embeddings, test_targets = self._get_embeddings(module, test_loader, modality="SMILES")
 
                 # Train probe
                 probe = self._train_probe(train_embeddings, train_targets)

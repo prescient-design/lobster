@@ -11,7 +11,6 @@ from tqdm import tqdm
 
 from lobster.constants import CALM_TASKS
 from lobster.datasets import CalmPropertyDataset
-from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 
@@ -71,7 +70,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
     def __init__(
         self,
-        max_length: int,
+        max_length: int = None,  # Keep for API compatibility but not used
         tasks: Sequence[str] | None = None,
         species: Sequence[str] | None = None,
         batch_size: int = 32,
@@ -79,13 +78,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_size: float = 0.2,
         max_samples: int = 3000,
     ):
-        tokenizer_transform = UMETokenizerTransform(
-            modality="nucleotide",
-            max_length=max_length,
-        )
-
+        # Don't use transform_fn - we'll handle raw sequences with explicit modality
         super().__init__(
-            transform_fn=tokenizer_transform,
+            transform_fn=None,
             task_type="regression",
             batch_size=batch_size,
             run_every_n_epochs=run_every_n_epochs,
@@ -122,7 +117,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         if split_key in self.dataset_splits:
             return self.dataset_splits[split_key]
 
-        dataset = CalmPropertyDataset(task=task, species=species, transform_fn=self.transform_fn)
+        dataset = CalmPropertyDataset(task=task, species=species)
 
         indices = np.arange(len(dataset))
 
@@ -184,8 +179,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
         try:
-            train_embeddings, train_targets = self._get_embeddings(module, train_loader)
-            test_embeddings, test_targets = self._get_embeddings(module, test_loader)
+            train_embeddings, train_targets = self._get_embeddings(module, train_loader, modality="nucleotide")
+            test_embeddings, test_targets = self._get_embeddings(module, test_loader, modality="nucleotide")
 
             probe = self._train_probe(train_embeddings, train_targets)
             self.probes[task_key] = probe
