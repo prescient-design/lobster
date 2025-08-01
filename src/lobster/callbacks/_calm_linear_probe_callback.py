@@ -80,6 +80,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         max_samples: int = 3000,
     ):
         tokenizer_transform = UMETokenizerTransform(
+            modality="nucleotide",
             max_length=max_length,
         )
 

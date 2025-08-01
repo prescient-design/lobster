@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def run_onnx_inference(
     onnx_path: str,
     sequences: str | list[str],
-    modality: ModalityType | Modality | None = None,
+    modality: ModalityType | Modality,
     max_length: int = 8192,
     session_options: ort.SessionOptions | None = None,
 ) -> np.ndarray:
@@ -29,9 +29,8 @@ def run_onnx_inference(
         Path to the ONNX model file.
     sequences : Union[str, List[str]]
         Input sequences to embed. Can be a single string or list of strings.
-    modality : ModalityType | Modality | None, optional
-        Modality of the input sequences. If None, the tokenizer will auto-detect
-        the modality for each sequence.
+    modality : ModalityType | Modality
+        Modality of the input sequences.
     max_length : int, default=8192
         Maximum sequence length for tokenization.
     session_options : ort.SessionOptions | None, optional
@@ -45,25 +44,27 @@ def run_onnx_inference(
     Examples
     --------
     >>> from lobster.model.onnx_utils import run_onnx_inference
+    >>> from lobster.constants import Modality
     >>>
-    >>> # Single SMILES sequence (auto-detected)
+    >>> # Single SMILES sequence
     >>> embeddings = run_onnx_inference(
-    ...     "ume_universal.onnx",
+    ...     "ume_smiles.onnx",
     ...     "CC(=O)OC1=CC=CC=C1C(=O)O",  # Aspirin
+    ...     Modality.SMILES
     ... )
     >>> print(embeddings.shape)  # (1, 768)
     >>>
-    >>> # Multiple mixed sequences (auto-detected)
-    >>> mixed_sequences = [
-    ...     "MKTVRQERLKSIVRILERSKEPVSGAQL",  # Protein
-    ...     "CC(=O)O",  # SMILES
-    ...     "ATGCATGC"  # DNA
+    >>> # Multiple protein sequences
+    >>> protein_sequences = [
+    ...     "MKTVRQERLKSIVRILERSKEPVSGAQL",
+    ...     "ACDEFGHIKL"
     ... ]
     >>> embeddings = run_onnx_inference(
-    ...     "ume_universal.onnx",
-    ...     mixed_sequences
+    ...     "ume_protein.onnx",
+    ...     protein_sequences,
+    ...     Modality.AMINO_ACID
     ... )
-    >>> print(embeddings.shape)  # (3, 768)
+    >>> print(embeddings.shape)  # (2, 768)
     """
     # Convert single string to list
     if isinstance(sequences, str):
@@ -78,11 +79,12 @@ def run_onnx_inference(
     # Create ONNX session
     ort_session = ort.InferenceSession(onnx_path, session_options)
 
-    # Tokenize sequences - auto-detect modality if not specified
+    # Tokenize sequences - use the same tokenizer configuration as the model
+    # Ensure we use the same padding and truncation settings
     tokenizer_transform = UMETokenizerTransform(
-        max_length=max_length, return_modality=True, padding="max_length", add_special_tokens=True
+        modality, max_length=max_length, return_modality=True, padding="max_length", add_special_tokens=True
     )
-    encoded_batch = tokenizer_transform(sequences, modality=modality)
+    encoded_batch = tokenizer_transform(sequences)
 
     input_ids = encoded_batch["input_ids"]
     attention_mask = encoded_batch["attention_mask"]
@@ -112,7 +114,7 @@ def compare_onnx_pytorch(
     onnx_path: str,
     pytorch_model,
     sequences: str | list[str],
-    modality: ModalityType | Modality | None = None,
+    modality: ModalityType | Modality,
     max_length: int = 8192,
     atol: float = 1e-5,
     rtol: float = 1e-5,
@@ -127,9 +129,8 @@ def compare_onnx_pytorch(
         PyTorch UME model instance.
     sequences : Union[str, List[str]]
         Input sequences to compare.
-    modality : ModalityType | Modality | None, optional
-        Modality of the input sequences. If None, the tokenizer will auto-detect
-        the modality for each sequence.
+    modality : ModalityType | Modality
+        Modality of the input sequences.
     max_length : int, default=8192
         Maximum sequence length for tokenization.
     atol : float, default=1e-5
@@ -146,13 +147,14 @@ def compare_onnx_pytorch(
     --------
     >>> from lobster.model import UME
     >>> from lobster.model.onnx_utils import compare_onnx_pytorch
+    >>> from lobster.constants import Modality
     >>>
     >>> # Initialize PyTorch model
     >>> ume = UME(model_name="UME_mini")
     >>>
-    >>> # Compare outputs with auto-detected modalities
-    >>> sequences = ["CC(=O)OC1=CC=CC=C1C(=O)O", "MKTVRQERLKSIVRILERSKEPVSGAQL"]
-    >>> match = compare_onnx_pytorch("ume_universal.onnx", ume, sequences)
+    >>> # Compare outputs
+    >>> sequences = ["CC(=O)OC1=CC=CC=C1C(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"]
+    >>> match = compare_onnx_pytorch("ume_smiles.onnx", ume, sequences, Modality.SMILES)
     >>> print(f"Outputs match: {match}")
     """
     # Use the model's max_length if available and not specified
