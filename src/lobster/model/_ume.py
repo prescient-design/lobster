@@ -140,11 +140,7 @@ class UME(L.LightningModule):
 
         self.save_hyperparameters()
 
-        # Instantiate single tokenizer transform that handles all modalities
         self.tokenizer_transform = UMETokenizerTransform(max_length=max_length, return_modality=True)
-
-        # Get tokenizer from amino acid modality for special tokens (they're shared across all modalities)
-        tokenizer = self.tokenizer_transform.tokenizers[Modality.AMINO_ACID]
 
         # Prepare model kwargs with flash-attn setting
         model_kwargs = model_kwargs or {}
@@ -184,10 +180,10 @@ class UME(L.LightningModule):
             scheduler=scheduler,
             model_kwargs=model_kwargs,
             scheduler_kwargs=scheduler_kwargs,
-            pad_token_id=tokenizer.pad_token_id,
-            mask_token_id=tokenizer.mask_token_id,
-            cls_token_id=tokenizer.cls_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer_transform.pad_token_id,
+            mask_token_id=self.tokenizer_transform.mask_token_id,
+            cls_token_id=self.tokenizer_transform.cls_token_id,
+            eos_token_id=self.tokenizer_transform.eos_token_id,
         )
 
         self.max_length = max_length
@@ -524,26 +520,20 @@ class UME(L.LightningModule):
         >>> # Initialize model
         >>> ume = UME(model_name="UME_mini")
         >>>
-        >>> # Export with default mixed-modality samples
-        >>> ume.export_onnx("ume_universal.onnx")
-        >>>
-        >>> # Export with custom samples (auto-detects modalities)
-        >>> samples = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "CC(=O)O", "ATGCATGC"]
-        >>> ume.export_onnx("ume_custom.onnx", sample_sequences=samples)
+        >>> # Export to ONNX
+        >>> ume.export_onnx("model.onnx")
         """
         device = device or next(self.parameters()).device
         if isinstance(device, str):
             device = torch.device(device)
 
-        # Use default mixed-modality sample sequences if none provided
         if sample_sequences is None:
             sample_sequences = [
-                "CC(=O)O",  # SMILES: Acetic acid
-                "MKTVRQERLKSIVRILERSKEPVSGAQL",  # Protein sequence
-                "ATGCATGC",  # DNA sequence
+                "CC(=O)O",
+                "MKTVRQERLKSIVRILERSKEPVSGAQL",
+                "ATGCATGC",
             ]
 
-        # Tokenize the sample sequences - tokenizer will auto-detect modalities
         encoded_batch = self.tokenizer_transform(sample_sequences)
 
         input_ids = encoded_batch["input_ids"].to(device)
