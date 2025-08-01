@@ -108,7 +108,7 @@ class TestUMEONNX:
 
         # Export to ONNX using the new method
         onnx_path = tmpdir / "ume_model.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Check that ONNX file was created
         assert onnx_path.exists()
@@ -129,7 +129,7 @@ class TestUMEONNX:
 
         # Export to ONNX using the same sequences for consistency
         onnx_path = tmpdir / "ume_model_inference.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES, sample_sequences=test_sequences)
+        ume_model.export_onnx(str(onnx_path), sample_sequences=test_sequences)
 
         # Get ONNX output using utility with the same max_length as the model
         onnx_output = run_onnx_inference(
@@ -159,7 +159,7 @@ class TestUMEONNX:
 
         # Export model with dynamic batch size
         onnx_path = tmpdir / "ume_model_dynamic.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Test with different batch sizes (reduced set for speed)
         ort_session = ort.InferenceSession(str(onnx_path))
@@ -190,7 +190,7 @@ class TestUMEONNX:
 
         # Export model with dynamic sequence length
         onnx_path = tmpdir / "ume_model_dynamic_seq.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Test with different sequence lengths (reduced set for speed)
         ort_session = ort.InferenceSession(str(onnx_path))
@@ -219,7 +219,7 @@ class TestUMEONNX:
         """Test ONNX inference with real molecular sequences."""
         # Export model
         onnx_path = tmpdir / "ume_model_real_sequences.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Test with real sequences (only test SMILES for speed)
         ort_session = ort.InferenceSession(str(onnx_path))
@@ -277,7 +277,7 @@ class TestUMEONNX:
         """Test ONNX model metadata and information."""
         # Export model
         onnx_path = tmpdir / "ume_model_info.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Load and inspect ONNX model
         onnx_model = onnx.load(str(onnx_path))
@@ -314,7 +314,7 @@ class TestUMEONNX:
 
         # Export to ONNX (this will be on CPU)
         onnx_path = tmpdir / "ume_model_gpu.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Move PyTorch output to CPU for comparison
         pytorch_output_cpu = pytorch_output.cpu()
@@ -341,7 +341,7 @@ class TestUMEONNXIntegration:
         """Test complete end-to-end workflow: tokenization -> ONNX inference -> comparison."""
         # Export model
         onnx_path = tmpdir / "ume_model_e2e.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Test with SMILES modality only for speed
         ort_session = ort.InferenceSession(str(onnx_path))
@@ -390,7 +390,7 @@ class TestUMEONNXIntegration:
         """Compare performance between PyTorch and ONNX inference (fast CI version)."""
         # Export model using the new method
         onnx_path = tmpdir / "ume_model_perf.onnx"
-        ume_model.export_onnx(str(onnx_path), modality=Modality.SMILES)
+        ume_model.export_onnx(str(onnx_path))
 
         # Test sequences for benchmarking (single sequence for speed)
         test_sequences = ["CC(=O)OC1=CC=CC=C1C(=O)O"]  # Single sequence for faster testing
