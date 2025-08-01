@@ -7,7 +7,7 @@ import torch
 from lobster.constants import Modality
 from lobster.model import UME
 
-from callbacks.test__memory_usage_callback import MemoryUsageCallback
+from ..callbacks.test__memory_usage_callback import MemoryUsageCallback
 
 
 @pytest.fixture
