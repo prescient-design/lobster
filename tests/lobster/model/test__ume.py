@@ -7,6 +7,8 @@ import torch
 from lobster.constants import Modality
 from lobster.model import UME
 
+from ..callbacks.test__memory_usage_callback import MemoryUsageCallback
+
 
 @pytest.fixture
 def sample_sequences():
@@ -577,3 +579,83 @@ class TestUME:
             # The important part is that the model loaded successfully and
             # use_flash_attn attribute is correctly set
             print(e)
+
+    @pytest.mark.parametrize(
+        "smiles,type_of_sequence",
+        [
+            ("CC(=O", "unclosed_parenthesis"),
+            ("CC)=O)O", "extra_closing_parenthesis"),
+            ("CC[=O]O", "invalid_bond_notation"),
+            ("C1CCCCC", "unclosed_ring"),
+            ("", "empty_string"),
+            ("   ", "whitespace_only"),
+            ("C" * 1000, "extremely_long"),
+            ("CC@#$%^&*", "invalid_characters"),
+            ("INVALID_SMILES", "completely_invalid"),
+            ("c1ccccc1", "lowercase_aromatic"),
+            ("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "valid_smiles"),  # Control
+        ],
+    )
+    def test_malformed_smiles_behavior(self, smiles, type_of_sequence):
+        "Checks how UME handles malformed SMILES"
+        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+        try:
+            embeddings = ume.embed_sequences([smiles], "SMILES")
+            embedding_norm = torch.norm(embeddings).item()
+            # Just validate it's a proper tensor if it succeeds
+            assert isinstance(embeddings, torch.Tensor)
+            assert embeddings.shape == (1, ume.embedding_dim)
+            assert not torch.isnan(embeddings).any()
+            assert not torch.isinf(embeddings).any()
+            print(f"{type_of_sequence}: accepted (norm: {embedding_norm:.3f})")
+
+        except Exception as e:
+            print(f"{type_of_sequence}: rejected ({type(e).__name__})")
+
+            # Fail if valid SMILE is rejected
+            if type_of_sequence == "valid_smiles":
+                pytest.fail("Rejected valid sequence")
+
+    @pytest.mark.parametrize(
+        "sequence,type_of_sequence",
+        [
+            ("MKTVRQXYZ", "invalid_amino_acids"),
+            ("MKTVRQ123", "numbers_mixed"),
+            ("MKTVRQ@#$", "special_characters"),
+            ("MKTVRQ-ACDEFG", "dash_separator"),
+            ("MKTVRQ ACDEFG", "space_separator"),
+            ("M*T*V*R*Q", "asterisk_unknowns"),
+            ("", "empty_sequence"),
+            ("mktvrq", "all_lowercase"),
+            ("MKTVBJOUXZ", "multiple_invalid"),
+            ("MKTVRQERLK", "valid_protein"),
+        ],
+    )
+    def test_malformed_protein_behavior(self, sequence, type_of_sequence):
+        """Document how UME handles invalid protein sequences"""
+        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+
+        try:
+            embeddings = ume.embed_sequences([sequence], "amino_acid")
+            embedding_norm = torch.norm(embeddings).item()
+            print(f"{type_of_sequence}: accepted (norm: {embedding_norm:.3f})")
+
+        except Exception as e:
+            print(f"{type_of_sequence}: rejected ({type(e).__name__})")
+
+            # Fail only if valid protein is rejected
+            if type_of_sequence == "valid_protein":
+                pytest.fail(f"Valid protein was rejected: {e}")
+
+    def test_memory_usage_scaling(self):
+        """Document memory usage patterns using callback."""
+        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+        sequence = "MKTVRQERLKSIVRILERSKEPVSGAQL"
+
+        callback = MemoryUsageCallback(batch_sizes=[1, 5, 10, 25, 50, 100], verbose=True)
+
+        memory_data = callback.run_test(ume, sequence, "amino_acid")
+
+        # Your assertions
+        assert callback.max_successful_batch > 0
+        assert len(memory_data) > 0
