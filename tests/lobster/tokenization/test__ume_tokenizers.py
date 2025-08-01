@@ -2,13 +2,13 @@ import pytest
 import torch
 
 from lobster.constants import Modality
-from lobster.tokenization._ume_tokenizers import (
+from lobster.tokenization.ume_tokenizers import (
     UMEAminoAcidTokenizerFast,
     UMENucleotideTokenizerFast,
     UMESmilesTokenizerFast,
     UMETokenizerTransform,
-    _add_reserved_tokens,
 )
+from lobster.tokenization.ume_tokenizers._ume_tokenizers import _add_reserved_tokens
 
 
 def test_add_reserved_tokens():
@@ -94,11 +94,10 @@ def test_ume_nucleotide_tokenizer():
 class TestUMETokenizerTransform:
     def test__init__(self):
         with pytest.warns(UserWarning, match="UMETokenizerTransform did not receive `max_length` parameter"):
-            transform = UMETokenizerTransform(modality="SMILES", max_length=None, return_modality=False)
+            transform = UMETokenizerTransform(max_length=None, return_modality=False)
 
-        assert transform.modality == Modality.SMILES
         assert transform.max_length is None
-        assert isinstance(transform.tokenizer, UMESmilesTokenizerFast)
+        assert isinstance(transform.tokenizers[Modality.SMILES], UMESmilesTokenizerFast)
 
     @pytest.mark.parametrize(
         "modality,input_text,max_length,expected_input_ids,expected_attention_mask,expected_modality",
@@ -121,8 +120,8 @@ class TestUMETokenizerTransform:
     def test_single_modalities(
         self, modality, input_text, max_length, expected_input_ids, expected_attention_mask, expected_modality
     ):
-        transform = UMETokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
-        out = transform(input_text)
+        transform = UMETokenizerTransform(max_length=max_length, return_modality=True)
+        out = transform(input_text, modality=modality)
 
         assert out["input_ids"].tolist()[0] == expected_input_ids
         assert out["attention_mask"].tolist()[0] == expected_attention_mask
@@ -151,6 +150,7 @@ class TestUMETokenizerTransform:
         ],
     )
     def test_single_modalities_batch_input(self, modality, input_batch, max_length, expected_input_ids):
-        transform = UMETokenizerTransform(modality=modality, max_length=max_length, return_modality=True)
-        out = transform(input_batch)
+        transform = UMETokenizerTransform(max_length=max_length, return_modality=True)
+        out = transform(input_batch, modality=modality)
         assert torch.equal(out["input_ids"], expected_input_ids)
+        assert out["modality"] == [Modality(modality)] * len(input_batch)

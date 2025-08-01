@@ -177,7 +177,7 @@ class UMETokenizerTransform(Module):
             output = self._encode(item, modality)
 
             if self.return_modality:
-                output["modality"] = [modality] * len(item) if single_sequence else modality
+                output["modality"] = modality if single_sequence else [modality] * len(item)
 
         else:
             output = self._encode_mixed_modalities(item)

@@ -38,7 +38,6 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         run_every_n_epochs: int | None = None,
     ):
         tokenizer_transform = UMETokenizerTransform(
-            modality="SMILES",
             max_length=max_length,
         )
 

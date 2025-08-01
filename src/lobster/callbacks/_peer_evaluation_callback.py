@@ -118,7 +118,6 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 raise ValueError("max_length must be provided if requires_tokenization is True")
 
             transform_fn = UMETokenizerTransform(
-                modality="amino_acid",
                 max_length=max_length,
             )
 
