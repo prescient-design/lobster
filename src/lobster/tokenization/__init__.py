@@ -18,7 +18,7 @@ from ._pmlm_tokenizer_transform import (
     PT5TokenizerTransform,
 )
 from ._smiles_tokenizer import SmilesTokenizerFast
-from ._ume_tokenizers import (
+from .ume_tokenizers import (
     UMEAminoAcidTokenizerFast,
     UMENucleotideTokenizerFast,
     UMESmilesTokenizerFast,

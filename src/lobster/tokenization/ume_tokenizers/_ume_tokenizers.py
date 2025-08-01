@@ -14,7 +14,7 @@ Vocabulary structure:
 To create the tokenizers, run
 
 ```python
-    from lobster.tokenization._ume_tokenizers import (
+    from lobster.tokenization.ume_tokenizers._ume_tokenizers import (
         _make_ume_tokenizers,
         UMEAminoAcidTokenizerFast,
         UMESmilesTokenizerFast,
@@ -42,25 +42,20 @@ To create the tokenizers, run
 """
 
 import importlib.resources
-import warnings
 from pathlib import Path
-from typing import Literal
 
 from tokenizers import Regex
 from tokenizers.models import BPE, WordLevel
 from tokenizers.normalizers import Lowercase
 from tokenizers.pre_tokenizers import Split
 from tokenizers.processors import TemplateProcessing
-from torch import Tensor
-from torch.nn import Module
 from transformers import PreTrainedTokenizerFast
 
-from lobster.constants import Modality, ModalityType
 
-from ._load_vocab_file import load_vocab_file
-from ._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
-from ._smiles_tokenizer import SMILES_REGEX_PATTERN
-from ._smiles_tokenizer import VOCAB_PATH as SMILES_VOCAB_PATH
+from .._load_vocab_file import load_vocab_file
+from .._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
+from .._smiles_tokenizer import SMILES_REGEX_PATTERN
+from .._smiles_tokenizer import VOCAB_PATH as SMILES_VOCAB_PATH
 
 TOKENIZERS_PATH = importlib.resources.files("lobster") / "assets" / "ume_tokenizers"
 
@@ -88,7 +83,7 @@ INTERACT_TOKEN = "<cls_interact>"
 NUM_EXTRA_SPECIAL_TOKENS = 14
 
 
-def _get_special_tokens() -> list[str]:
+def get_special_tokens() -> list[str]:
     # Add extra special tokens to the next multiple of 64
     # NOTE: To figure out how much we need to add, run `_make_ume_tokenizers()` first, check the vocab size,
     # update `NUM_EXTRA_SPECIAL_TOKENS` to the number of extra special tokens needed
@@ -115,7 +110,7 @@ def _load_file(filepath: str | Path, remove_special_tokens: bool = False) -> lis
     vocab = load_vocab_file(filepath)
 
     if remove_special_tokens:
-        special_tokens = _get_special_tokens()
+        special_tokens = get_special_tokens()
         return [token for token in vocab if token not in set(special_tokens)]
 
     return vocab
@@ -123,7 +118,7 @@ def _load_file(filepath: str | Path, remove_special_tokens: bool = False) -> lis
 
 def _load_vocabularies() -> dict[str, list[str]]:
     return {
-        SPECIAL_TOKENS_NAME: _get_special_tokens(),
+        SPECIAL_TOKENS_NAME: get_special_tokens(),
         AMINO_ACID_TOKENIZER: _load_file(AMINO_ACID_VOCAB_PATH, remove_special_tokens=True),
         SMILES_TOKENIZER: _load_file(SMILES_VOCAB_PATH, remove_special_tokens=True),
         NUCLEOTIDE_TOKENIZER: _load_file(NUCLEOTIDE_VOCAB_PATH, remove_special_tokens=True),
@@ -193,7 +188,7 @@ def _create_post_processor(cls_token: str) -> TemplateProcessing:
     TemplateProcessing
         Configured template processor for token sequence formatting
     """
-    special_tokens = _get_special_tokens()
+    special_tokens = get_special_tokens()
     cls_token_index = special_tokens.index(cls_token)
     eos_token_index = special_tokens.index(EOS_TOKEN)
 
@@ -389,112 +384,3 @@ class UMENucleotideTokenizerFast(PreTrainedTokenizerFast):
             cls_token=CLS_TOKEN_NUCLEOTIDE,
             mask_token=MASK_TOKEN,
         )
-
-
-class UMETokenizerTransform(Module):
-    """
-    UME tokenizer transform for single modality inputs.
-
-    Tokenizes inputs using the specified modality tokenizer
-    with vocabulary that's aware of reserved tokens.
-
-    Examples
-    --------
-    >>> tokenizer = UMETokenizerTransform(
-    ...     modality="amino_acid",
-    ...     max_length=12,
-    ...     return_modality=True,
-    ... )
-    >>> out = tokenizer("MYK")
-    >>> out
-    {'input_ids': tensor([[ 0, 41, 40, 36, 2, 1, 1, 1, 1, 1, 1, 1]]),
-    'attention_mask': tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]]),
-    'modality': <Modality.AMINO_ACID: 'amino_acid'>}
-
-    Parameters
-    ----------
-    modality : ModalityType or Literal["amino_acid", "smiles", "nucleotide"]
-        Modality to tokenize.
-    max_length : int or None
-        Maximum sequence length. If None, no padding/truncation.
-    return_modality : bool, optional
-        Whether to return modality info in output. Default False.
-    add_special_tokens : bool, optional
-        Add special tokens. Default True.
-    padding : str, optional
-        Padding strategy. Default "max_length".
-    """
-
-    def __init__(
-        self,
-        modality: ModalityType | Literal["amino_acid", "smiles", "nucleotide"],
-        max_length: int | None,
-        return_modality: bool = False,
-        add_special_tokens: bool = True,
-        padding: str = "max_length",
-        seed: int | None = 0,
-    ):
-        super().__init__()
-
-        if max_length is None:
-            warnings.warn(
-                "UMETokenizerTransform did not receive `max_length` parameter. Padding and truncation will not be applied.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        self.max_length = max_length
-        self.return_modality = return_modality
-        self.add_special_tokens = add_special_tokens
-        self.padding = padding
-        self.seed = seed
-
-        self.modality = Modality(modality) if isinstance(modality, str) else modality
-
-        modality = Modality(modality) if isinstance(modality, str) else modality
-
-        match modality:
-            case Modality.AMINO_ACID:
-                self.tokenizer = UMEAminoAcidTokenizerFast()
-            case Modality.SMILES:
-                self.tokenizer = UMESmilesTokenizerFast()
-            case Modality.NUCLEOTIDE:
-                self.tokenizer = UMENucleotideTokenizerFast()
-
-    def _encode(self, item: str | list[str]) -> dict[str, Tensor]:
-        """Tokenize and encode input."""
-        return self.tokenizer(
-            item,
-            max_length=self.max_length,
-            padding=self.padding if self.max_length else False,
-            truncation=True if self.max_length else False,
-            add_special_tokens=self.add_special_tokens,
-            return_tensors="pt",
-        )
-
-    def forward(
-        self,
-        item: str | list[str],
-    ) -> dict[str, Tensor | Modality]:
-        """
-        Tokenize input.
-
-        Parameters
-        ----------
-        item : str or list[str]
-            Input to tokenize. Examples: "MYK", ["MYK", "AVYK"]
-
-        Returns
-        -------
-        dict
-            Tokenized output with keys:
-                - "input_ids": Tensor of token IDs
-                - "attention_mask": Tensor of attention masks
-                - "modality": Modality type (if return_modality is True)
-        """
-        output = self._encode(item)
-
-        if self.return_modality:
-            output["modality"] = self.modality
-
-        return output
