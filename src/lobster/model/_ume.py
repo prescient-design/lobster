@@ -500,7 +500,7 @@ class UME(L.LightningModule):
     def export_onnx(
         self,
         export_path: str,
-        modality: ModalityType | Modality | None = None,
+        modality: ModalityType | Modality,
         sample_sequences: list[str] | None = None,
         opset_version: int = 17,
         device: torch.device | str | None = None,
@@ -516,11 +516,12 @@ class UME(L.LightningModule):
         ----------
         export_path : str
             Path to save the ONNX model.
+        modality : ModalityType | Modality
+            Modality to use for creating dummy inputs. This ensures the ONNX model
+            is exported with inputs that match the tokenization format for this modality.
         sample_sequences : list[str] | None, optional
             Sample sequences to use for creating dummy inputs. If None, uses default
-            sequences and modality.
-        modality : ModalityType | Modality | None, optional
-            Only used if sample_sequences is not None. Otherwise uses amino acid modality
+            sequences for the specified modality.
         opset_version : int, default=17
             ONNX opset version to use for export.
         device : torch.device | str | None, optional
@@ -538,8 +539,13 @@ class UME(L.LightningModule):
         >>> # Initialize model
         >>> ume = UME(model_name="UME_mini")
         >>>
-        >>> # Export ONNX model
-        >>> ume.export_onnx("ume_smiles.onnx")
+        >>> # Export for SMILES sequences
+        >>> ume.export_onnx("ume_smiles.onnx", modality=Modality.SMILES)
+        >>>
+        >>> # Export for protein sequences with custom samples
+        >>> protein_samples = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"]
+        >>> ume.export_onnx("ume_protein.onnx", modality=Modality.AMINO_ACID,
+        ...                 sample_sequences=protein_samples)
         """
         device = device or next(self.parameters()).device
         if isinstance(device, str):
@@ -547,11 +553,11 @@ class UME(L.LightningModule):
 
         # Use default sample sequences if none provided
         if sample_sequences is None:
-            sample_sequences = ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"]
-            modality = Modality.AMINO_ACID
-        else:
-            if modality is not None:
-                raise ValueError("Must provide modality for custom sequences.")
+            sample_sequences = {
+                Modality.SMILES: ["CC(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],  # Shorter SMILES for speed
+                Modality.AMINO_ACID: ["MKTVRQERLKSIVRILERSKEPVSGAQL", "ACDEFGHIKL"],  # Protein sequences
+                Modality.NUCLEOTIDE: ["ATGCATGC", "GCTAGCTA"],  # DNA sequences
+            }[modality]
 
         # Tokenize the sample sequences to get proper input format
         tokenizer_transform = self.tokenizer_transforms[modality]
