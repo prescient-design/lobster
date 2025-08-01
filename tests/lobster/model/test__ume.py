@@ -7,6 +7,8 @@ import torch
 from lobster.constants import Modality
 from lobster.model import UME
 
+from callbacks.test__memory_usage_callback import MemoryUsageCallback
+
 
 @pytest.fixture
 def sample_sequences():
@@ -646,66 +648,14 @@ class TestUME:
                 pytest.fail(f"Valid protein was rejected: {e}")
 
     def test_memory_usage_scaling(self):
-        """Document memory usage patterns"""
+        """Document memory usage patterns using callback."""
         ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
-
         sequence = "MKTVRQERLKSIVRILERSKEPVSGAQL"
-        batch_sizes = [1, 5, 10, 25, 50, 100]
 
-        memory_data = {}
-        max_successful_batch = 0
+        callback = MemoryUsageCallback(batch_sizes=[1, 5, 10, 25, 50, 100], verbose=True)
 
-        for batch_size in batch_sizes:
-            sequences = [sequence] * batch_size
+        memory_data = callback.run_test(ume, sequence, "amino_acid")
 
-            try:
-                # Measure memory if on GPU
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    memory_before = torch.cuda.memory_allocated()
-
-                embeddings = ume.embed_sequences(sequences, "amino_acid")
-
-                if torch.cuda.is_available():
-                    memory_after = torch.cuda.memory_allocated()
-                    memory_used_mb = (memory_after - memory_before) / (1024**2)
-                    memory_per_seq = memory_used_mb / batch_size
-                else:
-                    memory_used_mb = None
-                    memory_per_seq = None
-
-                memory_data[batch_size] = {
-                    "status": "success",
-                    "total_memory_mb": memory_used_mb,
-                    "memory_per_seq_mb": memory_per_seq,
-                    "output_shape": embeddings.shape,
-                }
-
-                max_successful_batch = batch_size
-
-                # Clean up
-                del embeddings
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-
-            except Exception as e:
-                memory_data[batch_size] = {
-                    "status": "failed",
-                    "error_type": type(e).__name__,
-                    "error_msg": str(e)[:100],
-                }
-                break  # Stop at first failure
-        print(f"Test sequence length: {len(sequence)}")
-
-        for batch_size, data in memory_data.items():
-            if data["status"] == "success":
-                if data["total_memory_mb"] is not None:
-                    print(
-                        f"Batch {batch_size:4d}:  {data['total_memory_mb']:.1f} MB total ({data['memory_per_seq_mb']:.2f} MB/seq)"
-                    )
-                else:
-                    print(f"Batch {batch_size:4d}: (CPU - memory not measured)")
-            else:
-                print(f"Batch {batch_size:4d}: {data['error_type']}")
-
-        print(f"\nMax successful batch size: {max_successful_batch}")
+        # Your assertions
+        assert callback.max_successful_batch > 0
+        assert len(memory_data) > 0
