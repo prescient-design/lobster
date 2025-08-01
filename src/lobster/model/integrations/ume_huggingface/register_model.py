@@ -2,19 +2,19 @@
 Register UME model and tokenizer with AutoClass API and upload to HuggingFace Hub
 """
 
+import os
+
 from huggingface_hub import HfApi
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 
+from lobster.constants import HF_UME_MODEL_DIRPATH, HF_UME_REPO_ID
 from lobster.model.integrations.ume_huggingface.configuration_ume import UMEConfig
 from lobster.model.integrations.ume_huggingface.modeling_ume import UMEModel
-
 from lobster.model.integrations.ume_huggingface.tokenization_ume import (
     UMEAminoAcidTokenizer,
-    UMESmilesTokenizer,
     UMENucleotideTokenizer,
+    UMESmilesTokenizer,
 )
-from lobster.constants import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
-import os
 
 
 def register_and_save_model(upload_to_hf: bool = False):

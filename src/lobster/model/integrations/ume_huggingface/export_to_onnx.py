@@ -1,13 +1,14 @@
-from lobster.model import UME
-from lobster.constants import HF_UME_MODEL_DIRPATH, UME_MODEL_VERSIONS
 import onnxruntime as ort
 import torch
 
+from lobster.constants import HF_UME_MODEL_DIRPATH, UME_MODEL_VERSIONS, Modality
+from lobster.model import UME
+
 
 def export_ume_models_to_onnx():
-    for model_version in UME_MODEL_VERSIONS[-1:]:
+    for model_version in UME_MODEL_VERSIONS:
         model = UME.from_pretrained(model_version)
-        model.export_onnx(HF_UME_MODEL_DIRPATH / f"{model_version}.onnx")
+        model.export_onnx(HF_UME_MODEL_DIRPATH / f"{model_version}.onnx", modality=Modality.SMILES)
 
         print(f"Exported {model_version} to ONNX")
 

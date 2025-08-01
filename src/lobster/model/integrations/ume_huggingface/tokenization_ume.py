@@ -5,11 +5,10 @@ that supports amino acids, SMILES, and nucleotide sequences.
 """
 
 import os
-
 import re
+
 from huggingface_hub import hf_hub_download
 from transformers import PreTrainedTokenizer
-
 
 # HuggingFace repository configuration
 HF_UME_REPO_ID = "karina-zadorozhny/ume"

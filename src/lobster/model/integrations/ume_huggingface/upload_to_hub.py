@@ -1,6 +1,6 @@
 from huggingface_hub import HfApi
 
-from lobster.constants import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
+from lobster.constants import HF_UME_MODEL_DIRPATH, HF_UME_REPO_ID
 
 
 def create_repo():
