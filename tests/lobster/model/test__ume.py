@@ -519,7 +519,7 @@ class TestUME:
             local_filename="ume-mini-base-12M-20250711-061718.ckpt",
             load_func=UME.load_from_checkpoint,
             device=None,
-            use_flash_attn=None,
+            use_flash_attn=True,
         )
 
         assert result == mock_model
