@@ -116,7 +116,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
                 logger.info("Flash attention detected and enabled for better performance")
             else:
                 # Requested, but either CUDA unavailable or flash attention unavailable
-                logger.info("Flash attention requested but not available - flash attention will be disabled")
+                logger.warning("Flash attention requested but not available - flash attention will be disabled")
         else:
             logger.info("Flash attention disabled")
 
