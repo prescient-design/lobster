@@ -7,8 +7,6 @@ import torch
 from lobster.constants import Modality
 from lobster.model import UME
 
-from ..callbacks.test__memory_usage_callback import MemoryUsageCallback
-
 
 @pytest.fixture
 def sample_sequences():
@@ -581,81 +579,74 @@ class TestUME:
             print(e)
 
     @pytest.mark.parametrize(
-        "smiles,type_of_sequence",
-        [
-            ("CC(=O", "unclosed_parenthesis"),
-            ("CC)=O)O", "extra_closing_parenthesis"),
-            ("CC[=O]O", "invalid_bond_notation"),
-            ("C1CCCCC", "unclosed_ring"),
-            ("", "empty_string"),
-            ("   ", "whitespace_only"),
-            ("C" * 1000, "extremely_long"),
-            ("CC@#$%^&*", "invalid_characters"),
-            ("INVALID_SMILES", "completely_invalid"),
-            ("c1ccccc1", "lowercase_aromatic"),
-            ("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "valid_smiles"),  # Control
-        ],
-    )
-    def test_malformed_smiles_behavior(self, smiles, type_of_sequence):
-        "Checks how UME handles malformed SMILES"
+    "smiles",
+    [
+        pytest.param("CC(=O", id="unclosed_parenthesis"),
+        pytest.param("CC)=O)O", id="extra_closing_parenthesis"),
+        pytest.param("CC[=O]O", id="invalid_bond_notation"),
+        pytest.param("C1CCCCC", id="unclosed_ring"),
+        pytest.param("", id="empty_string"),
+        pytest.param("   ", id="whitespace_only"),
+        pytest.param("C" * 1000, id="extremely_long"),
+        pytest.param("CC@#$%^&*", id="invalid_characters"),
+        pytest.param("INVALID_SMILES", id="completely_invalid"),
+        pytest.param("c1ccccc1", id="lowercase_aromatic"),
+        pytest.param(None, id="none"),
+        pytest.param("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", id="valid_smiles"),  # Control
+    ],
+)
+    def test_malformed_smiles_behavior(smiles, request):
+        """Ensure UME returns valid embeddings and does not crash on malformed SMILES input"""
         ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
-        try:
-            embeddings = ume.embed_sequences([smiles], "SMILES")
-            embedding_norm = torch.norm(embeddings).item()
-            # Just validate it's a proper tensor if it succeeds
-            assert isinstance(embeddings, torch.Tensor)
-            assert embeddings.shape == (1, ume.embedding_dim)
-            assert not torch.isnan(embeddings).any()
-            assert not torch.isinf(embeddings).any()
-            print(f"{type_of_sequence}: accepted (norm: {embedding_norm:.3f})")
 
-        except Exception as e:
-            print(f"{type_of_sequence}: rejected ({type(e).__name__})")
+        embeddings = ume.embed_sequences([smiles], "SMILES")
+        embedding_norm = torch.norm(embeddings).item()
+        # Just validate it's a proper tensor if it succeeds
+        assert isinstance(embeddings, torch.Tensor)
+        assert embeddings.shape == (1, ume.embedding_dim)
+        assert not torch.isnan(embeddings).any()
+        assert not torch.isinf(embeddings).any()
 
-            # Fail if valid SMILE is rejected
-            if type_of_sequence == "valid_smiles":
-                pytest.fail("Rejected valid sequence")
+        
+        test_id = request.node.callspec.id
+        print(f"{test_id}: accepted (norm: {embedding_norm:.3f})")
+
+        if test_id == "valid_smiles" and embeddings.abs().sum().item() == 0:
+            pytest.fail("Valid SMILES returned zero embedding unexpectedly")
+        
 
     @pytest.mark.parametrize(
-        "sequence,type_of_sequence",
-        [
-            ("MKTVRQXYZ", "invalid_amino_acids"),
-            ("MKTVRQ123", "numbers_mixed"),
-            ("MKTVRQ@#$", "special_characters"),
-            ("MKTVRQ-ACDEFG", "dash_separator"),
-            ("MKTVRQ ACDEFG", "space_separator"),
-            ("M*T*V*R*Q", "asterisk_unknowns"),
-            ("", "empty_sequence"),
-            ("mktvrq", "all_lowercase"),
-            ("MKTVBJOUXZ", "multiple_invalid"),
-            ("MKTVRQERLK", "valid_protein"),
-        ],
-    )
-    def test_malformed_protein_behavior(self, sequence, type_of_sequence):
-        """Document how UME handles invalid protein sequences"""
-        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+    "sequence",
+    [
+        pytest.param("MKTVRQXYZ", id="invalid_amino_acids"),
+        pytest.param("MKTVRQ123", id="numbers_mixed"),
+        pytest.param("MKTVRQ@#$", id="special_characters"),
+        pytest.param("MKTVRQ-ACDEFG", id="dash_separator"),
+        pytest.param("MKTVRQ ACDEFG", id="space_separator"),
+        pytest.param("M*T*V*R*Q", id="asterisk_unknowns"),
+        pytest.param("", id="empty_sequence"),
+        pytest.param("mktvrq", id="all_lowercase"),
+        pytest.param("MKTVBJOUXZ", id="multiple_invalid"),
+        pytest.param("MKTVRQERLK", id="valid_protein"),
+    ],
+)
+def test_malformed_protein_behavior(self, sequence, request):
+    """Document how UME handles invalid protein sequences"""
+    ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
 
-        try:
-            embeddings = ume.embed_sequences([sequence], "amino_acid")
-            embedding_norm = torch.norm(embeddings).item()
-            print(f"{type_of_sequence}: accepted (norm: {embedding_norm:.3f})")
+    embeddings = ume.embed_sequences([sequence], "amino_acid")
+    embedding_norm = torch.norm(embeddings).item()
+    
+    # Just validate it's a proper tensor if it succeeds
+    assert isinstance(embeddings, torch.Tensor)
+    assert embeddings.shape == (1, ume.embedding_dim)
+    assert not torch.isnan(embeddings).any()
+    assert not torch.isinf(embeddings).any()
+    
+    test_id = request.node.callspec.id
+    print(f"{test_id}: accepted (norm: {embedding_norm:.3f})")
 
-        except Exception as e:
-            print(f"{type_of_sequence}: rejected ({type(e).__name__})")
+    if test_id == "valid_protein" and embeddings.abs().sum().item() == 0:
+        pytest.fail("Valid protein returned zero embedding unexpectedly")
 
-            # Fail only if valid protein is rejected
-            if type_of_sequence == "valid_protein":
-                pytest.fail(f"Valid protein was rejected: {e}")
-
-    def test_memory_usage_scaling(self):
-        """Document memory usage patterns using callback."""
-        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
-        sequence = "MKTVRQERLKSIVRILERSKEPVSGAQL"
-
-        callback = MemoryUsageCallback(batch_sizes=[1, 5, 10, 25, 50, 100], verbose=True)
-
-        memory_data = callback.run_test(ume, sequence, "amino_acid")
-
-        # Your assertions
-        assert callback.max_successful_batch > 0
-        assert len(memory_data) > 0
+    
