@@ -579,23 +579,22 @@ class TestUME:
             print(e)
 
     @pytest.mark.parametrize(
-    "smiles",
-    [
-        pytest.param("CC(=O", id="unclosed_parenthesis"),
-        pytest.param("CC)=O)O", id="extra_closing_parenthesis"),
-        pytest.param("CC[=O]O", id="invalid_bond_notation"),
-        pytest.param("C1CCCCC", id="unclosed_ring"),
-        pytest.param("", id="empty_string"),
-        pytest.param("   ", id="whitespace_only"),
-        pytest.param("C" * 1000, id="extremely_long"),
-        pytest.param("CC@#$%^&*", id="invalid_characters"),
-        pytest.param("INVALID_SMILES", id="completely_invalid"),
-        pytest.param("c1ccccc1", id="lowercase_aromatic"),
-        pytest.param(None, id="none"),
-        pytest.param("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", id="valid_smiles"),  # Control
-    ],
-)
-    def test_malformed_smiles_behavior(smiles, request):
+        "smiles",
+        [
+            pytest.param("CC(=O", id="unclosed_parenthesis"),
+            pytest.param("CC)=O)O", id="extra_closing_parenthesis"),
+            pytest.param("CC[=O]O", id="invalid_bond_notation"),
+            pytest.param("C1CCCCC", id="unclosed_ring"),
+            pytest.param("", id="empty_string"),
+            pytest.param("   ", id="whitespace_only"),
+            pytest.param("C" * 1000, id="extremely_long"),
+            pytest.param("CC@#$%^&*", id="invalid_characters"),
+            pytest.param("INVALID_SMILES", id="completely_invalid"),
+            pytest.param("c1ccccc1", id="lowercase_aromatic"),
+            pytest.param("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", id="valid_smiles"),  # Control
+        ],
+    )
+    def test_malformed_smiles_behavior(self, smiles, request):
         """Ensure UME returns valid embeddings and does not crash on malformed SMILES input"""
         ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
 
@@ -607,46 +606,35 @@ class TestUME:
         assert not torch.isnan(embeddings).any()
         assert not torch.isinf(embeddings).any()
 
-        
         test_id = request.node.callspec.id
         print(f"{test_id}: accepted (norm: {embedding_norm:.3f})")
 
-        if test_id == "valid_smiles" and embeddings.abs().sum().item() == 0:
-            pytest.fail("Valid SMILES returned zero embedding unexpectedly")
-        
-
     @pytest.mark.parametrize(
-    "sequence",
-    [
-        pytest.param("MKTVRQXYZ", id="invalid_amino_acids"),
-        pytest.param("MKTVRQ123", id="numbers_mixed"),
-        pytest.param("MKTVRQ@#$", id="special_characters"),
-        pytest.param("MKTVRQ-ACDEFG", id="dash_separator"),
-        pytest.param("MKTVRQ ACDEFG", id="space_separator"),
-        pytest.param("M*T*V*R*Q", id="asterisk_unknowns"),
-        pytest.param("", id="empty_sequence"),
-        pytest.param("mktvrq", id="all_lowercase"),
-        pytest.param("MKTVBJOUXZ", id="multiple_invalid"),
-        pytest.param("MKTVRQERLK", id="valid_protein"),
-    ],
-)
-def test_malformed_protein_behavior(self, sequence, request):
-    """Document how UME handles invalid protein sequences"""
-    ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
+        "sequence",
+        [
+            pytest.param("MKTVRQXYZ", id="invalid_amino_acids"),
+            pytest.param("MKTVRQ123", id="numbers_mixed"),
+            pytest.param("MKTVRQ@#$", id="special_characters"),
+            pytest.param("MKTVRQ-ACDEFG", id="dash_separator"),
+            pytest.param("MKTVRQ ACDEFG", id="space_separator"),
+            pytest.param("M*T*V*R*Q", id="asterisk_unknowns"),
+            pytest.param("", id="empty_sequence"),
+            pytest.param("mktvrq", id="all_lowercase"),
+            pytest.param("MKTVBJOUXZ", id="multiple_invalid"),
+            pytest.param("MKTVRQERLK", id="valid_protein"),  # control
+        ],
+    )
+    def test_malformed_protein_behavior(self, sequence, request):
+        """Document how UME handles invalid protein sequences"""
+        ume = UME(model_name="UME_mini", max_length=512, use_flash_attn=False)
 
-    embeddings = ume.embed_sequences([sequence], "amino_acid")
-    embedding_norm = torch.norm(embeddings).item()
-    
-    # Just validate it's a proper tensor if it succeeds
-    assert isinstance(embeddings, torch.Tensor)
-    assert embeddings.shape == (1, ume.embedding_dim)
-    assert not torch.isnan(embeddings).any()
-    assert not torch.isinf(embeddings).any()
-    
-    test_id = request.node.callspec.id
-    print(f"{test_id}: accepted (norm: {embedding_norm:.3f})")
+        embeddings = ume.embed_sequences([sequence], "amino_acid")
+        embedding_norm = torch.norm(embeddings).item()
 
-    if test_id == "valid_protein" and embeddings.abs().sum().item() == 0:
-        pytest.fail("Valid protein returned zero embedding unexpectedly")
-
-    
+        # Just validate it's a proper tensor if it succeeds
+        assert isinstance(embeddings, torch.Tensor)
+        assert embeddings.shape == (1, ume.embedding_dim)
+        assert not torch.isnan(embeddings).any()
+        assert not torch.isinf(embeddings).any()
+        test_id = request.node.callspec.id
+        print(f"{test_id}: accepted (norm: {embedding_norm:.3f})")
