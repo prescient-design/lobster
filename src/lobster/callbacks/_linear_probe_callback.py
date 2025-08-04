@@ -5,7 +5,7 @@ from typing import Literal
 import lightning as L
 import numpy as np
 import torch
-from lobster.transforms import Transform
+from beignet.transforms import Transform
 from lightning.pytorch.callbacks import Callback
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
@@ -100,16 +100,18 @@ class LinearProbeCallback(Callback):
         return trainer.current_epoch % self.run_every_n_epochs != 0
 
     def _get_embeddings(
-        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader
+        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader, modality: str = None
     ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader.
 
         Parameters
         ----------
         model : Union[L.LightningModule, torch.nn.Module]
-            The model to extract embeddings from
+            The model to extract embeddings from (assumes UME)
         dataloader : DataLoader
             DataLoader for the data to extract embeddings for
+        modality : str, optional
+            Explicit modality for embed_sequences. If None, falls back to embed() method.
 
         Returns
         -------
@@ -124,20 +126,18 @@ class LinearProbeCallback(Callback):
         with torch.no_grad():
             for batch in dataloader:
                 x, y = batch
-                x = {k: v.to(model.device) for k, v in x.items()}
+                
+                if modality is not None and isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x):
+                    # Raw sequences with explicit modality - use embed_sequences (preferred)
+                    batch_embeddings = model.embed_sequences(list(x), modality=modality)
+                elif isinstance(x, dict) and "input_ids" in x:
+                    # Tokenized inputs - use embed method
+                    batch_embeddings = model.embed(x, aggregate=True)
+                else:
+                    # Fallback: try embed method
+                    batch_embeddings = model.embed(x, aggregate=True)
 
-                # Get token-level embeddings
-                batch_embeddings = model.model.tokens_to_latents(**x)
-
-                # Reshape to (batch_size, seq_len, hidden_size)
-                batch_size = len(y)
-                seq_len = x["input_ids"].size(-1)
-                batch_embeddings = batch_embeddings.view(batch_size, seq_len, -1)
-
-                # Simple mean pooling over sequence length dimension
-                seq_embeddings = batch_embeddings.mean(dim=1)
-
-                embeddings.append(seq_embeddings.cpu())
+                embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
 
         return torch.cat(embeddings), torch.cat(targets)
