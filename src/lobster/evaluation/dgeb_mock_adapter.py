@@ -37,7 +37,7 @@ class MockUMEAdapterDGEB(BioSeqTransformer):
         Pooling strategy (used for metadata only).
     modality : Literal["protein", "dna"], default="protein"
         Biological modality for the sequences.
-    use_flash_attn : bool | None, default=None
+    use_flash_attn : bool, default=False
         Whether to use flash attention (unused in mock implementation).
     embed_dim : int, default=768
         Embedding dimension for the random embeddings.
@@ -58,7 +58,7 @@ class MockUMEAdapterDGEB(BioSeqTransformer):
         batch_size: int = 128,
         pool_type: str = "mean",
         modality: Literal["protein", "dna"] = "protein",
-        use_flash_attn: bool | None = None,
+        use_flash_attn: bool = False,
         embed_dim: int = 768,
         num_layers: int = 12,
         seed: int = 42,
