@@ -506,7 +506,7 @@ class TestUME:
 
         mock_load_checkpoint.return_value = mock_model
 
-        result = UME.from_pretrained("ume-mini-base-12M")
+        result = UME.from_pretrained("ume-mini-base-12M", use_flash_attn=False)
 
         mock_get_checkpoints.assert_called_once()
         mock_get_timestamp.assert_called_once_with("s3://bucket/ume-mini-base-12M.ckpt")
@@ -519,7 +519,7 @@ class TestUME:
             local_filename="ume-mini-base-12M-20250711-061718.ckpt",
             load_func=UME.load_from_checkpoint,
             device=None,
-            use_flash_attn=None,
+            use_flash_attn=False,
         )
 
         assert result == mock_model

@@ -42,8 +42,11 @@ class UMEAdapterDGEB(BioSeqTransformer):
         Pooling strategy. One of "mean", "max", "cls", "last".
     modality : Literal["protein", "dna"], default="protein"
         Biological modality for the sequences.
-    use_flash_attn : bool | None, default=None
-        Whether to use flash attention. If None, determined by device availability.
+    use_flash_attn : bool, default=True
+        Whether to use flash attention.
+        If True: flash attention will be enabled only if the device is "cuda" and
+        flash attention is available.
+        If False: flash attention is disabled.
     """
 
     def __init__(
@@ -57,7 +60,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
         batch_size: int = 128,
         pool_type: str = "mean",
         modality: Literal["protein", "dna"] = "protein",
-        use_flash_attn: bool | None = None,
+        use_flash_attn: bool = True,
     ):
         logger.info(f"Initializing UMEAdapterDGEB with model_name={model_name}, modality={modality}")
         if devices is None:
@@ -106,19 +109,16 @@ class UMEAdapterDGEB(BioSeqTransformer):
 
         # Determine flash attention usage
         use_flash_attn = False
-        if self._use_flash_attn is not None:
-            # User explicitly specified flash attention preference
-            use_flash_attn = self._use_flash_attn
-            if use_flash_attn and device == "cpu":
-                logger.warning("Flash attention requested but using CPU - flash attention will be disabled")
-                use_flash_attn = False
-        elif device == "cuda":
-            # Auto-detect flash attention availability on GPU
-            use_flash_attn = self._check_flash_attention_available()
-            if use_flash_attn:
+        if self._use_flash_attn:
+            # Enable flash attention only if CUDA is available and flash attention is available
+            if device == "cuda" and self._check_flash_attention_available():
+                use_flash_attn = True
                 logger.info("Flash attention detected and enabled for better performance")
             else:
-                logger.info("Flash attention not available - using standard attention")
+                # Requested, but either CUDA unavailable or flash attention unavailable
+                logger.warning("Flash attention requested but not available - flash attention will be disabled")
+        else:
+            logger.info("Flash attention disabled")
 
         return device, use_flash_attn
 
