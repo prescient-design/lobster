@@ -133,11 +133,14 @@ class TestUMEONNX:
 
         # Get ONNX output using utility with the same max_length as the model
         onnx_output = run_onnx_inference(
-            str(onnx_path), test_sequences, Modality.SMILES, max_length=ume_model.max_length
+            str(onnx_path),
+            test_sequences,
+            modality=Modality.SMILES,
+            max_length=ume_model.max_length,
         )
 
         # Get PyTorch output for comparison
-        pytorch_output_sequences = ume_model.embed_sequences(test_sequences, Modality.SMILES, aggregate=True)
+        pytorch_output_sequences = ume_model.embed_sequences(test_sequences, modality=Modality.SMILES, aggregate=True)
 
         # Compare outputs - ensure both are on CPU for comparison
         assert onnx_output.shape == pytorch_output_sequences.shape, (

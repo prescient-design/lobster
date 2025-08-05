@@ -57,3 +57,6 @@ results_summary.json
 # DXT extensions (large binary files)
 test_dxt/*
 *.dxt
+
+# UME HF model
+src/lobster/model/integrations/ume_huggingface/model/*
