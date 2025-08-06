@@ -1053,7 +1053,7 @@ class UME(L.LightningModule):
         cls,
         checkpoint_path: str,
         *args,
-        use_flash_attn: bool | None = None,
+        use_flash_attn: bool = True,
         device: str | None = None,
         **kwargs,
     ) -> "UME":
@@ -1067,8 +1067,9 @@ class UME(L.LightningModule):
         ----------
         checkpoint_path : str
             Path to the checkpoint file.
-        use_flash_attn : bool | None, optional
-            Whether to use flash attention. If None, will be determined based on device.
+        use_flash_attn : bool, default=True
+            Whether to attempt using flash attention. If True: flash attention will be enabled only if the device is "cuda".
+            If False: flash attention is disabled and no check is performed.
         device : str | None, optional
             Device to load the model on ("cpu", "cuda" or "mps"). If None, will be determined automatically.
         *args
@@ -1102,9 +1103,10 @@ class UME(L.LightningModule):
             else:
                 device = "cpu"
 
-        # Determine flash attention setting
-        if use_flash_attn is None:
-            use_flash_attn = device == "cuda"
+        # Resolve flash attention setting
+        if use_flash_attn and device != "cuda":
+            logger.warning("Flash attention requested but CUDA is unavailable - flash attention will be disabled.")
+            use_flash_attn = False
 
         # Configure model based on device
         model_kwargs = kwargs.pop("model_kwargs", {})
@@ -1132,7 +1134,7 @@ class UME(L.LightningModule):
         model_name: Literal["ume-mini-base-12M", "ume-small-base-90M", "ume-medium-base-480M", "ume-large-base-740M"],
         *,
         device: str | None = None,
-        use_flash_attn: bool | None = None,
+        use_flash_attn: bool = True,
         cache_dir: str | None = None,
         **kwargs,
     ) -> "UME":
@@ -1155,8 +1157,9 @@ class UME(L.LightningModule):
             - "ume-mini-base-12M" -> loads UME_mini with default checkpoint
         device : str | None, optional
             Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
-        use_flash_attn : bool | None, optional
-            Whether to use flash attention. If None, will be determined based on device.
+        use_flash_attn : bool, default=True
+            Whether to attempt using flash attention. If True: flash attention will be enabled only if the device is "cuda".
+            If False: flash attention is disabled and no check is performed.
         cache_dir : str | None, optional
             Directory to cache downloaded models. If None, uses 'models/ume' in current directory.
         **kwargs

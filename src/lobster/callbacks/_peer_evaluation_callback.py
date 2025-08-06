@@ -67,7 +67,16 @@ class PEEREvaluationCallback(LinearProbeCallback):
     Reference: Guo et al. (2023) "PEER: A Comprehensive and Multi-Task Benchmark for
     Protein Sequence Understanding" https://arxiv.org/abs/2206.02096
 
-    Supports both tokenizer-based models (UMETokenizerTransform) and sequence-based models (ESM).
+    Model compatibility:
+    - UME models: Use requires_tokenization=True (default)
+    - ESM models: Use requires_tokenization=False
+
+    WARNING: Using ESM models with requires_tokenization=True will cause runtime errors!
+    ESM models expect raw sequences, not tokenized inputs.
+
+    Both UME and ESM models must implement:
+    - embed_sequences(sequences, modality, aggregate) method
+    - embed(inputs, aggregate) method (UME for tokenized inputs, ESM for raw sequences)
     """
 
     def __init__(
@@ -121,6 +130,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
                 modality="amino_acid",
                 max_length=max_length,
             )
+        # If requires_tokenization=False and transform_fn=None, leave it as None
+        # If transform_fn is provided, use it as-is
 
         super().__init__(
             transform_fn=transform_fn,
@@ -204,6 +215,8 @@ class PEEREvaluationCallback(LinearProbeCallback):
     ) -> Tensor:
         """Process inputs and extract embeddings using UME's built-in embedding methods.
 
+        This method is compatible with UME and also supports ESM models.
+
         Parameters
         ----------
         pl_module : L.LightningModule
@@ -222,15 +235,40 @@ class PEEREvaluationCallback(LinearProbeCallback):
             Embeddings tensor of shape (batch_size, hidden_size) if aggregate=True
             or (batch_size, seq_len, hidden_size) if aggregate=False
         """
-        # Handle raw sequences directly using UME's embed_sequences method
+        # Safety check: Detect potentially incompatible model/tokenization combinations
+        model_name = getattr(pl_module.__class__, "__name__", str(type(pl_module)))
+        is_tokenized_input = isinstance(inputs, (dict, BatchEncoding))
+        isinstance(inputs, (list, str))
+
+        # Check for dangerous combinations
+        if "ESM" in model_name and self.requires_tokenization and is_tokenized_input:
+            raise ValueError(
+                f"ESM models expect raw sequences, not tokenized inputs. "
+                f"Set requires_tokenization=False when using {model_name}. "
+                f"Current config: requires_tokenization={self.requires_tokenization}, "
+                f"inputs are tokenized={is_tokenized_input}"
+            )
+
+        # Handle raw sequences directly using embed_sequences method
         if isinstance(inputs, (str, list)) and not isinstance(inputs, dict):
-            # Use UME's embed_sequences method directly for raw sequences
+            # Use embed_sequences method directly for raw sequences (UME and ESM)
             return pl_module.embed_sequences(inputs, modality=modality, aggregate=aggregate)
 
-        # Handle tokenized inputs using UME's embed method
+        # Handle tokenized inputs using embed method
         elif isinstance(inputs, (dict, BatchEncoding)) and "input_ids" in inputs:
-            # For tokenized inputs, use UME's embed method
-            return pl_module.embed(inputs, aggregate=aggregate)
+            # For tokenized inputs, use embed method (UME)
+            try:
+                return pl_module.embed(inputs, aggregate=aggregate)
+            except NotImplementedError as err:
+                # ESM doesn't support tokenized inputs, so extract sequences if available
+                if hasattr(inputs, "original_sequence"):
+                    sequences = inputs.original_sequence
+                    return pl_module.embed_sequences(sequences, modality=modality, aggregate=aggregate)
+                else:
+                    raise ValueError(
+                        f"Model {type(pl_module)} doesn't support tokenized inputs "
+                        f"and no original sequences available in the data"
+                    ) from err
 
         # Handle mixed case - try to extract sequences if possible
         else:

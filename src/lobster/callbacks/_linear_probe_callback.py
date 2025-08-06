@@ -5,7 +5,7 @@ from typing import Literal
 import lightning as L
 import numpy as np
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from lightning.pytorch.callbacks import Callback
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
