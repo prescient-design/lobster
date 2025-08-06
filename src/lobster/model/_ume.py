@@ -1070,7 +1070,7 @@ class UME(L.LightningModule):
         use_flash_attn : bool | None, optional
             Whether to use flash attention. If None, will be determined based on device.
         device : str | None, optional
-            Device to load the model on ("cpu" or "cuda"). If None, will be determined automatically.
+            Device to load the model on ("cpu", "cuda" or "mps"). If None, will be determined automatically.
         *args
             Additional positional arguments to pass to the parent class's load_from_checkpoint.
         **kwargs
@@ -1088,12 +1088,19 @@ class UME(L.LightningModule):
         """
         # Determine device
         if device is not None:
-            if device not in ["cpu", "cuda"]:
-                raise ValueError(f"Invalid device: {device}. Must be one of ['cpu', 'cuda']")
+            if device not in ["cpu", "cuda", "mps"]:
+                raise ValueError(f"Invalid device: {device}. Must be one of ['cpu', 'cuda', 'mps']")
             if device == "cuda" and not torch.cuda.is_available():
                 raise ValueError("CUDA device requested but not available")
+            elif device == "mps" and not torch.backends.mps.is_available():
+                raise ValueError("MPS device requested but not available")
         else:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
 
         # Determine flash attention setting
         if use_flash_attn is None:
