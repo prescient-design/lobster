@@ -61,7 +61,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         transform_fn: Callable | None = None,
     ):
         self.requires_tokenization = requires_tokenization
-        
+
         # Set up transform function based on requirements
         if requires_tokenization and transform_fn is None:
             # Use default UME tokenizer for SMILES
@@ -71,7 +71,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
             )
         # If requires_tokenization=False and transform_fn=None, leave it as None
         # If transform_fn is provided, use it as-is
-        
+
         super().__init__(
             transform_fn=transform_fn,
             task_type="regression",
@@ -90,7 +90,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         aggregate: bool = True,
     ):
         """Process inputs and extract embeddings with support for different model types.
-        
+
         Parameters
         ----------
         pl_module : L.LightningModule
@@ -102,7 +102,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
             The modality of the inputs
         aggregate : bool, default=True
             Whether to average pool over sequence length
-            
+
         Returns
         -------
         torch.Tensor
@@ -112,7 +112,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         model_name = getattr(pl_module.__class__, "__name__", str(type(pl_module)))
         is_tokenized_input = isinstance(inputs, dict)
         is_raw_input = isinstance(inputs, (list, str))
-        
+
         # Check for dangerous combinations - hypothetical molecular models that might be like ESM
         if not self.requires_tokenization and is_tokenized_input:
             raise ValueError(
@@ -121,17 +121,17 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
                 f"Current config: requires_tokenization={self.requires_tokenization}, "
                 f"inputs are tokenized={is_tokenized_input}"
             )
-        
+
         # Handle raw sequences directly using embed_sequences method
         if is_raw_input and not isinstance(inputs, dict):
             # Use embed_sequences method directly for raw sequences
             return pl_module.embed_sequences(inputs, modality=modality, aggregate=aggregate)
-            
+
         # Handle tokenized inputs using embed method
         elif isinstance(inputs, dict) and "input_ids" in inputs:
             # For tokenized inputs, use embed method
             return pl_module.embed(inputs, aggregate=aggregate)
-            
+
         # Fallback - try to use as is
         else:
             try:
@@ -145,20 +145,20 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
         """Extract embeddings with enhanced model compatibility."""
         embeddings = []
         targets = []
-        
+
         pl_module.eval()
         with torch.no_grad():
             for batch in dataloader:
                 x, y = batch
-                
+
                 # Use the enhanced embedding extraction
                 batch_embeddings = self._process_and_embed(
                     pl_module, x, modality=modality, aggregate=True
                 )
-                
+
                 embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
-                
+
         return torch.cat(embeddings), torch.cat(targets)
 
     def evaluate(
