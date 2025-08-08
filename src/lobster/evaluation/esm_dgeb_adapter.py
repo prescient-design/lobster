@@ -70,9 +70,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
         # Try to determine embedding dimension from a sample
         logger.info("Determining embedding dimension...")
         try:
-            sample_embedding = self.process_and_embed_fn(
-                module, ["M"], modality="amino_acid", aggregate=True
-            )
+            sample_embedding = self.process_and_embed_fn(module, ["M"], modality="amino_acid", aggregate=True)
             self._embed_dim = sample_embedding.shape[-1]
             logger.info(f"Detected embedding dimension: {self._embed_dim}")
         except Exception as e:
@@ -105,7 +103,8 @@ class ESMAdapterDGEB(BioSeqTransformer):
 
         # DGEB expects the model to have a config attribute
         # Create a minimal config for ESM compatibility
-        if not hasattr(self.esm_module, 'config'):
+        if not hasattr(self.esm_module, "config"):
+
             class ESMConfig:
                 def __init__(self, embed_dim):
                     self.hidden_size = embed_dim
@@ -128,9 +127,15 @@ class ESMAdapterDGEB(BioSeqTransformer):
             def __init__(self):
                 self.model_max_length = max_length
                 self.vocab_size = 33  # ESM amino acid vocab size
-            def encode(self, text, **kwargs): return list(range(len(text)))
-            def decode(self, token_ids, **kwargs): return ""
-            def get_vocab(self): return {}
+
+            def encode(self, text, **kwargs):
+                return list(range(len(text)))
+
+            def decode(self, token_ids, **kwargs):
+                return ""
+
+            def get_vocab(self):
+                return {}
 
         return DummyTokenizer()
 
@@ -167,10 +172,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
             try:
                 # Get token-level embeddings first (no aggregation)
                 token_embeddings = self.process_and_embed_fn(
-                    self.esm_module,
-                    batch_sequences,
-                    modality="amino_acid",
-                    aggregate=False
+                    self.esm_module, batch_sequences, modality="amino_acid", aggregate=False
                 )
 
                 # Apply proper masked pooling (similar to UME adapter)

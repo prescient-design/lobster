@@ -7,7 +7,7 @@ from typing import Literal
 def apply_dgeb_pooling(
     token_embeddings: torch.Tensor,
     attention_mask: torch.Tensor,
-    pool_type: Literal["mean", "max", "cls", "last"] = "mean"
+    pool_type: Literal["mean", "max", "cls", "last"] = "mean",
 ) -> torch.Tensor:
     """Apply pooling to token-level embeddings with proper attention masking.
 
@@ -50,10 +50,7 @@ def apply_dgeb_pooling(
     elif pool_type == "last":
         # Use the last real token (before padding)
         lengths = attention_mask.sum(dim=1) - 1  # Last real token index
-        pooled = torch.stack([
-            token_embeddings[i, l.long(), :]
-            for i, l in enumerate(lengths)
-        ], dim=0)
+        pooled = torch.stack([token_embeddings[i, l.long(), :] for i, l in enumerate(lengths)], dim=0)
 
     else:
         raise ValueError(f"Unsupported pool_type: {pool_type}")
@@ -61,10 +58,7 @@ def apply_dgeb_pooling(
     return pooled
 
 
-def create_attention_mask_from_embeddings(
-    token_embeddings: torch.Tensor,
-    threshold: float = 1e-8
-) -> torch.Tensor:
+def create_attention_mask_from_embeddings(token_embeddings: torch.Tensor, threshold: float = 1e-8) -> torch.Tensor:
     """Create attention mask by detecting non-zero embeddings.
 
     This is useful for models like ESM that don't provide explicit attention masks

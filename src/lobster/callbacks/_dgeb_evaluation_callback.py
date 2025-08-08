@@ -9,7 +9,6 @@ from lightning.pytorch.callbacks import Callback
 from transformers.tokenization_utils_base import BatchEncoding
 
 from lobster.evaluation import run_evaluation, generate_report
-from lobster.constants import Modality
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +67,11 @@ class DGEBEvaluationCallback(Callback):
         layers: list[int] | Literal["mid"] | Literal["last"] | None = "last",
     ):
         super().__init__()
-        
+
         # Validate critical parameters
         if modality not in ["protein", "dna"]:
             raise ValueError(f"modality must be 'protein' or 'dna', got {modality}")
-        
+
         self.model_name = model_name
         self.modality = modality
         self.tasks = tasks
@@ -106,15 +105,15 @@ class DGEBEvaluationCallback(Callback):
 
         # Extract task results (use last layer scores as main results)
         task_metrics = {"accuracy": [], "f1": [], "top_corr": []}
-        
+
         for result in results_summary.get("results", []):
             task_name = result.get("task_name", "unknown")
             scores = result.get("scores", {})
-            
+
             if scores:
                 last_layer_scores = list(scores.values())[-1]
                 callback_results[task_name] = last_layer_scores
-                
+
                 # Collect metrics for summary
                 for metric in task_metrics:
                     if metric in last_layer_scores:
@@ -125,7 +124,7 @@ class DGEBEvaluationCallback(Callback):
         for metric, values in task_metrics.items():
             if values:
                 summary[f"mean_{metric}"] = sum(values) / len(values)
-        
+
         if summary:
             callback_results["summary"] = summary
 
@@ -165,7 +164,7 @@ class DGEBEvaluationCallback(Callback):
             # Map callback modality terms to what models expect
             modality_map = {"protein": "amino_acid", "dna": "nucleotide"}
             modality = modality_map.get(self.modality, self.modality)
-        
+
         # Handle raw sequences (preferred for both UME and ESM)
         if isinstance(inputs, (str, list)) and not isinstance(inputs, dict):
             return pl_module.embed_sequences(inputs, modality=modality, aggregate=aggregate)
@@ -184,7 +183,7 @@ class DGEBEvaluationCallback(Callback):
         else:
             if hasattr(inputs, "original_sequence"):
                 return pl_module.embed_sequences(inputs.original_sequence, modality=modality, aggregate=aggregate)
-            
+
             try:
                 return pl_module.embed(inputs, aggregate=aggregate)
             except Exception as e:
@@ -203,10 +202,10 @@ class DGEBEvaluationCallback(Callback):
 
         # Use checkpoint-based approach for UME models
         temp_checkpoint = Path(tempfile.mkdtemp()) / "dgeb_checkpoint.ckpt"
-        
+
         try:
             logger.info(f"Running DGEB evaluation for {self.model_name} on {self.modality} tasks")
-            
+
             # Save temporary checkpoint (DGEB adapter expects a path)
             if trainer is not None:
                 # Use the existing trainer to save checkpoint
@@ -214,15 +213,15 @@ class DGEBEvaluationCallback(Callback):
             else:
                 # Use Lightning's built-in checkpoint saving
                 checkpoint = {
-                    'state_dict': module.state_dict(),
-                    'lr_schedulers': [],
-                    'epoch': 0,
-                    'global_step': 0,
-                    'pytorch-lightning_version': L.__version__,
-                    'hyper_parameters': getattr(module, 'hparams', {}),
+                    "state_dict": module.state_dict(),
+                    "lr_schedulers": [],
+                    "epoch": 0,
+                    "global_step": 0,
+                    "pytorch-lightning_version": L.__version__,
+                    "hyper_parameters": getattr(module, "hparams", {}),
                 }
                 torch.save(checkpoint, temp_checkpoint)
-            
+
             # Run DGEB evaluation
             results_summary = run_evaluation(
                 model_name=str(temp_checkpoint),
@@ -269,7 +268,7 @@ class DGEBEvaluationCallback(Callback):
         except Exception as e:
             logger.error(f"DGEB evaluation failed: {e}")
             return {"error": f"DGEB evaluation failed: {str(e)}", "_metadata": {"model_name": self.model_name}}
-            
+
         finally:
             # Clean up temporary checkpoint
             if temp_checkpoint.exists():
@@ -290,11 +289,11 @@ class DGEBEvaluationCallback(Callback):
             from dgeb.modality import Modality as DGEBModality
             from datetime import datetime
             from lobster.evaluation import ESMAdapterDGEB
-            
+
             # Create output directory
             output_path = Path(self.output_dir)
             output_path.mkdir(exist_ok=True, parents=True)
-            
+
             # Get tasks to run
             if self.tasks is None:
                 modality_map = {"protein": DGEBModality.PROTEIN, "dna": DGEBModality.DNA}
@@ -319,31 +318,31 @@ class DGEBEvaluationCallback(Callback):
                 layers=self.layers,
                 process_and_embed_fn=self._process_and_embed,
             )
-            
+
             # Run evaluation
             evaluation = dgeb.DGEB(tasks=task_classes, seed=self.seed)
             start_time = datetime.now()
             results = evaluation.run(esm_adapter, output_folder=str(output_path))
             end_time = datetime.now()
             evaluation_time = str(end_time - start_time)
-            
+
             # Process results
             results_summary = {
                 "model_name": self.model_name,
                 "modality": self.modality,
                 "evaluation_time": evaluation_time,
                 "timestamp": datetime.now().isoformat(),
-                "embedding_dim": getattr(esm_adapter, 'embed_dim', 'unknown'),
+                "embedding_dim": getattr(esm_adapter, "embed_dim", "unknown"),
                 "total_tasks": len(task_classes),
                 "tasks_run": [getattr(task.metadata, "display_name", "Unknown") for task in task_classes],
                 "model_metadata": esm_adapter.metadata,
-                "results": []
+                "results": [],
             }
-            
+
             # Convert results to our format with error handling for individual tasks
             successful_tasks = 0
             failed_tasks = []
-            
+
             for result in results:
                 try:
                     task_name = getattr(result.task, "display_name", "Unknown Task")
@@ -352,7 +351,7 @@ class DGEBEvaluationCallback(Callback):
                         "task_type": getattr(result.task, "type", "Unknown Type"),
                         "scores": {},
                     }
-                    
+
                     # Extract scores from each layer result
                     for layer_result in result.results:
                         layer_name = f"layer_{layer_result.layer_number}"
@@ -361,26 +360,26 @@ class DGEBEvaluationCallback(Callback):
                         for metric in layer_result.metrics:
                             metrics_dict[metric.id] = metric.value
                         task_summary["scores"][layer_name] = metrics_dict
-                    
+
                     results_summary["results"].append(task_summary)
                     successful_tasks += 1
                     logger.info(f"Successfully processed results for task: {task_name}")
-                    
+
                 except Exception as e:
-                    task_name = getattr(getattr(result, 'task', None), 'display_name', 'Unknown Task')
+                    task_name = getattr(getattr(result, "task", None), "display_name", "Unknown Task")
                     logger.warning(f"Failed to process results for task '{task_name}': {e}")
                     failed_tasks.append(task_name)
                     continue  # Continue with next task
-            
+
             # Add summary of task processing
             results_summary["successful_tasks"] = successful_tasks
             results_summary["failed_tasks"] = failed_tasks
             results_summary["total_attempted_tasks"] = len(results)
-            
+
             if failed_tasks:
                 logger.warning(f"Failed to process {len(failed_tasks)} tasks: {failed_tasks}")
             logger.info(f"Successfully processed {successful_tasks}/{len(results)} tasks")
-            
+
             # Generate report (don't let report generation failure kill the evaluation)
             try:
                 generate_report(results_summary, output_path)
@@ -388,7 +387,7 @@ class DGEBEvaluationCallback(Callback):
             except Exception as e:
                 logger.warning(f"Failed to generate evaluation report: {e}")
                 logger.warning("Continuing with result processing despite report generation failure")
-            
+
             # Log metrics to trainer if provided
             if trainer is not None and trainer.logger is not None:
                 for result in results_summary.get("results", []):
@@ -400,31 +399,33 @@ class DGEBEvaluationCallback(Callback):
                             last_layer_scores = list(scores.values())[-1]
                         else:
                             last_layer_scores = scores
-                            
+
                         for metric_name, metric_value in last_layer_scores.items():
                             metric_key = f"dgeb/{self.modality}/{task_name}/{metric_name}"
                             trainer.logger.log_metrics({metric_key: metric_value}, step=0)
-            
+
             # Convert to callback format and return
             callback_results = self._convert_results_to_callback_format(results_summary)
-            
+
             # Log completion summary
             if failed_tasks:
-                logger.warning(f"DGEB evaluation completed with {len(failed_tasks)} failed tasks. Results saved to: {self.output_dir}")
+                logger.warning(
+                    f"DGEB evaluation completed with {len(failed_tasks)} failed tasks. Results saved to: {self.output_dir}"
+                )
                 logger.warning(f"Failed tasks: {failed_tasks}")
             else:
                 logger.info(f"DGEB evaluation completed successfully. Results saved to: {self.output_dir}")
-            
+
             # Always return results, even if some tasks failed
             return callback_results
-            
+
         except ImportError:
             logger.error("DGEB library not available")
             return {"error": "DGEB library not available", "_metadata": {"model_name": self.model_name}}
-            
+
         except Exception as e:
             logger.error(f"DGEB evaluation failed completely: {e}")
             import traceback
+
             logger.error(f"Traceback: {traceback.format_exc()}")
             return {"error": f"DGEB evaluation failed: {str(e)}", "_metadata": {"model_name": self.model_name}}
- 

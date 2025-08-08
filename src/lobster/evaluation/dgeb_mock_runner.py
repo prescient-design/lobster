@@ -169,7 +169,7 @@ def run_mock_evaluation(
         # Extract key metrics from results with error handling for individual tasks
         successful_tasks = 0
         failed_tasks = []
-        
+
         for result in results:
             try:
                 task_name = getattr(result.task, "display_name", "Unknown Task")
@@ -191,18 +191,18 @@ def run_mock_evaluation(
                 results_summary["results"].append(task_summary)
                 successful_tasks += 1
                 logger.info(f"Successfully processed results for task: {task_name}")
-                
+
             except Exception as e:
-                task_name = getattr(getattr(result, 'task', None), 'display_name', 'Unknown Task')
+                task_name = getattr(getattr(result, "task", None), "display_name", "Unknown Task")
                 logger.warning(f"Failed to process results for task '{task_name}': {e}")
                 failed_tasks.append(task_name)
                 continue  # Continue with next task
-        
+
         # Add summary of task processing
         results_summary["successful_tasks"] = successful_tasks
         results_summary["failed_tasks"] = failed_tasks
         results_summary["total_attempted_tasks"] = len(results)
-        
+
         if failed_tasks:
             logger.warning(f"Failed to process {len(failed_tasks)} tasks: {failed_tasks}")
         logger.info(f"Successfully processed {successful_tasks}/{len(results)} tasks")

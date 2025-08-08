@@ -11,6 +11,7 @@ from lobster.callbacks import DGEBEvaluationCallback
 
 class MockModule(L.LightningModule):
     """Simple mock module for testing."""
+
     def state_dict(self):
         return {"mock": "data"}
 
@@ -35,11 +36,7 @@ class TestDGEBEvaluationCallback:
         assert callback.requires_tokenization is True
 
         # Test custom parameters
-        custom_callback = DGEBEvaluationCallback(
-            model_name="custom-model",
-            modality="dna",
-            requires_tokenization=False
-        )
+        custom_callback = DGEBEvaluationCallback(model_name="custom-model", modality="dna", requires_tokenization=False)
         assert custom_callback.model_name == "custom-model"
         assert custom_callback.modality == "dna"
         assert custom_callback.requires_tokenization is False
@@ -50,8 +47,8 @@ class TestDGEBEvaluationCallback:
 
         # UME callback should use checkpoint-based evaluation
         ume_callback = DGEBEvaluationCallback(requires_tokenization=True)
-        with patch.object(ume_callback, '_evaluate_esm_direct') as mock_esm_eval:
-            with patch('torch.save'), patch('lobster.callbacks._dgeb_evaluation_callback.run_evaluation'):
+        with patch.object(ume_callback, "_evaluate_esm_direct") as mock_esm_eval:
+            with patch("torch.save"), patch("lobster.callbacks._dgeb_evaluation_callback.run_evaluation"):
                 try:
                     ume_callback.evaluate(module, None)
                 except Exception:
@@ -61,7 +58,7 @@ class TestDGEBEvaluationCallback:
 
         # ESM callback should use direct evaluation
         esm_callback = DGEBEvaluationCallback(requires_tokenization=False)
-        with patch.object(esm_callback, '_evaluate_esm_direct', return_value={}) as mock_esm_eval:
+        with patch.object(esm_callback, "_evaluate_esm_direct", return_value={}) as mock_esm_eval:
             esm_callback.evaluate(module, None)
             # Should call ESM evaluation
             mock_esm_eval.assert_called_once()
@@ -69,8 +66,7 @@ class TestDGEBEvaluationCallback:
     @patch("lobster.callbacks._dgeb_evaluation_callback.run_evaluation")
     @patch("lobster.callbacks._dgeb_evaluation_callback.generate_report")
     @patch("torch.save")
-    def test_ume_evaluation_flow(self, mock_torch_save, mock_generate_report,
-                                mock_run_evaluation, mock_trainer):
+    def test_ume_evaluation_flow(self, mock_torch_save, mock_generate_report, mock_run_evaluation, mock_trainer):
         """Test UME model evaluation flow."""
         callback = DGEBEvaluationCallback(model_name="test-ume")
         module = MockModule()
@@ -89,15 +85,12 @@ class TestDGEBEvaluationCallback:
 
     def test_esm_evaluation_flow(self):
         """Test ESM model evaluation flow."""
-        callback = DGEBEvaluationCallback(
-            model_name="test-esm",
-            requires_tokenization=False
-        )
+        callback = DGEBEvaluationCallback(model_name="test-esm", requires_tokenization=False)
         module = MockModule()
 
         expected_results = {"_metadata": {"model_name": "test-esm"}}
 
-        with patch.object(callback, '_evaluate_esm_direct', return_value=expected_results) as mock_eval:
+        with patch.object(callback, "_evaluate_esm_direct", return_value=expected_results) as mock_eval:
             results = callback.evaluate(module, None)
 
             # Verify direct evaluation was used
@@ -109,12 +102,9 @@ class TestDGEBEvaluationCallback:
         callback = DGEBEvaluationCallback(requires_tokenization=False)
         module = MockModule()
 
-        error_results = {
-            "error": "DGEB library not available",
-            "_metadata": {"model_name": callback.model_name}
-        }
+        error_results = {"error": "DGEB library not available", "_metadata": {"model_name": callback.model_name}}
 
-        with patch.object(callback, '_evaluate_esm_direct', return_value=error_results):
+        with patch.object(callback, "_evaluate_esm_direct", return_value=error_results):
             results = callback.evaluate(module, None)
 
         assert "error" in results

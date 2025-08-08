@@ -126,7 +126,7 @@ class LinearProbeCallback(Callback):
         with torch.no_grad():
             for batch in dataloader:
                 x, y = batch
-                
+
                 if modality is not None and isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x):
                     # Raw sequences with explicit modality - use embed_sequences (preferred)
                     batch_embeddings = model.embed_sequences(list(x), modality=modality)

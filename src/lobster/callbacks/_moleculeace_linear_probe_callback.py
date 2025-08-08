@@ -139,9 +139,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
             except Exception as e:
                 raise ValueError(f"Could not process inputs of type {type(inputs)}: {e}") from e
 
-    def _get_embeddings(
-        self, pl_module: L.LightningModule, dataloader, modality: str = "SMILES"
-    ):
+    def _get_embeddings(self, pl_module: L.LightningModule, dataloader, modality: str = "SMILES"):
         """Extract embeddings with enhanced model compatibility."""
         embeddings = []
         targets = []
@@ -152,9 +150,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
                 x, y = batch
 
                 # Use the enhanced embedding extraction
-                batch_embeddings = self._process_and_embed(
-                    pl_module, x, modality=modality, aggregate=True
-                )
+                batch_embeddings = self._process_and_embed(pl_module, x, modality=modality, aggregate=True)
 
                 embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
