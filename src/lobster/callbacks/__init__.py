@@ -1,5 +1,6 @@
 from ._calm_linear_probe_callback import CalmLinearProbeCallback
 from ._dataloader_checkpoint_callback import DataLoaderCheckpointCallback
+from ._dgeb_evaluation_callback import DGEBEvaluationCallback
 from ._linear_probe_callback import LinearProbeCallback
 from ._moleculeace_linear_probe_callback import MoleculeACELinearProbeCallback
 from ._peer_evaluation_callback import PEEREvaluationCallback
@@ -11,6 +12,7 @@ from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
 __all__ = [
     "MoleculeACELinearProbeCallback",
     "DataLoaderCheckpointCallback",
+    "DGEBEvaluationCallback",
     "LinearProbeCallback",
     "CalmLinearProbeCallback",
     "PEEREvaluationCallback",

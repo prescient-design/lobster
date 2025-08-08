@@ -11,6 +11,7 @@ from dgeb.modality import Modality
 from lobster.constants import Modality as LobsterModality
 from lobster.model import UME
 from lobster.model.modern_bert._padding import unpad_input, pad_input
+from ._pooling_utils import apply_dgeb_pooling
 
 logger = logging.getLogger(__name__)
 
@@ -451,24 +452,10 @@ class UMEAdapterDGEB(BioSeqTransformer):
             all_hidden_states[i + 1] for i in self.layers
         ]  # +1 because all_hidden_states[0] is embedding
 
-        # Pool each layer
+        # Pool each layer using shared utility
         pooled_layers = []
         for layer_hidden in selected_layers:
-            if self.pool_type == "mean":
-                pooled = (layer_hidden * attention_mask.unsqueeze(-1)).sum(dim=1) / attention_mask.sum(
-                    dim=1, keepdim=True
-                )
-            elif self.pool_type == "max":
-                mask = attention_mask.unsqueeze(-1).expand_as(layer_hidden)
-                layer_hidden_masked = layer_hidden.masked_fill(mask == 0, float("-inf"))
-                pooled = layer_hidden_masked.max(dim=1)[0]
-            elif self.pool_type == "cls":
-                pooled = layer_hidden[:, 0, :]
-            elif self.pool_type == "last":
-                lengths = attention_mask.sum(dim=1) - 1
-                pooled = torch.stack([layer_hidden[i, l, :] for i, l in enumerate(lengths)], dim=0)
-            else:
-                raise ValueError(f"Unsupported pool_type: {self.pool_type}")
+            pooled = apply_dgeb_pooling(layer_hidden, attention_mask, self.pool_type)
             pooled_layers.append(pooled)
 
         # Stack: (batch, num_layers, dim)
