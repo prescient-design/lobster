@@ -67,16 +67,16 @@ class ESMAdapterDGEB(BioSeqTransformer):
         self._modality = modality
         self._max_seq_length = max_seq_length
 
-        # Try to determine embedding dimension from a sample
+        # Determine embedding dimension from a sample sequence
         logger.info("Determining embedding dimension...")
         try:
             sample_embedding = self.process_and_embed_fn(module, ["M"], modality="amino_acid", aggregate=True)
             self._embed_dim = sample_embedding.shape[-1]
             logger.info(f"Detected embedding dimension: {self._embed_dim}")
         except Exception as e:
-            # Fallback to common ESM embedding size
             logger.warning(f"Could not determine embedding dimension: {e}")
-            self._embed_dim = 1280  # Common ESM embedding size
+            # Fallback to common ESM-2 embedding dimension
+            self._embed_dim = 1280
             logger.info(f"Using fallback embedding dimension: {self._embed_dim}")
 
         # Set layers for ESM evaluation
@@ -102,42 +102,41 @@ class ESMAdapterDGEB(BioSeqTransformer):
         logger.info("Using provided ESM module, skipping model loading")
 
         # DGEB expects the model to have a config attribute
-        # Create a minimal config for ESM compatibility
         if not hasattr(self.esm_module, "config"):
-
-            class ESMConfig:
-                def __init__(self, embed_dim):
-                    self.hidden_size = embed_dim
-                    self.num_hidden_layers = 1
-
-            self.esm_module.config = ESMConfig(self._embed_dim)
+            # Create a minimal config object for DGEB compatibility
+            from types import SimpleNamespace
+            self.esm_module.config = SimpleNamespace(
+                hidden_size=self._embed_dim,
+                num_hidden_layers=1
+            )
             logger.info(f"Added config to ESM module: hidden_size={self._embed_dim}, num_layers=1")
 
         return self.esm_module
 
     def _get_tokenizer(self, model_name: str):
-        """Provide a dummy tokenizer for BioSeqTransformer interface compliance.
+        """Provide a minimal tokenizer for BioSeqTransformer interface compliance.
 
         Note: ESM sequence processing is handled entirely through process_and_embed_fn,
-        so this tokenizer is never actually used for encoding.
+        so this tokenizer is only used to satisfy the parent class interface requirements.
         """
-        max_length = self._max_seq_length
-
-        class DummyTokenizer:
-            def __init__(self):
-                self.model_max_length = max_length
-                self.vocab_size = 33  # ESM amino acid vocab size
-
-            def encode(self, text, **kwargs):
+        # Create a minimal tokenizer object with required attributes
+        class MinimalTokenizer:
+            model_max_length = self._max_seq_length
+            vocab_size = 33  # ESM amino acid vocab size
+            
+            @staticmethod
+            def encode(text, **kwargs):
                 return list(range(len(text)))
-
-            def decode(self, token_ids, **kwargs):
+            
+            @staticmethod
+            def decode(token_ids, **kwargs):
                 return ""
-
-            def get_vocab(self):
+            
+            @staticmethod
+            def get_vocab():
                 return {}
 
-        return DummyTokenizer()
+        return MinimalTokenizer()
 
     def encode(self, sequences: list[str], **kwargs) -> np.ndarray:
         """Encode sequences to embeddings using the ESM model.
@@ -158,10 +157,10 @@ class ESMAdapterDGEB(BioSeqTransformer):
             return np.array([])
 
         # Filter out empty sequences
-        valid_sequences = [seq for seq in sequences if seq.strip()]
+        valid_sequences = [seq for seq in sequences if seq and seq.strip()]
         if not valid_sequences:
             logger.warning("No valid sequences to encode")
-            return np.array([])
+            return np.empty((0, 1, self._embed_dim))
 
         # Process sequences in batches
         all_embeddings = []
@@ -187,19 +186,22 @@ class ESMAdapterDGEB(BioSeqTransformer):
                 all_embeddings.append(batch_embeddings_np)
 
             except Exception as e:
-                logger.error(f"Error encoding batch {i // self.batch_size + 1}: {e}")
-                # Return zeros for failed batch
+                batch_num = i // self.batch_size + 1
+                logger.error(f"Error encoding batch {batch_num}: {e}")
+                # Create zero embeddings for failed batch to maintain shape consistency
                 batch_size_local = len(batch_sequences)
                 zero_embeddings = np.zeros((batch_size_local, 1, self._embed_dim))
                 all_embeddings.append(zero_embeddings)
+                logger.warning(f"Returning zero embeddings for {batch_size_local} sequences in failed batch {batch_num}")
 
         # Concatenate all embeddings
         embeddings = np.concatenate(all_embeddings, axis=0)
 
-        # Apply L2 normalization if requested (same as UME adapter)
+        # Apply L2 normalization if requested (same as UME DGEB adapter)
         if self.l2_norm:
             # Normalize across the embedding dimension for each layer (axis=2)
-            embeddings = embeddings / np.linalg.norm(embeddings, axis=2, keepdims=True)
+            norms = np.linalg.norm(embeddings, axis=2, keepdims=True)
+            embeddings = np.divide(embeddings, norms, out=np.zeros_like(embeddings), where=norms!=0)
 
         logger.info(f"Encoded {len(valid_sequences)} sequences to embeddings of shape {embeddings.shape}")
         return embeddings
@@ -252,12 +254,16 @@ class ESMAdapterDGEB(BioSeqTransformer):
     @property
     def modality(self) -> Modality:
         """Return the biological modality (DGEB enum)."""
-        if self._modality == "protein":
-            return Modality.PROTEIN
-        elif self._modality == "dna":
-            return Modality.DNA
-        else:
-            raise ValueError(f"Unsupported modality: {self._modality}")
+        modality_map = {
+            "protein": Modality.PROTEIN,
+            "dna": Modality.DNA,
+            "nucleotide": Modality.DNA,  # Allow alternative naming
+        }
+        
+        if self._modality not in modality_map:
+            raise ValueError(f"Unsupported modality: {self._modality}. Supported: {list(modality_map.keys())}")
+        
+        return modality_map[self._modality]
 
     @property
     def embed_dim(self) -> int:
@@ -275,11 +281,12 @@ class ESMAdapterDGEB(BioSeqTransformer):
     @property
     def metadata(self) -> dict:
         """Return model metadata (compatible with DGEB expectations)."""
-        # Determine current device
+        # Determine current device and parameter count
         try:
             device = next(self.esm_module.parameters()).device.type
             total_params = sum(p.numel() for p in self.esm_module.parameters())
-        except Exception:
+        except (StopIteration, AttributeError):
+            # Fallback if model has no parameters or is not properly initialized
             device = "cpu"
             total_params = 0
 
