@@ -128,9 +128,7 @@ class LinearProbeCallback(Callback):
                 x, y = batch
 
                 # If modality is provided and inputs are raw strings, prefer embed_sequences
-                if modality is not None and (
-                    isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x)
-                ):
+                if modality is not None and (isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x)):
                     try:
                         batch_embeddings = model.embed_sequences(list(x), modality=modality, aggregate=True)
                     except AttributeError as exc:
