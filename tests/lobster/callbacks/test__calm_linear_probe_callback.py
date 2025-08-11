@@ -60,6 +60,39 @@ class MockLightningModule(torch.nn.Module):
         self.device = "cpu"
         self.model = MockModelWithEmbeddings(hidden_size)
 
+    def embed(self, x, aggregate: bool = True):  # noqa: ANN001
+        # Minimal embed implementation to satisfy callbacks. Accepts dict or tensor inputs.
+        if isinstance(x, dict):
+            # Try to infer batch size from any tensor field or list field
+            batch_size = None
+            for v in x.values():
+                if isinstance(v, torch.Tensor):
+                    batch_size = v.size(0)
+                    break
+                if isinstance(v, (list, tuple)):
+                    batch_size = len(v)
+                    break
+            if batch_size is None:
+                batch_size = 1
+        elif isinstance(x, torch.Tensor):
+            batch_size = x.size(0)
+        elif isinstance(x, (list, tuple)):
+            batch_size = len(x)
+        else:
+            batch_size = 1
+
+        # Return random embeddings; if aggregate, shape (B, hidden_size)
+        if aggregate:
+            return torch.randn(batch_size, self.hidden_size)
+        # Non-aggregated shape (B, T, H)
+        return torch.randn(batch_size, MAX_LENGTH, self.hidden_size)
+
+    def embed_sequences(self, sequences, modality: str, aggregate: bool = True):  # noqa: ANN001
+        batch_size = len(sequences)
+        if aggregate:
+            return torch.randn(batch_size, self.hidden_size)
+        return torch.randn(batch_size, MAX_LENGTH, self.hidden_size)
+
 
 @pytest.fixture
 def mock_trainer():

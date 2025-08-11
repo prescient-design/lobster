@@ -127,15 +127,51 @@ class LinearProbeCallback(Callback):
             for batch in dataloader:
                 x, y = batch
 
-                if modality is not None and isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x):
-                    # Raw sequences with explicit modality - use embed_sequences (preferred)
-                    batch_embeddings = model.embed_sequences(list(x), modality=modality)
-                elif isinstance(x, dict) and "input_ids" in x:
-                    # Tokenized inputs - use embed method
-                    batch_embeddings = model.embed(x, aggregate=True)
+                # If modality is provided and inputs are raw strings, prefer embed_sequences
+                if modality is not None and (
+                    isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x)
+                ):
+                    try:
+                        batch_embeddings = model.embed_sequences(list(x), modality=modality, aggregate=True)
+                    except AttributeError as exc:
+                        raise AttributeError(
+                            "Model must implement embed_sequences(sequences, modality=..., aggregate=True) for raw sequence inputs"
+                        ) from exc
+
+                elif isinstance(x, dict) and modality is not None:
+                    # Common dict batches may contain raw text under these keys
+                    candidate_keys = ["text", "sequence", "Sequence", "cds", "smiles"]
+                    text_list = None
+                    for k in candidate_keys:
+                        v = x.get(k)
+                        if isinstance(v, (list, tuple)) and all(isinstance(s, str) for s in v):
+                            text_list = list(v)
+                            break
+
+                    if text_list is not None:
+                        try:
+                            batch_embeddings = model.embed_sequences(text_list, modality=modality, aggregate=True)
+                        except AttributeError as exc:
+                            raise AttributeError(
+                                "Model must implement embed_sequences(sequences, modality=..., aggregate=True) for raw sequence inputs"
+                            ) from exc
+                    else:
+                        # Otherwise defer to embed for dict inputs
+                        try:
+                            batch_embeddings = model.embed(x, aggregate=True)
+                        except AttributeError as exc:
+                            raise AttributeError(
+                                "Model must implement embed(inputs, aggregate=True) for dict or tensor inputs"
+                            ) from exc
+
                 else:
-                    # Fallback: try embed method
-                    batch_embeddings = model.embed(x, aggregate=True)
+                    # Default path: rely on model.embed for tensorized/tokenized or generic inputs
+                    try:
+                        batch_embeddings = model.embed(x, aggregate=True)
+                    except AttributeError as exc:
+                        raise AttributeError(
+                            "Model must implement embed(inputs, aggregate=True) or embed_sequences(sequences, modality=..., aggregate=True)"
+                        ) from exc
 
                 embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
