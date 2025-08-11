@@ -105,10 +105,8 @@ class ESMAdapterDGEB(BioSeqTransformer):
         if not hasattr(self.esm_module, "config"):
             # Create a minimal config object for DGEB compatibility
             from types import SimpleNamespace
-            self.esm_module.config = SimpleNamespace(
-                hidden_size=self._embed_dim,
-                num_hidden_layers=1
-            )
+
+            self.esm_module.config = SimpleNamespace(hidden_size=self._embed_dim, num_hidden_layers=1)
             logger.info(f"Added config to ESM module: hidden_size={self._embed_dim}, num_layers=1")
 
         return self.esm_module
@@ -119,19 +117,20 @@ class ESMAdapterDGEB(BioSeqTransformer):
         Note: ESM sequence processing is handled entirely through process_and_embed_fn,
         so this tokenizer is only used to satisfy the parent class interface requirements.
         """
+
         # Create a minimal tokenizer object with required attributes
         class MinimalTokenizer:
             model_max_length = self._max_seq_length
             vocab_size = 33  # ESM amino acid vocab size
-            
+
             @staticmethod
             def encode(text, **kwargs):
                 return list(range(len(text)))
-            
+
             @staticmethod
             def decode(token_ids, **kwargs):
                 return ""
-            
+
             @staticmethod
             def get_vocab():
                 return {}
@@ -192,7 +191,9 @@ class ESMAdapterDGEB(BioSeqTransformer):
                 batch_size_local = len(batch_sequences)
                 zero_embeddings = np.zeros((batch_size_local, 1, self._embed_dim))
                 all_embeddings.append(zero_embeddings)
-                logger.warning(f"Returning zero embeddings for {batch_size_local} sequences in failed batch {batch_num}")
+                logger.warning(
+                    f"Returning zero embeddings for {batch_size_local} sequences in failed batch {batch_num}"
+                )
 
         # Concatenate all embeddings
         embeddings = np.concatenate(all_embeddings, axis=0)
@@ -201,7 +202,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
         if self.l2_norm:
             # Normalize across the embedding dimension for each layer (axis=2)
             norms = np.linalg.norm(embeddings, axis=2, keepdims=True)
-            embeddings = np.divide(embeddings, norms, out=np.zeros_like(embeddings), where=norms!=0)
+            embeddings = np.divide(embeddings, norms, out=np.zeros_like(embeddings), where=norms != 0)
 
         logger.info(f"Encoded {len(valid_sequences)} sequences to embeddings of shape {embeddings.shape}")
         return embeddings
@@ -259,10 +260,10 @@ class ESMAdapterDGEB(BioSeqTransformer):
             "dna": Modality.DNA,
             "nucleotide": Modality.DNA,  # Allow alternative naming
         }
-        
+
         if self._modality not in modality_map:
             raise ValueError(f"Unsupported modality: {self._modality}. Supported: {list(modality_map.keys())}")
-        
+
         return modality_map[self._modality]
 
     @property
