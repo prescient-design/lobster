@@ -17,6 +17,7 @@ callbacks:
   - _target_: lobster.callbacks.CalmLinearProbeCallback
     max_length: ${datamodule.tokenizer_max_length}
     batch_size: 8
+    # species defaults to ["hsapiens", "ecoli", "scerevisiae"] if not specified
   
   - _target_: lobster.callbacks.MoleculeACELinearProbeCallback
     max_length: ${datamodule.tokenizer_max_length}
