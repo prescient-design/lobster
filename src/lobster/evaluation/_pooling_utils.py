@@ -1,13 +1,13 @@
 """Shared pooling utilities for DGEB adapters."""
 
 import torch
-from typing import Literal
+from lobster.constants import PoolingType
 
 
 def apply_dgeb_pooling(
     token_embeddings: torch.Tensor,
     attention_mask: torch.Tensor,
-    pool_type: Literal["mean", "max", "cls", "last"] = "mean",
+    pool_type: PoolingType = PoolingType.MEAN,
 ) -> torch.Tensor:
     """Apply pooling to token-level embeddings with proper attention masking.
 
@@ -21,39 +21,40 @@ def apply_dgeb_pooling(
     attention_mask : torch.Tensor
         Attention mask of shape (batch_size, seq_len) where 1 indicates real tokens
         and 0 indicates padding tokens
-    pool_type : str, default="mean"
-        Pooling strategy. One of "mean", "max", "cls", "last"
+    pool_type : PoolingType, default=PoolingType.MEAN ("mean")
+        Pooling strategy. One of "mean", "max", "cls", "last", or in Enum format: PoolingType.MEAN, PoolingType.MAX, PoolingType.CLS, PoolingType.LAST
 
     Returns
     -------
     torch.Tensor
         Pooled embeddings of shape (batch_size, hidden_size)
     """
-    if pool_type == "mean":
-        # Masked mean pooling - exclude padding tokens
-        masked_embeddings = token_embeddings * attention_mask.unsqueeze(-1)
-        sum_embeddings = masked_embeddings.sum(dim=1)  # (batch_size, hidden_size)
-        token_counts = attention_mask.sum(dim=1, keepdim=True)  # (batch_size, 1)
-        token_counts = torch.clamp(token_counts, min=1.0)  # Avoid division by zero
-        pooled = sum_embeddings / token_counts
+    match pool_type:
+        case PoolingType.MEAN:
+            # Masked mean pooling - exclude padding tokens
+            masked_embeddings = token_embeddings * attention_mask.unsqueeze(-1)
+            sum_embeddings = masked_embeddings.sum(dim=1)  # (batch_size, hidden_size)
+            token_counts = attention_mask.sum(dim=1, keepdim=True)  # (batch_size, 1)
+            token_counts = torch.clamp(token_counts, min=1.0)  # Avoid division by zero
+            pooled = sum_embeddings / token_counts
 
-    elif pool_type == "max":
-        # Masked max pooling - set padding positions to -inf before max
-        mask_expanded = attention_mask.unsqueeze(-1).expand_as(token_embeddings)
-        masked_embeddings = token_embeddings.masked_fill(mask_expanded == 0, float("-inf"))
-        pooled = masked_embeddings.max(dim=1)[0]
+        case PoolingType.MAX:
+            # Masked max pooling - set padding positions to -inf before max
+            mask_expanded = attention_mask.unsqueeze(-1).expand_as(token_embeddings)
+            masked_embeddings = token_embeddings.masked_fill(mask_expanded == 0, float("-inf"))
+            pooled = masked_embeddings.max(dim=1)[0]
 
-    elif pool_type == "cls":
-        # Use the first token (typically CLS token)
-        pooled = token_embeddings[:, 0, :]
+        case PoolingType.CLS:
+            # Use the first token (typically CLS token)
+            pooled = token_embeddings[:, 0, :]
 
-    elif pool_type == "last":
-        # Use the last real token (before padding)
-        lengths = attention_mask.sum(dim=1) - 1  # Last real token index
-        pooled = torch.stack([token_embeddings[i, l.long(), :] for i, l in enumerate(lengths)], dim=0)
+        case PoolingType.LAST:
+            # Use the last real token (before padding)
+            lengths = attention_mask.sum(dim=1) - 1  # Last real token index
+            pooled = torch.stack([token_embeddings[i, l.long(), :] for i, l in enumerate(lengths)], dim=0)
 
-    else:
-        raise ValueError(f"Unsupported pool_type: {pool_type}")
+        case _:
+            raise ValueError(f"Unsupported pool_type: {pool_type}")
 
     return pooled
 

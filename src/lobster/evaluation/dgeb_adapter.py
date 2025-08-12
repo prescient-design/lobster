@@ -41,8 +41,8 @@ class UMEAdapterDGEB(BioSeqTransformer):
         Batch size for encoding.
     pool_type : str, default="mean"
         Pooling strategy. One of "mean", "max", "cls", "last".
-    modality : Literal["protein", "dna"], default="protein"
-        Biological modality for the sequences.
+    modality : LobsterModality, default=LobsterModality.AMINO_ACID
+        Biological modality for the sequences. One of LobsterModality.AMINO_ACID or LobsterModality.NUCLEOTIDE.
     use_flash_attn : bool | None, default=None
         Whether to use flash attention. If None, determined by device availability.
     """
@@ -57,7 +57,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
         l2_norm: bool = False,
         batch_size: int = 128,
         pool_type: str = "mean",
-        modality: Literal["protein", "dna"] = "protein",
+        modality: LobsterModality = LobsterModality.AMINO_ACID,
         use_flash_attn: bool | None = None,
     ):
         logger.info(f"Initializing UMEAdapterDGEB with model_name={model_name}, modality={modality}")
@@ -313,13 +313,8 @@ class UMEAdapterDGEB(BioSeqTransformer):
             return DummyTokenizer()
 
     def _get_lobster_modality(self) -> LobsterModality:
-        """Convert DGEB modality to Lobster modality."""
-        if self._modality == "protein":
-            return LobsterModality.AMINO_ACID
-        elif self._modality == "dna":
-            return LobsterModality.NUCLEOTIDE
-        else:
-            raise ValueError(f"Unsupported modality: {self._modality}")
+        """Return the Lobster modality (already in correct format)."""
+        return self._modality
 
     def encode(self, sequences: list[str], **kwargs) -> np.ndarray:
         """Encode sequences to embeddings.
@@ -465,13 +460,16 @@ class UMEAdapterDGEB(BioSeqTransformer):
 
     @property
     def modality(self) -> Modality:
-        """Return the biological modality."""
-        if self._modality == "protein":
-            return Modality.PROTEIN
-        elif self._modality == "dna":
-            return Modality.DNA
-        else:
-            raise ValueError(f"Unsupported modality: {self._modality}")
+        """Return the biological modality (DGEB enum)."""
+        modality_map = {
+            LobsterModality.AMINO_ACID: Modality.PROTEIN,
+            LobsterModality.NUCLEOTIDE: Modality.DNA,
+        }
+
+        if self._modality not in modality_map:
+            raise ValueError(f"Unsupported modality: {self._modality}. Supported: {list(modality_map.keys())}")
+
+        return modality_map[self._modality]
 
     @property
     def embed_dim(self) -> int:
@@ -506,7 +504,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
         return {
             "model_name": self._model_name,
             "hf_name": self._model_name,  # Required by DGEB
-            "modality": self._modality,
+            "modality": self._modality.value,  # Use string value for compatibility
             "embed_dim": actual_embed_dim,  # Required by DGEB
             "num_layers": actual_num_layers,  # Required by DGEB
             "num_params": total_params,  # Total parameter count

@@ -8,8 +8,9 @@ import numpy as np
 import torch
 import lightning as L
 from dgeb.models import BioSeqTransformer
-from dgeb.modality import Modality
+from dgeb.modality import Modality as DGEBModality
 
+from lobster.constants import Modality
 from ._pooling_utils import apply_dgeb_pooling, create_attention_mask_from_embeddings
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,8 @@ class ESMAdapterDGEB(BioSeqTransformer):
     ----------
     module : L.LightningModule
         The ESM Lightning module to wrap.
-    modality : Literal["protein", "dna"]
-        Biological modality for the sequences.
+    modality : Modality
+        Biological modality for the sequences. One of Modality.AMINO_ACID or Modality.NUCLEOTIDE.
     batch_size : int, default=32
         Batch size for encoding.
     max_seq_length : int, default=1024
@@ -47,7 +48,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
     def __init__(
         self,
         module: L.LightningModule,
-        modality: Literal["protein", "dna"] = "protein",
+        modality: Modality = Modality.AMINO_ACID,
         batch_size: int = 32,
         max_seq_length: int = 1024,
         l2_norm: bool = False,
@@ -118,8 +119,8 @@ class ESMAdapterDGEB(BioSeqTransformer):
         so this tokenizer is only used to satisfy the parent class interface requirements.
         """
 
-        # Create a minimal tokenizer object with required attributes
-        class MinimalTokenizer:
+        # Create a dummy tokenizer object with required attributes
+        class DummyTokenizer:
             model_max_length = self._max_seq_length
             vocab_size = 33  # ESM amino acid vocab size
 
@@ -135,7 +136,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
             def get_vocab():
                 return {}
 
-        return MinimalTokenizer()
+        return DummyTokenizer()
 
     def encode(self, sequences: list[str], **kwargs) -> np.ndarray:
         """Encode sequences to embeddings using the ESM model.
@@ -253,12 +254,11 @@ class ESMAdapterDGEB(BioSeqTransformer):
             return apply_dgeb_pooling(token_embeddings, attention_mask, self.pool_type)
 
     @property
-    def modality(self) -> Modality:
+    def modality(self) -> DGEBModality:
         """Return the biological modality (DGEB enum)."""
         modality_map = {
-            "protein": Modality.PROTEIN,
-            "dna": Modality.DNA,
-            "nucleotide": Modality.DNA,  # Allow alternative naming
+            Modality.AMINO_ACID: DGEBModality.PROTEIN,
+            Modality.NUCLEOTIDE: DGEBModality.DNA,
         }
 
         if self._modality not in modality_map:
@@ -294,7 +294,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
         return {
             "model_name": "ESM",
             "hf_name": "ESM",  # Required by DGEB
-            "modality": self._modality,
+            "modality": self._modality.value,  # Use string value for compatibility
             "embed_dim": self._embed_dim,  # Required by DGEB
             "num_layers": self.num_layers,  # Required by DGEB
             "layers": self.layers,
