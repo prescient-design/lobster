@@ -46,7 +46,7 @@ def run_evaluation(
     output_dir: str = "dgeb_results",
     batch_size: int = 32,
     max_seq_length: int = 1024,
-    use_flash_attn: bool | None = None,
+    use_flash_attn: bool = True,
     l2_norm: bool = False,
     pool_type: str = "mean",
     devices: list[int] | None = None,
@@ -69,7 +69,7 @@ def run_evaluation(
         Batch size for encoding.
     max_seq_length : int, default=1024
         Maximum sequence length.
-    use_flash_attn : bool | None, default=None
+    use_flash_attn : bool, default=True
         Whether to use flash attention.
     l2_norm : bool, default=False
         Whether to L2-normalize embeddings.
@@ -538,9 +538,6 @@ def main():
     # Set up logging
     setup_logging(args.log_level)
 
-    # Handle flash attention flag
-    use_flash_attn = args.use_flash_attn if args.use_flash_attn else None
-
     # Run evaluation
     try:
         results_summary = run_evaluation(
@@ -550,7 +547,7 @@ def main():
             output_dir=args.output_dir,
             batch_size=args.batch_size,
             max_seq_length=args.max_seq_length,
-            use_flash_attn=use_flash_attn,
+            use_flash_attn=args.use_flash_attn,
             l2_norm=args.l2_norm,
             pool_type=args.pool_type,
             devices=args.devices,
