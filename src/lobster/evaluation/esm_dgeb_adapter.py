@@ -281,6 +281,14 @@ class ESMAdapterDGEB(BioSeqTransformer):
 
         return modality_map[self._modality]
 
+    def _get_dgeb_modality_string(self) -> str:
+        """Return DGEB-compatible modality string for metadata."""
+        modality_to_dgeb_string = {
+            Modality.AMINO_ACID: "protein",
+            Modality.NUCLEOTIDE: "dna",
+        }
+        return modality_to_dgeb_string.get(self._modality, str(self._modality))
+
     @property
     def embed_dim(self) -> int:
         """Return the embedding dimension."""
@@ -309,9 +317,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
         return {
             "model_name": "ESM",
             "hf_name": "ESM",  # Required by DGEB
-            "modality": self._modality.value
-            if hasattr(self._modality, "value")
-            else self._modality,  # Use string value for compatibility
+            "modality": self._get_dgeb_modality_string(),  # Use DGEB-compatible string
             "embed_dim": self._embed_dim,  # Required by DGEB
             "num_layers": self.num_layers,  # Required by DGEB
             "layers": self.layers,

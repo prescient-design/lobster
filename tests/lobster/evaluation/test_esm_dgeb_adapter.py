@@ -188,10 +188,9 @@ class TestESMAdapterDGEB:
         dna_adapter = create_adapter(mock_esm_module, modality="dna")
         assert dna_adapter.modality == Modality.DNA
 
-        # Test invalid modality
-        invalid_adapter = create_adapter(mock_esm_module, modality="invalid")
-        with pytest.raises(ValueError, match="Unsupported modality: invalid"):
-            _ = invalid_adapter.modality
+        # Test invalid modality - should fail during construction now
+        with pytest.raises(ValueError, match="Unsupported string modality: invalid"):
+            create_adapter(mock_esm_module, modality="invalid")
 
     def test_different_embedding_dimensions(self, mock_esm_module):
         """Test adapter with different embedding dimensions."""

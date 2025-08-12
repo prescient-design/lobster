@@ -330,6 +330,14 @@ class UMEAdapterDGEB(BioSeqTransformer):
         """Return the Lobster modality (already in correct format)."""
         return self._modality
 
+    def _get_dgeb_modality_string(self) -> str:
+        """Return DGEB-compatible modality string for metadata."""
+        modality_to_dgeb_string = {
+            LobsterModality.AMINO_ACID: "protein",
+            LobsterModality.NUCLEOTIDE: "dna",
+        }
+        return modality_to_dgeb_string.get(self._modality, str(self._modality))
+
     def encode(self, sequences: list[str], **kwargs) -> np.ndarray:
         """Encode sequences to embeddings.
 
@@ -518,9 +526,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
         return {
             "model_name": self._model_name,
             "hf_name": self._model_name,  # Required by DGEB
-            "modality": self._modality.value
-            if hasattr(self._modality, "value")
-            else self._modality,  # Use string value for compatibility
+            "modality": self._get_dgeb_modality_string(),  # Use DGEB-compatible string
             "embed_dim": actual_embed_dim,  # Required by DGEB
             "num_layers": actual_num_layers,  # Required by DGEB
             "num_params": total_params,  # Total parameter count
