@@ -87,6 +87,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         )
 
         self.tasks = set(tasks) if tasks else set(CALM_TASKS.keys())
+        print(f"[CALM DEBUG] CALM tasks to evaluate: {sorted(self.tasks)}")
         logger.info(f"CALM tasks to evaluate: {sorted(self.tasks)}")
         
         # Set default species if none provided - include commonly used model organisms
@@ -94,9 +95,11 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             # Use a subset that represents diverse biology: human, E. coli, and yeast
             default_species = ["hsapiens", "ecoli", "scerevisiae"]
             self.species = set(default_species)
+            print(f"[CALM DEBUG] No species specified, using default species: {default_species}")
             logger.info(f"No species specified, using default species: {default_species}")
         else:
             self.species = set(species)
+            print(f"[CALM DEBUG] Using specified species: {sorted(self.species)}")
             logger.info(f"Using specified species: {sorted(self.species)}")
 
         self.test_size = test_size
@@ -236,6 +239,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         all_task_metrics = {}
 
         for task in tqdm(self.tasks, desc=f"{self.__class__.__name__}"):
+            print(f"[CALM DEBUG] Processing task: {task}")
             logger.info(f"Processing task: {task}")
             # Handle species-specific tasks
             if task in ["protein_abundance", "transcript_abundance"]:
