@@ -418,7 +418,12 @@ class LobsterCBMPMLM(pl.LightningModule):
         return mask
 
     def intervene_on_sequences(
-        self, sequences: list[str], concept: str, edits: int, intervention_type: str
+        self,
+        sequences: list[str],
+        concept: str,
+        edits: int,
+        intervention_type: str,
+        manual_positions: list[int] | None = None,  # <-- added arg
     ) -> list[str]:
         self.eval()
         try:
@@ -427,34 +432,39 @@ class LobsterCBMPMLM(pl.LightningModule):
         except ValueError:
             print(f"'{concept}' is not in the list")
 
-        ########## tokenize
-
+        # tokenize
         input_ids = torch.concat([toks["input_ids"].to(self.device) for toks in self.transform_fn_inf(sequences)])
         attention_mask = torch.concat(
             [toks["attention_mask"].to(self.device) for toks in self.transform_fn_inf(sequences)]
         )
 
-        ####### get feature attribution
-        forward_output = self.model(
-            input_ids=input_ids, inference=True, attention_mask=attention_mask, requires_grad=True
-        )
+        if manual_positions is None:
+            # original gradient-based attribution
+            forward_output = self.model(
+                input_ids=input_ids, inference=True, attention_mask=attention_mask, requires_grad=True
+            )
+            pred_concepts_value = forward_output["concepts"]
+            concept_ = pred_concepts_value[:, concept_index]
+            input_ = forward_output["input_emb"]
+            attribution = torch.autograd.grad(torch.unbind(concept_), input_, allow_unused=True)[0]
+            mask_emb = self.model.LMBase.embeddings.word_embeddings.weight[-1].detach()
+            attribution = torch.sum(attribution * (input_ - mask_emb), dim=2)
+            num_features = torch.sum(
+                (input_ids != self.tokenizer.cls_token_id)
+                * (input_ids != self.tokenizer.pad_token_id)
+                * (input_ids != self.tokenizer.eos_token_id),
+                dim=1,
+            ).to(self.device)
+            mask = self._create_intervene_mask(attribution, num_features, edits, intervention_type)
+        else:
+            # minimal manual masking
+            mask = torch.zeros_like(input_ids, dtype=torch.bool)
+            for pos in manual_positions:
+                mask[:, pos] = True
 
-        pred_concepts_value = forward_output["concepts"]
-        concept_ = pred_concepts_value[:, concept_index]
-        input_ = forward_output["input_emb"]
-        attribution = torch.autograd.grad(torch.unbind(concept_), input_, allow_unused=True)[0]
-
-        ####### creating mask
-        mask_emb = self.model.LMBase.embeddings.word_embeddings.weight[-1].detach()
-        attribution = torch.sum(attribution * (input_ - mask_emb), dim=2)
-
-        num_features = torch.sum(
-            (input_ids != self.tokenizer.cls_token_id)
-            * (input_ids != self.tokenizer.pad_token_id)
-            * (input_ids != self.tokenizer.eos_token_id),
-            dim=1,
-        ).to(self.device)
-        mask = self._create_intervene_mask(attribution, num_features, edits, intervention_type)
+            # still need pred_concepts_value for later
+            forward_output = self.model(input_ids=input_ids, inference=True, attention_mask=attention_mask)
+            pred_concepts_value = forward_output["concepts"]
 
         masked_toks = self._mask_inputs(input_ids, mask_arr=mask)
 
@@ -462,7 +472,6 @@ class LobsterCBMPMLM(pl.LightningModule):
         concept_mask[:, concept_index] = 1
         new_concepts_value = pred_concepts_value.clone()
 
-        ########## intervening on the concepts
         if intervention_type == "positive":
             new_concepts_value[:, concept_index] = 1
         else:
@@ -471,16 +480,14 @@ class LobsterCBMPMLM(pl.LightningModule):
         intervene_value = (concept_mask, new_concepts_value)
         logits_masked = self.model(
             input_ids=masked_toks, inference=True, intervene=intervene_value, attention_mask=attention_mask
-        )["logits"]
-        logits_masked = logits_masked.detach()
+        )["logits"].detach()
 
-        ########## transform the seqence
         aa_toks = list("ARNDCEQGHILKMFPSTWYV")
         pred_masked_tokens = []
         for j, logit in enumerate(logits_masked):
             pred_tok = logit.argmax(dim=-1)
-            mask = masked_toks[j].eq(self.tokenizer.mask_token_id).int()
-            pred_masked_token = (input_ids[j] * (1 - mask)) + (pred_tok * mask)
+            mask_pos = masked_toks[j].eq(self.tokenizer.mask_token_id).int()
+            pred_masked_token = (input_ids[j] * (1 - mask_pos)) + (pred_tok * mask_pos)
             pred_masked_token = self.tokenizer.decode(pred_masked_token)
             pred_masked_token = pred_masked_token.replace(" ", "")
             pred_masked_token = "".join([t for t in pred_masked_token if t in aa_toks])
