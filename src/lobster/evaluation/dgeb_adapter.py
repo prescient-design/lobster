@@ -41,8 +41,9 @@ class UMEAdapterDGEB(BioSeqTransformer):
         Batch size for encoding.
     pool_type : str, default="mean"
         Pooling strategy. One of "mean", "max", "cls", "last".
-    modality : LobsterModality, default=LobsterModality.AMINO_ACID
-        Biological modality for the sequences. One of LobsterModality.AMINO_ACID or LobsterModality.NUCLEOTIDE.
+    modality : LobsterModality | str, default=LobsterModality.AMINO_ACID
+        Biological modality for the sequences. Can be LobsterModality.AMINO_ACID, LobsterModality.NUCLEOTIDE,
+        or strings "protein", "dna" for backward compatibility.
     use_flash_attn : bool, default=True
         Whether to use flash attention. If None, determined by device availability.
         If True: flash attention will be enabled only if the device is "cuda" and
@@ -60,7 +61,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
         l2_norm: bool = False,
         batch_size: int = 128,
         pool_type: str = "mean",
-        modality: LobsterModality = LobsterModality.AMINO_ACID,
+        modality: LobsterModality | str = LobsterModality.AMINO_ACID,
         use_flash_attn: bool = True,
     ):
         logger.info(f"Initializing UMEAdapterDGEB with model_name={model_name}, modality={modality}")
@@ -68,7 +69,20 @@ class UMEAdapterDGEB(BioSeqTransformer):
             devices = [0]
 
         # Set attributes before calling parent __init__ since parent calls _load_model
-        self._modality = modality
+        # Convert string modalities to enum for backward compatibility
+        if isinstance(modality, str):
+            modality_map = {
+                "protein": LobsterModality.AMINO_ACID,
+                "dna": LobsterModality.NUCLEOTIDE,
+            }
+            if modality not in modality_map:
+                raise ValueError(
+                    f"Unsupported string modality: {modality}. Use {list(modality_map.keys())} or LobsterModality enum."
+                )
+            self._modality = modality_map[modality]
+            logger.info(f"Converted string modality '{modality}' to {self._modality}")
+        else:
+            self._modality = modality
         self._use_flash_attn = use_flash_attn
         self._model_name = model_name
         self._devices = devices
@@ -504,7 +518,9 @@ class UMEAdapterDGEB(BioSeqTransformer):
         return {
             "model_name": self._model_name,
             "hf_name": self._model_name,  # Required by DGEB
-            "modality": self._modality.value,  # Use string value for compatibility
+            "modality": self._modality.value
+            if hasattr(self._modality, "value")
+            else self._modality,  # Use string value for compatibility
             "embed_dim": actual_embed_dim,  # Required by DGEB
             "num_layers": actual_num_layers,  # Required by DGEB
             "num_params": total_params,  # Total parameter count

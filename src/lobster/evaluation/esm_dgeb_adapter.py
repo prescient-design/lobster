@@ -26,8 +26,9 @@ class ESMAdapterDGEB(BioSeqTransformer):
     ----------
     module : L.LightningModule
         The ESM Lightning module to wrap.
-    modality : Modality
-        Biological modality for the sequences. One of Modality.AMINO_ACID or Modality.NUCLEOTIDE.
+    modality : Modality | str
+        Biological modality for the sequences. Can be Modality.AMINO_ACID, Modality.NUCLEOTIDE,
+        or strings "protein", "dna" for backward compatibility.
     batch_size : int, default=32
         Batch size for encoding.
     max_seq_length : int, default=1024
@@ -48,7 +49,7 @@ class ESMAdapterDGEB(BioSeqTransformer):
     def __init__(
         self,
         module: L.LightningModule,
-        modality: Modality = Modality.AMINO_ACID,
+        modality: Modality | str = Modality.AMINO_ACID,
         batch_size: int = 32,
         max_seq_length: int = 1024,
         l2_norm: bool = False,
@@ -65,7 +66,21 @@ class ESMAdapterDGEB(BioSeqTransformer):
         # Store the ESM module and processing function
         self.esm_module = module
         self.process_and_embed_fn = process_and_embed_fn
-        self._modality = modality
+
+        # Convert string modalities to enum for backward compatibility
+        if isinstance(modality, str):
+            modality_map = {
+                "protein": Modality.AMINO_ACID,
+                "dna": Modality.NUCLEOTIDE,
+            }
+            if modality not in modality_map:
+                raise ValueError(
+                    f"Unsupported string modality: {modality}. Use {list(modality_map.keys())} or Modality enum."
+                )
+            self._modality = modality_map[modality]
+            logger.info(f"Converted string modality '{modality}' to {self._modality}")
+        else:
+            self._modality = modality
         self._max_seq_length = max_seq_length
 
         # Determine embedding dimension from a sample sequence
@@ -294,7 +309,9 @@ class ESMAdapterDGEB(BioSeqTransformer):
         return {
             "model_name": "ESM",
             "hf_name": "ESM",  # Required by DGEB
-            "modality": self._modality.value,  # Use string value for compatibility
+            "modality": self._modality.value
+            if hasattr(self._modality, "value")
+            else self._modality,  # Use string value for compatibility
             "embed_dim": self._embed_dim,  # Required by DGEB
             "num_layers": self.num_layers,  # Required by DGEB
             "layers": self.layers,
