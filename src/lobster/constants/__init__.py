@@ -14,6 +14,7 @@ from ._peer_tasks import (
     PEERTask,
     PEERTaskCategory,
 )
+from ._pooling import PoolingType
 from ._scheduler_type import SchedulerType
 from ._split import Split
 from ._ume_models import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT_S3_KEY, UME_CHECKPOINT_DICT_S3_URI
@@ -33,6 +34,7 @@ __all__ = [
     "ModelType",
     "PEERTask",
     "PEERTaskCategory",
+    "PoolingType",
     "SchedulerType",
     "PEER_TASK_CATEGORIES",
     "PEER_TASKS",
