@@ -45,6 +45,9 @@ class UMEAdapterDGEB(BioSeqTransformer):
         Biological modality for the sequences. One of LobsterModality.AMINO_ACID or LobsterModality.NUCLEOTIDE.
     use_flash_attn : bool | None, default=None
         Whether to use flash attention. If None, determined by device availability.
+        If True: flash attention will be enabled only if the device is "cuda" and
+        flash attention is available.
+        If False: flash attention is disabled.
     """
 
     def __init__(
