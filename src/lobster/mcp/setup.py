@@ -184,12 +184,32 @@ def main():
     print("🦞 Lobster MCP Server Setup")
     print("=" * 40)
 
+    # Check if uv is available for local development
+    uv_available = shutil.which("uv") is not None
+
+    if not uv_available:
+        print("⚠️  uv not found in PATH.")
+        print("For local development, install uv: https://docs.astral.sh/uv/getting-started/installation/")
+        print("For DXT extension usage, download the .dxt file from GitHub releases.")
+        print()
+
     # Test installation
     if not test_installation():
         print("\n❌ Setup failed due to missing dependencies.")
-        print("Please install the required packages with:")
-        print("  uv sync --extra mcp")
+        if uv_available:
+            print("Please install the required packages with:")
+            print("  uv sync --extra mcp")
+        else:
+            print("Please install Python dependencies or use the DXT extension.")
         return 1
+
+    if not uv_available:
+        print("\n🔧 DXT Extension Usage:")
+        print("For easier setup, download the lobster.dxt file from:")
+        print("  https://github.com/prescient-design/lobster/releases")
+        print("Then install it in Claude Desktop by double-clicking the .dxt file.")
+        print()
+        print("Continuing with manual setup...")
 
     # Ask user which client(s) to configure
     print("\nWhich MCP client(s) would you like to configure?")
@@ -213,7 +233,11 @@ def main():
     # Set up Claude Desktop
     if setup_claude:
         try:
-            setup_claude_desktop()
+            if uv_available:
+                setup_claude_desktop()
+            else:
+                print("⚠️  Cannot set up Claude Desktop without uv.")
+                print("Please install uv or use the DXT extension.")
         except Exception as e:
             print(f"❌ Failed to set up Claude Desktop: {e}")
             return 1
@@ -221,7 +245,11 @@ def main():
     # Set up Cursor
     if setup_cursor_client:
         try:
-            setup_cursor()
+            if uv_available:
+                setup_cursor()
+            else:
+                print("⚠️  Cannot set up Cursor without uv.")
+                print("Please install uv.")
         except Exception as e:
             print(f"❌ Failed to set up Cursor: {e}")
             return 1
@@ -242,8 +270,13 @@ def main():
         print("  3. Type 'MCP' to see available MCP commands")
         print("  4. Use '@lobster-inference' to interact with the server")
 
-    print("\nAlternatively, test locally with:")
-    print("  uv run lobster_mcp_server")
+    if uv_available:
+        print("\nAlternatively, test locally with:")
+        print("  uv run lobster_mcp_server")
+
+    print("\n📦 DXT Extension:")
+    print("For easier installation, download lobster.dxt from:")
+    print("  https://github.com/prescient-design/lobster/releases")
 
     return 0
 
