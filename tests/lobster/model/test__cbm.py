@@ -85,3 +85,38 @@ def test_cbmlm_checkpoint(tmp_path):
     print(f"{diff.abs().max()=}")
 
     torch.testing.assert_close(output, output2)
+
+
+def test_manual_positions_validation():
+    model = LobsterCBMPMLM(model_name="MLM_mini")
+    model.eval()
+
+    sequences = ["ACDAC"]
+    concept = model.concepts_name[0]
+    edits = 1
+    intervention_type = "positive"
+
+    # Test case 1: positions within bounds
+    manual_positions = [1, 2, 3]
+    result = model.intervene_on_sequences(
+        sequences=sequences,
+        concept=concept,
+        edits=edits,
+        intervention_type=intervention_type,
+        manual_positions=manual_positions,
+    )
+    assert isinstance(result, list)
+
+    # Test case 2: position exceeds sequence length
+    input_ids = model.transform_fn_inf(sequences)[0]["input_ids"]
+    seq_len = input_ids.shape[-1]
+
+    manual_positions = [0, seq_len]  # seq_len is definitely out of bounds
+    with pytest.raises((IndexError, RuntimeError)):
+        model.intervene_on_sequences(
+            sequences=sequences,
+            concept=concept,
+            edits=edits,
+            intervention_type=intervention_type,
+            manual_positions=manual_positions,
+        )

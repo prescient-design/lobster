@@ -423,8 +423,9 @@ class LobsterCBMPMLM(pl.LightningModule):
         concept: str,
         edits: int,
         intervention_type: str,
-        manual_positions: list[int] | None = None,  # <-- added arg
+        manual_positions: list[int] | None = None,
     ) -> list[str]:
+        """Allows for manual or guided masking indices"""
         self.eval()
         try:
             concept_index = self.transform_fn_inf.concepts_name.index(concept)
@@ -459,6 +460,13 @@ class LobsterCBMPMLM(pl.LightningModule):
         else:
             # minimal manual masking
             mask = torch.zeros_like(input_ids, dtype=torch.bool)
+
+            # Validate manual positions are within sequence bounds
+            if manual_positions:
+                seq_len = input_ids.shape[-1]
+                for pos in manual_positions:
+                    if pos >= seq_len or pos < 0:
+                        raise ValueError(f"Manual position {pos} is out of bounds for sequence length {seq_len}")
             for pos in manual_positions:
                 mask[:, pos] = True
 
