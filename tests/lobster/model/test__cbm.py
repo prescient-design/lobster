@@ -112,7 +112,7 @@ def test_manual_positions_validation():
     seq_len = input_ids.shape[-1]
 
     manual_positions = [0, seq_len]  # out of bounds test
-    with pytest.raises((ValueError)):
+    with pytest.raises(ValueError):
         model.intervene_on_sequences(
             sequences=sequences,
             concept=concept,
