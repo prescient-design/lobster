@@ -111,7 +111,7 @@ def test_manual_positions_validation():
     input_ids = model.transform_fn_inf(sequences)[0]["input_ids"]
     seq_len = input_ids.shape[-1]
 
-    manual_positions = [0, seq_len]  #out of bounds test
+    manual_positions = [0, seq_len]  # out of bounds test
     with pytest.raises((ValueError)):
         model.intervene_on_sequences(
             sequences=sequences,
