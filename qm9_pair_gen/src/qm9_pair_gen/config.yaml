@@ -1,0 +1,53 @@
+# Configuration for molecule pair generation
+defaults:
+  - _self_
+
+# Dataset configuration
+dataset_name: "qm9" #"qm9"  # Currently supports "qm9", "bbbp", "bace", "hiv"
+data_dir: ${oc.env:DATA_DIR,.}  # Directory containing the dataset
+
+# Output configuration
+suffix: "pairs_per_mol_fresh_100_again"
+output_dir: ${data_dir}/cache/test_new_code/${dataset_name}_${suffix}  # Output directory for parquet files
+# qm9_val_and_test_8_8
+
+# Overall number of molecules to load from the dataset  
+max_molecules: null  # Maximum number of molecules to process (null for all)
+
+# Pair generation parameters
+# should we use percentile, or max_molecules? 
+percentile_threshold: null #1.0 # 5.0  # Keep closest X% of molecules (e.g., 10.0 for 10%)
+max_pairs_per_mol: 100 #null
+
+# Note: Shape Tanimoto filtering is now handled in the datamodule
+# during data loading using the filter_top_pairs_per_molecule utility function.
+# This allows for flexible filtering (percentile or concrete number of pairs)
+# without storing multiple parquet files.
+
+# Data splits configuration
+splits: ["train","val", "test"]  # Which splits to generate pairs for (options: "train", "val", "test")
+# Note: Pairs will only be computed between molecules within the same split
+
+# Testing configuration
+test_mode: false  # Set to true for small test runs
+test_sizes: [30, 10, 10]  # [train, val, test] sizes for testing
+
+# File handling
+overwrite_molecules_parquet: true  # Whether to overwrite existing parquet files
+overwrite_pairs_parquet: true  # Whether to overwrite existing parquet files
+overwrite_ds: true  # Whether to overwrite dataset cache files
+
+write_every: 25
+
+# Processing options
+train_only: false  # Only compute pairs between training molecules
+recompute_dataset: true  # Force recompute and overwrite cache
+use_second_half_of_train: true  # Use second half of train split for generative tasks
+log_extra_metrics: true  # Whether to log RMSD and matching time to the pairs parquet file
+save_as_parquet: true  # Whether to convert Arrow IPC to Parquet format at the end for compatibility
+
+shape_tanimoto_timeout: 1000.0  # Timeout for shape Tanimoto computation in seconds
+
+# Logging
+logging:
+  level: INFO 

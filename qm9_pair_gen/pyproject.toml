@@ -1,0 +1,70 @@
+[build-system]
+# setuptools >= 61 supports PEP 621 ([project] table). Bump from 45 → 61+.
+requires = ["setuptools>=61", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qm9-pair-gen"
+version = "0.0.1"
+#dynamic = ["version"]
+description = "Utilities for QM9 pair generation and molecular distance calculations"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Lobster Team" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.8"
+dependencies = [
+  "rdkit",
+  "numpy",
+  "pandas",
+  "polars",
+  "pyarrow",
+  "py3Dmol",
+  "tqdm",
+  "selfies",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=6.0",
+  "pytest-cov>=2.0",
+  "black>=21.0",
+  "flake8>=3.8",
+  "mypy>=0.800",
+]
+
+# tell setuptools you're using a src/ layout
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["qm9_pair_gen*"]
+
+# write version file into the src package path
+#[tool.setuptools_scm]
+#write_to = "src/qm9_pair_gen/_version.py"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+

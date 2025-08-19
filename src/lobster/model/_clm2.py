@@ -1,4 +1,5 @@
 import importlib.resources
+import random
 from collections.abc import Callable
 
 import lightning.pytorch as pl
@@ -11,6 +12,15 @@ from lobster.tokenization import PmlmTokenizer, PmlmTokenizerTransform, SmilesTo
 from lobster.transforms import Transform
 
 from ._clm_configuration import PCLM_CONFIG_ARGS
+
+# Import RDKit and atomic_datasets for validity checking
+try:
+    from rdkit import Chem
+    from atomic_datasets.utils.rdkit import is_molecule_sane
+    RDKIT_AVAILABLE = True
+except ImportError:
+    RDKIT_AVAILABLE = False
+    print("Warning: RDKit not available. Validity checking will be disabled.")
 
 
 class LobsterPCLM2(pl.LightningModule):
@@ -32,6 +42,7 @@ class LobsterPCLM2(pl.LightningModule):
         scheduler: SchedulerType = "constant_with_warmup",
         model_kwargs: dict = None,
         scheduler_kwargs: dict = None,
+        num_validation_generations: int = 100,  # Changed from validation_fraction
     ):
         """
         Prescient Protein Causal Language Model.
@@ -49,6 +60,8 @@ class LobsterPCLM2(pl.LightningModule):
             Additional keyword arguments to pass to the model.
         scheduler_kwargs: dict, optional
             Additional keyword arguments to pass to the scheduler.
+        num_validation_generations: int, optional
+            Number of molecules to generate for validity checking (default: 100).
 
         """
         super().__init__()
@@ -66,6 +79,7 @@ class LobsterPCLM2(pl.LightningModule):
         self._attention_bias = attention_bias
         self.scheduler = scheduler
         self.scheduler_kwargs = scheduler_kwargs or {}
+        self._num_validity_checks = num_validation_generations  # Store number of validity checks
         model_kwargs = model_kwargs or {}
 
         if self._tokenizer_dir is not None:
@@ -119,6 +133,7 @@ class LobsterPCLM2(pl.LightningModule):
 
         return {"val_loss": loss}
 
+
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -151,12 +166,27 @@ class LobsterPCLM2(pl.LightningModule):
 
         PmlmTokenizerTransform prepares the labels, loss computation happens in model.forward()
         """
-        batch, _targets = batch  # targets are FASTA headers and are not used
-        output = self.model(
-            input_ids=batch["input_ids"].squeeze(),
-            labels=batch["labels"].squeeze(),
-            attention_mask=batch["attention_mask"].squeeze(),
-        )
+
+        if "labels" in batch.keys():            
+            output = self.model(
+                input_ids=batch["input_ids"].squeeze(1),
+                labels=batch["labels"].squeeze(1), #removing this entirely to see what happens
+                attention_mask=batch["attention_mask"].squeeze(1),
+            )
+        else:   
+            # bit inconsistent to do this here vs in the datamodule
+            
+            labels = batch["input_ids"].clone()
+            labels[batch["attention_mask"] == 0] = -100 # new based on docs https://huggingface.co/docs/transformers/en/model_doc/llama#transformers.LlamaForCausalLM
+
+            # why are we squeezing?
+            # something goes wrong?
+
+            output = self.model(
+                input_ids=batch["input_ids"].squeeze(1),
+                labels = labels.squeeze(1), 
+                attention_mask=batch["attention_mask"].squeeze(1),
+            )
         loss = output["loss"]
         logits = output["logits"]
 
@@ -196,12 +226,14 @@ class LobsterPCLM2(pl.LightningModule):
         repetition_penalty: float = 1.2,
         num_return_sequences: int = 1,
     ):
+        # if wanted to avoid adding start and end tokens: self.tokenizer._tokenizer.post_processor = None 
         generator = pipeline(
             "text-generation",
             model=self.model,
             tokenizer=self.tokenizer,
             device_map="auto",
         )
+        
         outseqs = generator(
             seed_seq,
             max_length=max_length,
@@ -213,6 +245,8 @@ class LobsterPCLM2(pl.LightningModule):
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
         )
+
+        # "this is an awkward expression to step into" -sam
         outseqs = [samp["generated_text"].replace("\n", "") for samp in outseqs]
 
         return outseqs

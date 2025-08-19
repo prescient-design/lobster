@@ -1,0 +1,3 @@
+molecule_validation:
+  _target_: lobster.callbacks.MoleculeValidationCallback
+  num_validation_generations: ${model.num_validation_generations} 

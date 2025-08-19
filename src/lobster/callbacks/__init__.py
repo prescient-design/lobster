@@ -1,6 +1,7 @@
 from ._calm_linear_probe_callback import CalmLinearProbeCallback
 from ._dataloader_checkpoint_callback import DataLoaderCheckpointCallback
 from ._linear_probe_callback import LinearProbeCallback
+from ._molecule_validation_callback import MoleculeValidationCallback
 from ._moleculeace_linear_probe_callback import MoleculeACELinearProbeCallback
 from ._peer_evaluation_callback import PEEREvaluationCallback
 from ._perturbation_score_callback import PerturbationScoreCallback
@@ -13,6 +14,7 @@ __all__ = [
     "DataLoaderCheckpointCallback",
     "LinearProbeCallback",
     "CalmLinearProbeCallback",
+    "MoleculeValidationCallback",
     "PEEREvaluationCallback",
     "PerturbationScoreCallback",
     "TokensPerSecondCallback",

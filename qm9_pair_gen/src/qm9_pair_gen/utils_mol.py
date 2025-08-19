@@ -9,6 +9,7 @@ import pickle
 import os
 from tqdm import tqdm
 from atomic_datasets.utils.rdkit import is_molecule_sane
+from typing import Optional
 
 import itertools
 from rdkit.Chem import AllChem, DataStructs, rdFingerprintGenerator
@@ -19,6 +20,7 @@ import time
 import pyarrow as pa
 import pyarrow.parquet as pq
 from rdkit.Chem.rdShapeHelpers import ShapeTanimotoDist
+import pandas as pd
 
 def is_valency_ok(mol):
     pt = Chem.GetPeriodicTable()
@@ -229,7 +231,10 @@ def display_mols_3d_grid(mol_pairs, rows=2, cols=4, spacing=5.0, col_titles=None
     view.show()
     return view
 
-def get_shape_tanimoto(molA, molB, return_matches=True):
+def get_shape_tanimoto(molA, molB, return_extra=True, verbose=True):
+    
+    start_time = time.time()
+
     mcs_params = rdFMCS.MCSParameters()
     mcs_params.AtomCompare = rdFMCS.AtomCompare.CompareElements
     mcs_params.BondCompare = rdFMCS.BondCompare.CompareOrder
@@ -239,16 +244,35 @@ def get_shape_tanimoto(molA, molB, return_matches=True):
     # Find matching atoms
     matchA = molA.GetSubstructMatch(mcs_mol)
     matchB = molB.GetSubstructMatch(mcs_mol)
+    matching_time = time.time() - start_time
 
     try:
+        # Align molecules
+        align_start = time.time()
         rmsd = AllChem.AlignMol(molB, molA, atomMap=list(zip(matchB, matchA)))
+        align_time = time.time() - align_start
+
+        # Calculate shape Tanimoto
+        tani_start = time.time() 
         shape_tani_dist = ShapeTanimotoDist(molA, molB)
-        if return_matches:
-            return shape_tani_dist, matchA, matchB
+        tani_time = time.time() - tani_start
+        
+        if verbose:
+            elapsed = time.time() - start_time
+            if elapsed > 10:
+                print(f"Mol A atoms: {molA.GetNumAtoms()} Mol B atoms: {molB.GetNumAtoms()} | Find matching atoms: {matching_time:.3f}s | Alignment: {align_time:.3f}s | Shape tani: {tani_time:.3f}s | Total: {time.time() - start_time:.3f}s")
+                print(f" rmsd: {rmsd:.3f} | shape tani: {shape_tani_dist:.3f}")
+            
+        if return_extra:
+            return shape_tani_dist, matchA, matchB, rmsd, matching_time
         else:
             return shape_tani_dist
     except Exception as e:
-        if return_matches:
+        if verbose:
+            elapsed = time.time() - start_time
+            print(f"    (threw exception) Elapsed time: {elapsed:.2f} seconds")
+            
+        if return_extra:
             return 100, [], []
         else:
             return 100
@@ -350,3 +374,112 @@ def visualize_mol_grid(mols, titles=None, num_rows=None, num_cols=None, spacing=
     view.zoomTo()
     view.show()
     return view
+
+def get_tanimoto_distance(smiles1: str, smiles2: str, verbose: bool = True) -> float:
+    """
+    Compute Tanimoto distance between two SMILES strings using Morgan fingerprints.
+    
+    Args:
+        smiles1: First SMILES string
+        smiles2: Second SMILES string
+        
+    Returns:
+        float: Tanimoto distance (1.0 - similarity), where 0.0 = identical, 1.0 = completely different
+    """
+    try:
+    
+        mol1 = Chem.MolFromSmiles(smiles1)
+        mol2 = Chem.MolFromSmiles(smiles2)
+        
+        if mol1 is None or mol2 is None:
+            if verbose:
+                print(f"Invalid molecule: {smiles1} or {smiles2}")
+            return 1.0  # Maximum distance for invalid molecules
+            
+        gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
+        fp1 = gen.GetFingerprint(mol1)
+        fp2 = gen.GetFingerprint(mol2)
+        
+        similarity = DataStructs.TanimotoSimilarity(fp1, fp2)
+        return 1.0 - similarity  # Convert to distance
+        
+    except Exception:
+        if verbose:
+            print(f"Error computing Tanimoto distance: {e}")
+        return 1.0  # Maximum distance on error
+
+
+def get_shape_tanimoto_distance(smiles1: str, smiles2: str, verbose: bool = True) -> float:
+    """
+    Compute shape Tanimoto distance between two SMILES strings.
+    
+    Args:
+        smiles1: First SMILES string
+        smiles2: Second SMILES string
+        verbose: Whether to print verbose output
+        
+    Returns:
+        float: Shape Tanimoto distance (lower = more similar shapes)
+    """
+    try:
+        mol1 = Chem.MolFromSmiles(smiles1)
+        mol2 = Chem.MolFromSmiles(smiles2)
+        
+        if mol1 is None or mol2 is None:
+            return 100.0  # Maximum distance for invalid molecules
+            
+        # Generate 3D conformers if needed
+        if mol1.GetNumConformers() == 0:
+            AllChem.EmbedMolecule(mol1)
+        if mol2.GetNumConformers() == 0:
+            AllChem.EmbedMolecule(mol2)
+            
+        # Use the existing get_shape_tanimoto function
+        shape_dist = get_shape_tanimoto(mol1, mol2, return_extra=False, verbose=verbose)
+        return shape_dist
+        
+    except Exception as e:
+        if verbose:
+            print(f"Error computing shape Tanimoto distance: {e}")
+        return 100.0  # Maximum distance on error
+
+def filter_top_pairs_per_molecule(df: pd.DataFrame, property_key: Optional[str] = 'shape_tanimoto_distance', percentile: Optional[float] = None, num_pairs: Optional[int] = None) -> pd.DataFrame:
+    """
+    For each unique molecule_a_idx, keep only the top pairs with the lowest shape_tanimoto_distance.
+    Can filter by either percentile or concrete number of pairs per molecule.
+
+    Args:
+        df: DataFrame with columns ['molecule_a_idx', 'molecule_b_idx', 'shape_tanimoto_distance', ...]
+        percentile: float in (0, 100), e.g., 5.0 for top 5% (closest pairs). If provided, num_pairs is ignored.
+        num_pairs: int > 0, e.g., 10 for top 10 closest pairs per molecule. Used only if percentile is None.
+
+    Returns:
+        Filtered DataFrame with only the top pairs per molecule_a_idx.
+    """
+    if percentile is not None and num_pairs is not None:
+        raise ValueError("Cannot specify both percentile and num_pairs. Use one or the other.")
+    
+    if percentile is None and num_pairs is None:
+        raise ValueError("Must specify either percentile or num_pairs.")
+    
+    if percentile is not None:
+        if percentile <= 0 or percentile > 100:
+            raise ValueError(f"percentile must be between 0 and 100, got {percentile}")
+        
+        def filter_group_percentile(group):
+            cutoff = group[property_key].quantile(percentile / 100.0)
+            return group[group[property_key] <= cutoff]
+        
+        filtered = df.groupby('molecule_a_idx', group_keys=False).apply(filter_group_percentile)
+    
+    else:  # num_pairs is not None
+        if num_pairs <= 0:
+            raise ValueError(f"num_pairs must be positive, got {num_pairs}")
+        
+        def filter_group_num_pairs(group):
+            # Sort by property_key, e.g. shape_tanimoto_distance, and take top num_pairs
+            return group.nsmallest(num_pairs, property_key)
+        
+        filtered = df.groupby('molecule_a_idx', group_keys=False).apply(filter_group_num_pairs)
+    
+    return filtered.reset_index(drop=True)

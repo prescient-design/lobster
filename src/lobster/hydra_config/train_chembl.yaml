@@ -1,8 +1,8 @@
 defaults:
   - _self_
-  - data: molecule_improvement.yaml
+  - data: chembl.yaml
   - model: clm2_smiles.yaml
-  - callbacks: molecule_improvement.yaml
+  - callbacks: default.yaml
   - logger: wandb.yaml
   - trainer: default.yaml
   - setup: default.yaml
@@ -11,8 +11,9 @@ defaults:
   - plugins: null
   - experiment: null
 
+# Training configuration
 dryrun: false
-run_test: null
+run_test: true
 compile: false
 seed: 42
 

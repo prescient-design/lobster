@@ -1,0 +1,12 @@
+# Production configuration for full dataset
+defaults:
+  - config
+
+# Override for production
+test_mode: false
+max_molecules: null
+overwrite_parquet: false
+overwrite_ds: false
+percentile_threshold: 5.0  # Keep only closest 5% of molecules
+output_dir: ${data_dir}/cache/qm9_pairs_production
+use_second_half_of_train: true 

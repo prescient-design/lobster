@@ -1,0 +1,20 @@
+# cursor-generated, not checked
+
+# Core dependencies
+numpy
+polars
+pyarrow
+tqdm
+omegaconf
+hydra-core
+
+# RDKit and molecular processing
+rdkit-pypi
+selfies
+
+# Dataset handling
+#atomic-datasets
+#git+https://github.com/atomicarchitects/datasets
+
+# Optional: for better logging
+rich 

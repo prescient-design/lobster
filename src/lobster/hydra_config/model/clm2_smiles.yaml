@@ -1,14 +1,19 @@
 _target_: lobster.model.LobsterPCLM2
 
+# this is basically the same as clm2_smiles.yaml, don't need both - JK num_validation_generations is different
+
 # Model parameters
-model_name: "CLM_mini"  # Start with smaller model for faster training
+model_name: "CLM_150M"  # Start with smaller model for faster training
 lr: 1e-4  # Lower learning rate for finetuning
-max_length: 512
+max_length: 1024 #512
 ckpt_path: null  # Path to pretrained model if available
 
 # Training parameters
 num_training_steps: ${trainer.max_steps}
 num_warmup_steps: 1000
+
+# Validation parameters for molecule improvement
+num_validation_generations: 64 # same as batch_size for convenience #20   # Number of molecules to generate for validity checking
 
 # Tokenizer configuration - use SMILES tokenizer instead of protein tokenizer
 tokenizer_dir: "garbage_test" #"smiles_tokenizer"  # This will use the SMILES tokenizer

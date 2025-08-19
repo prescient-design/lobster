@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import torch.utils.data
+from torch.utils.data import random_split
 from beignet.datasets import ChEMBLDataset
 from lightning import LightningDataModule
 from torch import Generator
@@ -33,6 +34,7 @@ class ChEMBLLightningDataModule(LightningDataModule):
         max_length: int = 512,
         pin_memory: bool = True,
         drop_last: bool = False,
+        max_train_samples: int = None,
     ) -> None:
         """
         Initialize the ChEMBLLightningDataModule.
@@ -76,6 +78,8 @@ class ChEMBLLightningDataModule(LightningDataModule):
         drop_last : bool, optional
             If True, drop the last incomplete batch, if the dataset size is not divisible by the batch size (default: False).
             If False and the size of dataset is not divisible by the batch size, then the last batch will be smaller.
+        max_train_samples: int, optional
+        Maximum number of training samples to use (for debugging)
         """
         super().__init__()
 
@@ -98,6 +102,7 @@ class ChEMBLLightningDataModule(LightningDataModule):
         self._drop_last = drop_last
         self._dataset = None
         self._transform_fn = transform_fn
+        self._max_train_samples = max_train_samples
 
     def prepare_data(self) -> None:
         dataset = ChEMBLDataset(
@@ -125,8 +130,12 @@ class ChEMBLLightningDataModule(LightningDataModule):
                 generator=self._generator,
             )
 
+        # hl adding
         if stage == "predict":
             self._predict_dataset = self._dataset
+        
+        if self._max_train_samples is not None:
+            self._train_dataset, _ = random_split(self._train_dataset, [self._max_train_samples, len(self._train_dataset) - self._max_train_samples])
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
