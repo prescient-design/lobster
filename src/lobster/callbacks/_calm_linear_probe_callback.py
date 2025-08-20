@@ -5,7 +5,9 @@ from collections.abc import Sequence
 
 import lightning as L
 import numpy as np
+import torch
 from sklearn.exceptions import ConvergenceWarning
+from torch import Tensor
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
@@ -153,6 +155,56 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         return train_dataset, test_dataset
 
+    def _get_embeddings(
+        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader
+    ) -> tuple[Tensor, Tensor]:
+        """Extract embeddings from the model for a given dataloader.
+        
+        Overrides parent method to handle CALM-specific data format where
+        sequences come as raw strings that need to be processed through UME's
+        embed_sequences method which properly handles padding tokens.
+
+        Parameters
+        ----------
+        model : Union[L.LightningModule, torch.nn.Module]
+            The model to extract embeddings from
+        dataloader : DataLoader
+            DataLoader for the data to extract embeddings for
+
+        Returns
+        -------
+        Tuple[Tensor, Tensor]
+            Tuple of (embeddings, targets)
+        """
+        embeddings = []
+        targets = []
+
+        model.eval()
+
+        with torch.no_grad():
+            for batch in dataloader:
+                x, y = batch
+                
+                # x comes as raw strings - convert to list if needed
+                if isinstance(x, (list, tuple)):
+                    sequences = list(x)
+                else:
+                    # Handle case where x might be a single string
+                    sequences = [x] if isinstance(x, str) else x.tolist()
+
+                # Use UME's embed_sequences method which properly handles tokenization,
+                # padding tokens, and mean pooling
+                batch_embeddings = model.embed_sequences(
+                    sequences=sequences,
+                    modality="nucleotide", 
+                    aggregate=True  # This does mean pooling and handles padding properly
+                )
+
+                embeddings.append(batch_embeddings.cpu())
+                targets.append(y.cpu())
+
+        return torch.cat(embeddings), torch.cat(targets)
+
     def _evaluate_task(
         self,
         task_key: str,
@@ -192,8 +244,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
         try:
-            train_embeddings, train_targets = self._get_embeddings(module, train_loader, modality="nucleotide")
-            test_embeddings, test_targets = self._get_embeddings(module, test_loader, modality="nucleotide")
+            train_embeddings, train_targets = self._get_embeddings(module, train_loader)
+            test_embeddings, test_targets = self._get_embeddings(module, test_loader)
 
             probe = self._train_probe(train_embeddings, train_targets)
             self.probes[task_key] = probe

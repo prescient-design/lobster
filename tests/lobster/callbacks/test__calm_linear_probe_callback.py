@@ -59,6 +59,17 @@ class MockLightningModule(torch.nn.Module):
         self.hidden_size = hidden_size
         self.device = "cpu"
         self.model = MockModelWithEmbeddings(hidden_size)
+    
+    def embed_sequences(self, sequences, modality="nucleotide", aggregate=True):
+        """Mock embed_sequences method that mimics UME's behavior."""
+        batch_size = len(sequences)
+        if aggregate:
+            # Return aggregated embeddings (batch_size, hidden_size)
+            return torch.randn(batch_size, self.hidden_size)
+        else:
+            # Return per-token embeddings (batch_size, seq_len, hidden_size)
+            seq_len = MAX_LENGTH  # Use the same max length as tokenizer
+            return torch.randn(batch_size, seq_len, self.hidden_size)
 
 
 @pytest.fixture
