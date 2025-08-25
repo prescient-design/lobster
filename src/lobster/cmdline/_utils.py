@@ -1,3 +1,4 @@
+import logging
 import hydra
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.plugins.precision.precision_plugin import PrecisionPlugin
@@ -40,3 +41,10 @@ def instantiate_plugins(plugins_cfg: DictConfig) -> list[Callback]:
             plugins.append(hydra.utils.instantiate(cb_conf))
 
     return plugins
+
+
+def configure_logging(level: int = logging.INFO) -> None:
+    logger = logging.getLogger()
+    logger.setLevel(level)
+    for handler in logger.handlers:
+        handler.setLevel(level)
