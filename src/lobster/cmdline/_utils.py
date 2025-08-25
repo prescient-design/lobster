@@ -1,5 +1,4 @@
 import hydra
-import logging
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.plugins.precision.precision_plugin import PrecisionPlugin
 from omegaconf import DictConfig
@@ -41,9 +40,3 @@ def instantiate_plugins(plugins_cfg: DictConfig) -> list[Callback]:
             plugins.append(hydra.utils.instantiate(cb_conf))
 
     return plugins
-
-
-def set_botocore_logging_level(level: int = logging.CRITICAL) -> None:
-    for name in logging.Logger.manager.loggerDict.keys():
-        if name in ("boto", "urllib3", "s3transfer", "boto3", "botocore", "nose"):
-            logging.getLogger(name).setLevel(level)
