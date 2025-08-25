@@ -20,10 +20,6 @@ from ..modern_bert import FlexBERT
 warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 
 
 class UME(Module):
@@ -446,117 +442,71 @@ class UME(Module):
             List of pseudo-likelihood scores for each sequence
         """
         with torch.no_grad():
-            try:
-                # Filter out empty sequences
-                valid_sequences = [seq for seq in sequences if seq.strip()]
-                if not valid_sequences:
-                    return [0.0] * len(sequences)
+            tokenizer_transform = self.tokenizer_transforms[modality]
 
-                logger.debug(f"Processing {len(valid_sequences)} sequences for modality {modality.value}")
+            encoded_batch = tokenizer_transform(sequences)
 
-                # Tokenize the sequences using the appropriate tokenizer
-                tokenizer_transform = self.tokenizer_transforms[modality]
-                logger.debug(f"Using tokenizer transform: {type(tokenizer_transform)}")
+            # Get input_ids and attention_mask
+            input_ids = encoded_batch["input_ids"]  # Shape: (batch_size, 1, seq_len) or (batch_size, seq_len)
+            attention_mask = encoded_batch["attention_mask"]  # Shape: (batch_size, 1, seq_len) or (batch_size, seq_len)
 
-                encoded_batch = tokenizer_transform(valid_sequences)
-                logger.debug(f"Encoded batch keys: {list(encoded_batch.keys())}")
+            # Move tensors to the same device as the model
+            device = next(self.parameters()).device
+            input_ids = input_ids.to(device)
+            attention_mask = attention_mask.to(device)
 
-                # Get input_ids and attention_mask
-                input_ids = encoded_batch["input_ids"]  # Shape: (batch_size, 1, seq_len) or (batch_size, seq_len)
-                attention_mask = encoded_batch[
-                    "attention_mask"
-                ]  # Shape: (batch_size, 1, seq_len) or (batch_size, seq_len)
+            # Handle different possible shapes
+            if input_ids.dim() == 3:
+                # Shape is (batch_size, 1, seq_len)
+                batch_size, _, seq_len = input_ids.shape
+                input_ids_3d = input_ids  # Already in correct format
+                attention_mask_3d = attention_mask
 
-                # Move tensors to the same device as the model
-                device = next(self.parameters()).device
-                input_ids = input_ids.to(device)
-                attention_mask = attention_mask.to(device)
+            elif input_ids.dim() == 2:
+                # Shape is (batch_size, seq_len) - need to add middle dimension
+                batch_size, seq_len = input_ids.shape
+                input_ids_3d = input_ids.unsqueeze(1)  # Add middle dimension: (batch_size, 1, seq_len)
+                attention_mask_3d = attention_mask.unsqueeze(1)
+            else:
+                raise ValueError(f"Unexpected input_ids shape: {input_ids.shape}")
 
-                # Debug: print shapes to understand the actual dimensions
-                logger.debug(f"input_ids shape: {input_ids.shape}")
-                logger.debug(f"attention_mask shape: {attention_mask.shape}")
-                logger.debug(f"Device: {device}")
+            # Prepare inputs for the model (similar to _compute_mlm_loss)
+            # _prepare_inputs expects (batch_size, 1, seq_len) format
+            input_ids_flat, attention_mask_flat, cu_seqlens = self.model._prepare_inputs(
+                input_ids_3d, attention_mask_3d
+            )
 
-                # Handle different possible shapes
-                if input_ids.dim() == 3:
-                    # Shape is (batch_size, 1, seq_len)
-                    batch_size, _, seq_len = input_ids.shape
-                    input_ids_3d = input_ids  # Already in correct format
-                    attention_mask_3d = attention_mask
-                elif input_ids.dim() == 2:
-                    # Shape is (batch_size, seq_len) - need to add middle dimension
-                    batch_size, seq_len = input_ids.shape
-                    input_ids_3d = input_ids.unsqueeze(1)  # Add middle dimension: (batch_size, 1, seq_len)
-                    attention_mask_3d = attention_mask.unsqueeze(1)
-                else:
-                    raise ValueError(f"Unexpected input_ids shape: {input_ids.shape}")
+            # Get model outputs without masking (we want the full sequence)
+            hidden_states = self.model.model(
+                input_ids=input_ids_flat,
+                attention_mask=attention_mask_flat,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=self.max_length,
+            )
 
-                logger.debug(f"After shape handling - batch_size: {batch_size}, seq_len: {seq_len}")
-                logger.debug(f"input_ids_3d shape: {input_ids_3d.shape}")
+            # Get logits from decoder
+            logits = self.model.decoder(hidden_states)
+            logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * seq_len, vocab_size)
 
-                # Prepare inputs for the model (similar to _compute_mlm_loss)
-                # _prepare_inputs expects (batch_size, 1, seq_len) format
-                input_ids_flat, attention_mask_flat, cu_seqlens = self.model._prepare_inputs(
-                    input_ids_3d, attention_mask_3d
-                )
+            # Reshape input_ids for probability computation
+            input_ids_reshaped = input_ids_flat.view(-1)  # (batch_size * seq_len)
 
-                logger.debug(f"After _prepare_inputs - input_ids_flat shape: {input_ids_flat.shape}")
+            # Convert to log probabilities
+            log_probs = torch.log_softmax(logits, dim=-1)
+            token_log_probs = log_probs[torch.arange(len(input_ids_reshaped)), input_ids_reshaped]
 
-                # Get model outputs without masking (we want the full sequence)
-                hidden_states = self.model.model(
-                    input_ids=input_ids_flat,
-                    attention_mask=attention_mask_flat,
-                    cu_seqlens=cu_seqlens,
-                    max_seqlen=self.max_length,
-                )
+            # Reshape back to (batch_size, seq_len)
+            token_log_probs = token_log_probs.view(batch_size, seq_len)
 
-                logger.debug(f"Hidden states shape: {hidden_states.shape}")
+            # Average over sequence length to get per-sequence pseudo-likelihood
+            # Exclude padding tokens (token_id == self.model.pad_token_id)
+            mask = input_ids_3d[:, 0, :] != self.model.pad_token_id
+            masked_log_probs = token_log_probs * mask.float()
 
-                # Get logits from decoder
-                logits = self.model.decoder(hidden_states)
-                logits = logits.view(-1, self.model.config.vocab_size)  # (batch_size * seq_len, vocab_size)
+            # Compute average log probability per sequence
+            pseudo_likelihoods = masked_log_probs.sum(dim=1) / (mask.float().sum(dim=1) + 1e-8)
 
-                logger.debug(f"Logits shape: {logits.shape}")
-
-                # Reshape input_ids for probability computation
-                input_ids_reshaped = input_ids_flat.view(-1)  # (batch_size * seq_len)
-
-                # Convert to log probabilities
-                log_probs = torch.log_softmax(logits, dim=-1)
-                token_log_probs = log_probs[torch.arange(len(input_ids_reshaped)), input_ids_reshaped]
-
-                # Reshape back to (batch_size, seq_len)
-                token_log_probs = token_log_probs.view(batch_size, seq_len)
-
-                # Average over sequence length to get per-sequence pseudo-likelihood
-                # Exclude padding tokens (token_id == self.model.pad_token_id)
-                mask = input_ids_3d[:, 0, :] != self.model.pad_token_id
-                masked_log_probs = token_log_probs * mask.float()
-
-                # Compute average log probability per sequence
-                pseudo_likelihoods = masked_log_probs.sum(dim=1) / (mask.float().sum(dim=1) + 1e-8)
-
-                logger.debug(f"Computed pseudo-likelihoods: {pseudo_likelihoods.shape}")
-
-                # Handle case where some sequences were filtered out
-                if len(valid_sequences) < len(sequences):
-                    result = [0.0] * len(sequences)
-                    valid_idx = 0
-                    for i, seq in enumerate(sequences):
-                        if seq.strip():
-                            result[i] = float(pseudo_likelihoods[valid_idx].cpu().numpy())
-                            valid_idx += 1
-                    return result
-
-                return pseudo_likelihoods.cpu().numpy().tolist()
-
-            except Exception as e:
-                logger.error(f"Error computing pseudo-likelihood: {e}")
-                import traceback
-
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                # Return zero rewards for failed computations
-                return [0.0] * len(sequences)
+            return pseudo_likelihoods.cpu().numpy().tolist()
 
     def export_onnx(
         self,
