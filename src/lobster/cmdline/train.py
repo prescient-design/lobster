@@ -6,9 +6,10 @@ from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, OmegaConf
 
 import wandb
-from lobster.cmdline._utils import instantiate_callbacks
+from lobster.cmdline.utils import instantiate_callbacks, set_botocore_logging_level
 
 dotenv.load_dotenv(".env")
+set_botocore_logging_level()
 
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="train")

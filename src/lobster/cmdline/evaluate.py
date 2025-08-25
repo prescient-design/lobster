@@ -6,9 +6,12 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from lobster.evaluation import evaluate_model_with_callbacks
+from lobster.cmdline.utils import set_botocore_logging_level
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+set_botocore_logging_level()
 
 
 @hydra.main(config_path="../hydra_config", config_name="evaluate", version_base=None)
