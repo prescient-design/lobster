@@ -185,12 +185,14 @@ class CalmPropertyDataset(Dataset):
         """Set the columns to use based on the task."""
         if columns is None:
             match self.task:
-                case CALMTask.FUNCTION_BP:
-                    columns = ["sequence", "GO:0051092", "GO:0016573", "GO:0031146", "GO:0071427", "GO:0006613"]
-                case CALMTask.FUNCTION_CC:
-                    columns = ["sequence", "GO:0022627", "GO:0000502", "GO:0034705", "GO:0030665", "GO:0005925"]
-                case CALMTask.FUNCTION_MF:
-                    columns = ["sequence", "GO:0004843", "GO:0004714", "GO:0003774", "GO:0008227", "GO:0004866"]
+                case CALMTask.FUNCTION_BP | CALMTask.FUNCTION_CC | CALMTask.FUNCTION_MF:
+                    # Detect GO label columns dynamically to match the dataset schema
+                    go_cols = [c for c in self.data.columns if isinstance(c, str) and c.startswith("GO:")]
+                    if not go_cols:
+                        raise ValueError(
+                            f"No GO:* columns found for {self.task.value}. Available columns: {list(self.data.columns)}"
+                        )
+                    columns = ["sequence"] + go_cols
                 case CALMTask.LOCALIZATION:
                     columns = [
                         "Sequence",
@@ -246,3 +248,13 @@ class CalmPropertyDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.data)
+
+    @property
+    def num_label_columns(self) -> int:
+        """Return the number of label columns (excluding the input column)."""
+        return len(self.columns) - 1
+
+    @property
+    def label_columns(self) -> list[str]:
+        """Return the list of label column names."""
+        return self.columns[1:]

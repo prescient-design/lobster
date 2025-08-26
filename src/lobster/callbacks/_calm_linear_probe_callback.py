@@ -97,11 +97,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             # Use a subset that represents diverse biology: human, E. coli, and yeast
             default_species = ["hsapiens", "ecoli", "scerevisiae"]
             self.species = set(default_species)
-            print(f"[CALM DEBUG] No species specified, using default species: {default_species}")
             logger.info(f"No species specified, using default species: {default_species}")
         else:
             self.species = set(species)
-            print(f"[CALM DEBUG] Using specified species: {sorted(self.species)}")
             logger.info(f"Using specified species: {sorted(self.species)}")
 
         self.test_size = test_size
@@ -238,6 +236,16 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         """
         task_type, num_classes = CALM_TASKS[task]
 
+        # For multilabel tasks (e.g., localization, function_*), infer label count from dataset
+        if task_type == "multilabel":
+            # Unwrap Subset to access underlying dataset
+            base_dataset = train_dataset
+            while isinstance(base_dataset, Subset):
+                base_dataset = base_dataset.dataset
+            inferred_num = getattr(base_dataset, "num_label_columns", None)
+            if isinstance(inferred_num, int) and inferred_num > 0:
+                num_classes = inferred_num
+
         self._set_metrics(task_type, num_classes)
 
         train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -318,6 +326,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                             aggregate_metrics[metric_name].append(value)
                     except Exception as e:
                         logger.error(f"Error processing {task_key}: {str(e)}")
+                        print(f"[CALM ERROR] {task_key} failed: {e}")
                         import traceback
                         logger.error(f"Full traceback: {traceback.format_exc()}")
             else:
@@ -341,6 +350,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                         aggregate_metrics[metric_name].append(value)
                 except Exception as e:
                     logger.error(f"Error processing {task}: {str(e)}")
+                    print(f"[CALM ERROR] {task} failed: {e}")
                     import traceback
                     logger.error(f"Full traceback: {traceback.format_exc()}")
 

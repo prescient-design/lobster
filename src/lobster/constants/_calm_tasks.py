@@ -6,9 +6,9 @@ CALM_TASKS = {
     "localization": ("multilabel", 10),  # 10 cellular locations
     "protein_abundance": ("regression", None),
     "transcript_abundance": ("regression", None),
-    "function_bp": ("multilabel", 4),  # 4 GO terms
-    "function_cc": ("multilabel", 4),
-    "function_mf": ("multilabel", 4),
+    "function_bp": ("multilabel", 5),  # 5 GO terms (matches dataset columns)
+    "function_cc": ("multilabel", 5),
+    "function_mf": ("multilabel", 5),
 }
 
 
