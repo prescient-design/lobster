@@ -1,6 +1,6 @@
-from typing import Literal
-
 from transformers import PretrainedConfig
+
+from lobster.constants import UMEModelVersion
 
 
 class UMEConfig(PretrainedConfig):
@@ -8,10 +8,21 @@ class UMEConfig(PretrainedConfig):
 
     def __init__(
         self,
-        model_name: Literal[
-            "ume-mini-base-12M", "ume-small-base-90M", "ume-medium-base-480M", "ume-large-base-740M"
-        ] = "ume-mini-base-12M",
+        model_name: UMEModelVersion | str = UMEModelVersion.MEDIUM,
         **kwargs,
     ):
-        self.model_name = model_name
+        model_name = UMEModelVersion(model_name) if isinstance(model_name, str) else model_name
+
+        if "mini" in model_name.value:
+            model_name = UMEModelVersion.MINI
+        elif "small" in model_name.value:
+            model_name = UMEModelVersion.SMALL
+        elif "medium" in model_name.value:
+            model_name = UMEModelVersion.MEDIUM
+        elif "large" in model_name.value:
+            model_name = UMEModelVersion.LARGE
+        else:
+            raise ValueError(f"Unknown model name: {model_name}. Must contain 'mini', 'small', 'medium', or 'large'.")
+
+        self.model_name = model_name.value
         super().__init__(**kwargs)

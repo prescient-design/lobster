@@ -2,7 +2,7 @@
 
 ## Step 1: Export UME to ONNX and Upload to Hub
 ```bash
-uv run src/lobster/model/integrations/ume_hugginface/export_to_onnx.py
+uv run src/lobster/model/integrations/ume_huggingface/export_to_onnx.py
 uv run src/upload_to_hub.py
 ```
 

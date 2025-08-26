@@ -184,7 +184,7 @@ UME addresses different types of biological multi-modality:
 ### Intra-Entity Modalities
 Different representations of the **same biological entity**:
 - Protein sequence → SMILES representation (chemical view of peptide)
-- DNA sequence → Amino acid sequence (central dogma)
+- DNA sequence → Amino acid sequence (towards central dogma)
 - Sequence → 3D structure (different views of same molecule)
 
 ### Inter-Entity Modalities  
