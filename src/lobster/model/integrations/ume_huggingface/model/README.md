@@ -157,7 +157,7 @@ The encoder-only architecture is specifically chosen for UME's objective of lear
 | UME-medium | 480M | 24 | 1280 | 20 | High performance applications |
 | UME-large | 740M | 24 | 1600 | 25 | Best performance |
 
-All model sizes are optimized for GPU hardware efficiency following established best practices. Currently, all variants use the same model identifier. The default loaded model is UME-mini.
+All model sizes are optimized for GPU hardware efficiency following established best practices. Currently, all variants use the same model identifier. The default loaded model is UME-medium.
 
 ## Tokenizers
 
@@ -236,7 +236,6 @@ UME was trained on **~1B molecular sequences** with **170B tokens** across diver
 | **M³-20M** | SMILES | 20.8M molecules | Multi-modal molecular dataset with annotations |
 | **CaLM** | Nucleotides | 8.6M sequences | Protein-coding DNA sequences from European Nucleotide Archive |
 | **PINDER** | Protein-Protein | 267K structures | Interaction structures with apo/holo states and predictions |
-| **PDBBind** | Protein-Ligand | — | Experimental binding affinity data |
 | **ATOMICA** | Multi-type | 360.7M | Diverse molecular interactions and structures |
 | **GEOM** | 3D Structures | 1.17M conformers | Small molecule conformations for structural alignment |
 
@@ -275,7 +274,7 @@ UME learns relationships between modalities through deterministic and probabilis
 - **Proteins**: AMPLIFY (360.7M), PeptideAtlas (4.2M)
 - **Small molecules**: ZINC (588.7M), M³-20M (20.8M)
 - **Nucleotides**: CaLM (8.6M)
-- **Structures**: PINDER (267K), PDBBind, ATOMICA, GEOM (1.17M)
+- **Structures**: PINDER (267K), GEOM (1.17M)
 
 **Q: What training stages were used?**
 - Stage 1: Masked language modeling on individual modalities
@@ -296,9 +295,8 @@ UME learns relationships between modalities through deterministic and probabilis
 
 ### Capabilities & Limitations
 **Q: Can UME generate sequences?**
-- No - encoder-only model for representation learning
-- Outputs embeddings for downstream tasks
-
+- Yes with some additional work (Gibbs Sampling, primarily for infilling/inpainting, conditional generation)
+ 
 **Q: What are the main limitations?**
 - Nucleotide performance limited vs proteins/SMILES
 - 512-token training context may restrict long sequences
