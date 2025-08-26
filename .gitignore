@@ -61,3 +61,6 @@ test_dxt/*
 *.lmdb/
 *.mdb
 ._*
+
+# UME HF model
+src/lobster/model/integrations/ume_huggingface/model/*
