@@ -11,11 +11,10 @@
 action: update
 
 # Required for add/update/delete: Model name
-model_name: ume-large-base-740M
+model_name: null
 
 # Required for add/update: Checkpoint path
-checkpoint_path: s3://prescient-lobster/ume/runs/2025-08-12T13-34-55/epoch=1-step=112500-val_loss=0.9124.ckpt
-
+checkpoint_path: null
 # Optional: Dry run mode (don't actually make changes)
 dry_run: false
 
