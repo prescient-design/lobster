@@ -8,13 +8,14 @@ import numpy as np
 import torch
 from sklearn.exceptions import ConvergenceWarning
 from torch import Tensor
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, ConcatDataset
 from tqdm import tqdm
 
 from lobster.constants import CALM_TASKS, CALM_TASK_SPECIES
 from lobster.datasets import CalmPropertyDataset
 
 from ._linear_probe_callback import LinearProbeCallback
+from ._peer_utils import convert_numpy_to_python
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
@@ -56,9 +57,19 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     run_every_n_epochs : Optional[int], default=None
         Run this callback every n epochs. If None, runs every validation epoch.
     test_size : float, default=0.2
-        Fraction of data to use for testing.
+        Fraction of data to use for testing. Ignored if use_cross_validation=True.
     max_samples : int, default=3000
         Maximum number of samples to use from each dataset.
+    use_cross_validation : bool, default=False
+        Whether to use k-fold cross validation instead of single train/test split.
+    n_folds : int, default=5
+        Number of folds for cross validation (only used if use_cross_validation=True).
+    dimensionality_reduction : bool, default=False
+        Whether to apply PCA dimensionality reduction to embeddings before training probes.
+    reduced_dim : int, default=320
+        Number of dimensions to reduce to (only used if dimensionality_reduction=True).
+    probe_type : str, default="linear"
+        Type of probe to use. Options: "linear", "elastic", "svm".
 
     Attributes
     ----------
@@ -79,6 +90,11 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         run_every_n_epochs: int | None = None,
         test_size: float = 0.2,
         max_samples: int = 3000,
+        use_cross_validation: bool = False,
+        n_folds: int = 5,
+        dimensionality_reduction: bool = False,
+        reduced_dim: int = 320,
+        probe_type: str = "linear",
     ):
         # Don't use transform_fn - we'll handle raw sequences with explicit modality
         super().__init__(
@@ -86,6 +102,11 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             task_type="regression",
             batch_size=batch_size,
             run_every_n_epochs=run_every_n_epochs,
+            use_cross_validation=use_cross_validation,
+            n_folds=n_folds,
+            dimensionality_reduction=dimensionality_reduction,
+            reduced_dim=reduced_dim,
+            probe_type=probe_type,
         )
 
         self.tasks = set(tasks) if tasks else set(CALM_TASKS.keys())
@@ -248,17 +269,31 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         self._set_metrics(task_type, num_classes)
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
-
         try:
-            train_embeddings, train_targets = self._get_embeddings(module, train_loader)
-            test_embeddings, test_targets = self._get_embeddings(module, test_loader)
+            if self.use_cross_validation:
+                # For cross-validation, we need all data combined
+                # Create a combined dataset from train and test
+                combined_dataset = ConcatDataset([train_dataset, test_dataset])
+                combined_loader = DataLoader(combined_dataset, batch_size=self.batch_size, shuffle=False)
+                
+                # Get all embeddings and targets
+                all_embeddings, all_targets = self._get_embeddings(module, combined_loader)
+                
+                # Use cross-validation evaluation
+                metrics = self._evaluate_with_cross_validation(all_embeddings, all_targets, task_key)
+                
+            else:
+                # Use traditional train/test split
+                train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+                test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
-            probe = self._train_probe(train_embeddings, train_targets)
-            self.probes[task_key] = probe
+                train_embeddings, train_targets = self._get_embeddings(module, train_loader)
+                test_embeddings, test_targets = self._get_embeddings(module, test_loader)
 
-            metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
+                probe = self._train_probe(train_embeddings, train_targets, task_key)
+                self.probes[task_key] = probe
+
+                metrics = self._evaluate_probe(probe, test_embeddings, test_targets, task_key)
 
             # Log metrics if trainer is provided
             if trainer is not None:
@@ -375,4 +410,5 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         logger.info(f"Evaluation completed. Successful tasks: {successful_tasks}")
         logger.info(f"Total successful tasks: {len(successful_tasks)}")
 
-        return all_task_metrics
+        # Convert NumPy scalars to Python types for clean YAML formatting
+        return convert_numpy_to_python(all_task_metrics)
