@@ -54,7 +54,7 @@ def run_mock_evaluation(
     output_dir: str = "dgeb_mock_results",
     batch_size: int = 32,
     max_seq_length: int = 1024,
-    use_flash_attn: bool | None = None,
+    use_flash_attn: bool = False,
     l2_norm: bool = False,
     pool_type: str = "mean",
     devices: list[int] | None = None,
@@ -78,7 +78,7 @@ def run_mock_evaluation(
         Batch size for encoding (unused in mock implementation).
     max_seq_length : int, default=1024
         Maximum sequence length.
-    use_flash_attn : bool | None, default=None
+    use_flash_attn : bool, default=False
         Whether to use flash attention (unused in mock implementation).
     l2_norm : bool, default=False
         Whether to L2-normalize embeddings.
@@ -166,24 +166,46 @@ def run_mock_evaluation(
             "results": [],
         }
 
-        # Extract key metrics from results
+        # Extract key metrics from results with error handling for individual tasks
+        successful_tasks = 0
+        failed_tasks = []
+
         for result in results:
-            task_summary = {
-                "task_name": getattr(result.task, "display_name", "Unknown Task"),
-                "task_type": getattr(result.task, "type", "Unknown Type"),
-                "scores": {},
-            }
+            try:
+                task_name = getattr(result.task, "display_name", "Unknown Task")
+                task_summary = {
+                    "task_name": task_name,
+                    "task_type": getattr(result.task, "type", "Unknown Type"),
+                    "scores": {},
+                }
 
-            # Extract scores from each layer result
-            for layer_result in result.results:
-                layer_name = f"layer_{layer_result.layer_number}"
-                # Convert list of TaskMetric objects to dictionary
-                metrics_dict = {}
-                for metric in layer_result.metrics:
-                    metrics_dict[metric.id] = metric.value
-                task_summary["scores"][layer_name] = metrics_dict
+                # Extract scores from each layer result
+                for layer_result in result.results:
+                    layer_name = f"layer_{layer_result.layer_number}"
+                    # Convert list of TaskMetric objects to dictionary
+                    metrics_dict = {}
+                    for metric in layer_result.metrics:
+                        metrics_dict[metric.id] = metric.value
+                    task_summary["scores"][layer_name] = metrics_dict
 
-            results_summary["results"].append(task_summary)
+                results_summary["results"].append(task_summary)
+                successful_tasks += 1
+                logger.info(f"Successfully processed results for task: {task_name}")
+
+            except Exception as e:
+                task_name = getattr(getattr(result, "task", None), "display_name", "Unknown Task")
+                logger.warning(f"Failed to process results for task '{task_name}': {e}")
+                failed_tasks.append(task_name)
+                continue  # Continue with next task
+
+        # Add summary of task processing
+        results_summary["successful_tasks"] = successful_tasks
+        results_summary["failed_tasks"] = failed_tasks
+        results_summary["total_attempted_tasks"] = len(results)
+
+        if failed_tasks:
+            logger.warning(f"Failed to process {len(failed_tasks)} tasks: {failed_tasks}")
+        logger.info(f"Successfully processed {successful_tasks}/{len(results)} tasks")
 
         return results_summary
 
@@ -391,9 +413,6 @@ def main():
     # Set up logging
     setup_logging(args.log_level)
 
-    # Handle flash attention flag
-    use_flash_attn = args.use_flash_attn if args.use_flash_attn else None
-
     # Run evaluation
     try:
         results_summary = run_mock_evaluation(
@@ -403,7 +422,7 @@ def main():
             output_dir=args.output_dir,
             batch_size=args.batch_size,
             max_seq_length=args.max_seq_length,
-            use_flash_attn=use_flash_attn,
+            use_flash_attn=args.use_flash_attn,
             l2_norm=args.l2_norm,
             pool_type=args.pool_type,
             devices=args.devices,

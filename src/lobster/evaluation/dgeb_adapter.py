@@ -11,6 +11,7 @@ from dgeb.modality import Modality
 from lobster.constants import Modality as LobsterModality
 from lobster.model import UME
 from lobster.model.modern_bert._padding import unpad_input, pad_input
+from ._pooling_utils import apply_dgeb_pooling
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +41,14 @@ class UMEAdapterDGEB(BioSeqTransformer):
         Batch size for encoding.
     pool_type : str, default="mean"
         Pooling strategy. One of "mean", "max", "cls", "last".
-    modality : Literal["protein", "dna"], default="protein"
-        Biological modality for the sequences.
-    use_flash_attn : bool | None, default=None
+    modality : LobsterModality | str, default=LobsterModality.AMINO_ACID
+        Biological modality for the sequences. Can be LobsterModality.AMINO_ACID, LobsterModality.NUCLEOTIDE,
+        or strings "protein", "dna" for backward compatibility.
+    use_flash_attn : bool, default=True
         Whether to use flash attention. If None, determined by device availability.
+        If True: flash attention will be enabled only if the device is "cuda" and
+        flash attention is available.
+        If False: flash attention is disabled.
     """
 
     def __init__(
@@ -56,15 +61,28 @@ class UMEAdapterDGEB(BioSeqTransformer):
         l2_norm: bool = False,
         batch_size: int = 128,
         pool_type: str = "mean",
-        modality: Literal["protein", "dna"] = "protein",
-        use_flash_attn: bool | None = None,
+        modality: LobsterModality | str = LobsterModality.AMINO_ACID,
+        use_flash_attn: bool = True,
     ):
         logger.info(f"Initializing UMEAdapterDGEB with model_name={model_name}, modality={modality}")
         if devices is None:
             devices = [0]
 
         # Set attributes before calling parent __init__ since parent calls _load_model
-        self._modality = modality
+        # Convert string modalities to enum for backward compatibility
+        if isinstance(modality, str):
+            modality_map = {
+                "protein": LobsterModality.AMINO_ACID,
+                "dna": LobsterModality.NUCLEOTIDE,
+            }
+            if modality not in modality_map:
+                raise ValueError(
+                    f"Unsupported string modality: {modality}. Use {list(modality_map.keys())} or LobsterModality enum."
+                )
+            self._modality = modality_map[modality]
+            logger.info(f"Converted string modality '{modality}' to {self._modality}")
+        else:
+            self._modality = modality
         self._use_flash_attn = use_flash_attn
         self._model_name = model_name
         self._devices = devices
@@ -106,19 +124,16 @@ class UMEAdapterDGEB(BioSeqTransformer):
 
         # Determine flash attention usage
         use_flash_attn = False
-        if self._use_flash_attn is not None:
-            # User explicitly specified flash attention preference
-            use_flash_attn = self._use_flash_attn
-            if use_flash_attn and device == "cpu":
-                logger.warning("Flash attention requested but using CPU - flash attention will be disabled")
-                use_flash_attn = False
-        elif device == "cuda":
-            # Auto-detect flash attention availability on GPU
-            use_flash_attn = self._check_flash_attention_available()
-            if use_flash_attn:
+        if self._use_flash_attn:
+            # Enable flash attention only if CUDA is available and flash attention is available
+            if device == "cuda" and self._check_flash_attention_available():
+                use_flash_attn = True
                 logger.info("Flash attention detected and enabled for better performance")
             else:
-                logger.info("Flash attention not available - using standard attention")
+                # Requested, but either CUDA unavailable or flash attention unavailable
+                logger.warning("Flash attention requested but not available - flash attention will be disabled")
+        else:
+            logger.info("Flash attention disabled")
 
         return device, use_flash_attn
 
@@ -312,13 +327,16 @@ class UMEAdapterDGEB(BioSeqTransformer):
             return DummyTokenizer()
 
     def _get_lobster_modality(self) -> LobsterModality:
-        """Convert DGEB modality to Lobster modality."""
-        if self._modality == "protein":
-            return LobsterModality.AMINO_ACID
-        elif self._modality == "dna":
-            return LobsterModality.NUCLEOTIDE
-        else:
-            raise ValueError(f"Unsupported modality: {self._modality}")
+        """Return the Lobster modality (already in correct format)."""
+        return self._modality
+
+    def _get_dgeb_modality_string(self) -> str:
+        """Return DGEB-compatible modality string for metadata."""
+        modality_to_dgeb_string = {
+            LobsterModality.AMINO_ACID: "protein",
+            LobsterModality.NUCLEOTIDE: "dna",
+        }
+        return modality_to_dgeb_string.get(self._modality, str(self._modality))
 
     def encode(self, sequences: list[str], **kwargs) -> np.ndarray:
         """Encode sequences to embeddings.
@@ -451,24 +469,10 @@ class UMEAdapterDGEB(BioSeqTransformer):
             all_hidden_states[i + 1] for i in self.layers
         ]  # +1 because all_hidden_states[0] is embedding
 
-        # Pool each layer
+        # Pool each layer using shared utility
         pooled_layers = []
         for layer_hidden in selected_layers:
-            if self.pool_type == "mean":
-                pooled = (layer_hidden * attention_mask.unsqueeze(-1)).sum(dim=1) / attention_mask.sum(
-                    dim=1, keepdim=True
-                )
-            elif self.pool_type == "max":
-                mask = attention_mask.unsqueeze(-1).expand_as(layer_hidden)
-                layer_hidden_masked = layer_hidden.masked_fill(mask == 0, float("-inf"))
-                pooled = layer_hidden_masked.max(dim=1)[0]
-            elif self.pool_type == "cls":
-                pooled = layer_hidden[:, 0, :]
-            elif self.pool_type == "last":
-                lengths = attention_mask.sum(dim=1) - 1
-                pooled = torch.stack([layer_hidden[i, l, :] for i, l in enumerate(lengths)], dim=0)
-            else:
-                raise ValueError(f"Unsupported pool_type: {self.pool_type}")
+            pooled = apply_dgeb_pooling(layer_hidden, attention_mask, self.pool_type)
             pooled_layers.append(pooled)
 
         # Stack: (batch, num_layers, dim)
@@ -478,13 +482,16 @@ class UMEAdapterDGEB(BioSeqTransformer):
 
     @property
     def modality(self) -> Modality:
-        """Return the biological modality."""
-        if self._modality == "protein":
-            return Modality.PROTEIN
-        elif self._modality == "dna":
-            return Modality.DNA
-        else:
-            raise ValueError(f"Unsupported modality: {self._modality}")
+        """Return the biological modality (DGEB enum)."""
+        modality_map = {
+            LobsterModality.AMINO_ACID: Modality.PROTEIN,
+            LobsterModality.NUCLEOTIDE: Modality.DNA,
+        }
+
+        if self._modality not in modality_map:
+            raise ValueError(f"Unsupported modality: {self._modality}. Supported: {list(modality_map.keys())}")
+
+        return modality_map[self._modality]
 
     @property
     def embed_dim(self) -> int:
@@ -519,7 +526,7 @@ class UMEAdapterDGEB(BioSeqTransformer):
         return {
             "model_name": self._model_name,
             "hf_name": self._model_name,  # Required by DGEB
-            "modality": self._modality,
+            "modality": self._get_dgeb_modality_string(),  # Use DGEB-compatible string
             "embed_dim": actual_embed_dim,  # Required by DGEB
             "num_layers": actual_num_layers,  # Required by DGEB
             "num_params": total_params,  # Total parameter count
