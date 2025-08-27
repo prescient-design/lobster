@@ -29,9 +29,11 @@ scripts/combined_db*
 *_play.py
 src/lobster/hydra_config/experiment/*
 src/lobster/mcp/claude_desktop_config.json
+*.ipynb_checkpoints
 
 notebooks/nathan/*
 notebooks/karina/*
+notebooks/amyxlu/*
 
 models/*
 
