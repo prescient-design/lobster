@@ -21,6 +21,19 @@ LBSTER (Lobster) is a "batteries included" language model library for proteins a
 - `examples/` - Example scripts for inference and interventions
 - `notebooks/` - Jupyter notebooks for tutorials
 
+## Development Commands
+
+### Essential Commands
+- **Sync dependencies**: `uv sync` (preferred package manager)
+- **Run tests**: `uv run python -m pytest`
+- **Lint code**: `uv run ruff check` (with auto-fix: `uv run ruff check --fix`)
+- **Format code**: `uv run ruff format`
+- **Build package**: `uv run python -m build .`
+
+### Development Setup
+- **Sync all dependencies**: `uv sync --all-extras`
+- **Alternative install for development**: `python -m pip install --editable '.[all]'`
+
 ## Common Commands
 
 ### Installation and Environment
@@ -46,6 +59,32 @@ pre-commit run --all-files  # Run all checks
 ruff check --fix  # Lint and fix issues
 ruff format  # Format code
 ```
+
+### Code Organization
+- Each function is implemented in a separate file prefixed with underscore (e.g., `_model.py`)
+- Functions are imported and exposed through `__init__.py` files
+- Test files mirror the source structure in `tests/lobster/`
+- Extensive use of PyTorch tensors and operations throughout
+
+### Testing
+- Test fixtures handle different dtype scenarios (float32/float64)
+- Tests located in `tests/lobster/` mirroring source structure
+- Run with `uv run pytest` from project root
+
+### Configuration
+- **pyproject.toml**: Contains all project configuration including dependencies, build system, and Ruff linting rules
+- **Ruff linting**: Configured to use FLAKE8-BUGBEAR, PYCODESTYLE, PYFLAKES, ISORT rules
+- **Pre-commit hooks**: Automated formatting and linting on commits
+- **GitHub Actions**: Automated testing on multiple Python versions (3.10-3.12) and platforms
+
+### Documentation
+- **Docstring format**: Follow NumPy-style docstrings used throughout the project
+
+### Code Quality
+- **Type hints**: Include comprehensive type annotations for all parameters and return values
+- **Input validation**: Validate input shapes and types, raising appropriate errors
+- **Error messages**: Provide clear, actionable error messages
+- **Code style**: Follow the project's linting rules (run `uv run ruff check` and `uv run ruff format`)
 
 ### Training and Inference
 ```bash

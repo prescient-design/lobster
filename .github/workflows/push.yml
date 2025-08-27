@@ -1,5 +1,9 @@
+name: CI
+
 on:
   push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -52,24 +56,24 @@ jobs:
         with:
           args: "format --check"
           version: 0.11.12
-  testpypi:
-    environment:
-      name: "test.pypi.org"
-      url: "https://test.pypi.org/project/lbster"
-    needs:
-      - "build"
-    permissions:
-      id-token: "write"
-    runs-on: "ubuntu-latest"
-    steps:
-      - uses: "actions/download-artifact@v4"
-        with:
-          name: "python-package-distributions"
-          path: "dist/"
-      - uses: "pypa/gh-action-pypi-publish@release/v1"
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository-url: "https://test.pypi.org/legacy/"
-          skip-existing: true
-          verbose: true
+  # testpypi:
+  #   environment:
+  #     name: "test.pypi.org"
+  #     url: "https://test.pypi.org/project/lbster"
+  #   needs:
+  #     - "build"
+  #   permissions:
+  #     id-token: "write"
+  #   runs-on: "ubuntu-latest"
+  #   steps:
+  #     - uses: "actions/download-artifact@v4"
+  #       with:
+  #         name: "python-package-distributions"
+  #         path: "dist/"
+  #     - uses: "pypa/gh-action-pypi-publish@release/v1"
+  #       with:
+  #         user: __token__
+  #         password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+  #         repository-url: "https://test.pypi.org/legacy/"
+  #         skip-existing: true
+  #         verbose: true

@@ -5,7 +5,7 @@ from typing import Literal
 import lightning as L
 import numpy as np
 import torch
-from beignet.transforms import Transform
+from lobster.transforms import Transform
 from lightning.pytorch.callbacks import Callback
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
@@ -65,11 +65,18 @@ class LinearProbeCallback(Callback):
             self.auroc = None
 
         elif task_type in {"binary", "multiclass", "multilabel"}:
-            # For multilabel, we use num_classes as num_labels
+            # Use correct parameter names for different task types
             metric_task = task_type
-            self.accuracy = Accuracy(task=metric_task, num_labels=num_classes)
-            self.f1 = F1Score(task=metric_task, num_labels=num_classes)
-            self.auroc = AUROC(task=metric_task, num_labels=num_classes)
+            if task_type == "multilabel":
+                # For multilabel, use num_labels parameter
+                self.accuracy = Accuracy(task=metric_task, num_labels=num_classes)
+                self.f1 = F1Score(task=metric_task, num_labels=num_classes)
+                self.auroc = AUROC(task=metric_task, num_labels=num_classes)
+            else:
+                # For binary and multiclass, use num_classes parameter
+                self.accuracy = Accuracy(task=metric_task, num_classes=num_classes)
+                self.f1 = F1Score(task=metric_task, num_classes=num_classes)
+                self.auroc = AUROC(task=metric_task, num_classes=num_classes)
             self.mse = None
             self.r2 = None
             self.spearman = None
@@ -93,16 +100,18 @@ class LinearProbeCallback(Callback):
         return trainer.current_epoch % self.run_every_n_epochs != 0
 
     def _get_embeddings(
-        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader
+        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader, modality: str = None
     ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader.
 
         Parameters
         ----------
         model : Union[L.LightningModule, torch.nn.Module]
-            The model to extract embeddings from
+            The model to extract embeddings from (assumes UME)
         dataloader : DataLoader
             DataLoader for the data to extract embeddings for
+        modality : str, optional
+            Explicit modality for embed_sequences. If None, falls back to embed() method.
 
         Returns
         -------
@@ -117,20 +126,52 @@ class LinearProbeCallback(Callback):
         with torch.no_grad():
             for batch in dataloader:
                 x, y = batch
-                x = {k: v.to(model.device) for k, v in x.items()}
 
-                # Get token-level embeddings
-                batch_embeddings = model.model.tokens_to_latents(**x)
+                # If modality is provided and inputs are raw strings, prefer embed_sequences
+                if modality is not None and (isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x)):
+                    try:
+                        batch_embeddings = model.embed_sequences(list(x), modality=modality, aggregate=True)
+                    except AttributeError as exc:
+                        raise AttributeError(
+                            "Model must implement embed_sequences(sequences, modality=..., aggregate=True) for raw sequence inputs"
+                        ) from exc
 
-                # Reshape to (batch_size, seq_len, hidden_size)
-                batch_size = len(y)
-                seq_len = x["input_ids"].size(-1)
-                batch_embeddings = batch_embeddings.view(batch_size, seq_len, -1)
+                elif isinstance(x, dict) and modality is not None:
+                    # Common dict batches may contain raw text under these keys
+                    candidate_keys = ["text", "sequence", "Sequence", "cds", "smiles"]
+                    text_list = None
+                    for k in candidate_keys:
+                        v = x.get(k)
+                        if isinstance(v, (list, tuple)) and all(isinstance(s, str) for s in v):
+                            text_list = list(v)
+                            break
 
-                # Simple mean pooling over sequence length dimension
-                seq_embeddings = batch_embeddings.mean(dim=1)
+                    if text_list is not None:
+                        try:
+                            batch_embeddings = model.embed_sequences(text_list, modality=modality, aggregate=True)
+                        except AttributeError as exc:
+                            raise AttributeError(
+                                "Model must implement embed_sequences(sequences, modality=..., aggregate=True) for raw sequence inputs"
+                            ) from exc
+                    else:
+                        # Otherwise defer to embed for dict inputs
+                        try:
+                            batch_embeddings = model.embed(x, aggregate=True)
+                        except AttributeError as exc:
+                            raise AttributeError(
+                                "Model must implement embed(inputs, aggregate=True) for dict or tensor inputs"
+                            ) from exc
 
-                embeddings.append(seq_embeddings.cpu())
+                else:
+                    # Default path: rely on model.embed for tensorized/tokenized or generic inputs
+                    try:
+                        batch_embeddings = model.embed(x, aggregate=True)
+                    except AttributeError as exc:
+                        raise AttributeError(
+                            "Model must implement embed(inputs, aggregate=True) or embed_sequences(sequences, modality=..., aggregate=True)"
+                        ) from exc
+
+                embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
 
         return torch.cat(embeddings), torch.cat(targets)

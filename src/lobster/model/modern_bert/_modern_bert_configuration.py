@@ -30,8 +30,8 @@ FLEXBERT_CONFIG_ARGS = {
     },
     "UME_large": {
         "num_hidden_layers": 24,
-        "num_attention_heads": 25,
-        "intermediate_size": 6400,
-        "hidden_size": 1600,
+        "num_attention_heads": 24,
+        "intermediate_size": 6912,
+        "hidden_size": 1728,
     },
 }

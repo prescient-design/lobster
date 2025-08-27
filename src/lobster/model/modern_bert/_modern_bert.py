@@ -24,7 +24,7 @@ else:
 class FlexBERT(pl.LightningModule):
     def __init__(
         self,
-        model_name: Literal["UME_mini", "UME_small", "UME_medium", "UME_large"] = "UME_mini",
+        model_name: Literal["UME_mini", "UME_small", "UME_medium", "UME_large"] = "UME_medium",
         *,
         vocab_size: int | None = None,
         pad_token_id: int | None = None,

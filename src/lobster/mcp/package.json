@@ -1,0 +1,27 @@
+{
+  "name": "lobster-protein-language-models",
+  "version": "1.0.0",
+  "description": "Access pretrained protein language models for sequence analysis, embeddings, concept prediction, and interventions",
+  "main": "run_server.py",
+  "scripts": {
+    "start": "python3 run_server.py"
+  },
+  "keywords": ["protein", "language-models", "bioinformatics", "embeddings", "mcp"],
+  "author": {
+    "name": "Prescient Design",
+    "email": "info@prescient.design",
+    "url": "https://github.com/prescient-design/lobster"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prescient-design/lobster.git"
+  },
+  "homepage": "https://github.com/prescient-design/lobster",
+  "mcp": {
+    "server": {
+      "command": "python3",
+      "args": ["run_server.py"]
+    }
+  }
+}

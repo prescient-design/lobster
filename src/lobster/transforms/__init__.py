@@ -21,6 +21,7 @@ from ._modality_aware_transform import ComposedModalityAwareTransform, ModalityA
 from ._structure_featurizer import StructureFeaturizer
 from ._tokenizer_transform import TokenizerTransform
 from ._transform import Transform
+from ._rdkit_descriptors import SmilesToRDKitDescriptorsTransform
 
 __all__ = [
     "AutoTokenizerTransform",
@@ -38,4 +39,5 @@ __all__ = [
     "Transform",
     "ModalityAwareTransform",
     "ComposedModalityAwareTransform",
+    "SmilesToRDKitDescriptorsTransform",
 ]

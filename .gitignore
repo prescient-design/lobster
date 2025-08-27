@@ -51,6 +51,7 @@ dev
 *.log
 dgeb_results/
 dgeb_test_results/
+dgeb_mock_results/
 *_dgeb_eval/
 evaluation_report.md
 results_summary.json
@@ -58,3 +59,10 @@ results_summary.json
 # DXT extensions (large binary files)
 test_dxt/*
 *.dxt
+# Databases and macOS artifacts
+*.lmdb/
+*.mdb
+._*
+
+# UME HF model
+src/lobster/model/integrations/ume_huggingface/model/*
