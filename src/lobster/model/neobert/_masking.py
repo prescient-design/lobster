@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 
@@ -7,6 +6,7 @@ def _create_special_tokens_mask(input_ids: torch.Tensor, special_token_ids: list
     for token in special_token_ids:
         special_tokens_mask |= input_ids == token
     special_tokens_mask = special_tokens_mask.bool()
+
     return special_tokens_mask
 
 
@@ -22,7 +22,7 @@ def _validate_probabilities(mask_probability: float):
         raise ValueError("mask_probability must be between 0 and 1")
 
 
-def prepare_mlm_batch(
+def mask_tokens(
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     mask_token_id: int,
@@ -79,7 +79,6 @@ def prepare_mlm_batch(
     _validate_input_shapes(input_ids, attention_mask)
     _validate_probabilities(mask_probability)
 
-    batch_size, seq_len = input_ids.shape
     device = input_ids.device
 
     # Clone inputs to avoid modifying originals
@@ -102,40 +101,12 @@ def prepare_mlm_batch(
     # Replace all masked tokens with [MASK]
     masked_input_ids[masked_indices] = mask_token_id
 
-    # Prepare output batch
-    batch = {
-        "input_ids": masked_input_ids,
-        "labels": labels,
-    }
-
-    if pack_sequences:
-        # Pack sequences for efficient flash attention
-        input_ids_list = []
-        labels_list = []
-        position_ids_list = []
-        seqlens = [0]
-
-        for i in range(batch_size):
-            # Get actual sequence length (excluding padding)
-            seq_len_actual = attention_mask[i].sum().item()
-
-            input_ids_list.append(batch["input_ids"][i, :seq_len_actual])
-            labels_list.append(batch["labels"][i, :seq_len_actual])
-            position_ids_list.append(torch.arange(seq_len_actual, device=device))
-            seqlens.append(seq_len_actual)
-
-        # Concatenate all sequences
-        batch.update(
-            {
-                "input_ids": torch.cat(input_ids_list).unsqueeze(0),  # Add batch dim for model
-                "labels": torch.cat(labels_list).unsqueeze(0),
-                "position_ids": torch.cat(position_ids_list),
-                "cu_seqlens": torch.tensor(np.cumsum(seqlens), dtype=torch.int32, device=device),
-                "max_seqlen": max(seqlens[1:]),  # Exclude the initial 0
-            }
-        )
+    if not pack_sequences:
+        # Standard (unpacked) batch output
+        return {
+            "input_ids": masked_input_ids,
+            "labels": labels,
+            "attention_mask": attention_mask.to(torch.bool),
+        }
     else:
-        # Standard padded batch format
-        batch["attention_mask"] = attention_mask.bool()
-
-    return batch
+        raise NotImplementedError("Packing is not implemented yet")
