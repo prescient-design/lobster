@@ -9,8 +9,15 @@ import numpy as np
 import scipy.stats
 import torch
 from torch import Tensor
-from rdkit import Chem
-from rdkit.Chem import Descriptors
+
+try:
+    from rdkit import Chem
+    from rdkit.Chem import Descriptors
+
+    RDKIT_AVAILABLE = True
+except ImportError:
+    RDKIT_AVAILABLE = False
+
 
 from lobster.constants import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 
@@ -29,6 +36,9 @@ def smiles_to_rdkit_descs(smiles_seq: str) -> Tensor | None:
         RDKit descriptors for the SMILES sequence, or ``None`` if the SMILES sequence is invalid. Descriptors that were
         not calculable are replaced with ``nan``.
     """
+    if not RDKIT_AVAILABLE:
+        raise ImportError("RDKit is not installed. Please install it with `uv sync --extra mgm`.")
+
     mol = Chem.MolFromSmiles(smiles_seq)
     if mol is None:
         return None
@@ -79,6 +89,9 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
     :data:`lobster.constants.RDKIT_DESCRIPTOR_DISTRIBUTIONS`
         The distributions used to normalize the RDKit descriptors.
     """
+    if not RDKIT_AVAILABLE:
+        raise ImportError("RDKit is not installed. Please install it with `uv sync --extra mgm`.")
+
     mol = Chem.MolFromSmiles(smiles_seq)
 
     if mol is None:
