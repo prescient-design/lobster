@@ -2,20 +2,26 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from lightning import LightningModule
-
+import transformers
 from .neobert_module import NeoBERTModule
-from ._masking import mask_tokens
 
 
 class NeoBERTLightningModule(LightningModule):
     def __init__(
         self,
         mask_token_id: int,
-        cls_token_id: int,
         pad_token_id: int,
-        eos_token_id: int,
+        special_token_ids: list[int],
         mask_probability: float = 0.2,
-        generator: torch.Generator | None = None,
+        seed: int = 0,
+        lr: float = 1e-3,
+        beta1: float = 0.9,
+        beta2: float = 0.98,
+        eps: float = 1e-12,
+        weight_decay: float = 0.0,
+        scheduler: str = "constant",
+        scheduler_kwargs: dict | None = None,
+        model_kwargs: dict | None = None,
         **kwargs,
     ):
         self.save_hyperparameters()
@@ -23,27 +29,32 @@ class NeoBERTLightningModule(LightningModule):
         super().__init__(**kwargs)
 
         self.mask_token_id = mask_token_id
-        self.special_token_ids = [cls_token_id, pad_token_id, eos_token_id]
+        self.pad_token_id = pad_token_id
+        self.special_token_ids = special_token_ids
         self.mask_probability = mask_probability
-        self.generator = generator
+        self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.weight_decay = weight_decay
+        self.scheduler = scheduler
+        self.scheduler_kwargs = scheduler_kwargs or {}
+
+        self.generator = torch.Generator(device=self.device)
+        self.generator.manual_seed(seed)
 
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
 
-        self.model = NeoBERTModule(pad_token_id=pad_token_id, **kwargs)
+        self.model = NeoBERTModule(pad_token_id=self.pad_token_id, **model_kwargs)
 
     def compute_mlm_loss(self, input_ids: Tensor, attention_mask: Tensor, **kwargs) -> Tensor:
-        masked_inputs = mask_tokens(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            mask_token_id=self.mask_token_id,
-            mask_probability=self.mask_probability,
-        )
-        input_ids = masked_inputs["input_ids"]
-        attention_mask = masked_inputs["attention_mask"]
-        labels = masked_inputs["labels"]
+        logits, labels = self.model.get_masked_logits_and_labels(input_ids, attention_mask, **kwargs)
 
-        logits = self.model(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
-        logits = logits["logits"]
+        # Reshape logits and labels for cross-entropy loss
+        # logits: (batch_size, seq_len, vocab_size) -> (batch_size * seq_len, vocab_size)
+        # labels: (batch_size, seq_len) -> (batch_size * seq_len,)
+        logits = logits.view(-1, logits.size(-1))
+        labels = labels.view(-1)
 
         return self.loss_fn(logits, labels)
 
@@ -58,4 +69,21 @@ class NeoBERTLightningModule(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.lr,
+            betas=(self.beta1, self.beta2),
+            eps=self.eps,
+            weight_decay=self.weight_decay,
+        )
+        scheduler = transformers.get_scheduler(
+            self.scheduler,
+            optimizer,
+            num_training_steps=self.scheduler_kwargs.pop("num_training_steps", None),
+            num_warmup_steps=self.scheduler_kwargs.pop("num_warmup_steps", None),
+            scheduler_specific_kwargs=self.scheduler_kwargs,
+        )
+
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}

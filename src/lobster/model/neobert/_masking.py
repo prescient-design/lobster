@@ -12,9 +12,9 @@ def _create_special_tokens_mask(input_ids: torch.Tensor, special_token_ids: list
 
 def _validate_input_shapes(input_ids: torch.Tensor, attention_mask: torch.Tensor):
     if input_ids.dim() != 2:
-        raise ValueError("input_ids must be a 2D tensor (batch_size, seq_len)")
+        raise ValueError(f"input_ids must be a 2D tensor (batch_size, seq_len) but got {input_ids.shape}")
     if attention_mask.dim() != 2:
-        raise ValueError("attention_mask must be a 2D tensor (batch_size, seq_len)")
+        raise ValueError(f"attention_mask must be a 2D tensor (batch_size, seq_len) but got {attention_mask.shape}")
 
 
 def _validate_probabilities(mask_probability: float):

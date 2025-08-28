@@ -1,7 +1,8 @@
-import torch
 import torch.nn as nn
+from torch import Tensor
 
 from ._model import NeoBERTConfig, NeoBERT
+from ._masking import mask_tokens
 
 
 class NeoBERTModule(nn.Module):
@@ -38,11 +39,11 @@ class NeoBERTModule(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor,
-        position_ids: torch.Tensor = None,
+        input_ids: Tensor,
+        position_ids: Tensor = None,
         max_seqlen: int = None,
-        cu_seqlens: torch.Tensor = None,
-        attention_mask: torch.Tensor = None,
+        cu_seqlens: Tensor = None,
+        attention_mask: Tensor = None,
         output_hidden_states: bool = False,
         output_attentions: bool = False,
         **kwargs,
@@ -68,3 +69,68 @@ class NeoBERTModule(nn.Module):
             output_dict["attentions"] = output.attentions
 
         return output_dict
+
+    def get_logits(
+        self,
+        input_ids: Tensor,
+        position_ids: Tensor = None,
+        max_seqlen: int = None,
+        cu_seqlens: Tensor = None,
+        attention_mask: Tensor = None,
+        output_hidden_states: bool = False,
+        output_attentions: bool = False,
+    ) -> Tensor:
+        output = self.model.forward(
+            input_ids=input_ids,
+            position_ids=position_ids,
+            max_seqlen=max_seqlen,
+            cu_seqlens=cu_seqlens,
+            attention_mask=attention_mask,
+            output_hidden_states=output_hidden_states,
+            output_attentions=output_attentions,
+        )
+        return self.decoder(output.last_hidden_state)
+
+    def get_masked_logits_and_labels(
+        self, input_ids: Tensor, attention_mask: Tensor, **kwargs
+    ) -> tuple[Tensor, Tensor]:
+        """Get masked logits and labels for a batch of input IDs and attention masks.
+
+        Parameters
+        ----------
+        input_ids : Tensor
+            The input IDs to mask.
+        attention_mask : Tensor
+            The attention mask for the input IDs.
+
+        Returns
+        -------
+        tuple[Tensor, Tensor]
+            A tuple containing the masked logits and labels.
+            Shape of logits: (batch_size, seq_len, vocab_size)
+            Shape of labels: (batch_size, seq_len)
+        """
+        if (
+            input_ids.dim() == 3
+            and input_ids.shape[1] == 1
+            and attention_mask.dim() == 3
+            and attention_mask.shape[1] == 1
+        ):
+            input_ids = input_ids.squeeze(1)
+            attention_mask = attention_mask.squeeze(1)
+
+        masked_inputs = mask_tokens(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            mask_token_id=self.mask_token_id,
+            mask_probability=self.mask_probability,
+            special_token_ids=self.special_token_ids,
+            generator=self.generator,
+        )
+        input_ids = masked_inputs["input_ids"]
+        attention_mask = masked_inputs["attention_mask"]
+        labels = masked_inputs["labels"]
+
+        logits = self.get_logits(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
+
+        return logits, labels
