@@ -1,7 +1,6 @@
 # From https://huggingface.co/chandar-lab/NeoBERT/blob/main/model.py
 
 
-import numpy as np
 import torch
 from torch import nn
 from torch.nn.functional import scaled_dot_product_attention
@@ -15,7 +14,6 @@ except ImportError:
     FLASH_ATTN_AVAILABLE = False
 
 from transformers import (
-    DataCollatorForLanguageModeling,
     PreTrainedModel,
 )
 from transformers.modeling_outputs import (
@@ -24,39 +22,6 @@ from transformers.modeling_outputs import (
 
 from ._rotary import apply_rotary_emb, precompute_freqs_cis
 from ._swiglu import SwiGLU
-
-
-class DataCollatorWithPacking(DataCollatorForLanguageModeling):
-    def __init__(self, pack_sequences=False, **kwargs):
-        super().__init__(**kwargs)
-        self.pack_sequences = pack_sequences
-
-    def __call__(self, batch):
-        if self.pack_sequences:
-            # Add position_ids if not present
-            if "position_ids" not in batch[0]:
-                for item in batch:
-                    item["position_ids"] = list(range(len(item["input_ids"])))
-
-            # Pack the sequences into a single list
-            input_ids_list = [item["input_ids"] for item in batch]
-            position_ids_list = [item["position_ids"] for item in batch]
-            seqlens = np.array([0] + [len(ids) for ids in input_ids_list])
-
-            packed_batch = {
-                "position_ids": np.concatenate(position_ids_list, axis=0),
-                "input_ids": np.concatenate(input_ids_list, axis=0),
-                "cu_seqlens": np.cumsum(seqlens),
-                "max_seqlen": max(seqlens),
-            }
-
-            batch = super().__call__([packed_batch])
-            batch["cu_seqlens"] = batch["cu_seqlens"].to(torch.int32).squeeze()
-        else:
-            batch = super().__call__(batch)
-            batch["attention_mask"] = batch["attention_mask"].to(torch.bool)
-
-        return batch
 
 
 class EncoderBlock(nn.Module):
