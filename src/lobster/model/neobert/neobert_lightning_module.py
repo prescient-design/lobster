@@ -22,11 +22,11 @@ class NeoBERTLightningModule(LightningModule):
         scheduler: str = "constant",
         scheduler_kwargs: dict | None = None,
         model_kwargs: dict | None = None,
-        **kwargs,
+        ckpt_path: str | None = None,
     ):
         self.save_hyperparameters()
 
-        super().__init__(**kwargs)
+        super().__init__()
 
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
