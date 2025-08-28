@@ -19,6 +19,7 @@ class NeoBERTModule(nn.Module):
         pad_token_id: int | None = None,
         mask_token_id: int | None = None,
         mask_probability: float | None = None,
+        special_token_ids: list[int] | None = None,
         max_length: int = 1024,
     ):
         super().__init__()
@@ -41,6 +42,7 @@ class NeoBERTModule(nn.Module):
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
         self.mask_probability = mask_probability
+        self.special_token_ids = special_token_ids
 
     def forward(
         self,

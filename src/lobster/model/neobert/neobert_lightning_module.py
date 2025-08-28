@@ -49,6 +49,7 @@ class NeoBERTLightningModule(LightningModule):
             pad_token_id=self.pad_token_id,
             mask_token_id=self.mask_token_id,
             mask_probability=self.mask_probability,
+            special_token_ids=self.special_token_ids,
             **model_kwargs,
         )
 

@@ -13,6 +13,10 @@ class TestNeoBERTModule:
             intermediate_size=128,
             vocab_size=1000,
             max_length=512,
+            pad_token_id=0,
+            mask_token_id=103,
+            mask_probability=0.15,
+            special_token_ids=[0, 1, 2],
         )
 
         # Add required attributes for masking
