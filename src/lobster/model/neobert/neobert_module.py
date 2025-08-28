@@ -16,7 +16,8 @@ class NeoBERTModule(nn.Module):
         decoder_init_range: float = 0.02,
         norm_eps: float = 1e-06,
         vocab_size: int = 30522,
-        pad_token_id: int = 0,
+        pad_token_id: int | None = None,
+        mask_token_id: int | None = None,
         max_length: int = 1024,
     ):
         super().__init__()
@@ -36,6 +37,8 @@ class NeoBERTModule(nn.Module):
         self.model = NeoBERT(self.config)
         self.decoder = nn.Linear(self.config.hidden_size, self.config.vocab_size)
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
+        self.mask_token_id = mask_token_id
+        self.pad_token_id = pad_token_id
 
     def forward(
         self,
@@ -110,6 +113,11 @@ class NeoBERTModule(nn.Module):
             Shape of logits: (batch_size, seq_len, vocab_size)
             Shape of labels: (batch_size, seq_len)
         """
+        if self.mask_token_id is None or self.pad_token_id is None:
+            raise ValueError(
+                "mask_token_id and pad_token_id must be provided if you want to use masked language modeling"
+            )
+
         if (
             input_ids.dim() == 3
             and input_ids.shape[1] == 1
