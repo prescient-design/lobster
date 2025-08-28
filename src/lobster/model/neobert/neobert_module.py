@@ -18,6 +18,7 @@ class NeoBERTModule(nn.Module):
         vocab_size: int = 30522,
         pad_token_id: int | None = None,
         mask_token_id: int | None = None,
+        mask_probability: float | None = None,
         max_length: int = 1024,
     ):
         super().__init__()
@@ -39,6 +40,7 @@ class NeoBERTModule(nn.Module):
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
+        self.mask_probability = mask_probability
 
     def forward(
         self,
@@ -117,6 +119,8 @@ class NeoBERTModule(nn.Module):
             raise ValueError(
                 "mask_token_id and pad_token_id must be provided if you want to use masked language modeling"
             )
+        if self.mask_probability is None:
+            raise ValueError("mask_probability must be provided if you want to use masked language modeling")
 
         if (
             input_ids.dim() == 3

@@ -45,7 +45,12 @@ class NeoBERTLightningModule(LightningModule):
 
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
 
-        self.model = NeoBERTModule(pad_token_id=self.pad_token_id, mask_token_id=self.mask_token_id, **model_kwargs)
+        self.model = NeoBERTModule(
+            pad_token_id=self.pad_token_id,
+            mask_token_id=self.mask_token_id,
+            mask_probability=self.mask_probability,
+            **model_kwargs,
+        )
 
     def compute_mlm_loss(self, input_ids: Tensor, attention_mask: Tensor, **kwargs) -> Tensor:
         logits, labels = self.model.get_masked_logits_and_labels(input_ids, attention_mask, **kwargs)
