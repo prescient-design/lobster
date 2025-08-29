@@ -3,7 +3,9 @@ import torch.nn as nn
 from torch import Tensor
 from lightning import LightningModule
 import transformers
+
 from .neobert_module import NeoBERTModule
+from ._masking import mask_tokens
 
 
 class NeoBERTLightningModule(LightningModule):
@@ -40,6 +42,7 @@ class NeoBERTLightningModule(LightningModule):
         self.scheduler = scheduler
         self.scheduler_kwargs = scheduler_kwargs or {}
 
+        self.seed = seed
         self.generator = torch.Generator(device=self.device)
         self.generator.manual_seed(seed)
 
@@ -47,16 +50,36 @@ class NeoBERTLightningModule(LightningModule):
 
         self.model = NeoBERTModule(
             pad_token_id=self.pad_token_id,
-            mask_token_id=self.mask_token_id,
-            mask_probability=self.mask_probability,
-            special_token_ids=self.special_token_ids,
             **model_kwargs,
         )
 
     def compute_mlm_loss(self, input_ids: Tensor, attention_mask: Tensor, **kwargs) -> Tensor:
-        logits, labels = self.model.get_masked_logits_and_labels(input_ids, attention_mask, **kwargs)
+        if (
+            input_ids.dim() == 3
+            and input_ids.shape[1] == 1
+            and attention_mask.dim() == 3
+            and attention_mask.shape[1] == 1
+        ):
+            input_ids = input_ids.squeeze(1)
+            attention_mask = attention_mask.squeeze(1)
 
-        # Reshape logits and labels for cross-entropy loss
+        assert input_ids.dim() == 2, "Input IDs must have shape: (batch_size, seq_len)"
+        assert attention_mask.dim() == 2, "Attention mask must have shape: (batch_size, seq_len)"
+
+        masked_inputs = mask_tokens(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            mask_token_id=self.mask_token_id,
+            mask_probability=self.mask_probability,
+            special_token_ids=self.special_token_ids,
+            generator=self.generator,
+        )
+        input_ids = masked_inputs["input_ids"]
+        attention_mask = masked_inputs["attention_mask"]
+        labels = masked_inputs["labels"]
+
+        logits = self.model.get_logits(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
+
         # logits: (batch_size, seq_len, vocab_size) -> (batch_size * seq_len, vocab_size)
         # labels: (batch_size, seq_len) -> (batch_size * seq_len,)
         logits = logits.view(-1, logits.size(-1))

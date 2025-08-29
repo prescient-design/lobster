@@ -2,7 +2,6 @@ import torch.nn as nn
 from torch import Tensor
 
 from ._model import NeoBERTConfig, NeoBERT
-from ._masking import mask_tokens
 
 
 class NeoBERTModule(nn.Module):
@@ -17,9 +16,6 @@ class NeoBERTModule(nn.Module):
         norm_eps: float = 1e-06,
         vocab_size: int = 30522,
         pad_token_id: int | None = None,
-        mask_token_id: int | None = None,
-        mask_probability: float | None = None,
-        special_token_ids: list[int] | None = None,
         max_length: int = 1024,
     ):
         super().__init__()
@@ -38,11 +34,6 @@ class NeoBERTModule(nn.Module):
         )
         self.model = NeoBERT(self.config)
         self.decoder = nn.Linear(self.config.hidden_size, self.config.vocab_size)
-        self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
-        self.mask_token_id = mask_token_id
-        self.pad_token_id = pad_token_id
-        self.mask_probability = mask_probability
-        self.special_token_ids = special_token_ids
 
     def forward(
         self,
@@ -97,54 +88,3 @@ class NeoBERTModule(nn.Module):
             output_attentions=output_attentions,
         )
         return self.decoder(output.last_hidden_state)
-
-    def get_masked_logits_and_labels(
-        self, input_ids: Tensor, attention_mask: Tensor, **kwargs
-    ) -> tuple[Tensor, Tensor]:
-        """Get masked logits and labels for a batch of input IDs and attention masks.
-
-        Parameters
-        ----------
-        input_ids : Tensor
-            The input IDs to mask.
-        attention_mask : Tensor
-            The attention mask for the input IDs.
-
-        Returns
-        -------
-        tuple[Tensor, Tensor]
-            A tuple containing the masked logits and labels.
-            Shape of logits: (batch_size, seq_len, vocab_size)
-            Shape of labels: (batch_size, seq_len)
-        """
-        if self.mask_token_id is None or self.pad_token_id is None:
-            raise ValueError(
-                "mask_token_id and pad_token_id must be provided if you want to use masked language modeling"
-            )
-        if self.mask_probability is None:
-            raise ValueError("mask_probability must be provided if you want to use masked language modeling")
-
-        if (
-            input_ids.dim() == 3
-            and input_ids.shape[1] == 1
-            and attention_mask.dim() == 3
-            and attention_mask.shape[1] == 1
-        ):
-            input_ids = input_ids.squeeze(1)
-            attention_mask = attention_mask.squeeze(1)
-
-        masked_inputs = mask_tokens(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            mask_token_id=self.mask_token_id,
-            mask_probability=self.mask_probability,
-            special_token_ids=self.special_token_ids,
-            generator=self.generator,
-        )
-        input_ids = masked_inputs["input_ids"]
-        attention_mask = masked_inputs["attention_mask"]
-        labels = masked_inputs["labels"]
-
-        logits = self.get_logits(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
-
-        return logits, labels
