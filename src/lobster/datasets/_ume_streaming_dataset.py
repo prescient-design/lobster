@@ -222,7 +222,17 @@ class UMEStreamingDataset(StreamingDataset):
         if max_length is None:
             raise ValueError("max_length must be provided when tokenize is True")
 
-        self.tokenizer_transform = UMETokenizerTransform(max_length=max_length, return_modality=False)
+        self.tokenizer_registry = {
+            Modality.AMINO_ACID: UMETokenizerTransform(
+                modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
+            ),
+            Modality.SMILES: UMETokenizerTransform(
+                modality=Modality.SMILES, max_length=max_length, return_modality=False
+            ),
+            Modality.NUCLEOTIDE: UMETokenizerTransform(
+                modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
+            ),
+        }
 
     def _tokenize_single(self, sequence: str) -> tuple[torch.Tensor, torch.Tensor, str]:
         """
@@ -245,7 +255,7 @@ class UMEStreamingDataset(StreamingDataset):
             - attention_mask: Attention mask for the sequence
             - modality: The modality of the sequence
         """
-        encoded = self.tokenizer_transform(sequence, modality=self.MODALITY)
+        encoded = self.tokenizer_registry[self.MODALITY](sequence)
 
         return encoded["input_ids"], encoded["attention_mask"], self.MODALITY.value
 
