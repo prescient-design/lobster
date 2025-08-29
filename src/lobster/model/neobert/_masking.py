@@ -28,7 +28,7 @@ def mask_tokens(
     mask_token_id: int,
     mask_probability: float = 0.2,
     pack_sequences: bool = False,
-    generator: torch.Generator | None = None,
+    seed: int | None = None,
     special_token_ids: list[int] = None,
 ) -> dict[str, torch.Tensor]:
     """
@@ -46,8 +46,8 @@ def mask_tokens(
         Probability of masking each token.
     pack_sequences : bool, default=False
         Whether to pack sequences for efficient attention computation.
-    generator : torch.Generator | None, default=None
-        Random number generator for reproducible masking.
+    seed : int | None, default=None
+        Random seed for reproducible masking. If None, uses PyTorch's default random state.
 
     Returns
     -------
@@ -91,6 +91,12 @@ def mask_tokens(
     # Don't mask special tokens
     special_tokens_mask = _create_special_tokens_mask(input_ids, special_token_ids)
     probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+
+    # Create generator on the same device as input tensors if seed is provided
+    generator = None
+    if seed is not None:
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
 
     # Sample tokens to mask
     masked_indices = torch.bernoulli(probability_matrix, generator=generator).bool()

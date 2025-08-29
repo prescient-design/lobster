@@ -43,9 +43,6 @@ class NeoBERTLightningModule(LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
 
         self.seed = seed
-        self.generator = torch.Generator()
-        self.generator.manual_seed(seed)
-
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
 
         self.model = NeoBERTModule(
@@ -72,7 +69,7 @@ class NeoBERTLightningModule(LightningModule):
             mask_token_id=self.mask_token_id,
             mask_probability=self.mask_probability,
             special_token_ids=self.special_token_ids,
-            generator=self.generator,
+            seed=self.seed,
         )
         input_ids = masked_inputs["input_ids"]
         attention_mask = masked_inputs["attention_mask"]
