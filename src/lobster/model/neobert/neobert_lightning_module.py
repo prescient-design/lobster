@@ -43,7 +43,7 @@ class NeoBERTLightningModule(LightningModule):
         self.scheduler_kwargs = scheduler_kwargs or {}
 
         self.seed = seed
-        self.generator = torch.Generator(device=self.device)
+        self.generator = torch.Generator()
         self.generator.manual_seed(seed)
 
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
