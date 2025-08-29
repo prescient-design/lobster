@@ -5,6 +5,7 @@ from typing import Literal
 import pandas as pd
 import pooch
 import torch
+import numpy as np
 from datasets import load_dataset
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -104,6 +105,9 @@ class CalmPropertyDataset(Dataset):
         self._load_data("taylor-joren/calm-property", download, force_download)
 
         self._set_columns(columns)
+
+        # Drop invalid rows to avoid NaNs and infs in targets during probing
+        self._filter_invalid_rows()
 
     def _configure_paths(self) -> tuple[str, Path]:
         """Configure file paths based on task and species.
@@ -258,3 +262,60 @@ class CalmPropertyDataset(Dataset):
     def label_columns(self) -> list[str]:
         """Return the list of label column names."""
         return self.columns[1:]
+
+    # -------------------------
+    # Internal helpers
+    # -------------------------
+    def _filter_invalid_rows(self) -> None:
+        """Filter out rows with non-finite targets and excessively long sequences.
+
+        This is important for regression tasks where downstream metrics like
+        Pearson correlation will become NaN if predictions or targets are
+        constant or contain NaNs/infs. We coerce label columns to numeric and
+        drop rows with non-finite values.
+
+        Also filters out sequences that are too long to prevent OOM issues.
+        """
+        label_cols = self.columns[1:]
+        if not label_cols:
+            return
+
+        # Filter out excessively long sequences to prevent OOM
+        # Set a reasonable maximum length based on memory constraints
+        MAX_SEQUENCE_LENGTH = 30000  # ~30k characters should be manageable
+
+        sequence_col = self.columns[0]  # First column is always the sequence
+        before_length_filter = len(self.data)
+
+        # Calculate sequence lengths
+        seq_lengths = self.data[sequence_col].astype(str).str.len()
+
+        # Filter out sequences that are too long
+        self.data = self.data[seq_lengths <= MAX_SEQUENCE_LENGTH].copy()
+        after_length_filter = len(self.data)
+
+        if before_length_filter != after_length_filter:
+            filtered_count = before_length_filter - after_length_filter
+            print(
+                f"Filtered out {filtered_count} sequences longer than {MAX_SEQUENCE_LENGTH} characters "
+                f"({filtered_count / before_length_filter * 100:.1f}% of dataset)"
+            )
+
+        # Coerce labels to numeric when possible
+        self.data[label_cols] = self.data[label_cols].apply(pd.to_numeric, errors="coerce")
+
+        # Replace +/- inf with NaN then drop any rows containing NaNs in label columns
+        len(self.data)
+        self.data.replace([np.inf, -np.inf], np.nan, inplace=True)
+        self.data.dropna(subset=label_cols, inplace=True)
+        len(self.data)
+
+        # Ensure label dtypes are correct
+        if self.task_type == "regression":
+            self.data[label_cols] = self.data[label_cols].astype(float)
+        else:
+            # For multilabel classification, ensure integer dtype
+            self.data[label_cols] = self.data[label_cols].astype(int)
+
+        # If heavy filtering occurred, it's fine; upstream will subsample anyway.
+        # No logger here; silent cleanup to keep dataset lean.

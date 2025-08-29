@@ -11,7 +11,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Subset, ConcatDataset
 from tqdm import tqdm
 
-from lobster.constants import CALM_TASKS, CALM_TASK_SPECIES
+from lobster.constants import CALM_TASKS
 from lobster.datasets import CalmPropertyDataset
 
 from ._linear_probe_callback import LinearProbeCallback
@@ -112,7 +112,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self.tasks = set(tasks) if tasks else set(CALM_TASKS.keys())
         print(f"[CALM DEBUG] CALM tasks to evaluate: {sorted(self.tasks)}")
         logger.info(f"CALM tasks to evaluate: {sorted(self.tasks)}")
-        
+
         # Set default species if none provided - include commonly used model organisms
         if species is None:
             # Use a subset that represents diverse biology: human, E. coli, and yeast
@@ -178,7 +178,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader
     ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader.
-        
+
         Overrides parent method to handle CALM-specific data format where
         sequences come as raw strings that need to be processed through UME's
         embed_sequences method which properly handles padding tokens.
@@ -203,7 +203,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         with torch.no_grad():
             for batch in dataloader:
                 x, y = batch
-                
+
                 # x comes as raw strings - convert to list if needed
                 if isinstance(x, (list, tuple)):
                     sequences = list(x)
@@ -213,11 +213,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
                 # Use UME's embed_sequences method which properly handles tokenization,
                 # padding tokens, and mean pooling
-                batch_embeddings = model.embed_sequences(
-                    sequences=sequences,
-                    modality="nucleotide", 
-                    aggregate=True  # This does mean pooling and handles padding properly
-                )
+                batch_embeddings = model.embed_sequences(sequences=sequences)
 
                 embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
@@ -275,13 +271,13 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                 # Create a combined dataset from train and test
                 combined_dataset = ConcatDataset([train_dataset, test_dataset])
                 combined_loader = DataLoader(combined_dataset, batch_size=self.batch_size, shuffle=False)
-                
+
                 # Get all embeddings and targets
                 all_embeddings, all_targets = self._get_embeddings(module, combined_loader)
-                
-                # Use cross-validation evaluation
+
+                # Cross-validation: splitter choice is handled in base method
                 metrics = self._evaluate_with_cross_validation(all_embeddings, all_targets, task_key)
-                
+
             else:
                 # Use traditional train/test split
                 train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -344,7 +340,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                     logger.info(f"Starting evaluation for {task_key}")
                     try:
                         train_dataset, test_dataset = self._create_split_datasets(task, species)
-                        logger.info(f"Created datasets for {task_key}: train={len(train_dataset)}, test={len(test_dataset)}")
+                        logger.info(
+                            f"Created datasets for {task_key}: train={len(train_dataset)}, test={len(test_dataset)}"
+                        )
                         metrics = self._evaluate_task(
                             task_key,
                             task,
@@ -363,6 +361,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                         logger.error(f"Error processing {task_key}: {str(e)}")
                         print(f"[CALM ERROR] {task_key} failed: {e}")
                         import traceback
+
                         logger.error(f"Full traceback: {traceback.format_exc()}")
             else:
                 logger.info(f"Task {task} is non-species-specific")
@@ -387,6 +386,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                     logger.error(f"Error processing {task}: {str(e)}")
                     print(f"[CALM ERROR] {task} failed: {e}")
                     import traceback
+
                     logger.error(f"Full traceback: {traceback.format_exc()}")
 
         # Calculate and log aggregate metrics
