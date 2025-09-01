@@ -54,7 +54,7 @@ class NeoBERTLightningModule(LightningModule):
             **model_kwargs,
         )
 
-    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, **kwargs) -> Tensor:
+    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
         if not all(k in inputs for k in {"input_ids", "attention_mask"}):
             raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
 
@@ -65,6 +65,9 @@ class NeoBERTLightningModule(LightningModule):
 
         if not aggregate:
             return output["last_hidden_state"]
+
+        if not ignore_padding:
+            return output["last_hidden_state"].mean(dim=1)
 
         mask = attention_mask.to(dtype=output["last_hidden_state"].dtype).unsqueeze(-1)
 
@@ -81,12 +84,12 @@ class NeoBERTLightningModule(LightningModule):
         if isinstance(sequences, str):
             sequences = [sequences]
 
-        tokenizer_transform = UMETokenizerTransform(modality=modality)
+        tokenizer_transform = UMETokenizerTransform(modality=modality, max_length=self.model.config.max_length)
         encoded_batch = tokenizer_transform(sequences)
 
         encoded_batch = {
-            "input_ids": encoded_batch["input_ids"].to(self.model.device),
-            "attention_mask": encoded_batch["attention_mask"].to(self.model.device),
+            "input_ids": encoded_batch["input_ids"].to(self.device),
+            "attention_mask": encoded_batch["attention_mask"].to(self.device),
         }
 
         return self.embed(encoded_batch, aggregate=aggregate)

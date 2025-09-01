@@ -58,3 +58,53 @@ def test_mask_tokens():
     assert result["attention_mask"].shape == attention_mask.shape
 
     assert result["input_ids"].tolist() == [[1, 2, 3, 999, 1, 2, 3]]
+
+
+def test_mask_tokens_with_seed_reproducibility():
+    """Test that using the same seed produces identical results."""
+    input_ids = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]])
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]])
+    mask_token_id = 999
+
+    # Run with same seed twice
+    result1 = mask_tokens(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        mask_token_id=mask_token_id,
+        mask_probability=0.5,
+        seed=42,
+        special_token_ids=[1],
+    )
+
+    result2 = mask_tokens(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        mask_token_id=mask_token_id,
+        mask_probability=0.5,
+        seed=42,
+        special_token_ids=[1],
+    )
+
+    # Results should be identical
+    assert torch.equal(result1["input_ids"], result2["input_ids"])
+    assert torch.equal(result1["labels"], result2["labels"])
+    assert torch.equal(result1["attention_mask"], result2["attention_mask"])
+
+
+def test_mask_tokens_without_seed():
+    """Test that function works without providing a seed."""
+    input_ids = torch.tensor([[1, 2, 3, 4, 5]])
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1]])
+    mask_token_id = 999
+
+    result = mask_tokens(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        mask_token_id=mask_token_id,
+        mask_probability=0.5,
+        special_token_ids=[1],
+    )
+
+    assert "input_ids" in result
+    assert "labels" in result
+    assert "attention_mask" in result
