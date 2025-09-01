@@ -1,8 +1,12 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
+from collections.abc import Sequence
 from lightning import LightningModule
 import transformers
+
+from lobster.tokenization import UMETokenizerTransform
+from lobster.constants import ModalityType, Modality
 
 from .neobert_module import NeoBERTModule
 from ._masking import mask_tokens
@@ -49,6 +53,43 @@ class NeoBERTLightningModule(LightningModule):
             pad_token_id=self.pad_token_id,
             **model_kwargs,
         )
+
+    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, **kwargs) -> Tensor:
+        if not all(k in inputs for k in {"input_ids", "attention_mask"}):
+            raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
+
+        input_ids = inputs["input_ids"]
+        attention_mask = inputs["attention_mask"]
+
+        output = self.model(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
+
+        if not aggregate:
+            return output["last_hidden_state"]
+
+        mask = attention_mask.to(dtype=output["last_hidden_state"].dtype).unsqueeze(-1)
+
+        masked_embeddings = output["last_hidden_state"] * mask
+
+        sum_embeddings = masked_embeddings.sum(dim=1)
+        token_counts = mask.sum(dim=1)
+
+        return sum_embeddings / token_counts
+
+    def embed_sequences(
+        self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
+    ) -> Tensor:
+        if isinstance(sequences, str):
+            sequences = [sequences]
+
+        tokenizer_transform = UMETokenizerTransform(modality=modality)
+        encoded_batch = tokenizer_transform(sequences)
+
+        encoded_batch = {
+            "input_ids": encoded_batch["input_ids"].to(self.model.device),
+            "attention_mask": encoded_batch["attention_mask"].to(self.model.device),
+        }
+
+        return self.embed(encoded_batch, aggregate=aggregate)
 
     def compute_mlm_loss(self, input_ids: Tensor, attention_mask: Tensor, **kwargs) -> Tensor:
         if (
