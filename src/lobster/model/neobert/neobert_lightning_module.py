@@ -55,11 +55,7 @@ class NeoBERTLightningModule(LightningModule):
         )
 
     def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
-        if not all(k in inputs for k in {"input_ids", "attention_mask"}):
-            raise ValueError("Missing required keys in inputs: 'input_ids' or 'attention_mask'")
-
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"]
+        input_ids, attention_mask = self._ensure_2d(inputs["input_ids"], inputs["attention_mask"])
 
         output = self.model(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
 
@@ -94,18 +90,19 @@ class NeoBERTLightningModule(LightningModule):
 
         return self.embed(encoded_batch, aggregate=aggregate)
 
-    def compute_mlm_loss(self, input_ids: Tensor, attention_mask: Tensor, **kwargs) -> Tensor:
-        if (
-            input_ids.dim() == 3
-            and input_ids.shape[1] == 1
-            and attention_mask.dim() == 3
-            and attention_mask.shape[1] == 1
-        ):
+    def _ensure_2d(self, input_ids: Tensor, attention_mask: Tensor) -> tuple[Tensor, Tensor]:
+        if input_ids.dim() == 3 and input_ids.shape[1] == 1:
             input_ids = input_ids.squeeze(1)
+        if attention_mask.dim() == 3 and attention_mask.shape[1] == 1:
             attention_mask = attention_mask.squeeze(1)
 
         assert input_ids.dim() == 2, "Input IDs must have shape: (batch_size, seq_len)"
         assert attention_mask.dim() == 2, "Attention mask must have shape: (batch_size, seq_len)"
+
+        return input_ids, attention_mask
+
+    def compute_mlm_loss(self, input_ids: Tensor, attention_mask: Tensor, **kwargs) -> Tensor:
+        input_ids, attention_mask = self._ensure_2d(input_ids, attention_mask)
 
         masked_inputs = mask_tokens(
             input_ids=input_ids,
