@@ -57,6 +57,9 @@ class NeoBERTLightningModule(LightningModule):
     def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
         input_ids, attention_mask = self._ensure_2d(inputs["input_ids"], inputs["attention_mask"])
 
+        input_ids = input_ids.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+
         output = self.model(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
 
         if not aggregate:
