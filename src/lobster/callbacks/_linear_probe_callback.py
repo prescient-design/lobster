@@ -341,9 +341,7 @@ class LinearProbeCallback(Callback):
                 targets = targets.int()
 
                 # All supported multilabel estimators expose predict_proba
-                predictions_np = np.stack(
-                    [est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1
-                )
+                predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1)
 
             else:  # binary or multiclass
                 if hasattr(probe, "predict_proba"):
