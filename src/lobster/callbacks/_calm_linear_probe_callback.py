@@ -43,9 +43,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         - 'localization': Predicts cellular localization (multilabel, 10 classes)
         - 'protein_abundance': Predicts protein abundance (regression, species-specific)
         - 'transcript_abundance': Predicts transcript abundance (regression, species-specific)
-        - 'function_bp': Predicts Gene Ontology biological process terms (multilabel, 4 classes)
-        - 'function_cc': Predicts Gene Ontology cellular component terms (multilabel, 4 classes)
-        - 'function_mf': Predicts Gene Ontology molecular function terms (multilabel, 4 classes)
+        - 'function_bp': Predicts Gene Ontology biological process terms (multilabel, 5 classes)
+        - 'function_cc': Predicts Gene Ontology cellular component terms (multilabel, 5 classes)
+        - 'function_mf': Predicts Gene Ontology molecular function terms (multilabel, 5 classes)
     species : Optional[Sequence[str]], default=None
         Species to include for species-specific tasks ('protein_abundance' and 'transcript_abundance').
         If None, defaults to ['hsapiens', 'ecoli', 'scerevisiae'] for comprehensive evaluation.
@@ -95,6 +95,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         dimensionality_reduction: bool = False,
         reduced_dim: int = 320,
         probe_type: str = "linear",
+        classification_threshold: float = 0.5,
     ):
         # Don't use transform_fn - we'll handle raw sequences with explicit modality
         super().__init__(
@@ -107,10 +108,11 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             dimensionality_reduction=dimensionality_reduction,
             reduced_dim=reduced_dim,
             probe_type=probe_type,
+            classification_threshold=classification_threshold,
         )
 
         self.tasks = set(tasks) if tasks else set(CALM_TASKS.keys())
-        print(f"[CALM DEBUG] CALM tasks to evaluate: {sorted(self.tasks)}")
+        logger.debug(f"CALM tasks to evaluate: {sorted(self.tasks)}")
         logger.info(f"CALM tasks to evaluate: {sorted(self.tasks)}")
 
         # Set default species if none provided - include commonly used model organisms
@@ -130,7 +132,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self.aggregate_metrics = defaultdict(list)
 
     def _create_split_datasets(
-        self, task: str, species: str | None = None
+        self, task: str, species: str | None = None, *, seed: int = 42
     ) -> tuple[CalmPropertyDataset, CalmPropertyDataset]:
         """Create train/test splits for a given task.
 
@@ -157,12 +159,14 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         # If dataset is too large, subsample it first
         if len(indices) > self.max_samples:
-            indices = np.random.choice(indices, size=self.max_samples, replace=False)
+            rng = np.random.default_rng(seed)
+            indices = rng.choice(indices, size=self.max_samples, replace=False)
 
         # Create train/test split from (possibly subsampled) indices
         test_size = int(len(indices) * self.test_size)
         train_size = len(indices) - test_size
-        shuffled_indices = np.random.permutation(indices)
+        rng = np.random.default_rng(seed)
+        shuffled_indices = rng.permutation(indices)
         train_indices = shuffled_indices[:train_size]
         test_indices = shuffled_indices[train_size:]
 
@@ -204,12 +208,22 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             for batch in dataloader:
                 x, y = batch
 
-                # x comes as raw strings - convert to list if needed
-                if isinstance(x, (list, tuple)):
-                    sequences = list(x)
-                else:
-                    # Handle case where x might be a single string
-                    sequences = [x] if isinstance(x, str) else x.tolist()
+                # Robustly handle common container types for sequences using structural pattern matching
+                match x:
+                    case dict() as d if "text" in d:
+                        sequences = list(d["text"])
+                    case dict() as d if "sequence" in d:
+                        sequences = list(d["sequence"])
+                    case dict() as d:
+                        sequences = list(next(iter(d.values())))
+                    case list() | tuple():
+                        sequences = list(x)
+                    case str() as s:
+                        sequences = [s]
+                    case _ if hasattr(x, "tolist"):
+                        sequences = x.tolist()
+                    case _:
+                        sequences = list(x)
 
                 # Use UME's embed_sequences method which properly handles tokenization,
                 # padding tokens, and mean pooling
@@ -326,11 +340,11 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             Dictionary of task_name -> metric_name -> value
         """
         # Clear metrics for this run
-        aggregate_metrics = defaultdict(list)
+        self.aggregate_metrics = defaultdict(list)
         all_task_metrics = {}
 
         for task in tqdm(self.tasks, desc=f"{self.__class__.__name__}"):
-            print(f"[CALM DEBUG] Processing task: {task}")
+            logger.debug(f"Processing task: {task}")
             logger.info(f"Processing task: {task}")
             # Handle species-specific tasks
             if task in ["protein_abundance", "transcript_abundance"]:
@@ -356,10 +370,9 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
                         # Store for aggregate metrics
                         for metric_name, value in metrics.items():
-                            aggregate_metrics[metric_name].append(value)
+                            self.aggregate_metrics[metric_name].append(value)
                     except Exception as e:
                         logger.error(f"Error processing {task_key}: {str(e)}")
-                        print(f"[CALM ERROR] {task_key} failed: {e}")
                         import traceback
 
                         logger.error(f"Full traceback: {traceback.format_exc()}")
@@ -381,17 +394,16 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
                     # Store for aggregate metrics
                     for metric_name, value in metrics.items():
-                        aggregate_metrics[metric_name].append(value)
+                        self.aggregate_metrics[metric_name].append(value)
                 except Exception as e:
                     logger.error(f"Error processing {task}: {str(e)}")
-                    print(f"[CALM ERROR] {task} failed: {e}")
                     import traceback
 
                     logger.error(f"Full traceback: {traceback.format_exc()}")
 
         # Calculate and log aggregate metrics
         mean_metrics = {}
-        for metric_name, values in aggregate_metrics.items():
+        for metric_name, values in self.aggregate_metrics.items():
             if values:  # Only process if we have values
                 avg_value = sum(values) / len(values)
                 mean_metrics[metric_name] = avg_value

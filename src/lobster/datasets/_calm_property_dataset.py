@@ -2,6 +2,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
+import logging
 import pandas as pd
 import pooch
 import torch
@@ -175,7 +176,7 @@ class CalmPropertyDataset(Dataset):
                 self.data = df
 
             except Exception as e:
-                print(f"Failed to load dataset from Hugging Face: {e}")
+                logging.getLogger(__name__).error(f"Failed to load dataset from Hugging Face: {e}")
                 raise
 
         elif self.cache_path.exists():
@@ -285,30 +286,21 @@ class CalmPropertyDataset(Dataset):
         MAX_SEQUENCE_LENGTH = 30000  # ~30k characters should be manageable
 
         sequence_col = self.columns[0]  # First column is always the sequence
-        before_length_filter = len(self.data)
 
         # Calculate sequence lengths
         seq_lengths = self.data[sequence_col].astype(str).str.len()
 
         # Filter out sequences that are too long
         self.data = self.data[seq_lengths <= MAX_SEQUENCE_LENGTH].copy()
-        after_length_filter = len(self.data)
 
-        if before_length_filter != after_length_filter:
-            filtered_count = before_length_filter - after_length_filter
-            print(
-                f"Filtered out {filtered_count} sequences longer than {MAX_SEQUENCE_LENGTH} characters "
-                f"({filtered_count / before_length_filter * 100:.1f}% of dataset)"
-            )
+        # Keep silent to minimize noise; upstream subsampling will handle size.
 
         # Coerce labels to numeric when possible
         self.data[label_cols] = self.data[label_cols].apply(pd.to_numeric, errors="coerce")
 
         # Replace +/- inf with NaN then drop any rows containing NaNs in label columns
-        len(self.data)
         self.data.replace([np.inf, -np.inf], np.nan, inplace=True)
         self.data.dropna(subset=label_cols, inplace=True)
-        len(self.data)
 
         # Ensure label dtypes are correct
         if self.task_type == "regression":

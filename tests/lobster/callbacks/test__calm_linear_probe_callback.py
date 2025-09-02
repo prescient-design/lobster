@@ -59,7 +59,7 @@ class MockLightningModule(torch.nn.Module):
         self.hidden_size = hidden_size
         self.device = "cpu"
         self.model = MockModelWithEmbeddings(hidden_size)
-    
+
     def embed_sequences(self, sequences, modality="nucleotide", aggregate=True):
         """Mock embed_sequences method that mimics UME's behavior."""
         batch_size = len(sequences)

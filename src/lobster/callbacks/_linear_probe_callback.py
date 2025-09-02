@@ -51,6 +51,7 @@ class LinearProbeCallback(Callback):
         dimensionality_reduction: bool = False,
         reduced_dim: int = 320,
         probe_type: ProbeType = "linear",
+        classification_threshold: float = 0.5,
     ):
         super().__init__()
         self.transform_fn = transform_fn
@@ -63,6 +64,7 @@ class LinearProbeCallback(Callback):
         self.dimensionality_reduction = dimensionality_reduction
         self.reduced_dim = reduced_dim
         self.probe_type = probe_type
+        self.classification_threshold = classification_threshold
 
         # Initialize metrics based on task type
         self._set_metrics(task_type, num_classes)
@@ -74,8 +76,8 @@ class LinearProbeCallback(Callback):
 
     def _set_metrics(self, task_type: TaskType, num_classes: int | None = None) -> None:
         """Initialize metrics based on task type."""
-        # Use a slightly lower threshold for multilabel to reduce all-negative predictions
-        classification_threshold = 0.3
+        # Use a slightly lower default threshold for multilabel to reduce all-negative predictions
+        classification_threshold = self.classification_threshold
         if task_type == "regression":
             self.mse = MeanSquaredError()
             self.r2 = R2Score()
@@ -218,7 +220,7 @@ class LinearProbeCallback(Callback):
             targets_np = targets_np.astype(int)
 
             if self.probe_type == "linear":
-                base_classifier = LogisticRegression(random_state=42, class_weight="balanced")
+                base_classifier = LogisticRegression(random_state=42, class_weight="balanced", max_iter=1000)
                 probe = MultiOutputClassifier(base_classifier)
             elif self.probe_type == "elastic":
                 # For multilabel with ElasticNet, use LogisticRegression with elastic net penalty
@@ -241,6 +243,7 @@ class LinearProbeCallback(Callback):
                 probe = LogisticRegression(
                     multi_class="ovr" if self.task_type == "binary" else "multinomial",
                     random_state=42,
+                    max_iter=1000,
                 )
             elif self.probe_type == "elastic":
                 # For classification with ElasticNet, we need to use LogisticRegression with elasticnet penalty
@@ -303,16 +306,10 @@ class LinearProbeCallback(Callback):
                 # Ensure targets are integers for multilabel classification
                 targets = targets.int()
 
-                if self.probe_type == "svm":
-                    # Get probabilities for each label
-                    predictions_np = np.stack(
-                        [est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1
-                    )
-                else:
-                    # For both linear and elastic (which is LogisticRegression with elastic penalty)
-                    predictions_np = np.stack(
-                        [est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1
-                    )
+                # All supported multilabel estimators expose predict_proba
+                predictions_np = np.stack(
+                    [est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1
+                )
 
             else:  # binary or multiclass
                 if hasattr(probe, "predict_proba"):
