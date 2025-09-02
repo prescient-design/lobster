@@ -72,6 +72,7 @@ class MockLightningModule(torch.nn.Module):
             return torch.randn(batch_size, seq_len, self.hidden_size)
 
 
+
 @pytest.fixture
 def mock_trainer():
     trainer = Mock()

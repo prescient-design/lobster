@@ -393,3 +393,9 @@ Brief description of changes made
 Please add your name to the `CONTRIBUTORS.md` file
 
 Thank you for contributing to LBSTER! Your contributions help advance biological sequence modeling for everyone. 🦞✨
+
+
+### Advanced
+
+#### Hugging Face Integration
+See documentation under `src/lobster/model/integrations/ume_huggingface/README.md` for more information on how to deploy models to HuggingFace.

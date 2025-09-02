@@ -29,8 +29,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     extracts embeddings from the model, trains linear probes on these embeddings, and evaluates
     their performance.
 
-    Currently only supports UME embeddings and uses UMETokenizerTransform.
-
     Parameters
     ----------
     max_length : int

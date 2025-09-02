@@ -15,6 +15,7 @@ from lobster.constants import (
     SchedulerType,
 )
 from lobster.tokenization import UMETokenizerTransform
+from lobster.constants import UMEModelVersion, UME_MODEL_VERSION_TYPES
 
 from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry, get_s3_last_modified_timestamp
 from .losses import InfoNCELoss, SymileLoss
@@ -1124,7 +1125,7 @@ class UME(L.LightningModule):
     @classmethod
     def from_pretrained(
         cls,
-        model_name: Literal["ume-mini-base-12M", "ume-small-base-90M", "ume-medium-base-480M", "ume-large-base-740M"],
+        model_name: UME_MODEL_VERSION_TYPES | UMEModelVersion = UMEModelVersion.MEDIUM,
         *,
         device: str | None = None,
         use_flash_attn: bool = True,
@@ -1174,9 +1175,7 @@ class UME(L.LightningModule):
         >>> # Load with custom cache directory
         >>> model = UME.from_pretrained("ume-mini-base-12M", cache_dir="/path/to/cache")
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
+        model_name = UMEModelVersion(model_name) if isinstance(model_name, str) else model_name
 
         logger.info(f"Loading pretrained UME model: {model_name}")
         logger.debug(f"  - Device: {device}")
