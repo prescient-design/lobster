@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task 16
 #SBATCH -q preempt
 #SBATCH -o slurm/logs/eval/%J_%x.out
-#SBATCH --job-name=eval-ume-large-released
+#SBATCH --job-name=eval-ume
 #SBATCH -t 7-00:00:00
 
 # srun hostname
