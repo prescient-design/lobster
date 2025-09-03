@@ -24,7 +24,7 @@ class UMELightningDataModule(LightningDataModule):
         datasets: Sequence[str],
         transforms: dict[str, list[Transform | Callable]] | None = None,
         root: str | None = None,
-        max_length: int | None = 8192,
+        max_length: int | None = 1024,
         weights: None | Sequence[float] | dict[str, float] = None,
         seed: int = 0,
         batch_size: int = 1,
@@ -38,11 +38,11 @@ class UMELightningDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.max_length = max_length
 
-        self._root = root
-        self._generator = Generator().manual_seed(seed)
-        self._seed = seed
-        self._pin_memory = pin_memory
-        self._num_workers = num_workers
+        self.root = root
+        self.generator = Generator().manual_seed(seed)
+        self.seed = seed
+        self.pin_memory = pin_memory
+        self.num_workers = num_workers
 
         self.transforms = transforms if transforms is not None else {}
         self.weights = weights
@@ -97,8 +97,8 @@ class UMELightningDataModule(LightningDataModule):
         kwargs = {
             "max_length": self.max_length,
             "split": split,
-            "seed": self._seed,
-            "cache_dir": self._root,
+            "seed": self.seed,
+            "cache_dir": self.root,
             "use_optimized": True,
         } | dict(self.dataset_kwargs.get(dataset_name, {}))
 
@@ -137,13 +137,13 @@ class UMELightningDataModule(LightningDataModule):
         # Combine the datasets
         self.train_dataset = CombinedStreamingDataset(
             self.train_datasets,
-            seed=self._seed,
+            seed=self.seed,
             weights=self.weights,
             iterate_over_all=False,
         )
         logging.info(f"Initialized training dataset: {self.train_dataset}")
 
-        self.val_dataset = CombinedStreamingDataset(self.val_datasets, seed=self._seed, iterate_over_all=False)
+        self.val_dataset = CombinedStreamingDataset(self.val_datasets, seed=self.seed, iterate_over_all=False)
 
         logging.info(f"Initialized validation dataset: {self.val_dataset}")
 
@@ -156,10 +156,10 @@ class UMELightningDataModule(LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=self._num_workers,
+            num_workers=self.num_workers,
             collate_fn=collate_with_modality,
-            pin_memory=self._pin_memory,
-            generator=self._generator,
+            pin_memory=self.pin_memory,
+            generator=self.generator,
         )
 
     def val_dataloader(self) -> torch.utils.data.DataLoader | None:
@@ -171,10 +171,10 @@ class UMELightningDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self._num_workers,
+            num_workers=self.num_workers,
             collate_fn=collate_with_modality,
-            pin_memory=self._pin_memory,
-            generator=self._generator,
+            pin_memory=self.pin_memory,
+            generator=self.generator,
         )
 
 
