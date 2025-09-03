@@ -3,10 +3,10 @@ from collections.abc import Callable
 from lobster.constants import Modality, Split, S3_BUCKET
 from lobster.transforms import ComposedModalityAwareTransform, ModalityAwareTransform
 
-from .base import S3StreamingDataset
+from .base import UMEStreamingDataset
 
 
-class AMPLIFY(S3StreamingDataset):
+class AMPLIFY(UMEStreamingDataset):
     MODALITY = Modality.AMINO_ACID
     SEQUENCE_KEY = "sequence"
 

@@ -2,10 +2,10 @@ from collections.abc import Callable
 
 from lobster.constants import Modality, Split, S3_BUCKET
 
-from .base import S3StreamingDataset
+from .base import UMEStreamingDataset
 
 
-class M320M(S3StreamingDataset):
+class M320M(UMEStreamingDataset):
     MODALITY = Modality.SMILES
     SEQUENCE_KEY = "smiles"
 

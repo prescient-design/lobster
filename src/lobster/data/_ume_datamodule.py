@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 from torch import Generator, Tensor
 
 import lobster.datasets.s3_datasets
-from lobster.datasets.s3_datasets import S3StreamingDataset
+from lobster.datasets.s3_datasets import UMEStreamingDataset
 from lobster.constants import Modality, Split
 from lobster.transforms import Transform
 
@@ -88,7 +88,7 @@ class UMELightningDataModule(LightningDataModule):
         self.train_dataset: CombinedStreamingDataset | None = None
         self.val_dataset: CombinedStreamingDataset | None = None
 
-    def _get_dataset(self, dataset_name: str, split: Split) -> Iterator[S3StreamingDataset]:
+    def _get_dataset(self, dataset_name: str, split: Split) -> Iterator[UMEStreamingDataset]:
         logging.info(f"""Initializing dataset {dataset_name} for split {split.value}...""")
 
         ds_class = getattr(lobster.datasets.s3_datasets, dataset_name)

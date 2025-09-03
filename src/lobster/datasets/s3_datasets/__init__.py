@@ -1,4 +1,4 @@
-from .base import S3StreamingDataset
+from .base import UMEStreamingDataset
 from .amplify import AMPLIFY
 from .atomica import Atomica
 from .calm import Calm
@@ -18,7 +18,7 @@ __all__ = [
     "OpenGenome2",
     "PeptideAtlas",
     "ZINC",
-    "S3StreamingDataset",
+    "UMEStreamingDataset",
     "PinderLG",
     "Atomica",
     "GeomLG",

@@ -5,12 +5,12 @@ from litdata import StreamingDataset
 
 from lobster.constants import Split, S3_BUCKET
 
-from .base import S3StreamingDataset
+from .base import UMEStreamingDataset
 
 logger = logging.getLogger(__name__)
 
 
-class Atomica(S3StreamingDataset):
+class Atomica(UMEStreamingDataset):
     SEQUENCE_KEY_1 = "sequence1"
     SEQUENCE_KEY_2 = "sequence2"
 

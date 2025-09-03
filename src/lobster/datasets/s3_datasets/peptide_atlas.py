@@ -2,10 +2,10 @@ from collections.abc import Callable
 
 from lobster.constants import Modality, Split, S3_BUCKET
 
-from .base import S3StreamingDataset
+from .base import UMEStreamingDataset
 
 
-class PeptideAtlas(S3StreamingDataset):
+class PeptideAtlas(UMEStreamingDataset):
     MODALITY = Modality.AMINO_ACID
     SEQUENCE_KEY = "sequence"
 
