@@ -23,4 +23,5 @@ export HYDRA_FULL_ERROR=1
 
 umask g+w
 
-lobster_eval model.ckpt_path=s3://prescient-lobster/ume/runs/2025-09-02T16-29-05/epoch=1-step=31000-val_loss=0.9762.ckpt wandb_id=09k03996
+# Update with your checkpoint path and wandb id
+lobster_eval model.ckpt_path=??? wandb_id=???
