@@ -5,7 +5,8 @@ import pytest
 import torch
 from torch.utils.data import Dataset
 
-from lobster.callbacks import CalmLinearProbeCallback
+# Direct imports to avoid rdkit dependency chain
+from lobster.callbacks._calm_linear_probe_callback import CalmLinearProbeCallback
 from lobster.constants._calm_tasks import CALM_TASKS
 
 # Add a constant for the max_length parameter used in tests
@@ -60,38 +61,16 @@ class MockLightningModule(torch.nn.Module):
         self.device = "cpu"
         self.model = MockModelWithEmbeddings(hidden_size)
 
-    def embed(self, x, aggregate: bool = True):  # noqa: ANN001
-        # Minimal embed implementation to satisfy callbacks. Accepts dict or tensor inputs.
-        if isinstance(x, dict):
-            # Try to infer batch size from any tensor field or list field
-            batch_size = None
-            for v in x.values():
-                if isinstance(v, torch.Tensor):
-                    batch_size = v.size(0)
-                    break
-                if isinstance(v, (list, tuple)):
-                    batch_size = len(v)
-                    break
-            if batch_size is None:
-                batch_size = 1
-        elif isinstance(x, torch.Tensor):
-            batch_size = x.size(0)
-        elif isinstance(x, (list, tuple)):
-            batch_size = len(x)
-        else:
-            batch_size = 1
-
-        # Return random embeddings; if aggregate, shape (B, hidden_size)
-        if aggregate:
-            return torch.randn(batch_size, self.hidden_size)
-        # Non-aggregated shape (B, T, H)
-        return torch.randn(batch_size, MAX_LENGTH, self.hidden_size)
-
-    def embed_sequences(self, sequences, modality: str, aggregate: bool = True):  # noqa: ANN001
+    def embed_sequences(self, sequences, modality="nucleotide", aggregate=True):
+        """Mock embed_sequences method that mimics UME's behavior."""
         batch_size = len(sequences)
         if aggregate:
+            # Return aggregated embeddings (batch_size, hidden_size)
             return torch.randn(batch_size, self.hidden_size)
-        return torch.randn(batch_size, MAX_LENGTH, self.hidden_size)
+        else:
+            # Return per-token embeddings (batch_size, seq_len, hidden_size)
+            seq_len = MAX_LENGTH  # Use the same max length as tokenizer
+            return torch.randn(batch_size, seq_len, self.hidden_size)
 
 
 @pytest.fixture
@@ -232,3 +211,172 @@ def test_aggregate_metrics_reset(mock_trainer, mock_pl_module):
         # Verify metrics were reset
         assert first_metrics.keys() == second_metrics.keys()
         assert all(len(first_metrics[k]) == len(second_metrics[k]) for k in first_metrics)
+
+
+@pytest.mark.parametrize("use_cross_validation", [True, False])
+@pytest.mark.parametrize("task_type", ["regression", "multilabel"])
+def test_cross_validation_functionality(use_cross_validation, task_type, mock_trainer, mock_pl_module):
+    """Test cross-validation vs train/test split for different task types."""
+    # Choose appropriate task based on task_type
+    if task_type == "regression":
+        task = "meltome"
+        num_classes = None
+    else:  # multilabel
+        task = "localization"
+        num_classes = 10
+
+    callback = CalmLinearProbeCallback(
+        max_length=MAX_LENGTH,
+        tasks=[task],
+        use_cross_validation=use_cross_validation,
+        n_folds=3,  # Use fewer folds for faster testing
+        batch_size=8,
+    )
+
+    mock_dataset = MockDataset(size=30, task_type=task_type)  # Larger dataset for CV
+
+    with patch("lobster.datasets._calm_property_dataset.CalmPropertyDataset", return_value=mock_dataset):
+        # Set task type and num_classes
+        callback.task_type = task_type
+        if num_classes:
+            callback.num_classes = num_classes
+
+        mock_pl_module.device = "cpu"
+        results = callback.evaluate(mock_pl_module, mock_trainer)
+
+        # Verify results structure
+        assert isinstance(results, dict)
+        assert task in results or "mean" in results
+
+        # For cross-validation, check that we get std metrics
+        if use_cross_validation and task in results:
+            task_metrics = results[task]
+            if task_type == "regression":
+                assert "mse_std" in task_metrics or "r2_std" in task_metrics
+            else:  # multilabel
+                assert "accuracy_std" in task_metrics or "f1_std" in task_metrics
+
+
+@pytest.mark.parametrize("dimensionality_reduction", [True, False])
+def test_dimensionality_reduction(dimensionality_reduction, mock_trainer, mock_pl_module):
+    """Test PCA dimensionality reduction functionality."""
+    callback = CalmLinearProbeCallback(
+        max_length=MAX_LENGTH,
+        tasks=["meltome"],
+        dimensionality_reduction=dimensionality_reduction,
+        reduced_dim=16,
+        batch_size=8,
+    )
+
+    mock_dataset = MockDataset(size=20, task_type="regression")
+
+    with patch("lobster.datasets._calm_property_dataset.CalmPropertyDataset", return_value=mock_dataset):
+        callback.task_type = "regression"
+        mock_pl_module.device = "cpu"
+
+        results = callback.evaluate(mock_pl_module, mock_trainer)
+
+        # Verify results are generated
+        assert isinstance(results, dict)
+
+        # If dimensionality reduction is used, check that dim_reducers are created
+        if dimensionality_reduction:
+            assert len(callback.dim_reducers) > 0
+            # Check that PCA was fitted
+            for task_key, pca in callback.dim_reducers.items():
+                assert hasattr(pca, "components_")
+                assert pca.n_components_ > 0
+        else:
+            assert len(callback.dim_reducers) == 0
+
+
+@pytest.mark.parametrize("probe_type", ["linear", "elastic", "svm"])
+@pytest.mark.parametrize("task_type", ["regression", "multilabel"])
+def test_different_probe_types(probe_type, task_type, mock_trainer, mock_pl_module):
+    """Test different probe types (linear, elastic, svm) for various task types."""
+    # Choose appropriate task based on task_type
+    if task_type == "regression":
+        task = "meltome"
+        num_classes = None
+    else:  # multilabel
+        task = "localization"
+        num_classes = 10
+
+    callback = CalmLinearProbeCallback(
+        max_length=MAX_LENGTH,
+        tasks=[task],
+        probe_type=probe_type,
+        batch_size=8,
+    )
+
+    mock_dataset = MockDataset(size=20, task_type=task_type)
+
+    with patch("lobster.datasets._calm_property_dataset.CalmPropertyDataset", return_value=mock_dataset):
+        # Set task type and num_classes
+        callback.task_type = task_type
+        if num_classes:
+            callback.num_classes = num_classes
+
+        mock_pl_module.device = "cpu"
+        results = callback.evaluate(mock_pl_module, mock_trainer)
+
+        # Verify results are generated
+        assert isinstance(results, dict)
+
+        # Check that probes were trained and stored
+        assert len(callback.probes) > 0
+
+        # Verify probe type matches expected sklearn classes
+        for task_key, probe in callback.probes.items():
+            if task_type == "regression":
+                if probe_type == "linear":
+                    from sklearn.linear_model import LinearRegression
+
+                    assert isinstance(probe, LinearRegression)
+                elif probe_type == "elastic":
+                    from sklearn.linear_model import ElasticNet, LinearRegression
+
+                    # Could be ElasticNet or LinearRegression (fallback)
+                    assert isinstance(probe, (ElasticNet, LinearRegression))
+                elif probe_type == "svm":
+                    from sklearn.svm import SVR
+
+                    assert isinstance(probe, SVR)
+            else:  # multilabel
+                from sklearn.multioutput import MultiOutputClassifier
+
+                assert isinstance(probe, MultiOutputClassifier)
+
+
+def test_combined_features(mock_trainer, mock_pl_module):
+    """Test combination of cross-validation, dimensionality reduction, and different probe types."""
+    callback = CalmLinearProbeCallback(
+        max_length=MAX_LENGTH,
+        tasks=["meltome"],
+        use_cross_validation=True,
+        n_folds=3,
+        dimensionality_reduction=True,
+        reduced_dim=16,
+        probe_type="elastic",
+        batch_size=8,
+    )
+
+    mock_dataset = MockDataset(size=30, task_type="regression")
+
+    with patch("lobster.datasets._calm_property_dataset.CalmPropertyDataset", return_value=mock_dataset):
+        callback.task_type = "regression"
+        mock_pl_module.device = "cpu"
+
+        results = callback.evaluate(mock_pl_module, mock_trainer)
+
+        # Verify results are generated
+        assert isinstance(results, dict)
+
+        # Check that both dimensionality reduction and cross-validation worked
+        # (dim_reducers should be created for each fold)
+        assert len(callback.dim_reducers) > 0
+
+        # Verify cross-validation metrics
+        if "meltome" in results:
+            task_metrics = results["meltome"]
+            assert any("_std" in metric_name for metric_name in task_metrics.keys())

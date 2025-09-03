@@ -1,14 +1,17 @@
 from enum import Enum
 
+# Maximum sequence length to prevent OOM issues during processing
+MAX_SEQUENCE_LENGTH = 30000  # ~30k characters should be manageable
+
 CALM_TASKS = {
     "meltome": ("regression", None),  # (task_type, num_classes)
     "solubility": ("regression", None),
     "localization": ("multilabel", 10),  # 10 cellular locations
     "protein_abundance": ("regression", None),
     "transcript_abundance": ("regression", None),
-    "function_bp": ("multilabel", 4),  # 4 GO terms
-    "function_cc": ("multilabel", 4),
-    "function_mf": ("multilabel", 4),
+    "function_bp": ("multilabel", 5),  # 5 GO terms (matches dataset columns)
+    "function_cc": ("multilabel", 5),
+    "function_mf": ("multilabel", 5),
 }
 
 
