@@ -7,7 +7,8 @@ from lobster.model import UME
 
 def export_ume_models_to_onnx():
     for model_version in UMEModelVersion:
-        if model_version != UMEModelVersion.LARGE:
+        print(model_version)
+        if model_version != UMEModelVersion.MINI:
             continue
 
         model = UME.from_pretrained(model_version.value)
