@@ -81,7 +81,7 @@ def _validate_smiles(text: str) -> bool:
         return False
 
 
-def _detect_modality(text: str, validate: bool = True) -> Modality:
+def detect_modality(text: str, validate: bool = True) -> Modality:
     """
     Detect the modality of a sequence based on its content.
 

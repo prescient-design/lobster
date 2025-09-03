@@ -1,6 +1,6 @@
 import pytest
 
-from lobster.model.utils import _detect_modality
+from lobster.model.utils import detect_modality
 
 
 class TestModalityDetection:
@@ -15,7 +15,7 @@ class TestModalityDetection:
         ]
 
         for sequence, expected in test_cases:
-            detected = _detect_modality(sequence)
+            detected = detect_modality(sequence)
             assert detected.value == expected, f"Expected {expected}, got {detected.value} for {sequence}"
 
     def test_amino_acid_sequences(self):
@@ -30,7 +30,7 @@ class TestModalityDetection:
         ]
 
         for sequence, expected in test_cases:
-            detected = _detect_modality(sequence)
+            detected = detect_modality(sequence)
             assert detected.value == expected, f"Expected {expected}, got {detected.value} for {sequence}"
 
     def test_dna_sequences(self):
@@ -42,7 +42,7 @@ class TestModalityDetection:
         ]
 
         for sequence, expected in test_cases:
-            detected = _detect_modality(sequence)
+            detected = detect_modality(sequence)
             assert detected.value == expected, f"Expected {expected}, got {detected.value} for {sequence}"
 
     def test_edge_cases(self):
@@ -58,12 +58,12 @@ class TestModalityDetection:
 
         for sequence, expected_error in error_cases:
             with pytest.raises(ValueError, match=expected_error):
-                _detect_modality(sequence)
+                detect_modality(sequence)
 
     def test_simple_value_error(self):
         """Test that ValueError is raised for empty string."""
         with pytest.raises(ValueError):
-            _detect_modality("")
+            detect_modality("")
 
     def test_debug_error_messages(self):
         """Debug test to see actual error messages."""
@@ -71,7 +71,7 @@ class TestModalityDetection:
 
         for sequence in test_cases:
             try:
-                _detect_modality(sequence)
+                detect_modality(sequence)
             except ValueError as e:
                 print(f"Sequence '{sequence}' -> Error: {e}")
             else:

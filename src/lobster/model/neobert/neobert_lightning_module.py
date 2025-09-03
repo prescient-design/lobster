@@ -8,6 +8,8 @@ import transformers
 from lobster.tokenization import UMETokenizerTransform
 from lobster.constants import ModalityType, Modality
 
+from lobster.model.utils import detect_modality
+
 from .neobert_module import NeoBERTModule
 from ._masking import mask_tokens
 
@@ -78,10 +80,28 @@ class NeoBERTLightningModule(LightningModule):
         return sum_embeddings / token_counts
 
     def embed_sequences(
-        self, sequences: Sequence[str] | str, modality: ModalityType | Modality, aggregate: bool = True
+        self,
+        sequences: Sequence[str] | str,
+        modality: ModalityType | Modality | None,
+        auto_detect_modality: bool = False,
+        aggregate: bool = True,
     ) -> Tensor:
+        """Uses UME tokenizer transform to encode sequences of different modalities and then embeds them."""
         if isinstance(sequences, str):
             sequences = [sequences]
+
+        if modality is None and not auto_detect_modality:
+            raise ValueError(
+                "No modality provided. Provide sequence modality or set auto_detect_modality to True to auto-detect modality."
+            )
+
+        if modality is None and auto_detect_modality:
+            modalities = [detect_modality(seq) for seq in sequences]
+
+            if len(set(modalities)) > 1:
+                raise NotImplementedError("Handling multiple modalities in one batch is not implemented yet.")
+
+            modality = modalities[0]
 
         tokenizer_transform = UMETokenizerTransform(modality=modality, max_length=self.model.config.max_length)
         encoded_batch = tokenizer_transform(sequences)
