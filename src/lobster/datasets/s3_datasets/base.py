@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 import litdata
+import torch
 from litdata import StreamingDataset
 from litdata.streaming.item_loader import ParquetLoader
 from upath import UPath
@@ -20,8 +21,9 @@ class UMEStreamingDataset(StreamingDataset):
     with litdata.
 
     This dataset is designed to work with different biological sequence modalities
-    and provides functionality for tokenizing single sequences for model input. It supports
-    streaming data from various sources (e.g., S3).
+    and provides functionality for tokenizing sequences for model input. It supports
+    streaming data from various sources (e.g., S3) and handles both single and multi-sequence
+    tokenization scenarios.
 
     Class Attributes
     ---------------
@@ -81,7 +83,7 @@ class UMEStreamingDataset(StreamingDataset):
             Directory for caching dataset files. If None, no caching is performed.
         transform_fn : Callable | None, default=None
             Optional function to transform sequences before tokenization. The function
-            should accept a single sequence and return a transformed sequence.
+            should accept a sequence and return a transformed sequence.
         tokenize : bool, default=True
             Whether to tokenize sequences. If False, raw sequences will be returned.
         use_optimized : bool, default=False
@@ -232,13 +234,88 @@ class UMEStreamingDataset(StreamingDataset):
             ),
         }
 
+    def _tokenize_single(self, sequence: str) -> tuple[torch.Tensor, torch.Tensor, str]:
+        """
+        Tokenize a single sequence.
+
+        This method tokenizes a single biological sequence using the appropriate
+        tokenizer for the dataset's modality. It returns the tokenized sequence
+        along with its attention mask and modality information.
+
+        Parameters
+        ----------
+        sequence : str
+            The biological sequence to tokenize
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor, str]
+            A tuple containing:
+            - input_ids: Token IDs for the sequence
+            - attention_mask: Attention mask for the sequence
+            - modality: The modality of the sequence
+        """
+        encoded = self.tokenizer_registry[self.MODALITY](sequence)
+
+        return encoded["input_ids"], encoded["attention_mask"], self.MODALITY.value
+
+    def _tokenize_multiple(
+        self, sequence: tuple[str, ...], modalities: tuple[str, ...]
+    ) -> tuple[torch.Tensor, torch.Tensor, tuple[str, ...]]:
+        """
+        Tokenize multiple sequences with their respective modalities.
+
+        This method handles tokenization of multiple sequences, each potentially
+        having a different modality. It ensures consistent tensor shapes by padding
+        sequences to the maximum length in the batch.
+
+        Parameters
+        ----------
+        sequence : tuple[str, ...]
+            Tuple of sequences to tokenize
+        modalities : tuple[str, ...]
+            Tuple of modality values for each sequence
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor, tuple[str, ...]]
+            A tuple containing:
+            - input_ids: Stacked tensor of token IDs for all sequences
+            - attention_mask: Stacked tensor of attention masks for all sequences
+            - modalities: Tuple of modality values for each sequence
+        """
+        encoded_list = []
+        for seq, mod in zip(sequence, modalities):
+            mod_obj = Modality(mod)
+            encoded = self.tokenizer_registry[mod_obj](seq)
+            # Detach and clone to avoid storage issues
+            encoded = {k: v.detach().clone().squeeze(0) for k, v in encoded.items()}
+            encoded_list.append(encoded)
+
+        # Create separate tensors to avoid storage issues
+        max_length = max(enc["input_ids"].size(0) for enc in encoded_list)
+        batch_size = len(encoded_list)
+
+        # Create new tensors with consistent shape
+        input_ids = torch.zeros((batch_size, max_length), dtype=torch.long)
+        attention_mask = torch.zeros((batch_size, max_length), dtype=torch.long)
+
+        # Copy data into the new tensors
+        for i, enc in enumerate(encoded_list):
+            length = enc["input_ids"].size(0)
+            input_ids[i, :length] = enc["input_ids"]
+            attention_mask[i, :length] = enc["attention_mask"]
+
+        return input_ids, attention_mask, modalities
+
     def __next__(self) -> dict[str, Any]:
         """
         Get the next item from the dataset with tokenization applied if enabled.
 
         This method retrieves the next item from the dataset, applies any specified
-        transformations, and tokenizes the sequence if tokenization is enabled.
-        It skips items with None sequences.
+        transformations, and tokenizes the sequence(s) if tokenization is enabled.
+        It handles both single and multiple sequence cases, and skips items with
+        None sequences.
 
         Returns
         -------
@@ -246,8 +323,8 @@ class UMEStreamingDataset(StreamingDataset):
             A dictionary containing:
             - input_ids: Token IDs (None if tokenization is disabled)
             - attention_mask: Attention mask (None if tokenization is disabled)
-            - sequence: The original or transformed sequence
-            - modality: The modality of the sequence
+            - sequence: The original or transformed sequence(s)
+            - modality: The modality of the sequence(s)
             - dataset: The name of the dataset class
             - Additional metadata from the original item
 
@@ -255,6 +332,9 @@ class UMEStreamingDataset(StreamingDataset):
         ------
         StopIteration
             When the dataset is exhausted
+        ValueError
+            If transform_fn is provided but doesn't specify output modalities
+            for multiple sequence cases
         """
         item: dict = super().__next__()
 
@@ -264,9 +344,9 @@ class UMEStreamingDataset(StreamingDataset):
             return self.__next__()
 
         if self.transform_fn:
-            sequence: str | None = self.transform_fn(sequence)
+            sequence: str | tuple[str | None, ...] | list[str | None] | None = self.transform_fn(sequence)
 
-        if sequence is None:
+        if sequence is None or (isinstance(sequence, list | tuple) and any(seq is None for seq in sequence)):
             return self.__next__()
 
         if not self.tokenize:
@@ -279,12 +359,26 @@ class UMEStreamingDataset(StreamingDataset):
                 **item,
             }
 
-        encoded = self.tokenizer_registry[self.MODALITY](sequence)
+        if isinstance(sequence, (tuple, list)):
+            if len(sequence) == 1:
+                # Single sequence case
+                input_ids, attention_mask, modality = self._tokenize_single(sequence[0])
+            else:
+                # Multiple sequences case
+                if hasattr(self.transform_fn, "output_modalities"):
+                    modalities = self.transform_fn.output_modalities
+                else:
+                    raise ValueError(f"Transform {self.transform_fn} does not specify output_modalities")
+
+                input_ids, attention_mask, modality = self._tokenize_multiple(sequence, modalities)
+        else:
+            input_ids, attention_mask, modality = self._tokenize_single(sequence)
 
         return {
-            **encoded,
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
             "sequence": sequence,
-            "modality": self.MODALITY.value,
+            "modality": modality,
             "dataset": self.__class__.__name__,
             **item,
         }

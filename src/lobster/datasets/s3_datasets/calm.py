@@ -11,7 +11,7 @@ class Calm(UMEStreamingDataset):
 
     TRAIN_SIZE = 8_600_758
     VAL_SIZE = 87_758
-    LIMIT_VAL_SIZE = 5000
+    LIMIT_VAL_SIZE = 20_000
     NUM_TRAIN_TOKENS = 9_635_735_915
 
     SPLITS = {

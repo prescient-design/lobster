@@ -11,7 +11,7 @@ class ZINC(UMEStreamingDataset):
 
     TRAIN_SIZE = 588_651_680
     VAL_SIZE = 6_006_398
-    LIMIT_VAL_SIZE = 5000
+    LIMIT_VAL_SIZE = 20_000
     NUM_TRAIN_TOKENS = 23_554_412_701
 
     SPLITS = {

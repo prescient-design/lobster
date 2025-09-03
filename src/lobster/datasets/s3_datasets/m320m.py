@@ -11,7 +11,7 @@ class M320M(UMEStreamingDataset):
 
     TRAIN_SIZE = 20_787_194
     VAL_SIZE = 212_078
-    LIMIT_VAL_SIZE = 5000
+    LIMIT_VAL_SIZE = 20_000
     NUM_TRAIN_TOKENS = 1_075_293_154
 
     SPLITS = {

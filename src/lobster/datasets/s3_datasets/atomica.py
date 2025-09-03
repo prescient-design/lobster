@@ -19,7 +19,6 @@ class Atomica(UMEStreamingDataset):
 
     TRAIN_SIZE = 309867
     VAL_SIZE = 16309
-    LIMIT_VAL_SIZE = 3000
 
     SPLITS = {
         Split.TRAIN: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=train",

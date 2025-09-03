@@ -11,7 +11,6 @@ class PeptideAtlas(UMEStreamingDataset):
 
     TRAIN_SIZE = 79_341_785
     VAL_SIZE = 12_641
-    LIMIT_VAL_SIZE = 5000
     NUM_TRAIN_TOKENS = 79_341_785 * 10
 
     SPLITS = {
