@@ -1,4 +1,4 @@
-import warnings
+import logging
 from collections.abc import Callable
 from typing import Literal
 
@@ -18,14 +18,19 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from torchmetrics import AUROC, Accuracy, F1Score, MeanSquaredError, R2Score, SpearmanCorrCoef, PearsonCorrCoef
 
+# Optional import for better multilabel stratification
+try:
+    from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
+
+    HAS_ITERSTRAT = True
+except ImportError:
+    MultilabelStratifiedKFold = None
+    HAS_ITERSTRAT = False
+
 TaskType = Literal["regression", "binary", "multiclass", "multilabel"]
 ProbeType = Literal["linear", "elastic", "svm"]
 
-warnings.filterwarnings(
-    "ignore",
-    message="Metric `SpearmanCorrcoef` will save all targets and predictions in the buffer",
-    category=UserWarning,
-)
+logger = logging.getLogger(__name__)
 
 
 class LinearProbeCallback(Callback):
@@ -246,7 +251,10 @@ class LinearProbeCallback(Callback):
                 if float(np.std(train_pred)) == 0.0:
                     probe = LinearRegression()
                     probe.fit(embeddings_np, targets_np)
-            except Exception:
+            except (AttributeError, ValueError, np.linalg.LinAlgError):
+                # AttributeError: probe doesn't have predict method
+                # ValueError: invalid input shapes or numerical issues
+                # LinAlgError: singular matrix or other linear algebra issues
                 pass
 
         elif self.task_type == "multilabel":
@@ -295,6 +303,123 @@ class LinearProbeCallback(Callback):
 
         return probe
 
+    def _compute_regression_metrics(self, predictions: Tensor, targets: Tensor) -> dict[str, float]:
+        """Compute regression metrics for probe evaluation.
+
+        Parameters
+        ----------
+        predictions : Tensor
+            Model predictions
+        targets : Tensor
+            Ground truth targets
+
+        Returns
+        -------
+        dict[str, float]
+            Dictionary of metric names to values
+        """
+        # Ensure predictions and targets have matching shapes
+        if predictions.dim() != targets.dim():
+            if targets.dim() == 2 and targets.shape[1] == 1:
+                targets = targets.squeeze(1)
+            elif predictions.dim() == 1 and targets.dim() == 2:
+                predictions = predictions.unsqueeze(1)
+
+        # Use fresh metric instances per evaluation to avoid state leakage across folds
+        mse_metric = MeanSquaredError()
+        r2_metric = R2Score()
+        spearman_metric = SpearmanCorrCoef()
+        pearson_metric = PearsonCorrCoef()
+
+        metrics = {}
+        metrics["mse"] = mse_metric(predictions, targets).item()
+        metrics["r2"] = r2_metric(predictions, targets).item()
+
+        spearman_val = spearman_metric(predictions.squeeze(), targets.squeeze()).item()
+        metrics["spearman"] = 0.0 if math.isnan(spearman_val) else spearman_val
+
+        pearson_val = pearson_metric(predictions.squeeze(), targets.squeeze()).item()
+        metrics["pearson"] = 0.0 if math.isnan(pearson_val) else pearson_val
+
+        return metrics
+
+    def _compute_classification_metrics(self, predictions: Tensor, targets: Tensor) -> dict[str, float]:
+        """Compute classification metrics for probe evaluation.
+
+        Parameters
+        ----------
+        predictions : Tensor
+            Model predictions (probabilities)
+        targets : Tensor
+            Ground truth targets
+
+        Returns
+        -------
+        dict[str, float]
+            Dictionary of metric names to values
+        """
+        # Fresh metric instances per evaluation
+        if self.task_type == "multilabel":
+            accuracy_metric = Accuracy(task="multilabel", num_labels=self.num_classes)
+            f1_metric = F1Score(task="multilabel", num_labels=self.num_classes)
+            f1_weighted_metric = F1Score(task="multilabel", num_labels=self.num_classes, average="weighted")
+            auroc_metric = AUROC(task="multilabel", num_labels=self.num_classes)
+        else:
+            accuracy_metric = Accuracy(task=self.task_type, num_classes=self.num_classes)
+            f1_metric = F1Score(task=self.task_type, num_classes=self.num_classes)
+            f1_weighted_metric = F1Score(task=self.task_type, num_classes=self.num_classes, average="weighted")
+            auroc_metric = AUROC(task=self.task_type, num_classes=self.num_classes)
+
+        metrics = {}
+        metrics["accuracy"] = accuracy_metric(predictions, targets).item()
+        metrics["f1"] = f1_metric(predictions, targets).item()
+        metrics["f1_weighted"] = f1_weighted_metric(predictions, targets).item()
+        metrics["auroc"] = auroc_metric(predictions, targets).item()
+
+        return metrics
+
+    def _get_classification_predictions(self, probe, embeddings_np: np.ndarray) -> np.ndarray:
+        """Get classification predictions from probe.
+
+        Parameters
+        ----------
+        probe
+            Trained probe model
+        embeddings_np : np.ndarray
+            Input embeddings
+
+        Returns
+        -------
+        np.ndarray
+            Prediction probabilities
+        """
+        if self.task_type == "multilabel":
+            # Ensure targets are integers for multilabel classification
+            # All supported multilabel estimators expose predict_proba
+            predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1)
+
+        else:  # binary or multiclass
+            if hasattr(probe, "predict_proba"):
+                predictions_np = probe.predict_proba(embeddings_np)
+                if self.task_type == "binary":
+                    predictions_np = predictions_np[:, 1]
+            else:
+                # For models without predict_proba (like ElasticNet for classification), use decision_function
+                if hasattr(probe, "decision_function"):
+                    predictions_np = probe.decision_function(embeddings_np)
+                    # Apply sigmoid for binary classification or softmax for multiclass
+                    if self.task_type == "binary":
+                        predictions_np = 1 / (1 + np.exp(-predictions_np))  # sigmoid
+                    else:
+                        # For multiclass, apply softmax
+                        exp_pred = np.exp(predictions_np)
+                        predictions_np = exp_pred / np.sum(exp_pred, axis=1, keepdims=True)
+                else:
+                    # Fallback to predict (will affect metric accuracy)
+                    predictions_np = probe.predict(embeddings_np).astype(float)
+
+        return predictions_np
+
     def _evaluate_probe(
         self, probe, embeddings: Tensor, targets: Tensor, task_key: str = "default"
     ) -> dict[str, float]:
@@ -307,82 +432,19 @@ class LinearProbeCallback(Callback):
         if self.dimensionality_reduction and task_key in self.dim_reducers:
             embeddings_np = self.dim_reducers[task_key].transform(embeddings_np)
 
-        metrics = {}
-
         if self.task_type == "regression":
             predictions_np = probe.predict(embeddings_np)
             predictions = torch.from_numpy(predictions_np).float()
-
-            # Ensure predictions and targets have matching shapes
-            if predictions.dim() != targets.dim():
-                if targets.dim() == 2 and targets.shape[1] == 1:
-                    targets = targets.squeeze(1)
-                elif predictions.dim() == 1 and targets.dim() == 2:
-                    predictions = predictions.unsqueeze(1)
-
-            # Use fresh metric instances per evaluation to avoid state leakage across folds
-            mse_metric = MeanSquaredError()
-            r2_metric = R2Score()
-            spearman_metric = SpearmanCorrCoef()
-            pearson_metric = PearsonCorrCoef()
-
-            metrics["mse"] = mse_metric(predictions, targets).item()
-            metrics["r2"] = r2_metric(predictions, targets).item()
-            spearman_val = spearman_metric(predictions.squeeze(), targets.squeeze()).item()
-            metrics["spearman"] = 0.0 if math.isnan(spearman_val) else spearman_val
-            pearson_val = pearson_metric(predictions.squeeze(), targets.squeeze()).item()
-            if math.isnan(pearson_val):
-                pearson_val = 0.0
-            metrics["pearson"] = pearson_val
+            return self._compute_regression_metrics(predictions, targets)
 
         else:  # binary, multiclass, or multilabel
             if self.task_type == "multilabel":
                 # Ensure targets are integers for multilabel classification
                 targets = targets.int()
 
-                # All supported multilabel estimators expose predict_proba
-                predictions_np = np.stack([est.predict_proba(embeddings_np)[:, 1] for est in probe.estimators_], axis=1)
-
-            else:  # binary or multiclass
-                if hasattr(probe, "predict_proba"):
-                    predictions_np = probe.predict_proba(embeddings_np)
-                    if self.task_type == "binary":
-                        predictions_np = predictions_np[:, 1]
-                else:
-                    # For models without predict_proba (like ElasticNet for classification), use decision_function
-                    if hasattr(probe, "decision_function"):
-                        predictions_np = probe.decision_function(embeddings_np)
-                        # Apply sigmoid for binary classification or softmax for multiclass
-                        if self.task_type == "binary":
-                            predictions_np = 1 / (1 + np.exp(-predictions_np))  # sigmoid
-                        else:
-                            # For multiclass, apply softmax
-                            exp_pred = np.exp(predictions_np)
-                            predictions_np = exp_pred / np.sum(exp_pred, axis=1, keepdims=True)
-                    else:
-                        # Fallback to predict (will affect metric accuracy)
-                        predictions_np = probe.predict(embeddings_np).astype(float)
-
+            predictions_np = self._get_classification_predictions(probe, embeddings_np)
             predictions = torch.from_numpy(predictions_np).float()
-
-            # Fresh metric instances per evaluation
-            if self.task_type == "multilabel":
-                accuracy_metric = Accuracy(task="multilabel", num_labels=self.num_classes)
-                f1_metric = F1Score(task="multilabel", num_labels=self.num_classes)
-                f1_weighted_metric = F1Score(task="multilabel", num_labels=self.num_classes, average="weighted")
-                auroc_metric = AUROC(task="multilabel", num_labels=self.num_classes)
-            else:
-                accuracy_metric = Accuracy(task=self.task_type, num_classes=self.num_classes)
-                f1_metric = F1Score(task=self.task_type, num_classes=self.num_classes)
-                f1_weighted_metric = F1Score(task=self.task_type, num_classes=self.num_classes, average="weighted")
-                auroc_metric = AUROC(task=self.task_type, num_classes=self.num_classes)
-
-            metrics["accuracy"] = accuracy_metric(predictions, targets).item()
-            metrics["f1"] = f1_metric(predictions, targets).item()
-            metrics["f1_weighted"] = f1_weighted_metric(predictions, targets).item()
-            metrics["auroc"] = auroc_metric(predictions, targets).item()
-
-        return metrics
+            return self._compute_classification_metrics(predictions, targets)
 
     def _evaluate_with_cross_validation(self, embeddings: Tensor, targets: Tensor, task_key: str) -> dict[str, float]:
         """Evaluate using k-fold cross validation."""
@@ -391,10 +453,8 @@ class LinearProbeCallback(Callback):
 
         # Choose a splitter. For multilabel tasks, prefer iterative stratification if available.
         splitter = None
-        if self.task_type == "multilabel":
+        if self.task_type == "multilabel" and HAS_ITERSTRAT:
             try:
-                from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
-
                 splitter = MultilabelStratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=42)
             except Exception:
                 splitter = KFold(n_splits=self.n_folds, shuffle=True, random_state=42)

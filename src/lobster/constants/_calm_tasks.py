@@ -1,5 +1,8 @@
 from enum import Enum
 
+# Maximum sequence length to prevent OOM issues during processing
+MAX_SEQUENCE_LENGTH = 30000  # ~30k characters should be manageable
+
 CALM_TASKS = {
     "meltome": ("regression", None),  # (task_type, num_classes)
     "solubility": ("regression", None),

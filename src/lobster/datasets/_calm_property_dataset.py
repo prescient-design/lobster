@@ -16,8 +16,11 @@ from lobster.constants import (
     CALM_TASKS,
     CALMSpecies,
     CALMTask,
+    MAX_SEQUENCE_LENGTH,
 )
 from lobster.transforms import Transform
+
+logger = logging.getLogger(__name__)
 
 
 class CalmPropertyDataset(Dataset):
@@ -176,7 +179,7 @@ class CalmPropertyDataset(Dataset):
                 self.data = df
 
             except Exception as e:
-                logging.getLogger(__name__).error(f"Failed to load dataset from Hugging Face: {e}")
+                logger.error(f"Failed to load dataset from Hugging Face: {e}")
                 raise
 
         elif self.cache_path.exists():
@@ -264,9 +267,6 @@ class CalmPropertyDataset(Dataset):
         """Return the list of label column names."""
         return self.columns[1:]
 
-    # -------------------------
-    # Internal helpers
-    # -------------------------
     def _filter_invalid_rows(self) -> None:
         """Filter out rows with non-finite targets and excessively long sequences.
 
@@ -282,18 +282,9 @@ class CalmPropertyDataset(Dataset):
             return
 
         # Filter out excessively long sequences to prevent OOM
-        # Set a reasonable maximum length based on memory constraints
-        MAX_SEQUENCE_LENGTH = 30000  # ~30k characters should be manageable
-
         sequence_col = self.columns[0]  # First column is always the sequence
-
-        # Calculate sequence lengths
         seq_lengths = self.data[sequence_col].astype(str).str.len()
-
-        # Filter out sequences that are too long
         self.data = self.data[seq_lengths <= MAX_SEQUENCE_LENGTH].copy()
-
-        # Keep silent to minimize noise; upstream subsampling will handle size.
 
         # Coerce labels to numeric when possible
         self.data[label_cols] = self.data[label_cols].apply(pd.to_numeric, errors="coerce")

@@ -1,12 +1,10 @@
 import logging
-import warnings
 from collections import defaultdict
 from collections.abc import Sequence
 
 import lightning as L
 import numpy as np
 import torch
-from sklearn.exceptions import ConvergenceWarning
 from torch import Tensor
 from torch.utils.data import DataLoader, Subset, ConcatDataset
 from tqdm import tqdm
@@ -16,8 +14,6 @@ from lobster.datasets import CalmPropertyDataset
 
 from ._linear_probe_callback import LinearProbeCallback
 from ._peer_utils import convert_numpy_to_python
-
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +106,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         )
 
         self.tasks = set(tasks) if tasks else set(CALM_TASKS.keys())
-        logger.debug(f"CALM tasks to evaluate: {sorted(self.tasks)}")
         logger.info(f"CALM tasks to evaluate: {sorted(self.tasks)}")
 
         # Set default species if none provided - include commonly used model organisms
@@ -181,14 +176,13 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     ) -> tuple[Tensor, Tensor]:
         """Extract embeddings from the model for a given dataloader.
 
-        Overrides parent method to handle CALM-specific data format where
-        sequences come as raw strings that need to be processed through UME's
-        embed_sequences method which properly handles padding tokens.
+        Handles CALM-specific data format where CalmPropertyDataset returns raw strings
+        that are batched into lists by the DataLoader. Works with both CaLM and UME models.
 
         Parameters
         ----------
         model : Union[L.LightningModule, torch.nn.Module]
-            The model to extract embeddings from
+            The model to extract embeddings from (CaLM or UME)
         dataloader : DataLoader
             DataLoader for the data to extract embeddings for
 
@@ -206,25 +200,16 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             for batch in dataloader:
                 x, y = batch
 
-                # Robustly handle common container types for sequences using structural pattern matching
-                match x:
-                    case dict() as d if "text" in d:
-                        sequences = list(d["text"])
-                    case dict() as d if "sequence" in d:
-                        sequences = list(d["sequence"])
-                    case dict() as d:
-                        sequences = list(next(iter(d.values())))
-                    case list() | tuple():
-                        sequences = list(x)
-                    case str() as s:
-                        sequences = [s]
-                    case _ if hasattr(x, "tolist"):
-                        sequences = x.tolist()
-                    case _:
-                        sequences = list(x)
+                # CalmPropertyDataset returns strings, DataLoader batches them into lists
+                if isinstance(x, (list, tuple)):
+                    sequences = list(x)
+                elif isinstance(x, str):
+                    sequences = [x]
+                else:
+                    # Fallback for unexpected formats
+                    sequences = list(x)
 
-                # Use UME's embed_sequences method which properly handles tokenization,
-                # padding tokens, and mean pooling
+                # Both CaLM and UME models have embed_sequences method
                 batch_embeddings = model.embed_sequences(sequences=sequences)
 
                 embeddings.append(batch_embeddings.cpu())
@@ -342,7 +327,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         all_task_metrics = {}
 
         for task in tqdm(self.tasks, desc=f"{self.__class__.__name__}"):
-            logger.debug(f"Processing task: {task}")
             logger.info(f"Processing task: {task}")
             # Handle species-specific tasks
             if task in ["protein_abundance", "transcript_abundance"]:
@@ -371,9 +355,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                             self.aggregate_metrics[metric_name].append(value)
                     except Exception as e:
                         logger.error(f"Error processing {task_key}: {str(e)}")
-                        import traceback
 
-                        logger.error(f"Full traceback: {traceback.format_exc()}")
             else:
                 logger.info(f"Task {task} is non-species-specific")
                 try:
@@ -395,9 +377,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                         self.aggregate_metrics[metric_name].append(value)
                 except Exception as e:
                     logger.error(f"Error processing {task}: {str(e)}")
-                    import traceback
-
-                    logger.error(f"Full traceback: {traceback.format_exc()}")
 
         # Calculate and log aggregate metrics
         mean_metrics = {}
