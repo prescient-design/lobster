@@ -174,7 +174,7 @@ This script will:
 ### 1. Reward Functions (`reward_functions.py`)
 
 - **`UmeRewardFunction`**: Main reward function class that computes rewards based on UME pseudo-likelihood
-- **`_detect_modality()`**: Automatically detects sequence modality (SMILES, amino acid, DNA) - available from `lobster.model.utils`
+- **`detect_modality()`**: Automatically detects sequence modality (SMILES, amino acid, DNA) - available from `lobster.model.utils`
 - **`compute_pseudo_likelihood()`**: Core function for computing likelihood scores
 - **`create_ume_reward_wrapper()`**: Creates TRL-compatible wrapper functions
 
@@ -245,12 +245,12 @@ trainer = create_ume_grpo_trainer(
 
 ```python
 from lobster.rl_training import UmeRewardFunction
-from lobster.model.utils import _detect_modality
+from lobster.model.utils import detect_modality
 from lobster.model import Ume
 
 # Test modality detection
 sequence = "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"
-modality = _detect_modality(sequence)  # Returns Modality.SMILES
+modality = detect_modality(sequence)  # Returns Modality.SMILES
 
 # Test reward function
 ume_model = Ume.from_pretrained("ume-mini-base-12M", device="cuda")

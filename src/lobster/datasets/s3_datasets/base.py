@@ -15,7 +15,7 @@ from lobster.tokenization import UMETokenizerTransform
 logger = logging.getLogger(__name__)
 
 
-class UMEStreamingDataset(StreamingDataset):
+class S3StreamingDataset(StreamingDataset):
     """
     Base class for UME streaming datasets that handles tokenization and data loading
     with litdata.
