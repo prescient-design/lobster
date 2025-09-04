@@ -5,21 +5,32 @@ This guide explains how to run a `lobster` training job using SLURM on a GPU-ena
 # SLURM Job Script
 The provided example job script `scripts/train_ume.sh` is configured up for training the `UME` model on a GPU-enabled SLURM cluster. 
 
-You will need to set specific environment variables to run the job. These will be read by the `UME` hydra configuration file, which is located at `src/lobster/hydra_config/experiment/train_ume.yaml`.
 
-Variables:
+## Job Submission
 
-* `LOBSTER_DATA_DIR`: Path to the directory containing your training data. Datasets will be downloaded and cached to this directory (if `data.download` is set to `True` in the hydra configuration file).
-* `LOBSTER_RUNS_DIR`: Path to the directory where training results (model checkpoints, logs, etc.) will be stored.
-* `LOBSTER_USER`: The user entity for the logger (usually your wandb username).
-* `WANDB_BASE_URL`: The base URL for the Weights & Biases service. Optional - only needed if you wandb account is not on the default wandb server.
-
-Example:
+### Submit the training job
 ```bash
-    export LOBSTER_DATA_DIR="/data/lobster/ume/data"
-    export LOBSTER_RUNS_DIR="/data/lobster/ume/runs"
-    export LOBSTER_USER=$(whoami)
-    export WANDB_BASE_URL=https://your_org.wandb.io/
+sbatch slurm/scripts/train_ume.sh
 ```
 
+## Environment Variables
 
+The script sets up several  environment variables:
+- `LOBSTER_RUNS_DIR`: S3 bucket for storing runs
+- `LOBSTER_DATA_DIR`: Local data cache directory
+- `NCCL_*`: Network communication settings for multi-GPU training
+- `WANDB_*`: Weights & Biases logging configuration
+
+
+### View job logs
+Logs are written to `slurm/logs/train/` with format `{JOB_ID}_{JOB_NAME}.out`
+
+## Running Evaluation Jobs
+
+### Submit an evaluation job
+```bash
+sbatch slurm/scripts/evaluate_ume.sh 
+```
+
+### Evaluation Logs
+Evaluation logs are written to `slurm/logs/eval/` with format `{JOB_ID}_{JOB_NAME}.out`

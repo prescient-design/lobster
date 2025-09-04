@@ -1,91 +1,70 @@
-import unittest.mock
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from datasets import Dataset
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-from lobster.constants import Modality
+import lobster.datasets.s3_datasets
+from lobster.constants import Modality, Split
 from lobster.data import UMELightningDataModule
-from lobster.datasets import MultiplexedSamplingDataset
+
+from lobster.datasets.s3_datasets.amplify import AMPLIFY
+
+TEST_DATA_DIR = Path(__file__).parents[3] / "test_data/parquet"
 
 
 @pytest.fixture
-def dm(tmp_path):
-    dm = UMELightningDataModule(root=tmp_path, datasets=["AMPLIFY"], batch_size=8, tokenizer_max_length=512)
-    return dm
+def mock_dataset():
+    class MockDataset(AMPLIFY):
+        # Override the attribute SPLITS to point to local parquet directory
+        # Parquet file contains 10 rows with columns: name, sequence
+        SPLITS = {
+            Split.TRAIN: str(TEST_DATA_DIR),
+            Split.VALIDATION: str(TEST_DATA_DIR),
+            Split.TEST: str(TEST_DATA_DIR),
+        }
+
+        # Override size constants to prevent subsampling in tests
+        TRAIN_SIZE = 10
+        VAL_SIZE = 10
+        LIMIT_TRAIN_SIZE = None
+        LIMIT_VAL_SIZE = None
+
+    with patch.object(lobster.datasets.s3_datasets, "AMPLIFY", MockDataset):
+        with patch.object(lobster.datasets.s3_datasets, "ZINC", MockDataset):
+            yield
+
+
+@pytest.fixture
+def dm(tmp_path, mock_dataset):
+    return UMELightningDataModule(
+        root=str(tmp_path),
+        datasets=["AMPLIFY", "ZINC"],
+        batch_size=3,
+        max_length=150,
+        dataset_kwargs={"AMPLIFY": {"use_optimized": False}, "ZINC": {"use_optimized": False}},
+    )
 
 
 class TestUMELightningDataModule:
     def test__init__(self, dm):
-        assert dm._batch_size == 8
-        assert dm._tokenizer_max_length == 512
-        assert isinstance(dm._root, str | Path)
+        assert dm.batch_size == 3
+        assert dm.max_length == 150
+        assert isinstance(dm.root, str | Path)
 
-    @unittest.mock.patch("lobster.datasets._huggingface_iterable_dataset.load_dataset")
-    def test_train_dataloader(self, mock_load_dataset, dm):
-        # Create enough mock data for a batch
-        mock_data = []
-        for i in range(20):  # Create 20 samples to ensure we have enough for a batch
-            mock_data.append(
-                {
-                    "sequence": f"MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG{i}",
-                    "name": f"test_protein_{i}",
-                }
-            )
-
-        mock_load_dataset.return_value = Dataset.from_list(mock_data)
-
+    def test_train_dataloader(self, dm):
+        """Test that train dataloader works with mocked datasets."""
         dm.setup()
 
         dataloader = dm.train_dataloader()
         assert isinstance(dataloader, DataLoader)
-        assert dataloader.batch_size == 8
+        assert dataloader.batch_size == 3
 
         batch = next(iter(dataloader))
+
         assert isinstance(batch["input_ids"], Tensor)
-        assert isinstance(batch["attention_mask"], Tensor)
-        assert isinstance(batch["modality"], list)
-        assert isinstance(batch["modality"][0], Modality)
-
-    @unittest.mock.patch("lobster.datasets._huggingface_iterable_dataset.load_dataset")
-    def test_train_dataloader_multiplex(self, mock_load_dataset, tmp_path):
-        # Create enough mock data for a batch
-        mock_data = []
-        for i in range(20):  # Create 20 samples to ensure we have enough for a batch
-            mock_data.append(
-                {
-                    "sequence": f"MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG{i}",
-                    "name": f"test_protein_{i}",
-                }
-            )
-
-        mock_load_dataset.return_value = Dataset.from_list(mock_data)
-
-        dm = UMELightningDataModule(
-            root=tmp_path,
-            datasets=["AMPLIFY", "Calm"],
-            batch_size=8,
-            tokenizer_max_length=512,
-            sample=True,
-            weights=None,
-        )
-        dm.setup()
-
-        expected_weights = [w / sum(dm._train_sizes) for w in dm._train_sizes]
-
-        assert dm._sample
-        assert isinstance(dm.train_dataset, MultiplexedSamplingDataset)
-        assert dm.train_dataset.weights == expected_weights
-
-        dataloader = dm.train_dataloader()
-        assert isinstance(dataloader, DataLoader)
-        assert dataloader.batch_size == 8
-
-        batch = next(iter(dataloader))
-        assert isinstance(batch, dict)
-        assert isinstance(batch["input_ids"], Tensor)
-        assert isinstance(batch["attention_mask"], Tensor)
-        assert isinstance(batch["modality"], list)
-        assert isinstance(batch["modality"][0], Modality)
+        assert batch["input_ids"].shape == (3, 1, 150)
+        assert batch["attention_mask"].shape == (3, 1, 150)
+        assert batch["dataset"] == ["MockDataset"] * 3
+        assert batch["modality"] == [Modality.AMINO_ACID] * 3

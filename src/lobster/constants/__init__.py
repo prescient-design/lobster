@@ -26,6 +26,7 @@ from ._ume_models import (
 )
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
 from ._hf import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
+from ._s3 import S3_BUCKET
 
 __all__ = [
     "HF_UME_REPO_ID",
@@ -60,4 +61,5 @@ __all__ = [
     "UMEModelVersion",
     "UME_MODEL_VERSION_TYPES",
     "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
+    "S3_BUCKET",
 ]
