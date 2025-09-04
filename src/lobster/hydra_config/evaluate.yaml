@@ -37,8 +37,18 @@ callbacks:
     batch_size: 16
 
   - _target_: lobster.callbacks.CalmLinearProbeCallback
-    max_length: 512
-    batch_size: 16
+    max_length: ${datamodule.tokenizer_max_length}
+    batch_size: 8
+    classification_threshold: 0.5
+    # Optional overrides (uncomment to customize)
+    # tasks: ["meltome", "solubility", "localization"]
+    # species: ["hsapiens", "ecoli", "scerevisiae"]
+    # use_cross_validation: false
+    # n_folds: 5
+    # dimensionality_reduction: false
+    # reduced_dim: 320
+    # probe_type: linear  # linear | elastic | svm
+    # species defaults to ["hsapiens", "ecoli", "scerevisiae"] if not specified
 
   - _target_: lobster.callbacks.PEEREvaluationCallback
     max_length: 512

@@ -1,5 +1,5 @@
 from ._architecture_analyzer import GPUType, ModelType
-from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask
+from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask, MAX_SEQUENCE_LENGTH
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
 from ._descriptor_descs import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 from ._modality import Modality, ModalityType
@@ -39,6 +39,7 @@ __all__ = [
     "CALM_TASK_SPECIES",
     "CALMSpecies",
     "CALMTask",
+    "MAX_SEQUENCE_LENGTH",
     "Split",
     "GPUType",
     "ModelType",
