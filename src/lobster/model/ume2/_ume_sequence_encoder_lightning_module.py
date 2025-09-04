@@ -51,7 +51,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
 
         self.seed = seed
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
-        self.auxiliary_tasks = {auxiliary_tasks}
+        self.auxiliary_tasks = auxiliary_tasks
         self.auxiliary_task_loss_fns = {
             "regression": nn.MSELoss(),
         }
