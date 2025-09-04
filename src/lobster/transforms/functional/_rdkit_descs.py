@@ -45,7 +45,7 @@ def smiles_to_rdkit_descs(smiles_seq: str) -> Tensor | None:
 
     out = list(Descriptors.CalcMolDescriptors(mol, missingVal=np.nan).values())
 
-    return torch.tensor(out)
+    return torch.tensor(out, dtype=torch.float32)
 
 
 # NOTE(degraff): This function can be made more eficient by taking batches of inputs, if needed.
@@ -115,4 +115,4 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
         else:
             xs.append(p)
 
-    return torch.tensor(xs)
+    return torch.tensor(xs, dtype=torch.float32)

@@ -66,12 +66,9 @@ class UMESequenceEncoderLightningModule(LightningModule):
         return self.model.embed(inputs, aggregate=aggregate, ignore_padding=ignore_padding, **kwargs)
 
     def compute_mlm_loss(self, batch: dict[str, Tensor]) -> Tensor:
-        input_ids, attention_mask = batch["input_ids"], batch["attention_mask"]
-        input_ids, attention_mask = self.model.model.ensure_2d(input_ids, attention_mask)
-
         masked_inputs = mask_tokens(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
             mask_token_id=self.mask_token_id,
             mask_probability=self.mask_probability,
             special_token_ids=self.special_token_ids,
@@ -100,7 +97,9 @@ class UMESequenceEncoderLightningModule(LightningModule):
 
         for auxiliary_task in self.auxiliary_tasks:
             if auxiliary_task.name not in batch:
-                raise ValueError(f"Auxiliary task {auxiliary_task.name} labels not found in batch keys: {batch.keys()}")
+                raise ValueError(
+                    f"Auxiliary task `{auxiliary_task.name}` labels not found in batch keys: {batch.keys()}"
+                )
 
             labels = batch[auxiliary_task.name]
             logits = output[auxiliary_task.name]
@@ -112,6 +111,10 @@ class UMESequenceEncoderLightningModule(LightningModule):
         return auxiliary_losses
 
     def step(self, batch: dict[str, Tensor], batch_idx: int, stage: Literal["train", "val"]) -> Tensor:
+        batch["input_ids"], batch["attention_mask"] = self.model.model.ensure_2d(
+            batch["input_ids"], batch["attention_mask"]
+        )
+
         mlm_loss = self.compute_mlm_loss(batch)
         auxiliary_losses = self.compute_auxiliary_tasks_loss(batch)
         total_loss = mlm_loss
