@@ -20,11 +20,22 @@ logger = logging.getLogger(__name__)
 class AuxiliaryTask:
     name: str
     task_type: Literal["regression", "classification"]
+    pooling: Literal["cls", "mean"] = "mean"
     output_dim: int
     hidden_size: int | None = None
     dropout: float = 0.1
     num_layers: int = 2
     loss_weight: float = 1.0
+
+    def __post_init__(self):
+        if self.pooling not in ["cls", "mean"]:
+            raise ValueError(f"Unsupported pooling type: {self.pooling}")
+
+        if self.loss_weight <= 0 or self.loss_weight > 1:
+            raise ValueError(f"Loss weight must be between 0 and 1: {self.loss_weight}")
+
+        if self.task_type not in ["regression"]:
+            raise ValueError(f"Unsupported task type: {self.task_type}")
 
 
 class AuxiliaryRegressionTaskHead(nn.Module):
@@ -95,15 +106,14 @@ class UMESequenceEncoderModule(nn.Module):
 
         if self.auxiliary_tasks is not None and return_auxiliary_tasks:
             for task_name, task_head in self.auxiliary_tasks.items():
-                print(f"Trying to do this forward pass for task {task_name}")
-
                 embeddings = output["last_hidden_state"]
-                print(f"Embeddings shape: {embeddings.shape}")
 
-                # Get CLS token embeddings
-                cls_embedding = embeddings[:, 0, :]
-                print(f"CLS token embeddings shape: {cls_embedding.shape}")
+                match task_head.pooling:
+                    case "cls":
+                        embeddings = embeddings[:, 0, :]
+                    case "mean":
+                        embeddings = embeddings.mean(dim=1)
 
-                output[task_name] = task_head(cls_embedding)
+                output[task_name] = task_head(embeddings)
 
         return output
