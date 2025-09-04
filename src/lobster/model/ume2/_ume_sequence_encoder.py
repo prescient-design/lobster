@@ -49,13 +49,14 @@ class AuxiliaryRegressionTaskHead(nn.Module):
         hidden_size: int | None = None,
         dropout: float = 0.1,
         num_layers: int = 2,
+        pooling: Literal["cls", "mean"] = "mean",
     ):
         super().__init__()
         self.task_name = task_name
         self.hidden_size = hidden_size if hidden_size is not None else input_dim // 2
         self.dropout = dropout
         self.num_layers = num_layers
-
+        self.pooling = pooling
         layers = []
         current_dim = input_dim
 
@@ -68,6 +69,12 @@ class AuxiliaryRegressionTaskHead(nn.Module):
         self.head = nn.Sequential(*layers)
 
     def forward(self, x: Tensor) -> Tensor:
+        match self.pooling:
+            case "cls":
+                x = x[:, 0, :]
+            case "mean":
+                x = x.mean(dim=1)
+
         return self.head(x)
 
 
@@ -81,7 +88,6 @@ class UMESequenceEncoderModule(nn.Module):
             if not all(task.task_type == "regression" for task in auxiliary_tasks):
                 raise NotImplementedError("Only regression tasks are currently supported for auxiliary tasks in UME-2")
 
-            print(f"Creating auxiliary tasks with model hidden_size: {self.model.config.hidden_size}")
             self.auxiliary_tasks = nn.ModuleDict(
                 {
                     task.name: AuxiliaryRegressionTaskHead(
@@ -91,6 +97,7 @@ class UMESequenceEncoderModule(nn.Module):
                         hidden_size=task.hidden_size,
                         dropout=task.dropout,
                         num_layers=task.num_layers,
+                        pooling=task.pooling,
                     )
                     for task in auxiliary_tasks
                 }
@@ -107,13 +114,6 @@ class UMESequenceEncoderModule(nn.Module):
         if self.auxiliary_tasks is not None and return_auxiliary_tasks:
             for task_name, task_head in self.auxiliary_tasks.items():
                 embeddings = output["last_hidden_state"]
-
-                match task_head.pooling:
-                    case "cls":
-                        embeddings = embeddings[:, 0, :]
-                    case "mean":
-                        embeddings = embeddings.mean(dim=1)
-
                 output[task_name] = task_head(embeddings)
 
         return output
