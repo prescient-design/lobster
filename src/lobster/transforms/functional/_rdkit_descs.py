@@ -108,6 +108,11 @@ def smiles_to_normalized_rdkit_descs(smiles_seq: str, invert: bool = False) -> l
             continue
 
         p = dist.cdf(np.clip(x, x_min, x_max))
-        xs.append(p if not invert else scipy.stats.norm.ppf(p))
+        if invert:
+            # Clip p to avoid -inf/+inf from ppf at exactly 0/1
+            p_clipped = np.clip(p, 1e-8, 1 - 1e-8)
+            xs.append(scipy.stats.norm.ppf(p_clipped))
+        else:
+            xs.append(p)
 
     return torch.tensor(xs)
