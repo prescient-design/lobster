@@ -19,10 +19,22 @@ from transformers.modeling_outputs import (
 )
 from transformers.modeling_utils import (
     PreTrainedModel,
-    apply_chunking_to_forward,
-    find_pruneable_heads_and_indices,
-    prune_linear_layer,
 )
+
+# If the original apply_chunking_to_forward is not available (transformers >= 4.56.0), use the pytorch_utils version
+try:
+    from transformers.modeling_utils import (
+        apply_chunking_to_forward,
+        find_pruneable_heads_and_indices,
+        prune_linear_layer,
+    )
+except ImportError:
+    from transformers.pytorch_utils import (
+        apply_chunking_to_forward,
+        find_pruneable_heads_and_indices,
+        prune_linear_layer,
+    )
+
 from transformers.utils import logging
 
 from .._mlm_configuration import PMLMConfig

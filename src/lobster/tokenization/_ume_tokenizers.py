@@ -498,3 +498,7 @@ class UMETokenizerTransform(Module):
             output["modality"] = self.modality
 
         return output
+
+    def get_special_token_ids(self) -> list[int]:
+        special_tokens = _get_special_tokens()
+        return [self.tokenizer.convert_tokens_to_ids(token) for token in special_tokens]

@@ -17,4 +17,5 @@ from ._seq2seq import PrescientPT5
 from ._ume import UME
 from .lm_base import LMBaseContactPredictionHead, LMBaseForMaskedLM
 from .modern_bert import FlexBERT
+from .neobert import NeoBERTLightningModule, NeoBERTModule
 # from ._utils import model_typer

@@ -1,5 +1,5 @@
 from ._architecture_analyzer import GPUType, ModelType
-from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask
+from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask, MAX_SEQUENCE_LENGTH
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
 from ._descriptor_descs import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 from ._modality import Modality, ModalityType
@@ -14,12 +14,23 @@ from ._peer_tasks import (
     PEERTask,
     PEERTaskCategory,
 )
+from ._pooling import PoolingType
 from ._scheduler_type import SchedulerType
 from ._split import Split
-from ._ume_models import UME_CHECKPOINT_DICT_S3_BUCKET, UME_CHECKPOINT_DICT_S3_KEY, UME_CHECKPOINT_DICT_S3_URI
+from ._ume_models import (
+    UME_CHECKPOINT_DICT_S3_BUCKET,
+    UME_CHECKPOINT_DICT_S3_KEY,
+    UME_CHECKPOINT_DICT_S3_URI,
+    UME_MODEL_VERSION_TYPES,
+    UMEModelVersion,
+)
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
+from ._hf import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
+from ._s3 import S3_BUCKET
 
 __all__ = [
+    "HF_UME_REPO_ID",
+    "HF_UME_MODEL_DIRPATH",
     "Modality",
     "ModalityType",
     "WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE",
@@ -28,11 +39,13 @@ __all__ = [
     "CALM_TASK_SPECIES",
     "CALMSpecies",
     "CALMTask",
+    "MAX_SEQUENCE_LENGTH",
     "Split",
     "GPUType",
     "ModelType",
     "PEERTask",
     "PEERTaskCategory",
+    "PoolingType",
     "SchedulerType",
     "PEER_TASK_CATEGORIES",
     "PEER_TASKS",
@@ -45,5 +58,8 @@ __all__ = [
     "UME_CHECKPOINT_DICT_S3_URI",
     "UME_CHECKPOINT_DICT_S3_BUCKET",
     "UME_CHECKPOINT_DICT_S3_KEY",
+    "UMEModelVersion",
+    "UME_MODEL_VERSION_TYPES",
     "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
+    "S3_BUCKET",
 ]

@@ -12,7 +12,7 @@ from ._open_genome_2 import OpenGenome2IterableDataset
 from ._peer_dataset import PEERDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
-from ._ume_streaming_dataset import UMEStreamingDataset
+from .s3_datasets.base import UMEStreamingDataset
 from ._zinc_dataset import ZINCIterableDataset
 from ._ptm_dataset import PTMDataset
 
