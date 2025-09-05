@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from typing import Any, cast
 
 import torch.utils.data
@@ -11,7 +11,6 @@ from torch import Generator, Tensor
 import lobster.datasets.s3_datasets
 from lobster.datasets.s3_datasets import UMEStreamingDataset
 from lobster.constants import Modality, Split
-from lobster.transforms import Transform
 
 logger = logging.getLogger(__name__)
 logging.getLogger("botocore.credentials").setLevel(logging.WARNING)
@@ -22,7 +21,6 @@ class UMELightningDataModule(LightningDataModule):
         self,
         *,
         datasets: Sequence[str],
-        transforms: dict[str, list[Transform | Callable]] | None = None,
         root: str | None = None,
         max_length: int | None = 1024,
         weights: None | Sequence[float] | dict[str, float] = None,
@@ -44,12 +42,10 @@ class UMELightningDataModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.num_workers = num_workers
 
-        self.transforms = transforms if transforms is not None else {}
         self.weights = weights
         self.dataset_kwargs = dataset_kwargs if dataset_kwargs is not None else {}
 
         self._validate_and_process_weights()
-        self._validate_transforms()
         self._initialize_datasets()
 
     def _validate_and_process_weights(self) -> None:
@@ -72,14 +68,6 @@ class UMELightningDataModule(LightningDataModule):
 
         self.weights = cast(Sequence[float] | None, self.weights)
 
-    def _validate_transforms(self) -> None:
-        """Validate transforms configuration."""
-        if self.transforms:
-            extra = set(self.transforms.keys()) - set(self.dataset_names)
-            # check that those transforms are not None
-            if extra and any(self.transforms[dataset] is not None for dataset in extra):
-                raise ValueError(f"Transforms for non-existent datasets: {', '.join(extra)}")
-
     def _initialize_datasets(self) -> None:
         """Initialize empty dataset containers."""
         self.train_datasets: list[StreamingDataset] = []
@@ -92,7 +80,6 @@ class UMELightningDataModule(LightningDataModule):
         logging.info(f"""Initializing dataset {dataset_name} for split {split.value}...""")
 
         ds_class = getattr(lobster.datasets.s3_datasets, dataset_name)
-        transforms = self.transforms.get(dataset_name, [None])
 
         kwargs = {
             "max_length": self.max_length,
@@ -100,26 +87,20 @@ class UMELightningDataModule(LightningDataModule):
             "seed": self.seed,
             "cache_dir": self.root,
             "use_optimized": True,
-        } | dict(self.dataset_kwargs.get(dataset_name, {}))
+        }
+        kwargs.update(self.dataset_kwargs.get(dataset_name, {}))
 
-        for transform in transforms:
-            try:
-                ds_kwargs = kwargs.copy()
-                dataset_class_name = ds_class.__name__
+        logger.info(f"Initializing dataset {dataset_name} for split {split.value} with kwargs {kwargs}")
 
-                ds_kwargs = {**kwargs, "transform_fn": transform}
+        try:
+            ds = ds_class(**kwargs)
 
-                ds = ds_class(**ds_kwargs)
-                transform_msg = f" with transform {transform.__class__.__name__}" if transform else " with no transform"
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize dataset {dataset_name} for split {split.value}") from e
 
-                logging.info(
-                    f"Initialized dataset {dataset_class_name} for split {split.value}{transform_msg}: size={len(ds)}"
-                )
+        logger.info(f"{dataset_name}: split={split.value} size={len(ds)}")
 
-                yield ds
-
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize dataset {dataset_name} for split {split.value}") from e
+        yield ds
 
     def setup(self, stage: str | None = None) -> None:
         """Set up the dataset nodes for training and validation."""

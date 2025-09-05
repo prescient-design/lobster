@@ -181,11 +181,16 @@ class NeoBERT(NeoBERTPreTrainedModel):
 
         # Expand and repeat: (Batch, Length) -> (Batch, Heads, Length, Length)
         if attention_mask is not None:
-            attention_mask = (
-                attention_mask.unsqueeze(1)
-                .unsqueeze(1)
-                .repeat(1, self.config.num_attention_heads, attention_mask.size(-1), 1)
-            )
+            try:
+                attention_mask = (
+                    attention_mask.unsqueeze(1)
+                    .unsqueeze(1)
+                    .repeat(1, self.config.num_attention_heads, attention_mask.size(-1), 1)
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Attention mask shape is not correct {attention_mask.shape}. Must be (batch_size, seq_len)."
+                ) from e
 
         # Checks to be done if inputs are packed sequences
         if cu_seqlens is not None:

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class SmilesToRDKitDescriptorsTransform(Transform):
     """Transforms a SMILES string to its RDKit descriptors or ``None`` if the conversion fails."""
 
-    def __init__(self, normalize: bool = True, invert: bool = False) -> None:
+    def __init__(self, normalize: bool = True, invert: bool = False, descriptor_list: list[str] | None = None) -> None:
         """
         Parameters
         ----------
@@ -25,6 +25,10 @@ class SmilesToRDKitDescriptorsTransform(Transform):
 
             .. note::
                 This is only applicable if ``normalize`` is ``True``.
+        descriptor_list : list[str] | None, optional
+            List of specific descriptor names to calculate. If None, calculates all available descriptors.
+            For normalized descriptors, only descriptors with available distributions will be used.
+            Defaults to None.
         """
         super().__init__()
 
@@ -33,6 +37,11 @@ class SmilesToRDKitDescriptorsTransform(Transform):
 
         self._normalize = normalize
         self._invert = invert
+        self._descriptor_list = descriptor_list
+
+        logger.info(
+            f"Transform {self.__class__.__name__} initialized with normalize: {normalize}, invert: {invert}, descriptor list: {descriptor_list}"
+        )
 
     def _check_inputs(self, inputs: list[Any]) -> None:
         if not inputs:
@@ -60,6 +69,6 @@ class SmilesToRDKitDescriptorsTransform(Transform):
             The RDKit descriptors for the input SMILES string or ``None`` if the input is invalid.
         """
         if self._normalize:
-            return smiles_to_normalized_rdkit_descs(input, self._invert)
+            return smiles_to_normalized_rdkit_descs(input, self._invert, self._descriptor_list)
 
-        return smiles_to_rdkit_descs(input)
+        return smiles_to_rdkit_descs(input, self._descriptor_list)

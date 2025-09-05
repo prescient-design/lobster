@@ -1,7 +1,7 @@
 from ._architecture_analyzer import GPUType, ModelType
 from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask, MAX_SEQUENCE_LENGTH
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
-from ._descriptor_descs import RDKIT_DESCRIPTOR_DISTRIBUTIONS
+from ._rdkit_descriptor_distributions import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 from ._modality import Modality, ModalityType
 from ._moleculeace_tasks import MOLECULEACE_TASKS
 from ._peer_tasks import (
