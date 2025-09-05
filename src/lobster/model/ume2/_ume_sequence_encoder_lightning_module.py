@@ -126,22 +126,22 @@ class UMESequenceEncoderLightningModule(LightningModule):
             total_loss += loss_weight * auxiliary_loss
 
             self.log(
-                f"train_{auxiliary_task_name}_loss",
+                f"{stage}_{auxiliary_task_name}_loss",
                 auxiliary_loss,
                 sync_dist=True,
                 rank_zero_only=True,
                 batch_size=batch_size,
             )
             self.log(
-                f"train_{auxiliary_task_name}_weighted_loss",
+                f"{stage}_{auxiliary_task_name}_weighted_loss",
                 loss_weight * auxiliary_loss,
                 sync_dist=True,
                 rank_zero_only=True,
                 batch_size=batch_size,
             )
 
-        self.log("train_mlm_loss", mlm_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
-        self.log("train_loss", total_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
+        self.log(f"{stage}_mlm_loss", mlm_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
+        self.log(f"{stage}_loss", total_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
 
         return total_loss
 

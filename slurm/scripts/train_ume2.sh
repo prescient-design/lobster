@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 #SBATCH --partition b200
-#SBATCH --nodes 1
-#SBATCH --ntasks-per-node 1
-#SBATCH --gpus-per-node 1
-#SBATCH --cpus-per-task 8
+#SBATCH --nodes 10
+#SBATCH --ntasks-per-node 8
+#SBATCH --gpus-per-node 8
+#SBATCH --cpus-per-task 16
 #SBATCH -o slurm/logs/train/%J_%x.out
 #SBATCH -q preempt
 #SBATCH --mem=256G
@@ -35,7 +35,8 @@ export TOKENIZERS_PARALLELISM=true
 # access for newly created files. Remove if not needed
 umask g+w
 
-srun -u --cpus-per-task 8 --cpu-bind=cores,verbose \
+srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose \
     lobster_train \
-    experiment=train_ume2 \
+    experiment=ume-2/small_molecule \
+    data.num_workers=$SLURM_CPUS_PER_TASK \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES
