@@ -1,0 +1,5 @@
+defaults:
+  - model_checkpoint.yaml
+  - lr_monitor.yaml
+  - backbone_reconstruction.yaml
+  - _self_

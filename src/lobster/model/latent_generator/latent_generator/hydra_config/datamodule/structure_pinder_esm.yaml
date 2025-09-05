@@ -1,0 +1,17 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml # Dataloader batch sampler
+  - transforms: structure_backbone_transform.yaml # Dataset transforms
+  
+_target_: latent_generator.datamodules.StructureLightningDataModule
+root: /data/bucket/lisanza/structures/afdb_rep_v4_processed/ # this doesnt do anything
+path_to_datasets: ["/data2/lisanzas/latent_generator_files/esm_c_300m_embeddings_iterable_sampler/train/", "/data2/lisanzas/latent_generator_files/esm_c_300m_embeddings_iterable_sampler/val/", "/data2/lisanzas/latent_generator_files/esm_c_300m_embeddings_iterable_sampler/test/"]
+max_length: 512 # Maximum length of the sequence; not used
+use_shards: true
+buffer_size: 10
+cluster_file: null
+files_to_keep: null
+testing: false
+
+# Dataloader Params
+batch_size: 20 # Batch size for the dataloader
+num_workers: 12 # Number of workers for the dataloader

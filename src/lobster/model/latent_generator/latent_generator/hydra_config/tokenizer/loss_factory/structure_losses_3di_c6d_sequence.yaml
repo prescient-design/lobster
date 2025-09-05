@@ -1,0 +1,14 @@
+defaults:
+  - losses@loss_mapping.pairwise_l2_loss: pairwise_l2_loss
+  - losses@loss_mapping.l2_loss: l2_loss
+  - losses@loss_mapping.cce_loss: cce_loss
+  - losses@loss_mapping.c6d_loss: c6d_loss
+  - losses@loss_mapping.sequence_cce_loss: sequence_cce_loss
+
+_target_: lobster.model.latent_generator.latent_generator.tokenizer.LossFactory.from_mapping
+weight_dict:
+  pairwise_l2_loss: 1.0
+  l2_loss: 0.01
+  cce_loss: 5.0
+  c6d_loss: 1.0
+  sequence_cce_loss: 5.0

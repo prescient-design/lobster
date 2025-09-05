@@ -1,0 +1,4 @@
+structure_template_transform:
+  _target_: latent_generator.datasets._transforms.StructureTemplateTransform
+  template_percentage: 0.5
+  mask_percentage: 0.3

@@ -1,0 +1,24 @@
+defaults:
+  - datamodule: structure_pinder.yaml
+  - tokenizer: tokenizer_multi.yaml
+  - logger: default.yaml
+  - hydra: default.yaml
+  - paths: default.yaml
+  - callbacks: train_default.yaml
+  - _self_
+  - experiment: null
+
+task_name: "train"
+run_group: "dev"
+run_key: ${now:%Y-%m-%d}_${now:%H-%M-%S} # NOTE in DDP this must be set consistently across ranks
+
+seed: 42
+name: "dev_run"
+float32_matmul_precision: "medium"
+
+trainer:
+  _target_: lightning.Trainer
+  devices: 1
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1 # 0 means no clipping
+  precision: bf16-mixed

@@ -1,0 +1,4 @@
+defaults:
+  - esm_embedding_transform.yaml
+  - structure_backbone_transform.yaml
+  - _self_

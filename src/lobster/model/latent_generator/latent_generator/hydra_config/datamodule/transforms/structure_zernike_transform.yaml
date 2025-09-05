@@ -1,0 +1,2 @@
+structure_zernike_transform:
+  _target_: latent_generator.datasets._transforms.StructureZernikeTransform

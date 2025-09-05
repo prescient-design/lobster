@@ -80,41 +80,40 @@ For the `cb-lbster` code base cite: [Concept Bottleneck Language Models for Prot
 ```
 
 ## Install <a name="install"></a>
+Install [uv](https://github.com/astral-sh/uv) and run
 
-### Using `uv`
-Install [uv](https://github.com/astral-sh/uv) and create a new virtual environment:
-
-
-```bash
-uv venv --python 3.12  # create a new virtual environment in the `lobster` directory
-source .venv/bin/activate
-uv pip install -e .
-```
-
-Alternatively, run installation directly with `uv sync`:
 ```bash
 uv sync
-uv sync --all-extras --no-cache  # to resolve flash-attn installation issues
 ```
 
-and then prefix every command with `uv run`. For example,
+#### Optional depedency groups
+For different optional dependencies, run
+```bash
+uv sync --extra <group name 1> --extra <group name 2>
+```
+
+where <group name i> can be one of
+* `lg-gpu`, `lg-cpu` for Latent Generator dependencies for GPU or CPU respectively
+* `mgm` for UME dependencies 
+* `flash` for flash-attention on GPU
+* `mcp` for MCP servers
+
+
+To use the environement, you can run either activate the environment... 
 
 ```bash
+source .venv/bin/activate
+python -c "import lobster"
+lobster_train data.path_to_fasta="test_data/query.fasta" 
+```
+
+... or run with `uv run`:
+
+```bash
+uv run python -c "import lobster"
 uv run lobster_train data.path_to_fasta="test_data/query.fasta" 
 ```
 
-### flash attention
-To make use of [flash attention](https://github.com/Dao-AILab/flash-attention) install with the `flash` extra
-```bash
-uv sync --extra flash
-```
-
-### Using `mamba`
-clone the repo, cd into it and do `mamba env create -f env.yml`
-then from the root of the repo, do
-```bash
-pip install -e .
-```
 
 ## Main models you should use <a name="main-models"></a>
 

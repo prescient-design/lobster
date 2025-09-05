@@ -1,0 +1,4 @@
+wandb:
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: latent_generator_${task_name}
+  entity: null

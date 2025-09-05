@@ -1,0 +1,3 @@
+root_path: ${oc.env:LG_ROOT_PATH,"."}
+data_path: ${oc.env:LG_DATA_PATH, ${paths.root_path}/data}
+run_path: ${paths.root_path}/outputs/${task_name}/${run_group}/runs/${run_key}
