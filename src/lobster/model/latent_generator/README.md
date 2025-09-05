@@ -77,14 +77,13 @@ We also evaluated the models using canonical pose mode, which makes the model in
 ## Setup
 
 ### Environment Setup
+On
 ```bash
-# Create and activate virtual environment
-uv venv latentgenerator
-source latentgenerator/bin/activate
+# With latent generator CPU support
+uv sync --extra lg-cpu
 
-# Install dependencies
-uv pip install torch Cython numpy
-uv pip install -e . --no-build-isolation
+# With latent generator GPU support  
+uv sync --extra lg-gpu
 ```
 
 ## Getting Embeddings and Tokens

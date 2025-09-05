@@ -591,6 +591,17 @@ toml = [
 ]
 
 [[package]]
+name = "cpdb-protein"
+version = "0.2.0"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "cython", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bc/7d/207dd68c474541c4000f61ce823a1c1d2f0a431a63d4f4679b77aab6048f/cpdb-protein-0.2.0.tar.gz", hash = "sha256:2816a074a66ae429615e9bf826694b3324f9a64bbb615e1d102ad1927b7f168a", size = 68559, upload-time = "2023-06-26T17:00:47.185Z" }
+
+[[package]]
 name = "cryptography"
 version = "45.0.7"
 source = { registry = "https://pypi.python.org/simple" }
@@ -653,6 +664,35 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ea/7a/28b63c43d4c17d6587abcfef648841d39543158bcc47b5d40a03b8831f7a/cyclopts-3.23.1.tar.gz", hash = "sha256:ca6a5e9b326caf156d79f3932e2f88b95629e59fd371c0b3a89732b7619edacb", size = 75161, upload-time = "2025-08-30T17:40:34.396Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/67/ac57fbef5414ce84fe0bdeb497918ab2c781ff2cbf23c1bd91334b225669/cyclopts-3.23.1-py3-none-any.whl", hash = "sha256:8e57c6ea47d72b4b565c6a6c8a9fd56ed048ab4316627991230f4ad24ce2bc29", size = 85222, upload-time = "2025-08-30T17:40:33.005Z" },
+]
+
+[[package]]
+name = "cython"
+version = "3.1.3"
+source = { registry = "https://pypi.python.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/ab/915337fb39ab4f4539a313df38fc69938df3bf14141b90d61dfd5c2919de/cython-3.1.3.tar.gz", hash = "sha256:10ee785e42328924b78f75a74f66a813cb956b4a9bc91c44816d089d5934c089", size = 3186689, upload-time = "2025-08-13T06:19:13.619Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/51/54f5d1bed7b7d003d0584996a030542497aeb05b9241782c217ea71061f5/cython-3.1.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:4b3b2f6587b42efdece2d174a2aa4234da4524cc6673f3955c2e62b60c6d11fd", size = 3002973, upload-time = "2025-08-13T06:19:50.777Z" },
+    { url = "https://files.pythonhosted.org/packages/05/07/b4043fed60070ee21b0d9ff3a877d2ecdc79231e55119ce852b79b690306/cython-3.1.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:963cf640d049fcca1cefd62d1653f859892d6dc8e4d958eb49a5babc491de6a1", size = 2865389, upload-time = "2025-08-13T06:19:52.675Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/e3/67d349b5310a40f281e153e826ca24d9f7ba2997c06800eda781253dccfd/cython-3.1.3-cp311-cp311-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:2ab05d1bf2d5522ecff35d94ca233b77db2300413597c3ca0b6448377fa4bd7c", size = 3410316, upload-time = "2025-08-13T06:19:55.217Z" },
+    { url = "https://files.pythonhosted.org/packages/49/c4/84aae921135174111091547fa726ea5f8bba718cd12b2589a70c2aab8d5c/cython-3.1.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:cd517e3be052fb49443585b01f02f46080b3408e32c1108a0fdc4cc25b3c9d30", size = 3189568, upload-time = "2025-08-13T06:19:57.503Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/85/1bf18883f1a1f656ad83a671e54553caedb1ee2f39a3e792a14aa82557a2/cython-3.1.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a48e2180d74e3c528561d85b48f9a939a429537f9ea8aac7fb16180e7bff47e2", size = 3312649, upload-time = "2025-08-13T06:19:59.894Z" },
+    { url = "https://files.pythonhosted.org/packages/68/da/cc1373decc0d14a25f1b434f47de5e27696f3092319aa5e19fcf84157415/cython-3.1.3-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:e7c9daa90b15f59aa2a0d638ac1b36777a7e80122099952a0295c71190ce14bc", size = 3203821, upload-time = "2025-08-13T06:20:02.124Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/32/e10582d6f7b02ee63607f388dbbd34e329c54559c85961ddc5c655266519/cython-3.1.3-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:08ac646ff42781827f23b7a9b61669cdb92055f52724cd8cbe0e1defc56fce2e", size = 3426853, upload-time = "2025-08-13T06:20:04.474Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/da/5b0d1b5a4c7622ec812ad9374c9c6b426d69818f13f51e36f4f25ca01c86/cython-3.1.3-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:bb0e0e7fceaffa22e4dc9600f7f75998eef5cc6ac5a8c0733b482851ba765ef2", size = 3328872, upload-time = "2025-08-13T06:20:06.834Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/5f/f102f6c8d27338f0baf094754c67f920828a19612053abc903e66f84506f/cython-3.1.3-cp311-cp311-win32.whl", hash = "sha256:42b1c3ebe36a52e2a8e939c0651e9ca5d30b81d03f800bbf0499deb0503ab565", size = 2480850, upload-time = "2025-08-13T06:20:08.988Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/60/415d0f0f7c2e227707baec11c968387d33507d2eb7f26a2950a323c705e5/cython-3.1.3-cp311-cp311-win_amd64.whl", hash = "sha256:34a973844998281951bf54cdd0b6a9946ba03ba94580820738583a00da167d8f", size = 2712560, upload-time = "2025-08-13T06:20:11.877Z" },
+    { url = "https://files.pythonhosted.org/packages/79/26/f433fdfd5182b9231819a99acc49a1f856669532306e7a38dce63ba7297e/cython-3.1.3-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:849ef3d15d4354e5f74cdb6d3c80d80b03209b3bf1f4ff93315890b19da18944", size = 3014237, upload-time = "2025-08-13T06:20:13.77Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/6c/1bebf44f5f177f8c750e608f82c08cd699b8f28cc233e799379bfcf2a2c2/cython-3.1.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:93dd0f62a3f8e93166d8584f8b243180d681ba8fed1f530b55d5f70c348c5797", size = 2844261, upload-time = "2025-08-13T06:20:15.619Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/74/983005ce5954f6dc8360b105a561e51a60ea619c53296afac98253d1c9d7/cython-3.1.3-cp312-cp312-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:ff4a2cb84798faffb3988bd94636c3ad31a95ff44ef017f09121abffc56f84cf", size = 3388846, upload-time = "2025-08-13T06:20:17.679Z" },
+    { url = "https://files.pythonhosted.org/packages/68/50/dbe7edefe9b652bc72d49da07785173e89197b9a2d64a2ac45da9795eccf/cython-3.1.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:4b05319e36f34d5388deea5cc2bcfd65f9ebf76f4ea050829421a69625dbba4a", size = 3167022, upload-time = "2025-08-13T06:20:19.863Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/55/b50548b77203e22262002feae23a172f95282b4b8deb5ad104f08e3dc20d/cython-3.1.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7ac902a17934a6da46f80755f49413bc4c03a569ae3c834f5d66da7288ba7e6c", size = 3317782, upload-time = "2025-08-13T06:20:21.962Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/1b/20a97507d528dc330d67be4fbad6bc767c681d56192bce8f7117a187b2ad/cython-3.1.3-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:7d7a555a864b1b08576f9e8a67f3789796a065837544f9f683ebf3188012fdbd", size = 3179818, upload-time = "2025-08-13T06:20:24.419Z" },
+    { url = "https://files.pythonhosted.org/packages/43/a5/7b32a19c4c6bb0e2cc7ae52269b6b23a42f67f730e4abd4f8dca63660f7a/cython-3.1.3-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:b827ce7d97ef8624adcf2bdda594b3dcb6c9b4f124d8f72001d8aea27d69dc1c", size = 3403206, upload-time = "2025-08-13T06:20:26.846Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/e1/08cfd4c5e99f79e62d4a7b0009bbd906748633270935c8a55eee51fead76/cython-3.1.3-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:7851107204085f4f02d0eb6b660ddcad2ce4846e8b7a1eaba724a0bd3cd68a6b", size = 3327837, upload-time = "2025-08-13T06:20:28.946Z" },
+    { url = "https://files.pythonhosted.org/packages/23/1b/f3d384be86fa2a6e110b42f42bf97295a513197aaa5532f451c73bf5b48e/cython-3.1.3-cp312-cp312-win32.whl", hash = "sha256:ed20f1b45b2da5a4f8e71a80025bca1cdc96ba35820b0b17658a4a025be920b0", size = 2485990, upload-time = "2025-08-13T06:20:31.517Z" },
+    { url = "https://files.pythonhosted.org/packages/de/f0/17cff75e3c141bda73d770f7412632f53e55778d3bfdadfeec4dd3a7d1d6/cython-3.1.3-cp312-cp312-win_amd64.whl", hash = "sha256:dc4ca0f4dec55124cd79ddcfc555be1cbe0092cc99bcf1403621d17b9c6218bb", size = 2704002, upload-time = "2025-08-13T06:20:33.773Z" },
+    { url = "https://files.pythonhosted.org/packages/56/c8/46ac27096684f33e27dab749ef43c6b0119c6a0d852971eaefb73256dc4c/cython-3.1.3-py3-none-any.whl", hash = "sha256:d13025b34f72f77bf7f65c1cd628914763e6c285f4deb934314c922b91e6be5a", size = 1225725, upload-time = "2025-08-13T06:19:09.593Z" },
 ]
 
 [[package]]
@@ -1480,6 +1520,7 @@ lg-cpu = [
     { name = "biotite", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "botocore", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "cpdb-protein", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "icecream", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "loguru", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1505,6 +1546,7 @@ lg-gpu = [
     { name = "biotite", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "botocore", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "cpdb-protein", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "icecream", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "loguru", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1561,6 +1603,8 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'lg-gpu'" },
     { name = "botocore", marker = "extra == 'lg-cpu'" },
     { name = "botocore", marker = "extra == 'lg-gpu'" },
+    { name = "cpdb-protein", marker = "extra == 'lg-cpu'" },
+    { name = "cpdb-protein", marker = "extra == 'lg-gpu'" },
     { name = "datasets", specifier = ">2" },
     { name = "datasketch" },
     { name = "dgeb", specifier = ">=0.2.0" },
