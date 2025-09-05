@@ -1,5 +1,5 @@
 from ._architecture_analyzer import GPUType, ModelType
-from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask
+from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask, MAX_SEQUENCE_LENGTH
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
 from ._descriptor_descs import RDKIT_DESCRIPTOR_DISTRIBUTIONS
 from ._modality import Modality, ModalityType
@@ -26,6 +26,7 @@ from ._ume_models import (
 )
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
 from ._hf import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
+from ._s3 import S3_BUCKET
 
 __all__ = [
     "HF_UME_REPO_ID",
@@ -38,6 +39,7 @@ __all__ = [
     "CALM_TASK_SPECIES",
     "CALMSpecies",
     "CALMTask",
+    "MAX_SEQUENCE_LENGTH",
     "Split",
     "GPUType",
     "ModelType",
@@ -59,4 +61,5 @@ __all__ = [
     "UMEModelVersion",
     "UME_MODEL_VERSION_TYPES",
     "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
+    "S3_BUCKET",
 ]
