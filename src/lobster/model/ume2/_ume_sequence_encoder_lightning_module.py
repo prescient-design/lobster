@@ -114,6 +114,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
         batch["input_ids"], batch["attention_mask"] = self.model.model.ensure_2d(
             batch["input_ids"], batch["attention_mask"]
         )
+        batch_size = batch["input_ids"].shape[0]
 
         mlm_loss = self.compute_mlm_loss(batch)
         auxiliary_losses = self.compute_auxiliary_tasks_loss(batch)
@@ -129,16 +130,18 @@ class UMESequenceEncoderLightningModule(LightningModule):
                 auxiliary_loss,
                 sync_dist=True,
                 rank_zero_only=True,
+                batch_size=batch_size,
             )
             self.log(
                 f"train_{auxiliary_task_name}_weighted_loss",
                 loss_weight * auxiliary_loss,
                 sync_dist=True,
                 rank_zero_only=True,
+                batch_size=batch_size,
             )
 
-        self.log("train_mlm_loss", mlm_loss, sync_dist=True, rank_zero_only=True)
-        self.log("train_loss", total_loss, sync_dist=True, rank_zero_only=True)
+        self.log("train_mlm_loss", mlm_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
+        self.log("train_loss", total_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
 
         return total_loss
 

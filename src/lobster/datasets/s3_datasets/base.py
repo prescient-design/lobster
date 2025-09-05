@@ -257,11 +257,22 @@ class UMEStreamingDataset(StreamingDataset):
             sequence: str | tuple[str | None, ...] | list[str | None] | None = self.transform_fn(sequence)
 
         if sequence is None or (isinstance(sequence, list | tuple) and any(seq is None for seq in sequence)):
+            logger.warning(
+                f"Item in {self.__class__.__name__} is None or contains None (`{sequence}`). Skipping this item."
+            )
             return self.__next__()
 
         if self.extra_transform_fns is not None:
             for key, fn in self.extra_transform_fns.items():
-                item[key] = fn(sequence)
+                transformed = fn(sequence)
+
+                if transformed is None:
+                    logger.warning(
+                        f"Extra transform function {key} returned None for input `{sequence}`. Skipping this item."
+                    )
+                    return self.__next__()
+
+                item[key] = transformed
 
         if not self.tokenize:
             return {

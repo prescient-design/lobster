@@ -1,7 +1,7 @@
 from ._architecture_analyzer import GPUType, ModelType
 from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask, MAX_SEQUENCE_LENGTH
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
-from ._descriptor_descs import RDKIT_DESCRIPTOR_DISTRIBUTIONS
+from ._descriptor_descs import RDKIT_DESCRIPTOR_DISTRIBUTIONS, TOP_20_RDKIT_DESCRIPTORS
 from ._modality import Modality, ModalityType
 from ._moleculeace_tasks import MOLECULEACE_TASKS
 from ._peer_tasks import (
@@ -61,5 +61,6 @@ __all__ = [
     "UMEModelVersion",
     "UME_MODEL_VERSION_TYPES",
     "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
+    "TOP_20_RDKIT_DESCRIPTORS",
     "S3_BUCKET",
 ]
