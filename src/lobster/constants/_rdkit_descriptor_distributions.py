@@ -833,27 +833,3 @@ parameters."""
 RDKIT_DESCRIPTOR_DISTRIBUTIONS: Mapping[str, tuple[SupportsCDF, tuple[float, ...]]] = MappingProxyType(
     RDKIT_DESCRIPTOR_DISTRIBUTIONS
 )
-
-# Top 20 generally most informative and numerically stable RDKit descriptors
-TOP_20_RDKIT_DESCRIPTORS = [
-    "MolWt",  # Molecular weight
-    "ExactMolWt",  # Exact molecular weight
-    "HeavyAtomCount",  # Number of heavy atoms
-    "NumHAcceptors",  # Hydrogen bond acceptors
-    "NumHDonors",  # Hydrogen bond donors
-    "LabuteASA",  # Accessible surface area
-    "MolMR",  # Molar refractivity
-    "TPSA",  # Topological polar surface area
-    "Chi0n",  # Chi connectivity index order 0
-    "Chi2v",  # Chi connectivity index order 2
-    "Chi4n",  # Chi connectivity index order 4
-    "Kappa1",  # Kappa shape index 1
-    "MinAbsPartialCharge",  # Minimum absolute partial charge
-    "MaxAbsPartialCharge",  # Maximum absolute partial charge
-    "MinAbsEStateIndex",  # Minimum absolute E-state index
-    "SlogP_VSA6",  # Lipophilicity surface area descriptor
-    "EState_VSA3",  # E-state surface area descriptor
-    "NumAliphaticCarbocycles",  # Number of aliphatic carbocycles
-    "NumAromaticCarbocycles",  # Number of aromatic carbocycles
-    "BertzCT",  # Bertz complexity index
-]
