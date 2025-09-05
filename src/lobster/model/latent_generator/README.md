@@ -120,8 +120,8 @@ writepdb("decoded.pdb", decoded_outputs[0], seq[0])
 
 ### Ligand Example
 ```python
-from latent_generator.cmdline import load_model, encode, decode, methods
-from latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
+from lobster.model.latent_generator.latent_generator.cmdline import load_model, encode, decode, methods
+from lobster.model.latent_generator.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
 model_name = 'LG Ligand 20A'
@@ -158,8 +158,8 @@ writepdb_ligand_complex(
 
 ### Protein-Ligand Complex Example
 ```python
-from latent_generator.cmdline import load_model, encode, decode, methods
-from latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
+from lobster.model.latent_generator.latent_generator.cmdline import load_model, encode, decode, methods
+from lobster.model.latent_generator.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
 model_name = 'LG Ligand 20A seq 3di Aux'
