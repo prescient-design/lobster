@@ -1,0 +1,2 @@
+structure_c6d_transform:
+  _target_: latent_generator.datasets._transforms.StructureC6DTransform

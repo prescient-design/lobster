@@ -1,0 +1,5 @@
+_target_: torch.optim.lr_scheduler.LinearLR
+_partial_: true
+start_factor: 0.05
+end_factor: 1.0
+total_iters: 1

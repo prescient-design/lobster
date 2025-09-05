@@ -1,0 +1,5 @@
+_target_: lobster.model.latent_generator.latent_generator.quantizer.SimpleLinearQuantizer
+n_tokens: 256
+gumbel: true
+tau: 0.5
+embed_dim: 4

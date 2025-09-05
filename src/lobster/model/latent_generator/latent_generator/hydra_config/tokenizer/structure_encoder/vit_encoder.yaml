@@ -1,0 +1,14 @@
+_target_: lobster.model.latent_generator.latent_generator.structure_encoder.ViTEncoder
+data_fixed_size: 512
+n_atoms: 3
+model_n_channel: 20
+uvit_n_layers: 6
+uvit_n_heads: 8
+uvit_dim_head: 32
+uvit_position_embedding_type: 'rotary'
+embed_dim: 4
+embed_dim_hidden: 256
+backbone_noise: 0.30
+concat_sine_pw: true
+encode_ligand: false
+ligand_atom_embedding: false

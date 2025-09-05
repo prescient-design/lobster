@@ -91,6 +91,12 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
+For Latent Generator dependencies
+```
+uv pip install torch Cython numpy
+uv pip install ".[lg]" --no-build-isolation
+```
+
 Alternatively, run installation directly with `uv sync`:
 ```bash
 uv sync

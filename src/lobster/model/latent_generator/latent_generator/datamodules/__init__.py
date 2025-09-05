@@ -1,0 +1,1 @@
+from ._structure_datamodule import StructureLightningDataModule

@@ -1,0 +1,1 @@
+from .latent_generator import cmdline
