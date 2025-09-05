@@ -99,8 +99,13 @@ import torch
 
 model_name = 'LG 20A seq 3di c6d Aux'
 
-# Load model (optionally with overrides)
-load_model(methods[model_name]["model_config"]["checkpoint"], methods[model_name]["model_config"]["config_path"], methods[model_name]["model_config"]["config_name"], overrides=methods[model_name]["model_config"]["overrides"])
+# Load model using the ModelInfo dataclass structure
+load_model(
+    methods[model_name].model_config.checkpoint, 
+    methods[model_name].model_config.config_path, 
+    methods[model_name].model_config.config_name, 
+    overrides=methods[model_name].model_config.overrides
+)
 
 # Load a PDB file
 pdb_data = load_pdb("lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb")
@@ -125,8 +130,13 @@ import torch
 
 model_name = 'LG Ligand 20A'
 
-# Load model with ligand support
-load_model(methods[model_name]["model_config"]["checkpoint"], methods[model_name]["model_config"]["config_path"], methods[model_name]["model_config"]["config_name"], overrides=methods[model_name]["model_config"]["overrides"])
+# Load model with ligand support using the ModelInfo dataclass structure
+load_model(
+    methods[model_name].model_config.checkpoint, 
+    methods[model_name].model_config.config_path, 
+    methods[model_name].model_config.config_name, 
+    overrides=methods[model_name].model_config.overrides
+)
 
 # Load protein-ligand complex
 pdb_data = {"protein_coords": None, "protein_mask": None, "protein_seq": None} 
@@ -163,8 +173,13 @@ import torch
 
 model_name = 'LG Ligand 20A seq 3di Aux'
 
-# Load model with ligand support
-load_model(methods[model_name]["model_config"]["checkpoint"], methods[model_name]["model_config"]["config_path"], methods[model_name]["model_config"]["config_name"], overrides=methods[model_name]["model_config"]["overrides"])
+# Load model with ligand support using the ModelInfo dataclass structure
+load_model(
+    methods[model_name].model_config.checkpoint, 
+    methods[model_name].model_config.config_path, 
+    methods[model_name].model_config.config_name, 
+    overrides=methods[model_name].model_config.overrides
+)
 
 # Load protein-ligand complex
 pdb_data = load_pdb("latent_generator/example/example_pdbs/4erk_protein.pdb")  
@@ -496,21 +511,60 @@ LatentGenerator provides several pre-configured models optimized for different u
   - 256 protein tokens
 - **Use Case**: Global protein structure analysis
 
-To use any of these models, simply specify the model name when loading as keys the for the methods dictionary:
-```python
-from latent_generator.cmdline import load_model, methods
+## Loading Models
 
-# Load a pre-configured model
+### Using Pre-configured Models
+
+To use any of these models, simply specify the model name when loading. The `methods` dictionary contains all pre-configured models with their checkpoints, configs, and overrides:
+
+```python
+from lobster.model.latent_generator.latent_generator.cmdline import load_model, methods
+
+# Load a pre-configured model using the ModelInfo dataclass structure
 model_name = 'LG 20A 3di c6d Aux'
 load_model(
-    methods[model_name]["model_config"]["checkpoint"],
-    methods[model_name]["model_config"]["config_path"],
-    methods[model_name]["model_config"]["config_name"],
-    overrides=methods[model_name]["model_config"]["overrides"]
+    methods[model_name].model_config.checkpoint,
+    methods[model_name].model_config.config_path,
+    methods[model_name].model_config.config_name,
+    overrides=methods[model_name].model_config.overrides
 )
 ```
 
+### Using Custom Checkpoints
+
+You can also load custom checkpoints by providing the checkpoint path and configuration details directly:
+
+```python
+# Load a custom model
+load_model(
+    checkpoint_path="path/to/your/checkpoint.ckpt",
+    cfg_path="path/to/config/",
+    cfg_name="config_name",
+    overrides=["+tokenizer.structure_encoder.embed_dim=256"]
+)
+```
+
+### Command Line Usage
+
 Or via command line:
 ```bash
+# Using pre-configured model
 python latent_generator/cmdline/inference.py --model_name 'LG 20A 3di c6d Aux' --pdb_path your_protein.pdb
+
+# Using custom checkpoint
+python latent_generator/cmdline/inference.py \
+    --ckpt_path path/to/your/checkpoint.ckpt \
+    --cfg_path path/to/config/ \
+    --cfg_name config_name \
+    --pdb_path your_protein.pdb
 ```
+
+### Supported Checkpoint Sources
+
+The inference system supports multiple checkpoint sources:
+
+- **Local files**: Direct path to checkpoint file
+- **S3 URLs**: `s3://bucket-name/path/to/checkpoint.ckpt`
+- **Hugging Face**: `https://huggingface.co/user/repo/resolve/main/checkpoint.ckpt`
+
+The system will automatically download and cache checkpoints from remote sources.

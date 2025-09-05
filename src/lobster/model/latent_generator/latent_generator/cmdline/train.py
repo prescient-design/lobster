@@ -14,9 +14,6 @@ from omegaconf import DictConfig
 from typing import Optional
 
 import lobster.model.latent_generator.latent_generator as latent_generator
-import sys
-py_logger.info(f"latent_generator module path: {latent_generator.__file__ if hasattr(latent_generator, '__file__') else 'None'}")
-py_logger.info(f"sys.modules['latent_generator']: {sys.modules.get('latent_generator')}")
 from lobster.model.latent_generator.latent_generator.tokenizer import TokenizerMulti
 
 def format_resolver(x, pattern):

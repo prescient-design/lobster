@@ -20,26 +20,43 @@ from icecream import ic
 from lobster.model.latent_generator.latent_generator.io import writepdb, load_pdb, load_ligand, writepdb_ligand_complex
 import boto3
 from botocore.exceptions import NoCredentialsError
+from dataclasses import dataclass
+from typing import List, Optional
 
 # Pre-configured model configurations
 # These configurations include all necessary overrides and settings
 # No need to manually specify overrides when using these configurations
+@dataclass
+class ModelConfig:
+    """Configuration for a model checkpoint."""
+    checkpoint: str
+    config_path: str
+    config_name: str
+    overrides: List[str]
+
+@dataclass
+class ModelInfo:
+    """Information about a model including its configuration."""
+    description: str
+    features: List[str]
+    model_config: ModelConfig
+
 methods = {
     # Ligand Models
     # These models are optimized for ligand structure analysis
-    "LG Ligand 20A": {
-        "description": "Ligand only model with 20Å spatial attention",
-        "features": [
+    "LG Ligand 20A": ModelInfo(
+        description="Ligand only model with 20Å spatial attention",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Ligand only decoder",
             "512 ligand tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -57,21 +74,22 @@ methods = {
                 "tokenizer/decoder_factory=struc_decoder_ligand",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
             ]
-        }
-    },
-    "LG Ligand 20A 512 1024": {
-        "description": "Ligand only model with 20Å spatial attention",
-        "features": [
+        )
+    ),
+    
+    "LG Ligand 20A 512 1024": ModelInfo(
+        description="Ligand only model with 20Å spatial attention",
+        features=[
             "512-dim embeddings",
             "20Å spatial attention",
             "Ligand only decoder",
             "1024 ligand tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_512_1024.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_512_1024.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -90,21 +108,22 @@ methods = {
                 "tokenizer.quantizer.ligand_embed_dim=512",
                 "tokenizer.quantizer.ligand_n_tokens=1024"
             ]
-        }
-    },
-    "LG Ligand 20A 512 1024 element": {
-        "description": "Ligand only model with 20Å spatial attention",
-        "features": [
+        )
+    ),
+    
+    "LG Ligand 20A 512 1024 element": ModelInfo(
+        description="Ligand only model with 20Å spatial attention",
+        features=[
             "512-dim embeddings",
             "20Å spatial attention",
             "Ligand only decoder",
             "1024 ligand tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_512_1024_element.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_512_1024_element.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -125,21 +144,22 @@ methods = {
                 "tokenizer.quantizer.ligand_embed_dim=512",
                 "tokenizer.quantizer.ligand_n_tokens=1024"
             ]
-        }
-    },
-    "LG Ligand 20A continuous": {
-        "description": "Ligand only model with 20Å spatial attention",
-        "features": [
+        )
+    ),
+    
+    "LG Ligand 20A continuous": ModelInfo(
+        description="Ligand only model with 20Å spatial attention",
+        features=[
             "512-dim embeddings",
             "20Å spatial attention",
             "Ligand only decoder",
             "Continuous ligand encoding"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_continuous.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_continuous.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -156,13 +176,14 @@ methods = {
                 "tokenizer/decoder_factory=struc_decoder_ligand",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
             ]
-        }
-    },
+        )
+    ),
+    
     # Protein-Ligand Models
     # These models can handle both protein and ligand structures
-    "LG Ligand 20A seq 3di Aux": {
-        "description": "Protein-ligand model with sequence and 3Di awareness",
-        "features": [
+    "LG Ligand 20A seq 3di Aux": ModelInfo(
+        description="Protein-ligand model with sequence and 3Di awareness",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence and 3Di decoder",
@@ -170,11 +191,11 @@ methods = {
             "512 ligand tokens",
             "512 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_seq_3di_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_seq_3di_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -192,24 +213,24 @@ methods = {
                 "tokenizer/decoder_factory=struc_decoder_3di_sequence",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
             ]
-        }
-    },
+        )
+    ),
 
     # Protein-Only Models
     # These models are optimized for protein structure analysis
-    "LG 20A seq Aux": {
-        "description": "Sequence-aware protein model",
-        "features": [
+    "LG 20A seq Aux": ModelInfo(
+        description="Sequence-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -221,22 +242,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_sequence"
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di Aux": {
-        "description": "Sequence, 3Di-aware protein model",
-        "features": [
+    "LG 20A seq 3di Aux": ModelInfo(
+        description="Sequence, 3Di-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -248,22 +269,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A 3di c6d Aux": {
-        "description": "3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A 3di c6d Aux": ModelInfo(
+        description="3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "3Di + C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_3di_c6d_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_3di_c6d_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -275,22 +296,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d"
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d Aux": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d Aux": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -302,22 +323,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d Aux Pinder": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d Aux Pinder": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_Pinder.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_Pinder.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -329,22 +350,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d Aux PDB": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d Aux PDB": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -356,22 +377,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d Aux PDB Pinder": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d Aux PDB Pinder": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB_Pinder.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB_Pinder.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -383,22 +404,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d Aux PDB Pinder Finetune": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d Aux PDB Pinder Finetune": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB_Pinder_Finetune.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB_Pinder_Finetune.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -410,23 +431,23 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d Aux dec960 PDB": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d Aux dec960 PDB": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens",
             "decoder hidden dim 960"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_dec960_PDB.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_dec960_PDB.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -439,23 +460,23 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d Aux dec960 PDB Finetune": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d Aux dec960 PDB Finetune": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens",
             "decoder hidden dim 960"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_dec960_PDB_Finetune.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_dec960_PDB_Finetune.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -468,22 +489,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A seq 3di c6d 512 Aux": {
-        "description": "Sequence, 3Di and C6D-aware protein model",
-        "features": [
+    "LG 20A seq 3di c6d 512 Aux": ModelInfo(
+        description="Sequence, 3Di and C6D-aware protein model",
+        features=[
             "512-dim embeddings",
             "20Å spatial attention",
             "Sequence + 3Di + C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_512_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_512_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true", 
                 "tokenizer.optim.lr=1e-4", 
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0", 
@@ -501,22 +522,22 @@ methods = {
                 "tokenizer.decoder_factory.decoder_mapping.foldseek3di_decoder.struc_token_codebook_size=512", 
                 "tokenizer.decoder_factory.decoder_mapping.sequence_decoder.struc_token_codebook_size=512"
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A c6d Aux": {
-        "description": "C6D-aware protein model",
-        "features": [
+    "LG 20A c6d Aux": ModelInfo(
+        description="C6D-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "C6D decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_c6d_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_c6d_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -528,22 +549,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_c6d"
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A 3di Aux": {
-        "description": "3Di-aware protein model",
-        "features": [
+    "LG 20A 3di Aux": ModelInfo(
+        description="3Di-aware protein model",
+        features=[
             "256-dim embeddings",
             "20Å spatial attention",
             "3Di decoder",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_3di_Aux.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_3di_Aux.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
@@ -555,22 +576,22 @@ methods = {
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di"
             ]
-        }
-    },
+        )
+    ),
 
     #Sequence only models
-    "LG ESMC 300M 256 cont": {
-        "description": "Sequence-only model with ESMC 300m embeddings",
-        "features": [
+    "LG ESMC 300M 256 cont": ModelInfo(
+        description="Sequence-only model with ESMC 300m embeddings",
+        features=[
             "256-dim embeddings",
             "ESMC 300m embeddings",
             "no quantization"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_ESMC_300M_256_cont.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_ESMC_300M_256_cont.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "tokenizer/structure_encoder=vit_encoder_plm",
                 "tokenizer.structure_encoder.dropout=0.1", 
                 "tokenizer.structure_encoder.attention_dropout=0.1",
@@ -580,61 +601,61 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.attention_dropout=0.1",
                 "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=256",
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 20A": {
-        "description": "Basic protein model with 20Å cutoff",
-        "features": [
+    "LG 20A": ModelInfo(
+        description="Basic protein model with 20Å cutoff",
+        features=[
             "Standard configuration",
             "20Å spatial attention",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0"
             ]
-        }
-    },
+        )
+    ),
 
-    "LG 10A": {
-        "description": "Basic protein model with 10Å cutoff",
-        "features": [
+    "LG 10A": ModelInfo(
+        description="Basic protein model with 10Å cutoff",
+        features=[
             "Standard configuration",
             "10Å spatial attention",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_10A.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": [
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_10A.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=10.0",
                 "+tokenizer.structure_encoder.angstrom_cutoff_spatial=10.0"
             ]
-        }
-    },
+        )
+    ),
 
-    "LG full attention": {
-        "description": "Full attention model without spatial masking",
-        "features": [
+    "LG full attention": ModelInfo(
+        description="Full attention model without spatial masking",
+        features=[
             "Standard configuration",
             "Full attention (no spatial masking)",
             "256 protein tokens"
         ],
-        "model_config": {
-            "checkpoint": "https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_full_attention.ckpt",
-            "config_path": "../../latent_generator/hydra_config/",
-            "config_name": "train_multi",
-            "overrides": []
-        }
-    }
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_full_attention.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[]
+        )
+    )
 }
 
 
@@ -1107,7 +1128,7 @@ LG full attention
         raise ValueError("Ligand path is only supported for LG Ligand 20A seq 3di Aux model, LG Ligand 20A model or LG Ligand 20A continuous model")
 
     if args.model_name in methods:
-        load_model(methods[args.model_name]["model_config"]["checkpoint"], methods[args.model_name]["model_config"]["config_path"], methods[args.model_name]["model_config"]["config_name"], overrides=methods[args.model_name]["model_config"]["overrides"])
+        load_model(methods[args.model_name].model_config.checkpoint, methods[args.model_name].model_config.config_path, methods[args.model_name].model_config.config_name, overrides=methods[args.model_name].model_config.overrides)
     elif args.ckpt_path and args.cfg_path:
         py_logger.info(f"Loading model from {args.ckpt_path}")
         load_model(args.ckpt_path, args.cfg_path, args.cfg_name, overrides=args.overrides)
