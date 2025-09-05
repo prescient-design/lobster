@@ -2,9 +2,11 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
+import logging
 import pandas as pd
 import pooch
 import torch
+import numpy as np
 from datasets import load_dataset
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -14,8 +16,11 @@ from lobster.constants import (
     CALM_TASKS,
     CALMSpecies,
     CALMTask,
+    MAX_SEQUENCE_LENGTH,
 )
 from lobster.transforms import Transform
+
+logger = logging.getLogger(__name__)
 
 
 class CalmPropertyDataset(Dataset):
@@ -105,6 +110,9 @@ class CalmPropertyDataset(Dataset):
 
         self._set_columns(columns)
 
+        # Drop invalid rows to avoid NaNs and infs in targets during probing
+        self._filter_invalid_rows()
+
     def _configure_paths(self) -> tuple[str, Path]:
         """Configure file paths based on task and species.
 
@@ -171,7 +179,7 @@ class CalmPropertyDataset(Dataset):
                 self.data = df
 
             except Exception as e:
-                print(f"Failed to load dataset from Hugging Face: {e}")
+                logger.error(f"Failed to load dataset from Hugging Face: {e}")
                 raise
 
         elif self.cache_path.exists():
@@ -185,12 +193,14 @@ class CalmPropertyDataset(Dataset):
         """Set the columns to use based on the task."""
         if columns is None:
             match self.task:
-                case CALMTask.FUNCTION_BP:
-                    columns = ["sequence", "GO:0051092", "GO:0016573", "GO:0031146", "GO:0071427", "GO:0006613"]
-                case CALMTask.FUNCTION_CC:
-                    columns = ["sequence", "GO:0022627", "GO:0000502", "GO:0034705", "GO:0030665", "GO:0005925"]
-                case CALMTask.FUNCTION_MF:
-                    columns = ["sequence", "GO:0004843", "GO:0004714", "GO:0003774", "GO:0008227", "GO:0004866"]
+                case CALMTask.FUNCTION_BP | CALMTask.FUNCTION_CC | CALMTask.FUNCTION_MF:
+                    # Detect GO label columns dynamically to match the dataset schema
+                    go_cols = [c for c in self.data.columns if isinstance(c, str) and c.startswith("GO:")]
+                    if not go_cols:
+                        raise ValueError(
+                            f"No GO:* columns found for {self.task.value}. Available columns: {list(self.data.columns)}"
+                        )
+                    columns = ["sequence"] + go_cols
                 case CALMTask.LOCALIZATION:
                     columns = [
                         "Sequence",
@@ -246,3 +256,49 @@ class CalmPropertyDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.data)
+
+    @property
+    def num_label_columns(self) -> int:
+        """Return the number of label columns (excluding the input column)."""
+        return len(self.columns) - 1
+
+    @property
+    def label_columns(self) -> list[str]:
+        """Return the list of label column names."""
+        return self.columns[1:]
+
+    def _filter_invalid_rows(self) -> None:
+        """Filter out rows with non-finite targets and excessively long sequences.
+
+        This is important for regression tasks where downstream metrics like
+        Pearson correlation will become NaN if predictions or targets are
+        constant or contain NaNs/infs. We coerce label columns to numeric and
+        drop rows with non-finite values.
+
+        Also filters out sequences that are too long to prevent OOM issues.
+        """
+        label_cols = self.columns[1:]
+        if not label_cols:
+            return
+
+        # Filter out excessively long sequences to prevent OOM
+        sequence_col = self.columns[0]  # First column is always the sequence
+        seq_lengths = self.data[sequence_col].astype(str).str.len()
+        self.data = self.data[seq_lengths <= MAX_SEQUENCE_LENGTH].copy()
+
+        # Coerce labels to numeric when possible
+        self.data[label_cols] = self.data[label_cols].apply(pd.to_numeric, errors="coerce")
+
+        # Replace +/- inf with NaN then drop any rows containing NaNs in label columns
+        self.data.replace([np.inf, -np.inf], np.nan, inplace=True)
+        self.data.dropna(subset=label_cols, inplace=True)
+
+        # Ensure label dtypes are correct
+        if self.task_type == "regression":
+            self.data[label_cols] = self.data[label_cols].astype(float)
+        else:
+            # For multilabel classification, ensure integer dtype
+            self.data[label_cols] = self.data[label_cols].astype(int)
+
+        # If heavy filtering occurred, it's fine; upstream will subsample anyway.
+        # No logger here; silent cleanup to keep dataset lean.

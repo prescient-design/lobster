@@ -1,4 +1,9 @@
 _target_: lobster.data.UMELightningDataModule
-tokenizer_max_length: ???
-
-
+datasets: ???
+max_length: ???
+transforms:
+root: ${oc.env:LOBSTER_DATA_DIR}
+seed: 
+batch_size: 32
+pin_memory: true
+num_workers: 4

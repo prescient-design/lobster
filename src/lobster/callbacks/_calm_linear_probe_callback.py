@@ -1,20 +1,19 @@
 import logging
-import warnings
 from collections import defaultdict
 from collections.abc import Sequence
 
 import lightning as L
 import numpy as np
-from sklearn.exceptions import ConvergenceWarning
-from torch.utils.data import DataLoader, Subset
+import torch
+from torch import Tensor
+from torch.utils.data import DataLoader, Subset, ConcatDataset
 from tqdm import tqdm
 
 from lobster.constants import CALM_TASKS
 from lobster.datasets import CalmPropertyDataset
 
 from ._linear_probe_callback import LinearProbeCallback
-
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
+from ._peer_utils import convert_numpy_to_python
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +24,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     prediction tasks from the CALM dataset collection. It creates train/test splits for each task,
     extracts embeddings from the model, trains linear probes on these embeddings, and evaluates
     their performance.
-
-    Currently only supports UME embeddings and uses UMETokenizerTransform.
 
     Parameters
     ----------
@@ -40,12 +37,12 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         - 'localization': Predicts cellular localization (multilabel, 10 classes)
         - 'protein_abundance': Predicts protein abundance (regression, species-specific)
         - 'transcript_abundance': Predicts transcript abundance (regression, species-specific)
-        - 'function_bp': Predicts Gene Ontology biological process terms (multilabel, 4 classes)
-        - 'function_cc': Predicts Gene Ontology cellular component terms (multilabel, 4 classes)
-        - 'function_mf': Predicts Gene Ontology molecular function terms (multilabel, 4 classes)
+        - 'function_bp': Predicts Gene Ontology biological process terms (multilabel, 5 classes)
+        - 'function_cc': Predicts Gene Ontology cellular component terms (multilabel, 5 classes)
+        - 'function_mf': Predicts Gene Ontology molecular function terms (multilabel, 5 classes)
     species : Optional[Sequence[str]], default=None
-        Species to include for species-specific tasks. Required for 'protein_abundance' and
-        'transcript_abundance' tasks. If None, species-specific tasks will be skipped.
+        Species to include for species-specific tasks ('protein_abundance' and 'transcript_abundance').
+        If None, defaults to ['hsapiens', 'ecoli', 'scerevisiae'] for comprehensive evaluation.
         Available species:
         - For protein_abundance: 'athaliana', 'dmelanogaster', 'ecoli', 'hsapiens', 'scerevisiae'
         - For transcript_abundance: All of the above plus 'hvolcanii' and 'ppastoris'
@@ -54,9 +51,19 @@ class CalmLinearProbeCallback(LinearProbeCallback):
     run_every_n_epochs : Optional[int], default=None
         Run this callback every n epochs. If None, runs every validation epoch.
     test_size : float, default=0.2
-        Fraction of data to use for testing.
+        Fraction of data to use for testing. Ignored if use_cross_validation=True.
     max_samples : int, default=3000
         Maximum number of samples to use from each dataset.
+    use_cross_validation : bool, default=False
+        Whether to use k-fold cross validation instead of single train/test split.
+    n_folds : int, default=5
+        Number of folds for cross validation (only used if use_cross_validation=True).
+    dimensionality_reduction : bool, default=False
+        Whether to apply PCA dimensionality reduction to embeddings before training probes.
+    reduced_dim : int, default=320
+        Number of dimensions to reduce to (only used if dimensionality_reduction=True).
+    probe_type : str, default="linear"
+        Type of probe to use. Options: "linear", "elastic", "svm".
 
     Attributes
     ----------
@@ -77,6 +84,12 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         run_every_n_epochs: int | None = None,
         test_size: float = 0.2,
         max_samples: int = 3000,
+        use_cross_validation: bool = False,
+        n_folds: int = 5,
+        dimensionality_reduction: bool = False,
+        reduced_dim: int = 320,
+        probe_type: str = "linear",
+        classification_threshold: float = 0.5,
     ):
         # Don't use transform_fn - we'll handle raw sequences with explicit modality
         super().__init__(
@@ -84,10 +97,26 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             task_type="regression",
             batch_size=batch_size,
             run_every_n_epochs=run_every_n_epochs,
+            use_cross_validation=use_cross_validation,
+            n_folds=n_folds,
+            dimensionality_reduction=dimensionality_reduction,
+            reduced_dim=reduced_dim,
+            probe_type=probe_type,
+            classification_threshold=classification_threshold,
         )
 
         self.tasks = set(tasks) if tasks else set(CALM_TASKS.keys())
-        self.species = set(species) if species else None
+        logger.info(f"CALM tasks to evaluate: {sorted(self.tasks)}")
+
+        # Set default species if none provided - include commonly used model organisms
+        if species is None:
+            # Use a subset that represents diverse biology: human, E. coli, and yeast
+            default_species = ["hsapiens", "ecoli", "scerevisiae"]
+            self.species = set(default_species)
+            logger.info(f"No species specified, using default species: {default_species}")
+        else:
+            self.species = set(species)
+            logger.info(f"Using specified species: {sorted(self.species)}")
 
         self.test_size = test_size
         self.max_samples = max_samples
@@ -96,7 +125,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self.aggregate_metrics = defaultdict(list)
 
     def _create_split_datasets(
-        self, task: str, species: str | None = None
+        self, task: str, species: str | None = None, *, seed: int = 42
     ) -> tuple[CalmPropertyDataset, CalmPropertyDataset]:
         """Create train/test splits for a given task.
 
@@ -123,12 +152,14 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         # If dataset is too large, subsample it first
         if len(indices) > self.max_samples:
-            indices = np.random.choice(indices, size=self.max_samples, replace=False)
+            rng = np.random.default_rng(seed)
+            indices = rng.choice(indices, size=self.max_samples, replace=False)
 
         # Create train/test split from (possibly subsampled) indices
         test_size = int(len(indices) * self.test_size)
         train_size = len(indices) - test_size
-        shuffled_indices = np.random.permutation(indices)
+        rng = np.random.default_rng(seed)
+        shuffled_indices = rng.permutation(indices)
         train_indices = shuffled_indices[:train_size]
         test_indices = shuffled_indices[train_size:]
 
@@ -139,6 +170,52 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         self.dataset_splits[split_key] = (train_dataset, test_dataset)
 
         return train_dataset, test_dataset
+
+    def _get_embeddings(
+        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader
+    ) -> tuple[Tensor, Tensor]:
+        """Extract embeddings from the model for a given dataloader.
+
+        Handles CALM-specific data format where CalmPropertyDataset returns raw strings
+        that are batched into lists by the DataLoader. Works with both CaLM and UME models.
+
+        Parameters
+        ----------
+        model : Union[L.LightningModule, torch.nn.Module]
+            The model to extract embeddings from (CaLM or UME)
+        dataloader : DataLoader
+            DataLoader for the data to extract embeddings for
+
+        Returns
+        -------
+        Tuple[Tensor, Tensor]
+            Tuple of (embeddings, targets)
+        """
+        embeddings = []
+        targets = []
+
+        model.eval()
+
+        with torch.no_grad():
+            for batch in dataloader:
+                x, y = batch
+
+                # CalmPropertyDataset returns strings, DataLoader batches them into lists
+                if isinstance(x, (list, tuple)):
+                    sequences = list(x)
+                elif isinstance(x, str):
+                    sequences = [x]
+                else:
+                    # Fallback for unexpected formats
+                    sequences = list(x)
+
+                # Both CaLM and UME models have embed_sequences method
+                batch_embeddings = model.embed_sequences(sequences=sequences)
+
+                embeddings.append(batch_embeddings.cpu())
+                targets.append(y.cpu())
+
+        return torch.cat(embeddings), torch.cat(targets)
 
     def _evaluate_task(
         self,
@@ -173,19 +250,43 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         """
         task_type, num_classes = CALM_TASKS[task]
 
+        # For multilabel tasks (e.g., localization, function_*), infer label count from dataset
+        if task_type == "multilabel":
+            # Unwrap Subset to access underlying dataset
+            base_dataset = train_dataset
+            while isinstance(base_dataset, Subset):
+                base_dataset = base_dataset.dataset
+            inferred_num = getattr(base_dataset, "num_label_columns", None)
+            if isinstance(inferred_num, int) and inferred_num > 0:
+                num_classes = inferred_num
+
         self._set_metrics(task_type, num_classes)
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
-
         try:
-            train_embeddings, train_targets = self._get_embeddings(module, train_loader, modality="nucleotide")
-            test_embeddings, test_targets = self._get_embeddings(module, test_loader, modality="nucleotide")
+            if self.use_cross_validation:
+                # For cross-validation, we need all data combined
+                # Create a combined dataset from train and test
+                combined_dataset = ConcatDataset([train_dataset, test_dataset])
+                combined_loader = DataLoader(combined_dataset, batch_size=self.batch_size, shuffle=False)
 
-            probe = self._train_probe(train_embeddings, train_targets)
-            self.probes[task_key] = probe
+                # Get all embeddings and targets
+                all_embeddings, all_targets = self._get_embeddings(module, combined_loader)
 
-            metrics = self._evaluate_probe(probe, test_embeddings, test_targets)
+                # Cross-validation: splitter choice is handled in base method
+                metrics = self._evaluate_with_cross_validation(all_embeddings, all_targets, task_key)
+
+            else:
+                # Use traditional train/test split
+                train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+                test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
+
+                train_embeddings, train_targets = self._get_embeddings(module, train_loader)
+                test_embeddings, test_targets = self._get_embeddings(module, test_loader)
+
+                probe = self._train_probe(train_embeddings, train_targets, task_key)
+                self.probes[task_key] = probe
+
+                metrics = self._evaluate_probe(probe, test_embeddings, test_targets, task_key)
 
             # Log metrics if trainer is provided
             if trainer is not None:
@@ -222,18 +323,22 @@ class CalmLinearProbeCallback(LinearProbeCallback):
             Dictionary of task_name -> metric_name -> value
         """
         # Clear metrics for this run
-        aggregate_metrics = defaultdict(list)
+        self.aggregate_metrics = defaultdict(list)
         all_task_metrics = {}
 
         for task in tqdm(self.tasks, desc=f"{self.__class__.__name__}"):
+            logger.info(f"Processing task: {task}")
             # Handle species-specific tasks
             if task in ["protein_abundance", "transcript_abundance"]:
-                if not self.species:
-                    continue
+                logger.info(f"Task {task} is species-specific, processing for species: {sorted(self.species)}")
                 for species in self.species:
                     task_key = f"{task}_{species}"
+                    logger.info(f"Starting evaluation for {task_key}")
                     try:
                         train_dataset, test_dataset = self._create_split_datasets(task, species)
+                        logger.info(
+                            f"Created datasets for {task_key}: train={len(train_dataset)}, test={len(test_dataset)}"
+                        )
                         metrics = self._evaluate_task(
                             task_key,
                             task,
@@ -243,15 +348,19 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                             trainer,
                         )
                         all_task_metrics[task_key] = metrics
+                        logger.info(f"Successfully completed {task_key} with metrics: {metrics}")
 
                         # Store for aggregate metrics
                         for metric_name, value in metrics.items():
-                            aggregate_metrics[metric_name].append(value)
+                            self.aggregate_metrics[metric_name].append(value)
                     except Exception as e:
-                        logger.debug(f"Error processing {task_key}: {str(e)}")
+                        logger.error(f"Error processing {task_key}: {str(e)}")
+
             else:
+                logger.info(f"Task {task} is non-species-specific")
                 try:
                     train_dataset, test_dataset = self._create_split_datasets(task)
+                    logger.info(f"Created datasets for {task}: train={len(train_dataset)}, test={len(test_dataset)}")
                     metrics = self._evaluate_task(
                         task,
                         task,
@@ -261,16 +370,17 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                         trainer,
                     )
                     all_task_metrics[task] = metrics
+                    logger.info(f"Successfully completed {task} with metrics: {metrics}")
 
                     # Store for aggregate metrics
                     for metric_name, value in metrics.items():
-                        aggregate_metrics[metric_name].append(value)
+                        self.aggregate_metrics[metric_name].append(value)
                 except Exception as e:
-                    logger.debug(f"Error processing {task}: {str(e)}")
+                    logger.error(f"Error processing {task}: {str(e)}")
 
         # Calculate and log aggregate metrics
         mean_metrics = {}
-        for metric_name, values in aggregate_metrics.items():
+        for metric_name, values in self.aggregate_metrics.items():
             if values:  # Only process if we have values
                 avg_value = sum(values) / len(values)
                 mean_metrics[metric_name] = avg_value
@@ -284,4 +394,10 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         # Add mean metrics to the result
         all_task_metrics["mean"] = mean_metrics
 
-        return all_task_metrics
+        # Log final summary
+        successful_tasks = [k for k in all_task_metrics.keys() if k != "mean"]
+        logger.info(f"Evaluation completed. Successful tasks: {successful_tasks}")
+        logger.info(f"Total successful tasks: {len(successful_tasks)}")
+
+        # Convert NumPy scalars to Python types for clean YAML formatting
+        return convert_numpy_to_python(all_task_metrics)
