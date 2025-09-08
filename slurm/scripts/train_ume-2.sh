@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #SBATCH --partition b200
-#SBATCH --nodes 10
+#SBATCH --nodes 1
 #SBATCH --ntasks-per-node 8
 #SBATCH --gpus-per-node 8
 #SBATCH --cpus-per-task 16
@@ -38,5 +38,5 @@ umask g+w
 srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose \
     lobster_train \
     experiment=ume-2/small_molecule \
-    data.num_workers=$SLURM_CPUS_PER_TASK \
+    data.num_workers=8 \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES

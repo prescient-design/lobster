@@ -425,6 +425,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.1"
+source = { registry = "https://pypi.python.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/39/069100b84d7418bc358d81669d5748efb14b9cceacd2f9c75f550424132f/cloudpickle-3.1.1.tar.gz", hash = "sha256:b216fa8ae4019d5482a8ac3c95d8f6346115d8835911fd4aefd1a445e4242c64", size = 22113, upload-time = "2025-01-14T17:02:05.085Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/e8/64c37fadfc2816a7701fa8a6ed8d87327c7d54eacfbfb6edab14a2f2be75/cloudpickle-3.1.1-py3-none-any.whl", hash = "sha256:c8c5a44295039331ee9dad40ba100a9c7297b6f988e50e87ccdf3765a668350e", size = 20992, upload-time = "2025-01-14T17:02:02.417Z" },
+]
+
+[[package]]
 name = "coloredlogs"
 version = "15.0.1"
 source = { registry = "https://pypi.python.org/simple" }
@@ -1032,6 +1041,19 @@ wheels = [
 ]
 
 [[package]]
+name = "hydra-submitit-launcher"
+version = "1.2.0"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "hydra-core", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "submitit", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4f/93/8f19eba16318fe79f17ae5a86ed4efc9641c33151f67a0f172fbd15ddd41/hydra-submitit-launcher-1.2.0.tar.gz", hash = "sha256:e14c8eb46d020fac60ba25f82bcc368dc55851d2683dc95c88631ffcf15e4a34", size = 4875, upload-time = "2022-05-17T22:19:47.548Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/9b/0ea17f1780004c52f83566b5ca78a0844c93f5abdbbf625e40962af1ffcc/hydra_submitit_launcher-1.2.0-py3-none-any.whl", hash = "sha256:51ce468fbc91211c3a46677eefde94bbb9f721c9545af0be6dd0a95658515613", size = 5207, upload-time = "2022-05-17T22:19:45.664Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.13"
 source = { registry = "https://pypi.python.org/simple" }
@@ -1305,6 +1327,7 @@ dependencies = [
     { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "hydra-core", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "hydra-submitit-launcher", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "lightning", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "litdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "onnx", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1377,6 +1400,7 @@ requires-dist = [
     { name = "flash-attn", marker = "sys_platform == 'linux' and extra == 'flash'", specifier = ">=2.8.0.post2" },
     { name = "huggingface-hub", specifier = ">=0.33.2" },
     { name = "hydra-core" },
+    { name = "hydra-submitit-launcher", specifier = ">=1.2.0" },
     { name = "lightning" },
     { name = "litdata", specifier = ">=0.2.49" },
     { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.0.0" },
@@ -3234,6 +3258,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/15/b9/cc3017f9a9c9b6e27c5106cc10cc7904653c3eec0729793aec10479dd669/starlette-0.47.3.tar.gz", hash = "sha256:6bc94f839cc176c4858894f1f8908f0ab79dfec1a6b8402f6da9be26ebea52e9", size = 2584144, upload-time = "2025-08-24T13:36:42.122Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/fd/901cfa59aaa5b30a99e16876f11abe38b59a1a2c51ffb3d7142bb6089069/starlette-0.47.3-py3-none-any.whl", hash = "sha256:89c0778ca62a76b826101e7c709e70680a1699ca7da6b44d38eb0a7e61fe4b51", size = 72991, upload-time = "2025-08-24T13:36:40.887Z" },
+]
+
+[[package]]
+name = "submitit"
+version = "1.5.3"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "cloudpickle", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1f/2c/a824e3e03cbc4a48892014c5826fee7350994f4b6ae45c120e7713b2b7a1/submitit-1.5.3.tar.gz", hash = "sha256:d1cbc5d8859b519b1e47adc4aaa6001dcefe8a835f3032b151cb3de7d2841068", size = 81019, upload-time = "2025-05-21T09:06:42.331Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/80/90e0a0f4008f6572de58b042b1db9daced15d348a3586dda5efc9faba65e/submitit-1.5.3-py3-none-any.whl", hash = "sha256:ccc35100da12fe916541489deccccb6b9fa93dae8c01ade53e7f643552dc1795", size = 75463, upload-time = "2025-05-21T09:06:40.76Z" },
 ]
 
 [[package]]

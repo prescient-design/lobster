@@ -34,3 +34,12 @@ sbatch slurm/scripts/evaluate_ume.sh
 
 ### Evaluation Logs
 Evaluation logs are written to `slurm/logs/eval/` with format `{JOB_ID}_{JOB_NAME}.out`
+
+### Sweeps
+To run a sweep, use hydra-submitit plugin in the following way:
+
+
+
+```bash
+lobster_train experiment=ume-2/small_molecule_slurm
+```
