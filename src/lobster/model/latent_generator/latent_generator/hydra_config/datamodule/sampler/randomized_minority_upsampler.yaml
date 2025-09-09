@@ -1,2 +1,0 @@
-_target_: latent_generator.datasets.RandomizedMinorityUpsampler
-_partial_: true

@@ -1,3 +1,0 @@
-structure_ligand_transform:
-  _target_: latent_generator.datasets._transforms.StructureLigandTransform
-  rand_permute_ligand: true

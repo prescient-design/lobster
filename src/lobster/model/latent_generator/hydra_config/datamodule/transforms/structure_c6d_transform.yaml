@@ -1,0 +1,2 @@
+structure_c6d_transform:
+  _target_: lobster.model.latent_generator.datasets._transforms.StructureC6DTransform

@@ -1,0 +1,11 @@
+_target_: lobster.model.latent_generator.structure_encoder.PLMEncoder
+data_fixed_size: 512
+embed_dim: 4
+embed_dim_hidden: 256
+uvit_n_layers: 6
+uvit_n_heads: 8
+uvit_dim_head: 32
+uvit_position_embedding_type: 'rotary'
+dropout: 0.1
+attention_dropout: 0.1
+use_sequential_to_out: True

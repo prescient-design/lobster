@@ -1,0 +1,3 @@
+structure_backbone_transform:
+  _target_: lobster.model.latent_generator.datasets._transforms.StructureBackboneTransform
+  max_length: 512

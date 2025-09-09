@@ -1,0 +1,2 @@
+_target_: lobster.model.latent_generator.structure_decoder.SasaDecoder
+struc_token_codebook_size: ${tokenizer.structure_encoder.embed_dim}

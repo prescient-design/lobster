@@ -1,2 +1,0 @@
-_target_: latent_generator.datamodules._utils.collate_fn_backbone
-_partial_: true

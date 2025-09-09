@@ -61,11 +61,6 @@ We also evaluated the models using canonical pose mode, which makes the model in
 | LG 20A seq 3di Aux | 6.107 | 2.974 | 3.097 | 13.456 |
 | LG 20A 3di Aux | 8.288 | 4.434 | 3.043 | 16.252 |
 
-**Key Findings:**
-- **LG full attention** achieves the best reconstruction quality in both modes (1.707 ± 0.643 Å standard, 1.645 ± 0.573 Å canonical)
-- **LG 10A** performs well in both modes (3.698 ± 1.756 Å standard, 4.005 ± 2.173 Å canonical)
-- **LG 20A 3di c6d Aux** shows improved performance with canonical pose (4.140 ± 2.108 Å vs 4.484 ± 2.458 Å)
-- Canonical pose mode generally maintains or improves performance for most models
 
 ## Table of Contents
 - [Setup](#setup)
@@ -92,8 +87,8 @@ You can extract both embeddings and tokens from a trained LatentGenerator model 
 
 ### Protein Example
 ```python
-from lobster.model.latent_generator.latent_generator.cmdline import load_model, encode, decode, methods
-from lobster.model.latent_generator.latent_generator.io import writepdb, writepdb_ligand_complex, load_pdb
+from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
+from lobster.model.latent_generator.io import writepdb, writepdb_ligand_complex, load_pdb
 import torch
 
 
@@ -124,8 +119,8 @@ writepdb("decoded.pdb", decoded_outputs[0], seq[0])
 
 ### Ligand Example
 ```python
-from lobster.model.latent_generator.latent_generator.cmdline import load_model, encode, decode, methods
-from lobster.model.latent_generator.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
+from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
+from lobster.model.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
 model_name = 'LG Ligand 20A'
@@ -157,7 +152,7 @@ decoded_outputs = decode(tokens, x_emb=embeddings)
 # Save the reconstructed ligand
 writepdb_ligand_complex(
   "decoded_ligand.pdb", 
-  ligand_atoms=decoded_outputs["ligand_coords"][0],
+  ligand_atoms=decoded_outputs[0]["ligand_coords"][0],
   ligand_atom_names=None,  # Optional: provide atom names if available
   ligand_chain="L",
   ligand_resname="LIG")
@@ -165,10 +160,10 @@ writepdb_ligand_complex(
 ```
 
 
-### Protein-Ligand Complex Example
+### Protein-Ligand Complex Example (warning ligand recon not good yet)
 ```python
-from lobster.model.latent_generator.latent_generator.cmdline import load_model, encode, decode, methods
-from lobster.model.latent_generator.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
+from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
+from lobster.model.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
 model_name = 'LG Ligand 20A seq 3di Aux'
@@ -182,8 +177,8 @@ load_model(
 )
 
 # Load protein-ligand complex
-pdb_data = load_pdb("latent_generator/example/example_pdbs/4erk_protein.pdb")  
-ligand_data = load_ligand("latent_generator/example/example_pdbs/4erk_ligand.sdf")
+pdb_data = load_pdb("src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb")  
+ligand_data = load_ligand("src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf")
 pdb_data["ligand_coords"] = ligand_data["atom_coords"]
 pdb_data["ligand_mask"] = ligand_data["mask"]
 pdb_data["ligand_residue_index"] = ligand_data["atom_indices"]
@@ -197,6 +192,7 @@ print(embeddings.shape) # (batch, length_protein+length_ligand, embedding_dim)
 
 # Decode tokens back to structure
 decoded_outputs = decode(tokens, x_emb=embeddings)
+decoded_outputs = decoded_outputs[0]
 seq = torch.zeros(decoded_outputs['protein_coords'].shape[1], dtype=torch.long)[None]
 
 # Save the reconstructed complex
@@ -377,15 +373,6 @@ LatentGenerator provides several pre-configured models optimized for different u
   - 256 protein tokens
 - **Use Case**: Protein structure analysis with sequence awareness
 
-#### LG 20A seq 3di Aux
-- **Description**: Sequence and 3Di-aware protein model
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di decoder
-  - 256 protein tokens
-- **Use Case**: Protein structure analysis with sequence and 3Di awareness
-
 #### LG 20A seq 3di c6d Aux
 - **Description**: Sequence, 3Di and C6D-aware protein model
 - **Features**:
@@ -431,62 +418,6 @@ LatentGenerator provides several pre-configured models optimized for different u
   - 256 protein tokens
 - **Use Case**: Finetuned protein structure analysis with sequence, 3Di and C6D features
 
-#### LG 20A seq 3di c6d Aux dec960 PDB
-- **Description**: Sequence, 3Di and C6D-aware protein model with 960-dim decoder
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-  - Decoder hidden dimension: 960
-- **Use Case**: High-capacity protein structure analysis with sequence, 3Di and C6D features
-
-#### LG 20A seq 3di c6d Aux dec960 PDB Finetune
-- **Description**: Sequence, 3Di and C6D-aware protein model with 960-dim decoder (finetuned)
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-  - Decoder hidden dimension: 960
-- **Use Case**: Finetuned high-capacity protein structure analysis
-
-#### LG 20A seq 3di c6d 512 Aux
-- **Description**: Sequence, 3Di and C6D-aware protein model with 512-dim embeddings
-- **Features**:
-  - 512-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-- **Use Case**: High-dimensional protein structure analysis with sequence, 3Di and C6D features
-
-#### LG 20A 3di c6d Aux
-- **Description**: 3Di and C6D-aware protein model
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - 3Di + C6D decoder
-  - 256 protein tokens
-- **Use Case**: Advanced protein structure analysis with 3Di and C6D features
-
-#### LG 20A c6d Aux
-- **Description**: C6D-aware protein model
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - C6D decoder
-  - 256 protein tokens
-- **Use Case**: Protein structure analysis with C6D features
-
-#### LG 20A 3di Aux
-- **Description**: 3Di-aware protein model
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - 3Di decoder
-  - 256 protein tokens
-- **Use Case**: Protein structure analysis with 3Di features
-
 #### LG 20A
 - **Description**: Basic protein model with 20Å cutoff
 - **Features**:
@@ -521,7 +452,7 @@ To use any of these models, simply specify the model name when loading. The `met
 from lobster.model.latent_generator.latent_generator.cmdline import load_model, methods
 
 # Load a pre-configured model using the ModelInfo dataclass structure
-model_name = 'LG 20A 3di c6d Aux'
+model_name = 'LG seq 20A 3di c6d Aux'
 load_model(
     methods[model_name].model_config.checkpoint,
     methods[model_name].model_config.config_path,

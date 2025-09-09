@@ -1,2 +1,0 @@
-_target_: lobster.model.latent_generator.latent_generator.tokenizer.LigandPairWiseL2Loss
-ligand_weight: 10.0

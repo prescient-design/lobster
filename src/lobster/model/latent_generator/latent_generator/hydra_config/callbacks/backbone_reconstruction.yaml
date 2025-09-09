@@ -1,4 +1,0 @@
-backbone_reconstruction:
-  _target_: latent_generator.callbacks.BackboneReconstruction
-  structure_path: "${paths.run_path}/structures/"
-  save_every_n: 10000
