@@ -1,0 +1,10 @@
+defaults:
+  - structure_encoder: vit_encoder.yaml
+  - quantizer: slq_quantizer.yaml
+  - decoder_factory: struc_decoder.yaml
+  - loss_factory: structure_losses.yaml
+  - optim: adam
+  - lr_scheduler: cosine_schedule_with_warmup
+
+_target_: lobster.model.latent_generator.tokenizer.TokenizerMulti
+structure_path: ${paths.data_path}/train_test/

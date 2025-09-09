@@ -1,0 +1,8 @@
+defaults:
+  - decoders@decoder_mapping.vit_decoder: vit_decoder
+  - decoders@decoder_mapping.element_decoder: element_decoder
+  
+_target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+decoder2loss_dict:
+  vit_decoder: [l2_loss, pairwise_l2_loss, ligand_l2_loss, ligand_pairwise_l2_loss]
+  element_decoder: [element_cce_loss]

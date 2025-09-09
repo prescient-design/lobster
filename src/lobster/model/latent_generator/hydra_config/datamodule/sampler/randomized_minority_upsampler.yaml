@@ -1,0 +1,2 @@
+_target_: lobster.model.latent_generator.datasets.RandomizedMinorityUpsampler
+_partial_: true
