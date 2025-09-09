@@ -103,7 +103,7 @@ load_model(
 )
 
 # Load a PDB file
-pdb_data = load_pdb("lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb")
+pdb_data = load_pdb("src/lobster/model/lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb")
 
 # Get tokens (discrete representations) and embeddings (continuous representations)
 tokens, embeddings = encode(pdb_data, return_embeddings=True)
@@ -135,7 +135,7 @@ load_model(
 
 # Load protein-ligand complex
 pdb_data = {"protein_coords": None, "protein_mask": None, "protein_seq": None} 
-ligand_data = load_ligand("latent_generator/example/example_pdbs/4erk_ligand.sdf")
+ligand_data = load_ligand("src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf")
 pdb_data["ligand_coords"] = ligand_data["atom_coords"]
 pdb_data["ligand_mask"] = ligand_data["mask"]
 pdb_data["ligand_residue_index"] = ligand_data["atom_indices"]
@@ -211,21 +211,21 @@ writepdb_ligand_complex(
 ### Command-line Example
 ```bash
 # Get tokens and decode to structure for protein only
-python latent_generator/cmdline/inference.py \
+python src/lobster/model/latent_generator/cmdline/inference.py \
     --model_name 'LG 20A seq 3di c6d Aux' \
-    --pdb_path latent_generator/example/example_pdbs/7kdr_protein.pdb \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb \
     --decode
 
 # Get tokens and decode to structure for ligand
-python latent_generator/cmdline/inference.py \
+python src/lobster/model/latent_generator/cmdline/inference.py \
     --model_name 'LG Ligand 20A' \
-    --ligand_path latent_generator/example/example_pdbs/4erk_ligand.sdf  \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf  \
     --decode
     
 # Get tokens and decode to structure for protein-ligand
-python latent_generator/cmdline/inference.py \
+python src/lobster/model/latent_generator/cmdline/inference.py \
     --model_name 'LG Ligand 20A seq 3di Aux' \
-    --pdb_path latent_generator/example/example_pdbs/4erk_protein.pdb \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
     --ligand_path latent_generator/example/example_pdbs/4erk_ligand.sdf  \
     --decode
 
