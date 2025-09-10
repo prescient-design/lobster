@@ -64,7 +64,6 @@ lobster_mcp_setup = "lobster.mcp.setup:main"
 lobster_ume_checkpoints = "lobster.cmdline.manage_ume_checkpoints:main"
 
 [project.optional-dependencies]
-
 lg-cpu = [
     "biopandas==0.5.0.dev0",
     "torch-geometric",

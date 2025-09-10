@@ -98,6 +98,15 @@ where <group name i> can be one of
 * `flash` for flash-attention on GPU
 * `mcp` for MCP servers
 
+Recommended installation of all optional dependencies on a CPU:
+```
+uv sync --extra mgm --extra mcp --extra lg-cpu
+```
+Recommended installation of all optional dependencies on a GPU:
+```
+uv sync --extra mgm --extra mcp --extra lg-gpu --extra flash
+```
+
 
 To use the environement, you can run either activate the environment... 
 
