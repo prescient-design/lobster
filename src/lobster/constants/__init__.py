@@ -1,4 +1,5 @@
 from ._architecture_analyzer import GPUType, ModelType
+from ._biopython_features import BIOPYTHON_FEATURES
 from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask, MAX_SEQUENCE_LENGTH
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
 from ._rdkit_descriptor_distributions import RDKIT_DESCRIPTOR_DISTRIBUTIONS
@@ -29,6 +30,7 @@ from ._hf import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
 from ._s3 import S3_BUCKET
 
 __all__ = [
+    "BIOPYTHON_FEATURES",
     "HF_UME_REPO_ID",
     "HF_UME_MODEL_DIRPATH",
     "Modality",
