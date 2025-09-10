@@ -4,7 +4,7 @@ import os
 import pathlib
 
 import torch
-from loguru import logger
+import logging
 from torch_geometric.data import Dataset
 from tqdm import tqdm
 from icecream import ic
@@ -15,6 +15,8 @@ import multiprocessing as mp
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import glob
+
+logger = logging.getLogger(__name__)
 
 
 def merge_small_lists(list_of_lists, min_size=100):

@@ -8,7 +8,7 @@ import urllib.parse
 import hydra
 import torch
 from omegaconf import OmegaConf, DictConfig
-from loguru import logger as py_logger
+import logging
 
 from lobster.model.latent_generator.tokenizer import TokenizerMulti
 import argparse
@@ -16,6 +16,8 @@ from lobster.model.latent_generator.io import writepdb, load_pdb, load_ligand, w
 import boto3
 from botocore.exceptions import NoCredentialsError
 from dataclasses import dataclass
+
+py_logger = logging.getLogger(__name__)
 
 
 # Pre-configured model configurations

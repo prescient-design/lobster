@@ -8,15 +8,24 @@ from typing import Any, TypeVar
 
 import torch
 from lightning import LightningDataModule
-from loguru import logger
+import logging
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
-from torch_geometric.transforms import Compose
+
+import lobster
+
+try:
+    from torch_geometric.transforms import Compose
+except ImportError:
+    pass
+
 
 from lobster.model.latent_generator.datamodules._utils import collate_fn_backbone
 from lobster.model.latent_generator.datasets import StructureDataset, LigandDataset, RandomizedMinorityUpsampler
 from lobster.model.latent_generator.datasets._structure_dataset_iterable import ShardedStructureDataset
 from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform, StructureLigandTransform
+
+logger = logging.getLogger(__name__)
 
 # from line_profiler import profile
 
@@ -113,6 +122,8 @@ class StructureLightningDataModule(LightningDataModule):
             and calls a relative representation data loader
 
         """
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+
         super().__init__()
 
         if lengths is None:

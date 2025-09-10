@@ -1,9 +1,11 @@
 import lightning
 import torch
 import os
-from loguru import logger
+import logging
 from lobster.model.latent_generator.io import writepdb, writepdb_ligand_complex
 from lobster.model.latent_generator.utils import residue_constants
+
+logger = logging.getLogger(__name__)
 
 # make dictionary from index to one-letter amino acid code with residue_constants.restype_order_with_x
 idx_to_aa = dict(enumerate(residue_constants.restype_order_with_x))

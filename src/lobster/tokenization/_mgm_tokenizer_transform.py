@@ -37,7 +37,7 @@ if find_spec("selfies"):
 
     _SELFIES_AVAILABLE = True
 
-logger = logging.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class MgmTokenizerTransform(Transform):

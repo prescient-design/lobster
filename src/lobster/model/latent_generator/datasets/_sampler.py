@@ -1,9 +1,11 @@
-from loguru import logger
+import logging
 from torch.utils.data import Sampler
 import random
 from collections.abc import Iterable, Sized
 import itertools
 from abc import ABCMeta
+
+logger = logging.getLogger(__name__)
 
 
 class SizedIterable(Sized, Iterable, metaclass=ABCMeta):

@@ -13,8 +13,10 @@ from rotary_embedding_torch import RotaryEmbedding
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from loguru import logger
+import logging
 from lobster.model.latent_generator.utils.residue_constants import ELEMENT_VOCAB
+
+logger = logging.getLogger(__name__)
 # os.environ["HYDRA_FULL_ERROR"] = "1"
 
 

@@ -8,7 +8,9 @@ from lobster.model.latent_generator.models.vit._vit_utils import (
     expand,
 )
 from torchtyping import TensorType
-from loguru import logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 # TODO replace tensortyping with jaxtyping
 

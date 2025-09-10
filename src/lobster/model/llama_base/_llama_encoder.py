@@ -21,7 +21,7 @@ from ._attn_mask_utils import (
     _prepare_4d_attention_mask_for_sdpa,
 )
 
-logger = logging.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ModifiedLlamaAttention(LlamaAttention):

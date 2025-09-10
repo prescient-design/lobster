@@ -3,8 +3,10 @@ import pathlib
 from collections.abc import Callable
 import torch
 from torch_geometric.data import Dataset
-from loguru import logger
+import logging
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class LigandDataset(Dataset):

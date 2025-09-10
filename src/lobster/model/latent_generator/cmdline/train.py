@@ -7,9 +7,11 @@ import lightning
 import torch
 import wandb
 from lightning.pytorch.utilities import rank_zero_only
-from loguru import logger as py_logger
+import logging
 from omegaconf import OmegaConf
 from omegaconf import DictConfig
+
+py_logger = logging.getLogger(__name__)
 
 
 def format_resolver(x, pattern):

@@ -5,11 +5,13 @@ import torch
 from torch_geometric.transforms import BaseTransform
 from rdkit import Chem
 
-from loguru import logger
+import logging
 from lobster.model.latent_generator.utils import residue_constants
 from lobster.model.latent_generator.utils import apply_random_se3_batched
 from lobster.model.latent_generator.utils.mini3di import Encoder, calculate_cb
 from lobster.model.latent_generator.utils._kinematics import xyz_to_c6d, c6d_to_bins
+
+logger = logging.getLogger(__name__)
 
 # Import ESM for embeddings
 try:

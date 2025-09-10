@@ -5,11 +5,13 @@ from typing import Any
 from collections.abc import Iterator
 import torch
 from torch.utils.data import IterableDataset, get_worker_info
-from loguru import logger
+import logging
 import glob
 from pathlib import Path
 from collections import deque
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 class ShardedStructureDataset(IterableDataset):
