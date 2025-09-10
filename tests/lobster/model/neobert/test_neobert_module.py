@@ -1,5 +1,6 @@
-import torch
 import pytest
+import torch
+
 from lobster.model.neobert.neobert_module import NeoBERTModule
 
 

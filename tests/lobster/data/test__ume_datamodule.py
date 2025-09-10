@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader
 import lobster.datasets.s3_datasets
 from lobster.constants import Modality, Split
 from lobster.data import UMELightningDataModule
-
 from lobster.datasets.s3_datasets.amplify import AMPLIFY
 
 TEST_DATA_DIR = Path(__file__).parents[3] / "test_data/parquet"

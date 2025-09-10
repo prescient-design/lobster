@@ -2,10 +2,11 @@
 
 import logging
 from unittest.mock import Mock, patch
+
 import pytest
 import torch
 
-from lobster.mcp.tools.representations import get_sequence_representations, SequenceRepresentationResult
+from lobster.mcp.tools.representations import SequenceRepresentationResult, get_sequence_representations
 from lobster.model import LobsterCBMPMLM, LobsterPMLM
 
 

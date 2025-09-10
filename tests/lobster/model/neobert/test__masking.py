@@ -1,5 +1,6 @@
-import torch
 import pytest
+import torch
+
 from lobster.model.neobert._masking import (
     _create_special_tokens_mask,
     _validate_input_shapes,

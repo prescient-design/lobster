@@ -1,10 +1,11 @@
 import os
-import pytest
-import torch
 from pathlib import Path
 
-from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
-from lobster.model.latent_generator.io import load_pdb, load_ligand, writepdb, writepdb_ligand_complex
+import pytest
+import torch
+
+from lobster.model.latent_generator.cmdline import decode, encode, load_model, methods
+from lobster.model.latent_generator.io import load_ligand, load_pdb, writepdb, writepdb_ligand_complex
 from lobster.model.latent_generator.tokenizer import L2Loss, LigandL2Loss
 
 # Test data paths

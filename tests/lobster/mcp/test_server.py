@@ -1,9 +1,10 @@
 """Unit tests for the Lobster MCP server module."""
 
 from unittest.mock import Mock, patch
+
 from fastmcp import FastMCP
 
-from lobster.mcp.server import main, app, tool_factory
+from lobster.mcp.server import app, main, tool_factory
 from lobster.mcp.tool_factory import ToolFactory, create_and_register_tools
 
 

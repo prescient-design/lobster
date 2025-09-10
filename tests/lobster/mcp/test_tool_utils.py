@@ -2,10 +2,11 @@
 
 import logging
 from unittest.mock import Mock, patch
+
 import pytest
 import torch
 
-from lobster.mcp.tools.tool_utils import list_available_models, compute_naturalness, _load_model
+from lobster.mcp.tools.tool_utils import _load_model, compute_naturalness, list_available_models
 
 
 class TestListAvailableModels:

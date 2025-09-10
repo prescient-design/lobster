@@ -1,4 +1,5 @@
 import unittest.mock
+
 import pandas as pd
 
 from lobster.datasets import PTMDataset
