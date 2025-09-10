@@ -65,7 +65,13 @@ def _filter_descriptors(
             _validate_descriptors_have_distributions(descriptor_list)
         return descriptor_list
     else:
-        return list(RDKIT_DESCRIPTOR_DISTRIBUTIONS.keys()) if require_distributions else list(descs.keys())
+        if require_distributions:
+            # Return intersection of available descriptors and those with distributions
+            available_with_distributions = set(RDKIT_DESCRIPTOR_DISTRIBUTIONS.keys())
+            available_descriptors = set(descs.keys())
+            return list(available_with_distributions.intersection(available_descriptors))
+        else:
+            return list(descs.keys())
 
 
 def smiles_to_rdkit_descs(smiles_seq: str, descriptor_list: list[str] | None = None) -> Tensor | None:

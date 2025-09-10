@@ -1,5 +1,6 @@
 import logging
 from typing import Literal
+from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
@@ -7,7 +8,10 @@ import transformers
 from lightning import LightningModule
 from torch import Tensor
 
+from lobster.tokenization import UMETokenizerTransform
+from lobster.constants import ModalityType, Modality
 from lobster.model.neobert import mask_tokens
+from lobster.model.utils import _detect_modality
 
 from ._ume_sequence_encoder import AuxiliaryTask, UMESequenceEncoderModule
 
@@ -30,7 +34,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
         weight_decay: float = 0.0,
         scheduler: str = "constant",
         scheduler_kwargs: dict | None = None,
-        model_kwargs: dict | None = None,
+        encoder_kwargs: dict | None = None,
         ckpt_path: str | None = None,
     ):
         self.save_hyperparameters()
@@ -56,14 +60,35 @@ class UMESequenceEncoderLightningModule(LightningModule):
             "regression": nn.MSELoss(),
         }
 
-        self.model = UMESequenceEncoderModule(
+        self.encoder = UMESequenceEncoderModule(
             auxiliary_tasks=auxiliary_tasks,
             pad_token_id=self.pad_token_id,
-            **model_kwargs or {},
+            **encoder_kwargs or {},
         )
 
     def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
-        return self.model.embed(inputs, aggregate=aggregate, ignore_padding=ignore_padding, **kwargs)
+        return self.encoder.neobert.embed(inputs=inputs, aggregate=aggregate, ignore_padding=ignore_padding, **kwargs)
+
+    def embed_sequences(
+        self, sequences: Sequence[str] | str, modality: ModalityType | Modality = None, aggregate: bool = True
+    ) -> Tensor:
+        if isinstance(sequences, str):
+            sequences = [sequences]
+
+        if modality is None:
+            modality = set([_detect_modality(sequence) for sequence in sequences])
+
+            if len(modality) > 1:
+                raise ValueError(f"Multiple modalities detected: {modality}")
+
+            modality = modality.pop()
+
+        tokenizer_transform = UMETokenizerTransform(
+            modality=modality, max_length=self.encoder.neobert.config.max_length
+        )
+        encoded_batch = tokenizer_transform(sequences)
+
+        return self.embed(encoded_batch, aggregate=aggregate)
 
     def compute_mlm_loss(self, batch: dict[str, Tensor]) -> Tensor:
         masked_inputs = mask_tokens(
@@ -74,7 +99,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
             special_token_ids=self.special_token_ids,
             seed=self.seed,
         )
-        logits = self.model.model.get_logits(
+        logits = self.encoder.neobert.get_logits(
             input_ids=masked_inputs["input_ids"], attention_mask=masked_inputs["attention_mask"]
         )
 
@@ -89,8 +114,8 @@ class UMESequenceEncoderLightningModule(LightningModule):
         if self.auxiliary_tasks is None:
             return {}
 
-        output = self.model(
-            input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], return_auxiliary_tasks=True
+        output = self.encoder(
+            input_idse=batch["input_ids"], attention_mask=batch["attention_mask"], return_auxiliary_tasks=True
         )
 
         auxiliary_losses = {}
@@ -111,7 +136,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
         return auxiliary_losses
 
     def step(self, batch: dict[str, Tensor], batch_idx: int, stage: Literal["train", "val"]) -> Tensor:
-        batch["input_ids"], batch["attention_mask"] = self.model.model.ensure_2d(
+        batch["input_ids"], batch["attention_mask"] = self.encoder.neobert.ensure_2d(
             batch["input_ids"], batch["attention_mask"]
         )
         batch_size = batch["input_ids"].shape[0]
@@ -153,7 +178,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.model.parameters(),
+            self.encoder.parameters(),
             lr=self.lr,
             betas=(self.beta1, self.beta2),
             eps=self.eps,

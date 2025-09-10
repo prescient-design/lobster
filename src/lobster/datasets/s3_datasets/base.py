@@ -63,6 +63,7 @@ class UMEStreamingDataset(StreamingDataset):
         extra_transform_fns: dict[str, Callable] | None = None,
         tokenize: bool = True,
         use_optimized: bool = False,
+        use_shared_tokenizer: bool = True,
         max_length: int | None = 8192,
     ) -> None:
         """
@@ -131,9 +132,10 @@ class UMEStreamingDataset(StreamingDataset):
         self.max_length = max_length
         self.use_optimized = use_optimized
         self.subsample = subsample
+        self.use_shared_tokenizer = use_shared_tokenizer
 
         if tokenize:
-            self._setup_tokenizers(max_length)
+            self._setup_tokenizers(max_length, use_shared_tokenizer=use_shared_tokenizer)
         else:
             logger.warning(
                 f"Tokenization is disabled for {self.__class__.__name__}. Please make sure this is intentional."
@@ -212,7 +214,7 @@ class UMEStreamingDataset(StreamingDataset):
 
         return s3_uri
 
-    def _setup_tokenizers(self, max_length: int | None) -> None:
+    def _setup_tokenizers(self, max_length: int | None, use_shared_tokenizer: bool = True) -> None:
         """
         Set up tokenizers for different modalities.
 
@@ -233,17 +235,30 @@ class UMEStreamingDataset(StreamingDataset):
         if max_length is None:
             raise ValueError("max_length must be provided when tokenize is True")
 
-        self.tokenizer_registry = {
-            Modality.AMINO_ACID: UMETokenizerTransform(
-                modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
-            ),
-            Modality.SMILES: UMETokenizerTransform(
-                modality=Modality.SMILES, max_length=max_length, return_modality=False
-            ),
-            Modality.NUCLEOTIDE: UMETokenizerTransform(
-                modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
-            ),
-        }
+        if use_shared_tokenizer:
+            self.tokenizer_registry = {
+                Modality.AMINO_ACID: UMETokenizerTransform(
+                    modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
+                ),
+                Modality.SMILES: UMETokenizerTransform(
+                    modality=Modality.SMILES, max_length=max_length, return_modality=False
+                ),
+                Modality.NUCLEOTIDE: UMETokenizerTransform(
+                    modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
+                ),
+            }
+        else:
+            self.tokenizer_registry = {
+                Modality.AMINO_ACID: UMETokenizerTransform(
+                    modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
+                ),
+                Modality.SMILES: UMETokenizerTransform(
+                    modality=Modality.SMILES, max_length=max_length, return_modality=False
+                ),
+                Modality.NUCLEOTIDE: UMETokenizerTransform(
+                    modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
+                ),
+            }
 
     def __next__(self) -> dict[str, Any]:
         item: dict = super().__next__()

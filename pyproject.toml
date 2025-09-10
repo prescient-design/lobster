@@ -41,6 +41,7 @@ dependencies = [
     "dgeb>=0.2.0",
     "huggingface-hub>=0.33.2",
     "polars>=1.33.0",
+    "hydra-submitit-launcher>=1.2.0",
 ]
 
 [build-system]

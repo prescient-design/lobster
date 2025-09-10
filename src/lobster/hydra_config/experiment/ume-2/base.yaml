@@ -40,13 +40,13 @@ model:
   special_token_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
   mask_probability: 0.15
   ckpt_path: null
-  model_kwargs:
+  encoder_kwargs:
     max_length: ${data.max_length}
     model_size: mini
 
 
 logger:
-  name: UME-2-${model.model_kwargs.model_size}_${data.datasets}_${paths.timestamp}
+  name: UME-2-${model.encoder_kwargs.model_size}_${data.datasets}_${paths.timestamp}
   project: lobster
   entity: ${oc.env:LOBSTER_USER}
   save_dir: ${oc.env:LOBSTER_RUNS_DIR}

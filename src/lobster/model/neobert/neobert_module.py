@@ -113,10 +113,12 @@ class NeoBERTModule(nn.Module):
         return input_ids, attention_mask
 
     def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
-        input_ids, attention_mask = self._ensure_2d(inputs["input_ids"], inputs["attention_mask"])
+        input_ids, attention_mask = self.ensure_2d(inputs["input_ids"], inputs["attention_mask"])
 
-        input_ids = input_ids.to(self.device)
-        attention_mask = attention_mask.to(self.device)
+        device = next(iter(self.parameters())).device
+
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
 
         output = self(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
 

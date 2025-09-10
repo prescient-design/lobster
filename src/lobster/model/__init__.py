@@ -18,4 +18,5 @@ from ._ume import UME
 from .lm_base import LMBaseContactPredictionHead, LMBaseForMaskedLM
 from .modern_bert import FlexBERT
 from .neobert import NeoBERTLightningModule, NeoBERTModule
+from .ume2 import UMESequenceEncoderModule, UMESequenceEncoderLightningModule
 # from ._utils import model_typer
