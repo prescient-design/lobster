@@ -9,9 +9,8 @@ import torch
 try:
     from torch_geometric.transforms import Dataset
 
-    TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
-    TORCH_GEOMETRIC_AVAILABLE = False
+    Dataset = None
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +29,9 @@ class LigandDataset(Dataset):
         min_len: int = 1,
         testing: bool = False,
     ):
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         self.root = pathlib.Path(root)
         self.transform_protein = transform_protein

@@ -1494,6 +1494,7 @@ dependencies = [
     { name = "torchvision", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "transformers", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "trl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "universal-pathlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "wandb", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
@@ -1659,6 +1660,7 @@ requires-dist = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers", specifier = ">=4.24.0" },
+    { name = "trl", specifier = ">=0.23.0" },
     { name = "trl", marker = "extra == 'trl'" },
     { name = "universal-pathlib" },
     { name = "wandb" },

@@ -12,10 +12,8 @@ from lobster.model.latent_generator.utils import residue_constants
 
 try:
     import cpdb
-
-    CPDB_AVAILABLE = True
 except ImportError:
-    CPDB_AVAILABLE = False
+    cpdb = None
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +58,9 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
             - 'mask': A tensor of shape (1, N) containing the mask for the coordinates.
 
     """
-    if not CPDB_AVAILABLE:
-        raise ImportError("cpdb is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`")
+    import lobster
+
+    lobster.ensure_package("cpdb", group="lg-gpu (or --extra lg-cpu)")
 
     if filepath.startswith("s3://"):
         # Parse S3 URI

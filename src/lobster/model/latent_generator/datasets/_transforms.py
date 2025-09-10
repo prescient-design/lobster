@@ -14,17 +14,12 @@ from lobster.model.latent_generator.utils.mini3di import Encoder, calculate_cb
 try:
     from esm.models.esmc import ESMC
     from esm.sdk.api import ESMProtein, LogitsConfig
-
-    ESM_AVAILABLE = True
 except ImportError:
-    ESM_AVAILABLE = False
-
+    ESMC, ESMProtein, LogitsConfig = None, None, None
 try:
     from torch_geometric.transforms import BaseTransform
-
-    TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
-    TORCH_GEOMETRIC_AVAILABLE = False
+    BaseTransform = None
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +35,12 @@ class ESMEmbeddingTransform(BaseTransform):
             device: Device to load the model on ("auto", "cuda", "cpu")
             **kwargs: Additional arguments
         """
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        lobster.ensure_package("esm", group="lg-gpu (or --extra lg-cpu)")
+
         super().__init__(**kwargs)
-
-        if not ESM_AVAILABLE:
-            raise ImportError("ESM is not available. Please install esm to use ESMEmbeddingTransform.")
-
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
 
         # Set device
         if device == "auto":
@@ -206,10 +198,9 @@ class ESMEmbeddingTransform(BaseTransform):
 
 class StructureBackboneTransform(BaseTransform):
     def __init__(self, max_length=512, **kwargs):
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         logger.info("StructureBackboneTransform")
         self.max_length = max_length
@@ -280,10 +271,9 @@ class StructureBackboneTransform(BaseTransform):
 
 class StructureTemplateTransform(BaseTransform):
     def __init__(self, template_percentage: float = 0.5, mask_percentage: float = 0.3, **kwargs):
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         super().__init__(**kwargs)
         self.template_percentage = template_percentage
@@ -329,10 +319,9 @@ class StructureTemplateTransform(BaseTransform):
 
 class StructureLigandTransform(BaseTransform):
     def __init__(self, max_length=512, rand_permute_ligand=False, **kwargs):
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         logger.info("StructureLigandTransform")
         self.max_length = max_length
@@ -366,10 +355,9 @@ class StructureLigandTransform(BaseTransform):
 class Structure3diTransform(BaseTransform):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         self.encoder = Encoder()
 
@@ -390,10 +378,9 @@ class Structure3diTransform(BaseTransform):
 class StructureC6DTransform(BaseTransform):
     def __init__(self, dist_cutoff: float = 20.0, **kwargs):
         super().__init__(**kwargs)
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         self.dist_cutoff = dist_cutoff
 
@@ -418,10 +405,9 @@ class BinderTargetTransform(BaseTransform):
 
         """
         super().__init__(**kwargs)
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         # logger.info("BinderTargetTransform")
         self.translation_scale = translation_scale
@@ -529,10 +515,9 @@ class BinderTargetTransform(BaseTransform):
 
 class StructureResidueTransform(BaseTransform):
     def __init__(self, atom14=True, crop=None):
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         self.atom14 = atom14
         self.crop = crop
@@ -637,10 +622,9 @@ class RandomChainTransform(BaseTransform):
     """Transform that picks a random chain and filters data to only include that chain."""
 
     def __init__(self, **kwargs):
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         """Initialize the RandomChainTransform.
 

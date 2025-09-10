@@ -15,17 +15,13 @@ from tqdm import tqdm
 
 try:
     from torch_geometric.transforms import Dataset
-
-    TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
-    TORCH_GEOMETRIC_AVAILABLE = False
+    Dataset = None
 
 try:
     from icecream import ic
-
-    IC_AVAILABLE = True
 except ImportError:
-    IC_AVAILABLE = False
+    ic = None
 
 logger = logging.getLogger(__name__)
 
@@ -137,14 +133,10 @@ class StructureDataset(Dataset):
         files_to_keep: str | os.PathLike = None,
         use_mmap: bool = False,
     ):
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
-        if not IC_AVAILABLE:
-            raise ImportError(
-                "icream is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        lobster.ensure_package("icream", group="lg-gpu (or --extra lg-cpu)")
 
         self.root = pathlib.Path(root)
         self.processed_dir = self.root

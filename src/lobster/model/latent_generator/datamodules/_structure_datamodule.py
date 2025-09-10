@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, TypeVar
@@ -17,21 +16,15 @@ from lobster.model.latent_generator.datasets import LigandDataset, RandomizedMin
 from lobster.model.latent_generator.datasets._structure_dataset_iterable import ShardedStructureDataset
 from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform, StructureLigandTransform
 
-# from line_profiler import profile
 
 try:
     from torch_geometric.transforms import Compose
-
-    TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
     Compose = None
-    TORCH_GEOMETRIC_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-# set HYDRA_FULL_ERROR=1 to see the full error message
-os.environ["HYDRA_FULL_ERROR"] = "1"
 
 
 class StructureLightningDataModule(LightningDataModule):
@@ -124,10 +117,9 @@ class StructureLightningDataModule(LightningDataModule):
         """
         super().__init__()
 
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError(
-                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
-            )
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         if lengths is None:
             lengths = [0.4, 0.4, 0.2]
