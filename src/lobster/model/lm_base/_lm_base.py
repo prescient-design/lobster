@@ -45,7 +45,7 @@ from ._utils import (
     MaskedLMOutput,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 _CHECKPOINT_FOR_DOC = "prescient/pmlm"
 _CONFIG_FOR_DOC = "PMLMConfig"

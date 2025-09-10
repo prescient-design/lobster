@@ -2,10 +2,10 @@
 
 import importlib.resources
 import os
+import logging
 
 from transformers.tokenization_utils import PreTrainedTokenizer, Trie
 from transformers.tokenization_utils_base import AddedToken
-from transformers.utils import logging
 
 from ._load_vocab_file import load_vocab_file
 

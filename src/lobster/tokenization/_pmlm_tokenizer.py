@@ -12,7 +12,7 @@ from transformers.utils import logging
 
 from ._load_vocab_file import load_vocab_file
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
