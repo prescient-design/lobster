@@ -1,14 +1,14 @@
 # code to modify input for training
 
+import logging
+
 import numpy as np
 import torch
 from rdkit import Chem
 
-import logging
-from lobster.model.latent_generator.utils import residue_constants
-from lobster.model.latent_generator.utils import apply_random_se3_batched
+from lobster.model.latent_generator.utils import apply_random_se3_batched, residue_constants
+from lobster.model.latent_generator.utils._kinematics import c6d_to_bins, xyz_to_c6d
 from lobster.model.latent_generator.utils.mini3di import Encoder, calculate_cb
-from lobster.model.latent_generator.utils._kinematics import xyz_to_c6d, c6d_to_bins
 
 # Import ESM for embeddings
 try:

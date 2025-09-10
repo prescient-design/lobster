@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 import os
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
@@ -8,12 +9,11 @@ from typing import Any, TypeVar
 
 import torch
 from lightning import LightningDataModule
-import logging
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
 from lobster.model.latent_generator.datamodules._utils import collate_fn_backbone
-from lobster.model.latent_generator.datasets import StructureDataset, LigandDataset, RandomizedMinorityUpsampler
+from lobster.model.latent_generator.datasets import LigandDataset, RandomizedMinorityUpsampler, StructureDataset
 from lobster.model.latent_generator.datasets._structure_dataset_iterable import ShardedStructureDataset
 from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform, StructureLigandTransform
 

@@ -1,20 +1,20 @@
 # lightning module training script
-from typing import Literal
-from collections.abc import Callable
-
-import lightning.pytorch as pl
-import torch
 import logging
-from lobster.model.latent_generator.structure_encoder import BaseEncoder
-
-from lobster.model.latent_generator.structure_decoder import DecoderFactory
-from lobster.model.latent_generator.tokenizer import LossFactory
-import os
-import omegaconf
 
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import math
+import os
+from collections.abc import Callable
+from typing import Literal
+
+import lightning.pytorch as pl
+import omegaconf
+import torch
 from einops import rearrange
+
+from lobster.model.latent_generator.structure_decoder import DecoderFactory
+from lobster.model.latent_generator.structure_encoder import BaseEncoder
+from lobster.model.latent_generator.tokenizer import LossFactory
 from lobster.model.latent_generator.utils.residue_constants import restype_order_with_x
 
 logger = logging.getLogger(__name__)

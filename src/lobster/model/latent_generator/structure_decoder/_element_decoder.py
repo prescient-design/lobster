@@ -1,7 +1,8 @@
 import torch
 from torch import Tensor
-from lobster.model.latent_generator.structure_decoder import BaseDecoder
+
 from lobster.model.latent_generator.models.vit._vit_utils import expand
+from lobster.model.latent_generator.structure_decoder import BaseDecoder
 
 
 class ElementDecoder(BaseDecoder):

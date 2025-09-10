@@ -18,14 +18,13 @@
 import collections
 import functools
 import importlib.util
-from importlib import resources
 from collections.abc import Mapping
+from dataclasses import dataclass
+from importlib import resources
+from typing import Any
 
 import numpy as np
 import torch
-
-from dataclasses import dataclass
-from typing import Any
 
 if not importlib.util.find_spec("optree"):
     OPTREE_AVAILABLE = False

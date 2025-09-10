@@ -1,13 +1,14 @@
+import logging
 import os
+from typing import Any
+
+import boto3
+import numpy as np
 import torch
 from biopandas.mmcif import PandasMmcif
-from typing import Any
-import numpy as np
-import boto3
-from lobster.model.latent_generator.utils import residue_constants
-import logging
-
 from rdkit import Chem
+
+from lobster.model.latent_generator.utils import residue_constants
 
 try:
     import cpdb

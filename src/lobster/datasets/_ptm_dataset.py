@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 
 from lobster.transforms import Transform
 
-
 T = TypeVar("T")
 
 

@@ -1,21 +1,21 @@
 # File: encode_latents.py
 
+import argparse
+import logging
 import os
-from typing import Any
-import urllib.request
 import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from typing import Any
 
+import boto3
 import hydra
 import torch
-from omegaconf import OmegaConf, DictConfig
-import logging
-
-from lobster.model.latent_generator.tokenizer import TokenizerMulti
-import argparse
-from lobster.model.latent_generator.io import writepdb, load_pdb, load_ligand, writepdb_ligand_complex
-import boto3
 from botocore.exceptions import NoCredentialsError
-from dataclasses import dataclass
+from omegaconf import DictConfig, OmegaConf
+
+from lobster.model.latent_generator.io import load_ligand, load_pdb, writepdb, writepdb_ligand_complex
+from lobster.model.latent_generator.tokenizer import TokenizerMulti
 
 py_logger = logging.getLogger(__name__)
 

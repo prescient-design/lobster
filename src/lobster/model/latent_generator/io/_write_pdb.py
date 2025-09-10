@@ -1,5 +1,6 @@
-import torch
 import logging
+
+import torch
 
 py_logger = logging.getLogger(__name__)
 

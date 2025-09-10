@@ -1,5 +1,6 @@
-from torch import nn
 import abc
+
+from torch import nn
 
 
 # base class for encoders, that has a featurize method, forwad pass, and a featurize method

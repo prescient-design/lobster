@@ -1,3 +1,4 @@
+import logging
 import os
 import pathlib
 
@@ -5,11 +6,10 @@ import dotenv
 import hydra
 import lightning
 import torch
-import wandb
 from lightning.pytorch.utilities import rank_zero_only
-import logging
-from omegaconf import OmegaConf
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+
+import wandb
 
 py_logger = logging.getLogger(__name__)
 

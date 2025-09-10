@@ -1,13 +1,15 @@
+import logging
+from typing import Literal
+
 import torch
 from torch import Tensor
-from typing import Literal
-from lobster.model.latent_generator.structure_encoder import BaseEncoder
-from lobster.model.latent_generator.utils import apply_random_se3_batched, apply_global_frame_to_coords
+
 from lobster.model.latent_generator.models.vit._vit_utils import (
     TimeCondUViTEncoder,
     expand,
 )
-import logging
+from lobster.model.latent_generator.structure_encoder import BaseEncoder
+from lobster.model.latent_generator.utils import apply_global_frame_to_coords, apply_random_se3_batched
 
 logger = logging.getLogger(__name__)
 

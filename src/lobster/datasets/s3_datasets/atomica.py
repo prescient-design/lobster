@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 from litdata import StreamingDataset
 
-from lobster.constants import Split, S3_BUCKET
+from lobster.constants import S3_BUCKET, Split
 
 from .base import UMEStreamingDataset
 

@@ -1,7 +1,8 @@
+import logging
+import os
+
 import lightning
 import torch
-import os
-import logging
 
 from lobster.model.latent_generator.io import writepdb, writepdb_ligand_complex
 from lobster.model.latent_generator.utils import residue_constants

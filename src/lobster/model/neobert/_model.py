@@ -4,6 +4,7 @@
 import torch
 from torch import nn
 from torch.nn.functional import scaled_dot_product_attention
+
 from ._config import NeoBERTConfig
 
 try:

@@ -1,12 +1,12 @@
+import logging
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
-import logging
+import numpy as np
 import pandas as pd
 import pooch
 import torch
-import numpy as np
 from datasets import load_dataset
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -14,9 +14,9 @@ from torch.utils.data import Dataset
 from lobster.constants import (
     CALM_TASK_SPECIES,
     CALM_TASKS,
+    MAX_SEQUENCE_LENGTH,
     CALMSpecies,
     CALMTask,
-    MAX_SEQUENCE_LENGTH,
 )
 from lobster.transforms import Transform
 

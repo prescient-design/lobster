@@ -7,13 +7,16 @@ Author: Alex Chu
 Neural network modules. Many of these are adapted from open source modules.
 """
 
-from einops import rearrange
-from einops.layers.torch import Rearrange
+import logging
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import logging
+from einops import rearrange
+from einops.layers.torch import Rearrange
+
 from lobster.model.latent_generator.utils.residue_constants import ELEMENT_VOCAB
+
 # os.environ["HYDRA_FULL_ERROR"] = "1"
 
 try:

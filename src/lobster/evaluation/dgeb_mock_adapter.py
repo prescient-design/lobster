@@ -5,8 +5,8 @@ from typing import Literal
 
 import numpy as np
 import torch
-from dgeb.models import BioSeqTransformer
 from dgeb.modality import Modality
+from dgeb.models import BioSeqTransformer
 
 logger = logging.getLogger(__name__)
 

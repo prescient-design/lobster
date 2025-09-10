@@ -1,4 +1,5 @@
 from torch import nn
+
 from lobster.model.latent_generator.tokenizer import TokenizerLoss
 
 

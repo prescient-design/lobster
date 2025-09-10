@@ -1,18 +1,17 @@
 """Base dataset class for biomolecules."""
 
+import glob
+import logging
+import multiprocessing as mp
 import os
 import pathlib
-
-import torch
-import logging
-from tqdm import tqdm
-import pandas as pd
 import pickle
-
-import multiprocessing as mp
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-import glob
+from pathlib import Path
+
+import pandas as pd
+import torch
+from tqdm import tqdm
 
 try:
     from torch_geometric.transforms import Dataset

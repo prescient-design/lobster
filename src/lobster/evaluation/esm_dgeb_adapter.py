@@ -1,16 +1,17 @@
 """DGEB adapter for ESM models."""
 
 import logging
-from typing import Literal
 from collections.abc import Callable
+from typing import Literal
 
+import lightning as L
 import numpy as np
 import torch
-import lightning as L
-from dgeb.models import BioSeqTransformer
 from dgeb.modality import Modality as DGEBModality
+from dgeb.models import BioSeqTransformer
 
 from lobster.constants import Modality
+
 from ._pooling_utils import apply_dgeb_pooling, create_attention_mask_from_embeddings
 
 logger = logging.getLogger(__name__)

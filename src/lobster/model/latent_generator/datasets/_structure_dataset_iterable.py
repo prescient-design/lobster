@@ -1,15 +1,16 @@
 """Optimized iterable dataset for sharded structure data with multi-worker support and epoch shuffling."""
 
+import glob
+import logging
 import os
-from typing import Any
+import threading
+from collections import deque
 from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
 import torch
 from torch.utils.data import IterableDataset, get_worker_info
-import logging
-import glob
-from pathlib import Path
-from collections import deque
-import threading
 
 logger = logging.getLogger(__name__)
 
@@ -428,11 +429,12 @@ class ShardedStructureDataset(IterableDataset):
 
 # test
 if __name__ == "__main__":
+    import tqdm
     from torch.utils.data import DataLoader
+
     from lobster.model.latent_generator.datamodules._utils import collate_fn_backbone
     from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform
     from lobster.model.latent_generator.io import writepdb
-    import tqdm
 
     logger.info("=== Testing Multi-GPU ShardedStructureDataset ===")
 

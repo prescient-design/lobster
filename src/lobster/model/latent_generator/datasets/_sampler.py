@@ -1,9 +1,10 @@
-import logging
-from torch.utils.data import Sampler
-import random
-from collections.abc import Iterable, Sized
 import itertools
+import logging
+import random
 from abc import ABCMeta
+from collections.abc import Iterable, Sized
+
+from torch.utils.data import Sampler
 
 logger = logging.getLogger(__name__)
 

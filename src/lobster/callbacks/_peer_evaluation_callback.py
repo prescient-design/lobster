@@ -1,6 +1,6 @@
+import gc
 import logging
 import tempfile
-import gc
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 
@@ -18,28 +18,28 @@ from tqdm import tqdm
 from transformers.tokenization_utils_base import BatchEncoding
 
 from lobster.constants import (
+    PEER_STRUCTURE_TASKS,
     PEER_TASK_CATEGORIES,
     PEER_TASK_SPLITS,
     PEER_TASKS,
-    PEER_STRUCTURE_TASKS,
+    Modality,
     PEERTask,
     PEERTaskCategory,
-    Modality,
 )
 from lobster.datasets import PEERDataset
 from lobster.tokenization import UMETokenizerTransform
 
 from ._linear_probe_callback import LinearProbeCallback
 from ._peer_utils import (
-    peer_structure_collate_fn,
-    peer_default_collate_fn,
-    flatten_and_filter_token_embeddings,
-    process_secondary_structure_item,
-    process_proteinnet_item,
-    process_fold_item,
     calculate_mean_metrics,
-    get_peer_task_metric,
     convert_numpy_to_python,
+    flatten_and_filter_token_embeddings,
+    get_peer_task_metric,
+    peer_default_collate_fn,
+    peer_structure_collate_fn,
+    process_fold_item,
+    process_proteinnet_item,
+    process_secondary_structure_item,
 )
 
 logger = logging.getLogger(__name__)
