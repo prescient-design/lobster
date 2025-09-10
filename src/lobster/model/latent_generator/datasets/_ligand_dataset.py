@@ -2,9 +2,17 @@ import os
 import pathlib
 from collections.abc import Callable
 import torch
-from torch_geometric.data import Dataset
+
 import logging
 import numpy as np
+
+import lobster
+
+try:
+    from torch_geometric.data import Dataset
+except ImportError:
+    pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +21,8 @@ class LigandDataset(Dataset):
     """Dataset class for ligand atom coordinates.
     Expects .pt files with a 'coords' key for atom coordinates.
     """
+
+    lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
     def __init__(
         self,

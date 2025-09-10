@@ -2,8 +2,12 @@
 
 import numpy as np
 import torch
-from torch_geometric.transforms import BaseTransform
-from rdkit import Chem
+
+try:
+    from torch_geometric.transforms import BaseTransform
+except ImportError:
+    pass
+
 
 import logging
 from lobster.model.latent_generator.utils import residue_constants
@@ -28,6 +32,9 @@ class ESMEmbeddingTransform(BaseTransform):
     """Transform that extracts ESM-C embeddings from sequences."""
 
     def __init__(self, model_name: str = "esmc_300m", device: str = "auto", **kwargs):
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
         """Initialize the ESM embedding transform.
 
         Args:
@@ -309,6 +316,12 @@ class StructureTemplateTransform(BaseTransform):
 
 class StructureLigandTransform(BaseTransform):
     def __init__(self, max_length=512, rand_permute_ligand=False, **kwargs):
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        lobster.ensure_package("rdkit", group="lg-gpu (or --extra lg-cpu)")
+        from rdkit import Chem
+
         logger.info("StructureLigandTransform")
         self.max_length = max_length
         self.rand_permute_ligand = rand_permute_ligand

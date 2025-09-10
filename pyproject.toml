@@ -81,7 +81,8 @@ lg-cpu = [
     "torchtyping",
     "lightning-utilities",
     "mini3di",
-    "cpdb-protein"
+    "cpdb-protein",
+    "rdkit"
 ]
 lg-gpu = [
     "biopandas==0.5.0.dev0",
@@ -100,7 +101,8 @@ lg-gpu = [
     "torchtyping",
     "lightning-utilities",
     "mini3di",
-    "cpdb-protein"
+    "cpdb-protein",
+    "rdkit"
 ]
 mgm = [
     "rdkit>=2024.9.4",

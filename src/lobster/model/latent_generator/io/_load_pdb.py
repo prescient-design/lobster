@@ -1,23 +1,14 @@
 import os
 import torch
-import cpdb
-from biopandas.mmcif import PandasMmcif
 from typing import Any
 import numpy as np
 import boto3
 from lobster.model.latent_generator.utils import residue_constants
 import logging
+import lobster
 
 logger = logging.getLogger(__name__)
 
-# Try to import RDKit for .mol2 and .sdf support
-try:
-    from rdkit import Chem
-
-    RDKIT_AVAILABLE = True
-except ImportError:
-    RDKIT_AVAILABLE = False
-    print("RDKit not available. .mol2 and .sdf files will not be supported.")
 
 aa_3to1 = {
     "ALA": "A",
@@ -60,6 +51,11 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
             - 'mask': A tensor of shape (1, N) containing the mask for the coordinates.
 
     """
+
+    lobster.ensure_package("cpdb", group="lg-gpu (or --extra lg-cpu)")
+    lobster.ensure_package("biopandas", group="lg-gpu (or --extra lg-cpu)")
+    lobster.ensure_package("rdkit", group="lg-gpu (or --extra lg-cpu)")
+
     if filepath.startswith("s3://"):
         # Parse S3 URI
         s3 = boto3.client("s3")
@@ -72,6 +68,8 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
 
     # Read PDB to dataframe
     if filepath.endswith(".cif"):
+        from biopandas.mmcif import PandasMmcif
+
         pmmcif = PandasMmcif()
         df = pmmcif.read_mmcif(filepath).df["ATOM"]
         # rename label_atom_id to atom_name
@@ -86,6 +84,8 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
         df_coords["residue_number"] = df_coords["residue_number"].astype(int)
         group_chain = df_coords.groupby("auth_asym_id")
     else:
+        import cpdb
+
         df = cpdb.parse(filepath, df=True)
         df = df[df["record_name"] == "ATOM"]
         df_coords = df[df["atom_name"].isin(["C", "N", "CA"])]
@@ -187,6 +187,8 @@ def reorder_molecule(mol, new_order):
     Create a new molecule with atoms reordered according to new_order.
     new_order[i] gives the original index of atom that should be at position i.
     """
+    from rdkit import Chem
+
     # Create a new molecule
     new_mol = Chem.RWMol()
 
@@ -252,10 +254,7 @@ def load_ligand(filepath: str, add_batch_dim: bool = True, canonical_order: bool
 
     # Determine file format and parse accordingly
     if filepath.endswith(".mol2") or filepath.endswith(".sdf"):
-        if not RDKIT_AVAILABLE:
-            raise ImportError(
-                "RDKit is required for .mol2 and .sdf files. Install with: conda install -c conda-forge rdkit"
-            )
+        from rdkit import Chem
 
         # Load using RDKit
         if filepath.endswith(".sdf"):
@@ -305,6 +304,8 @@ def load_ligand(filepath: str, add_batch_dim: bool = True, canonical_order: bool
     else:
         # Original PDB parsing logic
         # Read PDB to dataframe
+        import cpdb
+
         df = cpdb.parse(filepath, df=True)
         # only ligands
         df = df[df["record_name"] == "HETATM"]
