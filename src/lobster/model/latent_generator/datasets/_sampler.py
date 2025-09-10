@@ -1,13 +1,7 @@
-import math
-
-import numpy as np
-import pandas as pd
-import torch
 from loguru import logger
 from torch.utils.data import Sampler
-from torch.utils.data.distributed import dist
 import random
-from typing import List, Optional, Iterable, Sized
+from collections.abc import Iterable, Sized
 import itertools
 from abc import ABCMeta
 
@@ -16,7 +10,7 @@ class SizedIterable(Sized, Iterable, metaclass=ABCMeta):
     pass
 
 
-def round_robin_longest(iterables: List[SizedIterable]) -> Iterable:
+def round_robin_longest(iterables: list[SizedIterable]) -> Iterable:
     """Round robin of iterables until the longest have been exhausted.
 
     Example
@@ -58,7 +52,7 @@ class MinorityUpsampler(Sampler[int]):
     until the longer ones are exhausted.
     """
 
-    def __init__(self, index_list: List[SizedIterable[int]]):
+    def __init__(self, index_list: list[SizedIterable[int]]):
         self.index_list = index_list
 
     def __iter__(self):

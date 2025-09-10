@@ -15,7 +15,7 @@ class SimpleLinearQuantizer(torch.nn.Module):
         tau: float = 0.5,
         **kwargs,
     ):
-        super(SimpleLinearQuantizer, self).__init__()
+        super().__init__()
         self.n_tokens = n_tokens
         self.embed_dim = embed_dim
         self.softmax = softmax
@@ -23,7 +23,6 @@ class SimpleLinearQuantizer(torch.nn.Module):
         self.gumbel = gumbel
         self.use_gumbel_noise = use_gumbel_noise
         self.tau = tau
-
 
         # layer norm
         self.layer_norm = torch.nn.LayerNorm(self.embed_dim)
@@ -42,9 +41,9 @@ class SimpleLinearQuantizer(torch.nn.Module):
             z_emb_noisy = z_emb + self.emb_noise * torch.randn_like(z_emb)
             if mask is None:
                 mask = torch.ones_like(z_emb_noisy[..., 0]).to(z_emb_noisy.device)
-            z_emb_noisy = z_emb_noisy  * mask.clone().unsqueeze(-1)
+            z_emb_noisy = z_emb_noisy * mask.clone().unsqueeze(-1)
 
-            z_tokens = torch.nn.functional.softmax(z_emb_noisy/self.tau, dim=-1)
+            z_tokens = torch.nn.functional.softmax(z_emb_noisy / self.tau, dim=-1)
 
             return z_tokens, z_emb, mask
 
@@ -54,6 +53,3 @@ class SimpleLinearQuantizer(torch.nn.Module):
             z_tokens = torch.nn.functional.one_hot(z_tokens, num_classes=self.n_tokens).float()
 
             return z_emb + (z_tokens - z_emb).detach(), z_emb, mask
-
-
-

@@ -1,5 +1,6 @@
 # lightning module training script
-from typing import Callable, Optional, Literal
+from typing import Literal
+from collections.abc import Callable
 
 import lightning.pytorch as pl
 import torch
@@ -9,12 +10,13 @@ from lobster.model.latent_generator.structure_encoder import BaseEncoder
 from lobster.model.latent_generator.structure_decoder import DecoderFactory
 from lobster.model.latent_generator.tokenizer import LossFactory
 import os
-from lobster.model.latent_generator.io import writepdb
 import omegaconf
-#os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
+# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import math
 from einops import rearrange
 from lobster.model.latent_generator.utils.residue_constants import restype_order_with_x
+
 
 class TokenizerMulti(pl.LightningModule):
     """Base class for PyTorch Lightning training modules.
@@ -90,7 +92,7 @@ class TokenizerMulti(pl.LightningModule):
     def forward(self, x, return_embeddings=False, *args, **kwargs):
         """Forward pass of the model, for inference."""
         x_feat = self.encoder.featurize(x, *args, **kwargs)
-        #check if x_feat is a tuple of length 7 or 8 for ligand case
+        # check if x_feat is a tuple of length 7 or 8 for ligand case
         if len(x_feat) == 8:
             x_emb = self.encoder(
                 coords=x_feat[0],
@@ -101,10 +103,10 @@ class TokenizerMulti(pl.LightningModule):
                 ligand_mask=x_feat[5],
                 ligand_residue_index=x_feat[6],
                 ligand_atom_types=x_feat[7],
-                return_embeddings=return_embeddings
+                return_embeddings=return_embeddings,
             )
-            seq_mask=x_feat[1]
-            ligand_mask=x_feat[5]
+            seq_mask = x_feat[1]
+            ligand_mask = x_feat[5]
         elif len(x_feat) == 7:
             x_emb = self.encoder(
                 coords=x_feat[0],
@@ -114,14 +116,14 @@ class TokenizerMulti(pl.LightningModule):
                 ligand_coords=x_feat[4],
                 ligand_mask=x_feat[5],
                 ligand_residue_index=x_feat[6],
-                return_embeddings=return_embeddings
+                return_embeddings=return_embeddings,
             )
-            seq_mask=x_feat[1]
-            ligand_mask=x_feat[5]
+            seq_mask = x_feat[1]
+            ligand_mask = x_feat[5]
         else:
             x_emb = self.encoder(*x_feat, return_embeddings=return_embeddings)
-            seq_mask=x_feat[1]
-            ligand_mask=None
+            seq_mask = x_feat[1]
+            ligand_mask = None
         if return_embeddings:
             x_emb, x_emb_out = x_emb
 
@@ -135,10 +137,8 @@ class TokenizerMulti(pl.LightningModule):
                     z_protein = x_quant[:, :L, :]
                     z_ligand = x_quant[:, L:, :]
                     x_quant = {"ligand_tokens": z_ligand, "protein_tokens": z_protein}
-                    mask = {"ligand_mask": ligand_mask, "protein_mask": seq_mask}
                 else:
                     x_quant = {"ligand_tokens": x_quant}
-                    mask = {"ligand_mask": ligand_mask}
 
         if return_embeddings:
             return x_quant, x_emb_out
@@ -154,7 +154,10 @@ class TokenizerMulti(pl.LightningModule):
             device = x_quant["ligand_tokens"].device
             if mask is None:
                 if "protein_tokens" in x_quant:
-                    mask = {"protein_mask": torch.ones(B, L, device=device), "ligand_mask": torch.ones(B_ligand, L_ligand, device=device)}
+                    mask = {
+                        "protein_mask": torch.ones(B, L, device=device),
+                        "ligand_mask": torch.ones(B_ligand, L_ligand, device=device),
+                    }
                 else:
                     mask = {"ligand_mask": torch.ones(B_ligand, L_ligand, device=device)}
         else:
@@ -166,9 +169,7 @@ class TokenizerMulti(pl.LightningModule):
         # iterate over decoders
         x_recon = {}
         for decoder_name in self.decoder_factory.list_decoders():
-            x_recon[decoder_name] = self.decoder_factory.decoders[decoder_name](
-                x_quant, mask, x_emb=x_emb
-            )
+            x_recon[decoder_name] = self.decoder_factory.decoders[decoder_name](x_quant, mask, x_emb=x_emb)
 
         return x_recon
 
@@ -220,12 +221,12 @@ class TokenizerMulti(pl.LightningModule):
             raise ValueError(f"Unknown schedule: {self.schedule}")
 
         # Calculate number of tokens to mask
-        mask_ratio = torch.clamp(mask_ratio, min=1e-6, max=1.)
+        mask_ratio = torch.clamp(mask_ratio, min=1e-6, max=1.0)
         num_token_masked = (seq_len * mask_ratio).round().clamp(min=1)
 
         # Generate random mask
         batch_randperm = torch.rand(batch_size, seq_len, device=device).argsort(dim=-1)
-        masks = batch_randperm < rearrange(num_token_masked, 'b -> b 1')
+        masks = batch_randperm < rearrange(num_token_masked, "b -> b 1")
 
         return masks, timesteps
 
@@ -239,7 +240,7 @@ class TokenizerMulti(pl.LightningModule):
                         continue
                     param.requires_grad = False
 
-        #fix weights of encoder if needed
+        # fix weights of encoder if needed
         if self.freeze_encoder:
             for name, param in self.named_parameters():
                 name_ = name.split(".")[0]
@@ -274,10 +275,10 @@ class TokenizerMulti(pl.LightningModule):
             # x_feat[0] is coordinates, x_feat[1] is mask
             x_feat[0] = torch.where(gen_masks.unsqueeze(-1).unsqueeze(-1), torch.zeros_like(x_feat[0]), x_feat[0])
             x_feat[1] = torch.where(gen_masks, torch.zeros_like(x_feat[1]), x_feat[1])
-        
+
         if self.mask_sequence and gen_masks is not None:
             x_feat[3] = torch.where(gen_masks, torch.full_like(x_feat[3], restype_order_with_x["X"]), x_feat[3])
-         
+
         # Handle both standard case (4 values) and ligand case (7 or 8 values)
         if len(x_feat) == 8:
             x_emb = self.encoder(
@@ -288,7 +289,7 @@ class TokenizerMulti(pl.LightningModule):
                 ligand_coords=x_feat[4],
                 ligand_mask=x_feat[5],
                 ligand_residue_index=x_feat[6],
-                ligand_atom_types=x_feat[7]
+                ligand_atom_types=x_feat[7],
             )
         elif len(x_feat) == 7:
             x_emb = self.encoder(
@@ -298,15 +299,17 @@ class TokenizerMulti(pl.LightningModule):
                 sequence=x_feat[3],
                 ligand_coords=x_feat[4],
                 ligand_mask=x_feat[5],
-                ligand_residue_index=x_feat[6]
+                ligand_residue_index=x_feat[6],
             )
         else:
             x_emb = self.encoder(*x_feat)  # Keep original unpacking for backward compatibility
 
         if self.quantizer is not None:
-            #check if cls token is used
+            # check if cls token is used
             if self.encoder.add_cls_token:
-                x_quant, x_quant_emb, mask = self.quantizer.quantize(x_emb[:, 1:, :], mask=mask, ligand_mask=ligand_mask)
+                x_quant, x_quant_emb, mask = self.quantizer.quantize(
+                    x_emb[:, 1:, :], mask=mask, ligand_mask=ligand_mask
+                )
             else:
                 x_quant, x_quant_emb, mask = self.quantizer.quantize(x_emb, mask=mask, ligand_mask=ligand_mask)
             # Apply masking to tokens if enabled
@@ -334,13 +337,11 @@ class TokenizerMulti(pl.LightningModule):
                     masked_tokens = {"ligand_tokens": x_quant}
                     mask = {"ligand_mask": ligand_mask}
 
-
         # iterate over decoders
         x_recon = {}
         loss_dict = {}
         total_loss = 0
         for i, decoder_name in enumerate(self.decoder_factory.list_decoders()):
-
             x_recon[decoder_name] = self.decoder_factory.decoders[decoder_name](
                 masked_tokens, mask, x_emb=x_emb, batch=batch, cls_token=self.encoder.add_cls_token
             )
@@ -359,20 +360,18 @@ class TokenizerMulti(pl.LightningModule):
                 loss_dict[f"{split}_{loss2apply_}"] = loss
 
         if timesteps is not None:
-            self.log_dict({f"{split}_loss": total_loss, f"{split}_t": timesteps.mean(), **loss_dict}, batch_size=B, sync_dist=True)
+            self.log_dict(
+                {f"{split}_loss": total_loss, f"{split}_t": timesteps.mean(), **loss_dict}, batch_size=B, sync_dist=True
+            )
         else:
             self.log_dict({f"{split}_loss": total_loss, **loss_dict}, batch_size=B, sync_dist=True)
 
         if self.automatic_optimization is False:
             self.manual_backward(total_loss)
-            # Check gradients for each parameter
-            for name, param in self.named_parameters():
-                ic(name, param.grad)
             # Manually update parameters
             self.trainer.optimizers[0].step()
 
         return {"loss": total_loss, "x_recon": x_recon}
-
 
     def training_step(self, batch, batch_idx):
         """Training step of the model."""
@@ -396,7 +395,6 @@ class TokenizerMulti(pl.LightningModule):
         """prediction step of the model."""
         x = batch
         B = batch["sequence"].shape[0]
-        device = batch["sequence"].device
         mask = batch["mask"]
 
         with torch.no_grad():
@@ -412,7 +410,14 @@ class TokenizerMulti(pl.LightningModule):
         x_recon = {}
         for i, decoder_name in enumerate(self.decoder_factory.list_decoders()):
             x_recon[decoder_name] = self.decoder_factory.decoders[decoder_name](
-                x_quant[:B], mask[:B],
+                x_quant[:B],
+                mask[:B],
             )
 
-        return {"x_recon": x_recon, "x_input": x_feat, "x_quant": x_quant[:B], "input_sequence": x["sequence"], "description": x["description"]}
+        return {
+            "x_recon": x_recon,
+            "x_input": x_feat,
+            "x_quant": x_quant[:B],
+            "input_sequence": x["sequence"],
+            "description": x["description"],
+        }

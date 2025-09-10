@@ -6,15 +6,11 @@ import hydra
 import lightning
 import torch
 import wandb
-from icecream import ic
 from lightning.pytorch.utilities import rank_zero_only
 from loguru import logger as py_logger
 from omegaconf import OmegaConf
 from omegaconf import DictConfig
-from typing import Optional
 
-import lobster.model.latent_generator as latent_generator
-from lobster.model.latent_generator.tokenizer import TokenizerMulti
 
 def format_resolver(x, pattern):
     """Format `x` using `pattern`.
@@ -28,7 +24,8 @@ def format_resolver(x, pattern):
     """
     return f"{x:{pattern}}"
 
-def instantiate_dict_cfg(cfg: Optional[DictConfig], verbose=False):
+
+def instantiate_dict_cfg(cfg: DictConfig | None, verbose=False):
     """Instantiate each value in a dictionary and return a list of the instantiated objects."""
     out = []
 
@@ -48,6 +45,7 @@ def instantiate_dict_cfg(cfg: Optional[DictConfig], verbose=False):
                 out.extend(instantiate_dict_cfg(v, verbose=verbose))
 
     return out
+
 
 dotenv.load_dotenv(".env")
 
@@ -87,17 +85,15 @@ def main(cfg):  # noqa: D103
 
     trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=loggers)  # noqa: F841
 
-    if rank_zero_only.rank == 0 and wandb_logger: #latent_generator.__version__
-        wandb_logger.experiment.config.update(
-            {"cfg": log_cfg, "version": "1.0.0", "cwd": os.getcwd()}
-        )
+    if rank_zero_only.rank == 0 and wandb_logger:  # latent_generator.__version__
+        wandb_logger.experiment.config.update({"cfg": log_cfg, "version": "1.0.0", "cwd": os.getcwd()})
 
     if rank_zero_only.rank == 0 and wandb_logger:
         wandb_logger.watch(tokenizer, log="all")
 
     if cfg.get("ckpt_path") is not None and not cfg.get("continue_training", False):
         py_logger.info(f"loading checkpoint from {cfg.get('ckpt_path')}")
-        
+
         # New configuration options for component loading
         load_encoder = cfg.get("load_encoder", True)
         load_encoder_strict = cfg.get("load_encoder_strict", True)
@@ -105,13 +101,13 @@ def main(cfg):  # noqa: D103
         load_quantizer_strict = cfg.get("load_quantizer_strict", True)
         load_decoder = cfg.get("load_decoder", True)
         load_decoder_strict = cfg.get("load_decoder_strict", True)
-        
+
         if cfg.get("strict", True):
             # Option 1: Component-specific loading when any component is set to false
             py_logger.info("Using component-specific loading from checkpoint")
             checkpoint = torch.load(cfg.get("ckpt_path"))
             checkpoint_state_dict = checkpoint["state_dict"]
-            
+
             # Load encoder weights if requested
             if load_encoder:
                 py_logger.info("Loading encoder weights from checkpoint")
@@ -122,7 +118,7 @@ def main(cfg):  # noqa: D103
                         # Remove "encoder." prefix to match the model's expected keys
                         new_key = k.replace("encoder.", "", 1)  # Remove first occurrence of "encoder."
                         encoder_state_dict[new_key] = v
-                
+
                 if encoder_state_dict:
                     tokenizer.encoder.load_state_dict(encoder_state_dict, strict=load_encoder_strict)
                     py_logger.info(f"Successfully loaded {len(encoder_state_dict)} encoder parameters")
@@ -130,7 +126,7 @@ def main(cfg):  # noqa: D103
                     py_logger.warning("No encoder weights found in checkpoint")
             else:
                 py_logger.info("Keeping randomly initialized encoder")
-            
+
             # Load quantizer weights if requested
             if load_quantizer:
                 py_logger.info("Loading quantizer weights from checkpoint")
@@ -141,7 +137,7 @@ def main(cfg):  # noqa: D103
                         # Remove "quantizer." prefix to match the model's expected keys
                         new_key = k.replace("quantizer.", "", 1)  # Remove first occurrence of "quantizer."
                         quantizer_state_dict[new_key] = v
-                
+
                 if quantizer_state_dict:
                     tokenizer.quantizer.load_state_dict(quantizer_state_dict, strict=load_quantizer_strict)
                     py_logger.info(f"Successfully loaded {len(quantizer_state_dict)} quantizer parameters")
@@ -149,7 +145,7 @@ def main(cfg):  # noqa: D103
                     py_logger.warning("No quantizer weights found in checkpoint")
             else:
                 py_logger.info("Keeping randomly initialized quantizer")
-            
+
             # Load decoder weights if requested
             if load_decoder:
                 py_logger.info("Loading decoder weights from checkpoint")
@@ -160,7 +156,7 @@ def main(cfg):  # noqa: D103
                         # Remove "decoder_factory." prefix to match the model's expected keys
                         new_key = k.replace("decoder_factory.", "", 1)  # Remove first occurrence of "decoder_factory."
                         decoder_state_dict[new_key] = v
-                
+
                 if decoder_state_dict:
                     tokenizer.decoder_factory.load_state_dict(decoder_state_dict, strict=load_decoder_strict)
                     py_logger.info(f"Successfully loaded {len(decoder_state_dict)} decoder parameters")

@@ -1,5 +1,5 @@
+# ruff: noqa: F722
 import torch
-from typing import Optional
 from lobster.model.latent_generator.structure_decoder import BaseDecoder
 
 from torchtyping import TensorType
@@ -30,17 +30,17 @@ class FoldSeek3diDecoder(BaseDecoder):
         self,
         x_quant: TensorType["b n a x", float],
         seq_mask: TensorType["b n", float],
-        residue_index: Optional[TensorType["b n", int]] = None, 
-        x_emb: TensorType["b n a x", float] = None, 
+        residue_index: TensorType["b n", int] | None = None,
+        x_emb: TensorType["b n a x", float] = None,
         cls_token: bool = False,
-        **kwargs
+        **kwargs,
     ):
         if isinstance(x_quant, dict):
             ligand_present = True
         else:
             ligand_present = False
 
-        #check if we have cls token
+        # check if we have cls token
         if cls_token:
             x_emb = x_emb[:, 1:, :]
 
@@ -48,7 +48,7 @@ class FoldSeek3diDecoder(BaseDecoder):
             x_quant = x_quant["protein_tokens"]
             seq_mask = seq_mask["protein_mask"]
             B, L = seq_mask.shape
-            x_emb = x_emb[:,:L,:]
+            x_emb = x_emb[:, :L, :]
 
         # Create a copy of the mask to avoid in-place operations
         seq_mask = seq_mask.clone()

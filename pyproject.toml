@@ -85,7 +85,7 @@ lg-cpu = [
     "botocore",
     "lightning-utilities",
     "mini3di",
-    "cpdb-protein",
+    "cpdb-protein"
 ]
 lg-gpu = [
     "biopandas==0.5.0.dev0",

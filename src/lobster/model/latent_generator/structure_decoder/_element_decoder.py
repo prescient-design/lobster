@@ -1,5 +1,5 @@
+# ruff: noqa: F722
 import torch
-from typing import Optional
 from lobster.model.latent_generator.structure_decoder import BaseDecoder
 
 from torchtyping import TensorType
@@ -32,7 +32,7 @@ class ElementDecoder(BaseDecoder):
         seq_mask: TensorType["b n", float],
         x_emb: TensorType["b n a x", float] = None,
         cls_token: bool = False,
-        **kwargs
+        **kwargs,
     ):
         if isinstance(x_quant, dict):
             ligand_present = True
@@ -50,12 +50,12 @@ class ElementDecoder(BaseDecoder):
             seq_mask = seq_mask["ligand_mask"]
             L_ligand = seq_mask.shape[1]
             # Extract ligand portion from embeddings
-            x_emb = x_emb[:, L_protein:L_protein+L_ligand, :]
+            x_emb = x_emb[:, L_protein : L_protein + L_ligand, :]
         else:
             # No ligands present, return zero tensor
             B = x_emb.shape[0] if x_emb is not None else 1
-            return torch.zeros(B, 0, self.out_token_codebook_size, device=x_emb.device if x_emb is not None else 'cpu')
-        
+            return torch.zeros(B, 0, self.out_token_codebook_size, device=x_emb.device if x_emb is not None else "cpu")
+
         # Create a copy of the mask to avoid in-place operations
         seq_mask = seq_mask.clone()
         seq_mask[torch.isnan(seq_mask)] = 0
