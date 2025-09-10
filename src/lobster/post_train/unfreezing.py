@@ -1,0 +1,265 @@
+"""Unfreezing strategies for fine-tuning UME models."""
+
+import logging
+
+from lobster.model import UME
+
+logger = logging.getLogger(__name__)
+
+
+
+def apply_unfreezing_strategy(
+    model: UME,
+    strategy: str,
+    num_layers: int | None = None,
+    layer_wise_lr_decay: float | None = None
+) -> None:
+    """Apply unfreezing strategy to a UME model.
+
+    References
+    ----------
+    Fine-tuning strategies: "How to Fine-Tune BERT for Text Classification?" (Sun et al., 2019)
+
+    Parameters
+    ----------
+    model : UME
+        The UME model to apply unfreezing to
+    strategy : str
+        Unfreezing strategy. Options:
+        - "full": Unfreeze all parameters
+        - "partial": Unfreeze last N layers (specify num_layers)
+        - "partial_last_3": Unfreeze last 3 layers
+        - "partial_last_6": Unfreeze last 6 layers
+        - "progressive": Gradually unfreeze layers (for use during training)
+        - "freeze_all": Freeze all parameters (useful for feature extraction)
+    num_layers : int, optional
+        Number of layers to unfreeze for partial strategies, by default None
+    layer_wise_lr_decay : float, optional
+        Learning rate decay factor for layer-wise learning rates, by default None
+
+    Examples
+    --------
+    >>> from lobster.model import UME
+    >>> model = UME(model_name="UME_mini")
+    >>> apply_unfreezing_strategy(model, "partial_last_3")
+    >>>
+    >>> # Check which parameters are trainable
+    >>> trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    >>> print(f"Trainable parameters: {trainable_params}")
+    """
+    if strategy == "full":
+        _unfreeze_all_parameters(model)
+    elif strategy == "partial":
+        if num_layers is None:
+            raise ValueError("num_layers must be specified for partial unfreezing")
+        _unfreeze_last_n_layers(model, num_layers)
+    elif strategy == "partial_last_3":
+        _unfreeze_last_n_layers(model, 3)
+    elif strategy == "partial_last_6":
+        _unfreeze_last_n_layers(model, 6)
+    elif strategy == "progressive":
+        logger.warning("Progressive unfreezing requires manual implementation during training")
+        _unfreeze_all_parameters(model)  # Start with all unfrozen
+    elif strategy == "freeze_all":
+        _freeze_all_parameters(model)
+    else:
+        raise ValueError(f"Unknown unfreezing strategy: {strategy}")
+
+    # Log the unfreezing results
+    _log_parameter_status(model, strategy)
+
+
+def _freeze_all_parameters(model: UME) -> None:
+    """Freeze all model parameters."""
+    for param in model.parameters():
+        param.requires_grad = False
+
+
+def _unfreeze_all_parameters(model: UME) -> None:
+    """Unfreeze all model parameters."""
+    for param in model.parameters():
+        param.requires_grad = True
+
+
+def _unfreeze_last_n_layers(model: UME, n: int) -> None:
+    """Unfreeze the last N transformer layers.
+
+    Parameters
+    ----------
+    model : UME
+        The UME model
+    n : int
+        Number of layers to unfreeze from the end
+    """
+    # First freeze all parameters
+    _freeze_all_parameters(model)
+
+    # Get the transformer layers from the underlying model
+    # UME wraps a FlexBERT model, so we need to access it
+    if hasattr(model, 'model') and hasattr(model.model, 'encoder'):
+        encoder = model.model.encoder
+        if hasattr(encoder, 'layer'):
+            layers = encoder.layer
+        elif hasattr(encoder, 'layers'):
+            layers = encoder.layers
+        else:
+            logger.warning("Could not find transformer layers in model")
+            return
+    else:
+        logger.warning("Could not access encoder layers in UME model")
+        return
+
+    # Unfreeze the last n layers
+    total_layers = len(layers)
+    layers_to_unfreeze = min(n, total_layers)
+
+    for i in range(total_layers - layers_to_unfreeze, total_layers):
+        for param in layers[i].parameters():
+            param.requires_grad = True
+
+    # Also unfreeze the final layer norm and pooler if they exist
+    if hasattr(model.model, 'pooler') and model.model.pooler is not None:
+        for param in model.model.pooler.parameters():
+            param.requires_grad = True
+
+    if hasattr(model.model, 'LayerNorm'):
+        for param in model.model.LayerNorm.parameters():
+            param.requires_grad = True
+
+    logger.info(f"Unfroze last {layers_to_unfreeze} layers out of {total_layers} total layers")
+
+
+def get_layer_wise_parameter_groups(
+    model: UME,
+    base_lr: float = 2e-4,
+    decay_factor: float = 0.9
+) -> list[dict]:
+    """Get parameter groups with layer-wise learning rate decay.
+
+    This implements layer-wise learning rate decay (LLRD) where earlier
+    layers get lower learning rates than later layers.
+
+    References
+    ----------
+    Layer-wise learning rate decay: "ULMFiT: Universal Language Model Fine-tuning" (Howard & Ruder, 2018)
+
+    Parameters
+    ----------
+    model : UME
+        The UME model
+    base_lr : float, optional
+        Base learning rate for the last layer, by default 2e-4
+    decay_factor : float, optional
+        Decay factor for each earlier layer, by default 0.9
+
+    Returns
+    -------
+    List[dict]
+        Parameter groups with different learning rates
+
+    Examples
+    --------
+    >>> from lobster.model import UME
+    >>> model = UME(model_name="UME_mini")
+    >>> param_groups = get_layer_wise_parameter_groups(model, base_lr=1e-4)
+    >>> optimizer = torch.optim.AdamW(param_groups)
+    """
+    param_groups = []
+
+    # Get the transformer layers
+    if hasattr(model, 'model') and hasattr(model.model, 'encoder'):
+        encoder = model.model.encoder
+        if hasattr(encoder, 'layer'):
+            layers = encoder.layer
+        elif hasattr(encoder, 'layers'):
+            layers = encoder.layers
+        else:
+            # Fallback to single group
+            return [{"params": model.parameters(), "lr": base_lr}]
+    else:
+        # Fallback to single group
+        return [{"params": model.parameters(), "lr": base_lr}]
+
+    # Create parameter groups for each layer
+    num_layers = len(layers)
+
+    for i, layer in enumerate(layers):
+        # Calculate learning rate for this layer
+        # Earlier layers get lower learning rates
+        layer_lr = base_lr * (decay_factor ** (num_layers - 1 - i))
+
+        param_groups.append({
+            "params": list(layer.parameters()),
+            "lr": layer_lr,
+            "layer_id": i,
+        })
+
+    # Add other parameters (embeddings, pooler, etc.) with base learning rate
+    other_params = []
+    layer_param_ids = set()
+
+    # Collect all layer parameter IDs
+    for layer in layers:
+        for param in layer.parameters():
+            layer_param_ids.add(id(param))
+
+    # Find parameters not in layers
+    for name, param in model.named_parameters():
+        if id(param) not in layer_param_ids:
+            other_params.append(param)
+
+    if other_params:
+        param_groups.append({
+            "params": other_params,
+            "lr": base_lr,
+            "layer_id": "other",
+        })
+
+    logger.info(f"Created {len(param_groups)} parameter groups with layer-wise learning rates")
+    return param_groups
+
+
+def progressive_unfreezing_schedule(
+    model: UME,
+    current_epoch: int,
+    unfreeze_schedule: list[int]
+) -> None:
+    """Apply progressive unfreezing based on training epoch.
+
+    References
+    ----------
+    Progressive unfreezing: "ULMFiT: Universal Language Model Fine-tuning" (Howard & Ruder, 2018)
+
+    Parameters
+    ----------
+    model : UME
+        The UME model
+    current_epoch : int
+        Current training epoch
+    unfreeze_schedule : List[int]
+        List of epochs at which to unfreeze additional layers
+
+    Examples
+    --------
+    >>> # Unfreeze 1 layer at epoch 2, 2 more at epoch 5, etc.
+    >>> schedule = [2, 5, 8, 12]
+    >>> progressive_unfreezing_schedule(model, current_epoch=5, unfreeze_schedule=schedule)
+    """
+    # Count how many unfreeze events should have happened by now
+    layers_to_unfreeze = sum(1 for epoch in unfreeze_schedule if current_epoch >= epoch)
+
+    if layers_to_unfreeze > 0:
+        _unfreeze_last_n_layers(model, layers_to_unfreeze)
+        logger.info(f"Progressive unfreezing: unfroze {layers_to_unfreeze} layers at epoch {current_epoch}")
+
+
+def _log_parameter_status(model: UME, strategy: str) -> None:
+    """Log the parameter freezing status."""
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    frozen_params = total_params - trainable_params
+
+    logger.info(f"Applied unfreezing strategy: {strategy}")
+    logger.info(f"Total parameters: {total_params:,}")
+    logger.info(f"Trainable parameters: {trainable_params:,} ({100 * trainable_params / total_params:.1f}%)")
+    logger.info(f"Frozen parameters: {frozen_params:,} ({100 * frozen_params / total_params:.1f}%)")
