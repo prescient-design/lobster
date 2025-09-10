@@ -5,9 +5,7 @@ import pathlib
 
 import torch
 import logging
-from torch_geometric.data import Dataset
 from tqdm import tqdm
-from icecream import ic
 import pandas as pd
 import pickle
 
@@ -15,6 +13,14 @@ import multiprocessing as mp
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import glob
+
+try:
+    from torch_geometric.data import Dataset
+    from icecream import ic
+except ImportError:
+    pass
+
+import lobster
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +118,9 @@ class StructureDataset(Dataset):
         This can significantly reduce memory usage for large datasets by loading
         data on-demand rather than all at once, by default False.
     """
+
+    lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+    lobster.ensure_package("icecream", group="lg-gpu (or --extra lg-cpu)")
 
     def __init__(
         self,

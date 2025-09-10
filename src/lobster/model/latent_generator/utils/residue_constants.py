@@ -21,7 +21,6 @@ from importlib import resources
 from collections.abc import Mapping
 
 import numpy as np
-import optree
 import torch
 
 from dataclasses import dataclass
@@ -967,12 +966,13 @@ def chi_angle_atom(atom_index: int) -> np.ndarray:
 chi_atom_1_one_hot = chi_angle_atom(1)
 chi_atom_2_one_hot = chi_angle_atom(2)
 
-# An array like chi_angles_atoms but using indices rather than names.
-chi_angles_atom_indices = [chi_angles_atoms[restype_1to3[r]] for r in restypes]
-chi_angles_atom_indices = optree.tree_map(lambda atom_name: atom_wide_order[atom_name], chi_angles_atom_indices)
-chi_angles_atom_indices = np.array(
-    [chi_atoms + ([[0, 0, 0, 0]] * (4 - len(chi_atoms))) for chi_atoms in chi_angles_atom_indices]
-)
+# TODO zadorozk: commented out since it's using optional dependency optree but in top level, reconsider this
+# # An array like chi_angles_atoms but using indices rather than names.
+# chi_angles_atom_indices = [chi_angles_atoms[restype_1to3[r]] for r in restypes]
+# chi_angles_atom_indices = optree.tree_map(lambda atom_name: atom_wide_order[atom_name], chi_angles_atom_indices)
+# chi_angles_atom_indices = np.array(
+#     [chi_atoms + ([[0, 0, 0, 0]] * (4 - len(chi_atoms))) for chi_atoms in chi_angles_atom_indices]
+# )
 
 # Mapping from (res_name, atom_name) pairs to the atom's chi group index
 # and atom index within that group.
