@@ -1,20 +1,29 @@
 """Base dataset class for biomolecules."""
 
+import glob
+import logging
+import multiprocessing as mp
 import os
 import pathlib
-
-import torch
-from loguru import logger
-from torch_geometric.data import Dataset
-from tqdm import tqdm
-from icecream import ic
-import pandas as pd
 import pickle
-
-import multiprocessing as mp
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-import glob
+from pathlib import Path
+
+import pandas as pd
+import torch
+from tqdm import tqdm
+
+try:
+    from torch_geometric.transforms import Dataset
+except ImportError:
+    Dataset = None
+
+try:
+    from icecream import ic
+except ImportError:
+    ic = None
+
+logger = logging.getLogger(__name__)
 
 
 def merge_small_lists(list_of_lists, min_size=100):
@@ -124,6 +133,11 @@ class StructureDataset(Dataset):
         files_to_keep: str | os.PathLike = None,
         use_mmap: bool = False,
     ):
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        lobster.ensure_package("icream", group="lg-gpu (or --extra lg-cpu)")
+
         self.root = pathlib.Path(root)
         self.processed_dir = self.root
         # check if self.processed_dir is a file

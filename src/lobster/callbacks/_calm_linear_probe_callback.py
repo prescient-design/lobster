@@ -6,7 +6,7 @@ import lightning as L
 import numpy as np
 import torch
 from torch import Tensor
-from torch.utils.data import DataLoader, Subset, ConcatDataset
+from torch.utils.data import ConcatDataset, DataLoader, Subset
 from tqdm import tqdm
 
 from lobster.constants import CALM_TASKS

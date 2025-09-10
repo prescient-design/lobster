@@ -2,6 +2,7 @@
 
 import logging
 from unittest.mock import Mock, patch
+
 import pytest
 
 from lobster.mcp.tools.interventions import intervene_on_sequence

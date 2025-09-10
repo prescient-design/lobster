@@ -1,7 +1,7 @@
 """Tests for the DGEB evaluation callback - focused on callback-specific functionality."""
 
-from unittest.mock import Mock, patch
 import tempfile
+from unittest.mock import Mock, patch
 
 import lightning as L
 import pytest

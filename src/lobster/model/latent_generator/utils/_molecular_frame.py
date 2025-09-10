@@ -1,7 +1,8 @@
+import os
+
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
-import os
 
 
 def calculate_centroid(positions):

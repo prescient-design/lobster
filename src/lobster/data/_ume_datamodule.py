@@ -9,8 +9,8 @@ from omegaconf import DictConfig
 from torch import Generator, Tensor
 
 import lobster.datasets.s3_datasets
-from lobster.datasets.s3_datasets import UMEStreamingDataset
 from lobster.constants import Modality, Split
+from lobster.datasets.s3_datasets import UMEStreamingDataset
 
 logger = logging.getLogger(__name__)
 logging.getLogger("botocore.credentials").setLevel(logging.WARNING)

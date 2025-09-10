@@ -1,23 +1,21 @@
-import os
-import torch
-import cpdb
-from biopandas.mmcif import PandasMmcif
-from typing import Any
-import numpy as np
-import boto3
-from lobster.model.latent_generator.utils import residue_constants
 import logging
+import os
+from typing import Any
+
+import boto3
+import numpy as np
+import torch
+from biopandas.mmcif import PandasMmcif
+from rdkit import Chem
+
+from lobster.model.latent_generator.utils import residue_constants
+
+try:
+    import cpdb
+except ImportError:
+    cpdb = None
 
 logger = logging.getLogger(__name__)
-
-# Try to import RDKit for .mol2 and .sdf support
-try:
-    from rdkit import Chem
-
-    RDKIT_AVAILABLE = True
-except ImportError:
-    RDKIT_AVAILABLE = False
-    print("RDKit not available. .mol2 and .sdf files will not be supported.")
 
 aa_3to1 = {
     "ALA": "A",
@@ -60,6 +58,10 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
             - 'mask': A tensor of shape (1, N) containing the mask for the coordinates.
 
     """
+    import lobster
+
+    lobster.ensure_package("cpdb", group="lg-gpu (or --extra lg-cpu)")
+
     if filepath.startswith("s3://"):
         # Parse S3 URI
         s3 = boto3.client("s3")
@@ -252,11 +254,6 @@ def load_ligand(filepath: str, add_batch_dim: bool = True, canonical_order: bool
 
     # Determine file format and parse accordingly
     if filepath.endswith(".mol2") or filepath.endswith(".sdf"):
-        if not RDKIT_AVAILABLE:
-            raise ImportError(
-                "RDKit is required for .mol2 and .sdf files. Install with: conda install -c conda-forge rdkit"
-            )
-
         # Load using RDKit
         if filepath.endswith(".sdf"):
             mol = Chem.SDMolSupplier(filepath)[0]  # Get first molecule

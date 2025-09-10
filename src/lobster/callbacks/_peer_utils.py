@@ -6,12 +6,12 @@ the main PEEREvaluationCallback class.
 
 import logging
 
+import lightning as L
 import numpy as np
 import torch
 from torch import Tensor
-import lightning as L
 
-from lobster.constants import PEERTask, PEER_TASKS, PEER_TASK_METRICS
+from lobster.constants import PEER_TASK_METRICS, PEER_TASKS, PEERTask
 
 logger = logging.getLogger(__name__)
 

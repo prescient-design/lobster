@@ -1,12 +1,12 @@
-# ruff: noqa: F722
 import torch
-from lobster.model.latent_generator.structure_encoder import BaseEncoder
-from lobster.model.latent_generator.utils import apply_random_se3_batched
+from torch import Tensor
+
 from lobster.model.latent_generator.models.vit._vit_utils import (
     PLMUViTEncoder,
     expand,
 )
-from torchtyping import TensorType
+from ._encoder import BaseEncoder
+from lobster.model.latent_generator.utils import apply_random_se3_batched
 
 
 class PLMEncoder(BaseEncoder):
@@ -69,10 +69,10 @@ class PLMEncoder(BaseEncoder):
 
     def forward(
         self,
-        plm_embeddings: TensorType["b n a x", float],
-        seq_mask: TensorType["b n", float],
-        residue_index: TensorType["b n", int] | None = None,
-        coords: TensorType["b n 3", float] | None = None,
+        plm_embeddings: Tensor,
+        seq_mask: Tensor,
+        residue_index: Tensor | None = None,
+        coords: Tensor | None = None,
         return_embeddings: bool = False,
         **kwargs,
     ):

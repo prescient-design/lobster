@@ -1,10 +1,18 @@
+import logging
 import os
 import pathlib
 from collections.abc import Callable
-import torch
-from torch_geometric.data import Dataset
-from loguru import logger
+
 import numpy as np
+import torch
+
+try:
+    from torch_geometric.transforms import Dataset
+
+except ImportError:
+    Dataset = None
+
+logger = logging.getLogger(__name__)
 
 
 class LigandDataset(Dataset):
@@ -21,6 +29,10 @@ class LigandDataset(Dataset):
         min_len: int = 1,
         testing: bool = False,
     ):
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+
         self.root = pathlib.Path(root)
         self.transform_protein = transform_protein
         self.transform_ligand = transform_ligand

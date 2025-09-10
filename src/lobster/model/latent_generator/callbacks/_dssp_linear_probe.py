@@ -1,11 +1,15 @@
-import torch
+import glob
+import logging
+
 import lightning
+import numpy as np
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from loguru import logger
-import numpy as np
-import glob
+
 from lobster.model.latent_generator.datasets import StructureBackboneTransform
+
+logger = logging.getLogger(__name__)
 
 # DSSP secondary structure states
 DSSP_STATES = ["a", "b", "c"]  # Helix, Sheet, Coil

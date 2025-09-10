@@ -1,20 +1,22 @@
 from ._architecture_analyzer import GPUType, ModelType
-from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, CALMSpecies, CALMTask, MAX_SEQUENCE_LENGTH
+from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, MAX_SEQUENCE_LENGTH, CALMSpecies, CALMTask
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
-from ._rdkit_descriptor_distributions import RDKIT_DESCRIPTOR_DISTRIBUTIONS
+from ._hf import HF_UME_MODEL_DIRPATH, HF_UME_REPO_ID
 from ._modality import Modality, ModalityType
 from ._moleculeace_tasks import MOLECULEACE_TASKS
 from ._peer_tasks import (
+    PEER_STRUCTURE_TASKS,
     PEER_TASK_CATEGORIES,
     PEER_TASK_COLUMNS,
+    PEER_TASK_METRICS,
     PEER_TASK_SPLITS,
     PEER_TASKS,
-    PEER_TASK_METRICS,
-    PEER_STRUCTURE_TASKS,
     PEERTask,
     PEERTaskCategory,
 )
 from ._pooling import PoolingType
+from ._rdkit_descriptor_distributions import RDKIT_DESCRIPTOR_DISTRIBUTIONS
+from ._s3 import S3_BUCKET
 from ._scheduler_type import SchedulerType
 from ._split import Split
 from ._ume_models import (
@@ -25,8 +27,6 @@ from ._ume_models import (
     UMEModelVersion,
 )
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
-from ._hf import HF_UME_REPO_ID, HF_UME_MODEL_DIRPATH
-from ._s3 import S3_BUCKET
 
 __all__ = [
     "HF_UME_REPO_ID",

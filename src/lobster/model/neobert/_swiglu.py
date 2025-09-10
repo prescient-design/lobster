@@ -1,6 +1,5 @@
-from torch import Tensor
+from torch import Tensor, nn
 from torch.nn import functional as F
-from torch import nn
 
 
 class SwiGLU(nn.Module):

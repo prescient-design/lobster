@@ -1,28 +1,30 @@
 from __future__ import annotations
 
 import functools
-import os
+import logging
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, TypeVar
 
 import torch
 from lightning import LightningDataModule
-from loguru import logger
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
-from torch_geometric.transforms import Compose
 
 from lobster.model.latent_generator.datamodules._utils import collate_fn_backbone
-from lobster.model.latent_generator.datasets import StructureDataset, LigandDataset, RandomizedMinorityUpsampler
+from lobster.model.latent_generator.datasets import LigandDataset, RandomizedMinorityUpsampler, StructureDataset
 from lobster.model.latent_generator.datasets._structure_dataset_iterable import ShardedStructureDataset
 from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform, StructureLigandTransform
 
-# from line_profiler import profile
+
+try:
+    from torch_geometric.transforms import Compose
+except ImportError:
+    Compose = None
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-# set HYDRA_FULL_ERROR=1 to see the full error message
-os.environ["HYDRA_FULL_ERROR"] = "1"
 
 
 class StructureLightningDataModule(LightningDataModule):
@@ -114,6 +116,10 @@ class StructureLightningDataModule(LightningDataModule):
 
         """
         super().__init__()
+
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         if lengths is None:
             lengths = [0.4, 0.4, 0.2]

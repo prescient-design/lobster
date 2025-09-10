@@ -1,4 +1,5 @@
 import torch
+
 from lobster.model.latent_generator.quantizer._slq import SimpleLinearQuantizer
 
 

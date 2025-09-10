@@ -1,9 +1,10 @@
-import torch
-import pytest
 import lightning as L
-from lobster.model.ume2 import UMESequenceEncoderLightningModule, AuxiliaryTask, AuxiliaryRegressionTaskHead
-from lobster.constants import Modality
+import pytest
+import torch
 import torch.nn as nn
+
+from lobster.constants import Modality
+from lobster.model.ume2 import AuxiliaryRegressionTaskHead, AuxiliaryTask, UMESequenceEncoderLightningModule
 
 
 class TestSequenceEncoderLightningModule:

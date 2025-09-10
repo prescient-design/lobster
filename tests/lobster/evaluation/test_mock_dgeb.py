@@ -7,7 +7,7 @@ from pathlib import Path
 # Add the src directory to the path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from lobster.evaluation.dgeb_mock_runner import run_mock_evaluation, generate_mock_report
+from lobster.evaluation.dgeb_mock_runner import generate_mock_report, run_mock_evaluation
 
 
 def test_mock_evaluation(tmp_path):

@@ -2,10 +2,10 @@
 
 import logging
 
+import lightning as L
 import numpy as np
 import pytest
 import torch
-import lightning as L
 
 from lobster.evaluation.esm_dgeb_adapter import ESMAdapterDGEB
 

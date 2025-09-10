@@ -12,7 +12,7 @@ import numpy
 from lobster.model.latent_generator.utils.mini3di._utils import relu
 
 if typing.TYPE_CHECKING:
-    from ._utils import ArrayNxM, ArrayN
+    from ._utils import ArrayN, ArrayNxM
 
 
 class Layer(abc.ABC):

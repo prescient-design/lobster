@@ -15,9 +15,9 @@ from ._peft_lightning_module import LobsterPEFT
 from ._ppi_clf import PPIClassifier
 from ._seq2seq import PrescientPT5
 from ._ume import UME
+from .latent_generator import cmdline
 from .lm_base import LMBaseContactPredictionHead, LMBaseForMaskedLM
 from .modern_bert import FlexBERT
 from .neobert import NeoBERTLightningModule, NeoBERTModule
-from .ume2 import UMESequenceEncoderModule, UMESequenceEncoderLightningModule
-from .latent_generator import cmdline
+from .ume2 import UMESequenceEncoderLightningModule, UMESequenceEncoderModule
 # from ._utils import model_typer

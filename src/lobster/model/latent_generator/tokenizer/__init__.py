@@ -1,16 +1,16 @@
+from ._loss_factory import LossFactory
 from ._losses import (
-    TokenizerLoss,
-    L2Loss,
-    PairWiseL2Loss,
-    CCELoss,
     C6DLoss,
-    SequenceCCELoss,
+    CCELoss,
+    ElementCCELoss,
+    L2Loss,
     LigandL2Loss,
     LigandPairWiseL2Loss,
-    ScalarRegressionLoss,
+    PairWiseL2Loss,
     RgLoss,
     SasaLoss,
-    ElementCCELoss,
+    ScalarRegressionLoss,
+    SequenceCCELoss,
+    TokenizerLoss,
 )
-from ._loss_factory import LossFactory
 from ._tokenizer_multi import TokenizerMulti

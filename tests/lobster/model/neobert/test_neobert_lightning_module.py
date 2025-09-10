@@ -1,8 +1,9 @@
-import torch
-import pytest
 import lightning as L
-from lobster.model.neobert.neobert_lightning_module import NeoBERTLightningModule
+import pytest
+import torch
+
 from lobster.constants import Modality
+from lobster.model.neobert.neobert_lightning_module import NeoBERTLightningModule
 
 
 class TestNeoBERTLightningModule:

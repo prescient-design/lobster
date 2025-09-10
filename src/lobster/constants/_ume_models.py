@@ -1,5 +1,5 @@
-from typing import Literal
 from enum import StrEnum
+from typing import Literal
 
 # TODO: currently, these will work for internal users
 # External users should use HuggingFace to download the models

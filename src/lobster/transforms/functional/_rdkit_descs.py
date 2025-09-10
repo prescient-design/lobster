@@ -6,6 +6,7 @@ The normalization logic is taken from the `descriptastorus` [1]_ package.
 """
 
 import logging
+
 import numpy as np
 import scipy.stats
 import torch
