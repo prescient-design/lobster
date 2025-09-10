@@ -23,5 +23,4 @@ export HYDRA_FULL_ERROR=1
 
 umask g+w
 
-# Update with your checkpoint path and wandb id
-lobster_eval model.ckpt_path=??? wandb_id=???
+lobster_eval 

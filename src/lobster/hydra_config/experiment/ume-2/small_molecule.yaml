@@ -1,0 +1,66 @@
+# @package _global_
+
+defaults:
+  - ume-2/base
+
+rdkit_descriptors:
+  - MolWt
+  - NumHAcceptors
+  - NumHDonors
+  - TPSA
+  - SlogP_VSA6
+  - BertzCT
+
+data:
+  datasets:
+    - ZINC
+  batch_size: 64
+  dataset_kwargs:
+    ZINC:
+      extra_transform_fns:
+        rdkit:
+          _target_: lobster.transforms.SmilesToRDKitDescriptorsTransform
+          normalize: true
+          invert: true
+          descriptor_list: ${rdkit_descriptors}
+
+model:
+  auxiliary_tasks:
+    - _target_: lobster.model.ume2.AuxiliaryTask
+      name: rdkit
+      task_type: regression
+      output_dim: 6
+      hidden_size: null
+      loss_weight: 0.05
+      pooling: mean
+      num_layers: 2
+      dropout: 0.1
+  lr: 0.00002 #1e-5
+  mask_probability: 0.15
+  scheduler_kwargs:
+    num_warmup_steps: 0
+  ckpt_path: null
+  encoder_kwargs:
+    model_ckpt: s3://prescient-lobster/ume/runs/2025-09-03T15-31-34/epoch=2-step=89000-val_loss=0.8960.ckpt
+    cache_dir: /data2/ume/checkpoints
+    model_size: small
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S} 
+
+
+trainer:
+  accumulate_grad_batches: 4
+
+
+logger:
+  name: UME-2-Aux-from-pretrained-${model.encoder_kwargs.model_size}_${data.datasets}_sweep_${paths.timestamp}
+
+# callbacks:
+  # batch_size_finder:
+  #   _target_: lightning.pytorch.callbacks.BatchSizeFinder
+  #   mode: power
+  #   steps_per_trial: 3
+  #   init_val: 64
+  #   max_trials: 25
+  #   batch_arg_name: batch_size

@@ -1,3 +1,4 @@
+import os
 import pickle
 from urllib.parse import urlparse
 
@@ -28,10 +29,13 @@ def upload_to_s3(s3_uri: str, local_filepath: str) -> None:
         s3_client.upload_fileobj(data, bucket, key)
 
 
-def download_from_s3(s3_uri: str, local_filepath: str) -> None:
+def download_from_s3(s3_uri: str, local_filepath: str, force_redownload: bool = False) -> None:
     """Download a file from S3."""
     bucket, key = get_s3_bucket_and_key(s3_uri)
     s3_client = boto3.client("s3")
+
+    if not force_redownload and os.path.exists(local_filepath):
+        return
 
     with open(local_filepath, "wb") as data:
         s3_client.download_fileobj(bucket, key, data)

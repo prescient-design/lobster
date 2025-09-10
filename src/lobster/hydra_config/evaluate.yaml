@@ -8,13 +8,22 @@ datamodule:
   _target_: lobster.data.UMELightningDataModule
   datasets: ["Calm", "AMPLIFY", "ZINC", "M320M", "PeptideAtlas"]
 
+# model:
+#   _target_: lobster.model.UMESequenceEncoderLightningModule
+#   ckpt_path: s3://prescient-lobster/ume/runs/2025-09-09T20-33-40/epoch=0-step=18500-val_loss=0.0915.ckpt
+
+# ckpt_path: ${model.ckpt_path}
+# model_alias: UME-smiles-aux-18k
+# wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/kjy0ef1g/
+
+
 model:
   _target_: lobster.model.NeoBERTLightningModule
-  ckpt_path: ???
+  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-03T16-42-29/epoch=1-step=58500-val_loss=0.8522.ckpt
 
 ckpt_path: ${model.ckpt_path}
-model_alias: UME
-wandb_id: 
+model_alias: UME-neo-large-58k
+wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/7i13xieb/
 
 callbacks:
   - _target_: lobster.callbacks.PerturbationScoreCallback
@@ -37,7 +46,7 @@ callbacks:
     batch_size: 16
 
   - _target_: lobster.callbacks.CalmLinearProbeCallback
-    max_length: ${datamodule.tokenizer_max_length}
+    max_length: 512
     batch_size: 8
     classification_threshold: 0.5
     # Optional overrides (uncomment to customize)
