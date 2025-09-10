@@ -9,13 +9,21 @@ Neural network modules. Many of these are adapted from open source modules.
 
 from einops import rearrange
 from einops.layers.torch import Rearrange
-from rotary_embedding_torch import RotaryEmbedding
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from loguru import logger
+import logging
 from lobster.model.latent_generator.utils.residue_constants import ELEMENT_VOCAB
 # os.environ["HYDRA_FULL_ERROR"] = "1"
+
+try:
+    from rotary_embedding_torch import RotaryEmbedding
+
+    ROTARY_EMBEDDING_AVAILABLE = True
+except ImportError:
+    ROTARY_EMBEDDING_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 def expand(x, tgt=None, dim=1):
@@ -378,6 +386,11 @@ class TimeCondTransformer(nn.Module):
         use_sequential_to_out=False,
     ):
         super().__init__()
+
+        if not ROTARY_EMBEDDING_AVAILABLE:
+            raise ImportError(
+                "RotaryEmbedding not available. Please install rotary_embedding_torch to use rotary embeddings."
+            )
 
         self.rope = None
         self.pos_emb_type = position_embedding_type

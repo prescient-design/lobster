@@ -1,8 +1,6 @@
-# ruff: noqa: F722
 import torch
+from torch import Tensor
 from lobster.model.latent_generator.structure_decoder import BaseDecoder
-
-from torchtyping import TensorType
 
 
 class C6DDecoder(BaseDecoder):
@@ -21,7 +19,7 @@ class C6DDecoder(BaseDecoder):
         self.proj_symm = torch.nn.Linear(self.struc_token_codebook_size, 37 * 2)
         self.proj_asymm = torch.nn.Linear(self.struc_token_codebook_size, 37 + 19)
 
-    def preprocess(self, coords: TensorType["b n a x", float], mask: TensorType["b n", float], **kwargs):
+    def preprocess(self, coords: Tensor, mask: Tensor, **kwargs):
         return coords, mask
 
     def get_output_dim(self):
@@ -29,10 +27,10 @@ class C6DDecoder(BaseDecoder):
 
     def forward(
         self,
-        x_quant: TensorType["b n a x", float],
-        seq_mask: TensorType["b n", float],
-        residue_index: TensorType["b n", int] | None = None,
-        x_emb: TensorType["b n a x", float] = None,
+        x_quant: Tensor,
+        seq_mask: Tensor,
+        residue_index: Tensor | None = None,
+        x_emb: Tensor = None,
         cls_token: bool = False,
         **kwargs,
     ):

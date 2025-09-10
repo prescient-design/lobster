@@ -2,10 +2,9 @@
 
 import numpy as np
 import torch
-from torch_geometric.transforms import BaseTransform
 from rdkit import Chem
 
-from loguru import logger
+import logging
 from lobster.model.latent_generator.utils import residue_constants
 from lobster.model.latent_generator.utils import apply_random_se3_batched
 from lobster.model.latent_generator.utils.mini3di import Encoder, calculate_cb
@@ -18,8 +17,16 @@ try:
 
     ESM_AVAILABLE = True
 except ImportError:
-    logger.warning("ESM not available. ESMEmbeddingTransform will not work.")
     ESM_AVAILABLE = False
+
+try:
+    from torch_geometric.transforms import BaseTransform
+
+    TORCH_GEOMETRIC_AVAILABLE = True
+except ImportError:
+    TORCH_GEOMETRIC_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class ESMEmbeddingTransform(BaseTransform):
@@ -37,6 +44,11 @@ class ESMEmbeddingTransform(BaseTransform):
 
         if not ESM_AVAILABLE:
             raise ImportError("ESM is not available. Please install esm to use ESMEmbeddingTransform.")
+
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
 
         # Set device
         if device == "auto":
@@ -194,6 +206,11 @@ class ESMEmbeddingTransform(BaseTransform):
 
 class StructureBackboneTransform(BaseTransform):
     def __init__(self, max_length=512, **kwargs):
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         logger.info("StructureBackboneTransform")
         self.max_length = max_length
         self.unk_idx = residue_constants.restype_order_with_x["X"]
@@ -263,6 +280,11 @@ class StructureBackboneTransform(BaseTransform):
 
 class StructureTemplateTransform(BaseTransform):
     def __init__(self, template_percentage: float = 0.5, mask_percentage: float = 0.3, **kwargs):
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         super().__init__(**kwargs)
         self.template_percentage = template_percentage
         self.mask_percentage = mask_percentage
@@ -307,6 +329,11 @@ class StructureTemplateTransform(BaseTransform):
 
 class StructureLigandTransform(BaseTransform):
     def __init__(self, max_length=512, rand_permute_ligand=False, **kwargs):
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         logger.info("StructureLigandTransform")
         self.max_length = max_length
         self.rand_permute_ligand = rand_permute_ligand
@@ -339,6 +366,11 @@ class StructureLigandTransform(BaseTransform):
 class Structure3diTransform(BaseTransform):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         self.encoder = Encoder()
 
     def __call__(self, x: dict) -> dict:
@@ -358,6 +390,11 @@ class Structure3diTransform(BaseTransform):
 class StructureC6DTransform(BaseTransform):
     def __init__(self, dist_cutoff: float = 20.0, **kwargs):
         super().__init__(**kwargs)
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         self.dist_cutoff = dist_cutoff
 
     def __call__(self, x: dict) -> dict:
@@ -381,6 +418,11 @@ class BinderTargetTransform(BaseTransform):
 
         """
         super().__init__(**kwargs)
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         # logger.info("BinderTargetTransform")
         self.translation_scale = translation_scale
 
@@ -487,6 +529,11 @@ class BinderTargetTransform(BaseTransform):
 
 class StructureResidueTransform(BaseTransform):
     def __init__(self, atom14=True, crop=None):
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         self.atom14 = atom14
         self.crop = crop
         logger.info(f"StructureResidueTransform: atom14={atom14}, crop={crop}")
@@ -590,6 +637,11 @@ class RandomChainTransform(BaseTransform):
     """Transform that picks a random chain and filters data to only include that chain."""
 
     def __init__(self, **kwargs):
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         """Initialize the RandomChainTransform.
 
         Args:

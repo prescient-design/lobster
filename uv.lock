@@ -1482,6 +1482,7 @@ dependencies = [
     { name = "pooch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pyarrow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "python-dotenv", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "rdkit", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "s3fs", extra = ["boto3"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "scikit-learn", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -1526,7 +1527,6 @@ lg-cpu = [
     { name = "torch-scatter", version = "2.1.2+pt27cpu", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cpu.html" }, marker = "(sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "torch-spline-conv", version = "1.2.2", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cpu.html" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "torch-spline-conv", version = "1.2.2+pt27cpu", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cpu.html" }, marker = "(sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "torchtyping", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 lg-gpu = [
     { name = "biopandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1549,7 +1549,6 @@ lg-gpu = [
     { name = "torch-geometric", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch-scatter", version = "2.1.2+pt27cu128", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cu128.html" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch-spline-conv", version = "1.2.2+pt27cu128", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cu128.html" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "torchtyping", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 mcp = [
     { name = "fastmcp", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -1558,7 +1557,6 @@ mcp = [
     { name = "python-levenshtein", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 mgm = [
-    { name = "rdkit", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "selfies", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 trl = [
@@ -1635,7 +1633,7 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
     { name = "python-dotenv" },
     { name = "python-levenshtein", marker = "extra == 'mcp'", specifier = ">=0.20.0" },
-    { name = "rdkit", marker = "extra == 'mgm'", specifier = ">=2024.9.4" },
+    { name = "rdkit", specifier = ">=2024.9.4" },
     { name = "rotary-embedding-torch", marker = "extra == 'flash'" },
     { name = "rotary-embedding-torch", marker = "extra == 'lg-cpu'" },
     { name = "rotary-embedding-torch", marker = "extra == 'lg-gpu'" },
@@ -1658,8 +1656,6 @@ requires-dist = [
     { name = "torch-spline-conv", marker = "extra == 'lg-gpu'", index = "https://data.pyg.org/whl/torch-2.7.0+cu128.html", conflict = { package = "lbster", extra = "lg-gpu" } },
     { name = "torcheval" },
     { name = "torchmetrics" },
-    { name = "torchtyping", marker = "extra == 'lg-cpu'" },
-    { name = "torchtyping", marker = "extra == 'lg-gpu'" },
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers", specifier = ">=4.24.0" },
@@ -4084,19 +4080,6 @@ wheels = [
 ]
 
 [[package]]
-name = "torchtyping"
-version = "0.1.5"
-source = { registry = "https://pypi.python.org/simple" }
-dependencies = [
-    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "typeguard", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0c/b2/9099ac2d76ebe538d527ef73844bcfa1296a5c75bd9f2d489e862d47bb42/torchtyping-0.1.5.tar.gz", hash = "sha256:fb51e1792536223e2497b1e106ed0cbe681f7324044599cb718d03be3f2b3851", size = 23067, upload-time = "2024-08-01T02:44:53.579Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/77/33/3915d3a985bf3914aadfc4e24438a8499c0cd91af0c6d251ad5b773bc310/torchtyping-0.1.5-py3-none-any.whl", hash = "sha256:429d76e16b08a2409226320565d557d4ba3d0d6f544db3e5dc4cf690ffa2a3bd", size = 17992, upload-time = "2024-08-01T02:44:51.857Z" },
-]
-
-[[package]]
 name = "torchvision"
 version = "0.23.0"
 source = { registry = "https://pypi.python.org/simple" }
@@ -4198,15 +4181,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/45/18/c18e27f6156cf961791ca7abcd4ee5fc8c5ae0fbb936c59827852ee118f5/trl-0.23.0.tar.gz", hash = "sha256:abfe0ecfa6b7e46022552b9dd0cc288bf2c4ef19364ce7765d10218b62b618f1", size = 515765, upload-time = "2025-09-10T04:16:42.377Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/81/035cace9b8853df794db0499299273abef30de889602587efa2a95c7dccb/trl-0.23.0-py3-none-any.whl", hash = "sha256:bb8f35a6a1531bad2d52032add29380413bd9b032d133ab6df16d2191f14f9e6", size = 564734, upload-time = "2025-09-10T04:16:40.34Z" },
-]
-
-[[package]]
-name = "typeguard"
-version = "2.13.3"
-source = { registry = "https://pypi.python.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3a/38/c61bfcf62a7b572b5e9363a802ff92559cb427ee963048e1442e3aef7490/typeguard-2.13.3.tar.gz", hash = "sha256:00edaa8da3a133674796cf5ea87d9f4b4c367d77476e185e80251cc13dfbb8c4", size = 40604, upload-time = "2021-12-10T21:09:39.158Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/bb/d43e5c75054e53efce310e79d63df0ac3f25e34c926be5dffb7d283fb2a8/typeguard-2.13.3-py3-none-any.whl", hash = "sha256:5e3e3be01e887e7eafae5af63d1f36c849aaa94e3a0112097312aabfa16284f1", size = 17605, upload-time = "2021-12-10T21:09:37.844Z" },
 ]
 
 [[package]]

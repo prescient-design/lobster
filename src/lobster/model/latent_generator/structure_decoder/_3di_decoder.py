@@ -1,8 +1,6 @@
-# ruff: noqa: F722
 import torch
+from torch import Tensor
 from lobster.model.latent_generator.structure_decoder import BaseDecoder
-
-from torchtyping import TensorType
 from lobster.model.latent_generator.models.vit._vit_utils import expand
 
 
@@ -20,7 +18,7 @@ class FoldSeek3diDecoder(BaseDecoder):
         self.layer_norm = torch.nn.LayerNorm(self.struc_token_codebook_size)
         self.linear = torch.nn.Linear(self.struc_token_codebook_size, out_token_codebook_size, bias=False)
 
-    def preprocess(self, coords: TensorType["b n a x", float], mask: TensorType["b n", float], **kwargs):
+    def preprocess(self, coords: Tensor, mask: Tensor, **kwargs):
         return coords, mask
 
     def get_output_dim(self):
@@ -28,10 +26,10 @@ class FoldSeek3diDecoder(BaseDecoder):
 
     def forward(
         self,
-        x_quant: TensorType["b n a x", float],
-        seq_mask: TensorType["b n", float],
-        residue_index: TensorType["b n", int] | None = None,
-        x_emb: TensorType["b n a x", float] = None,
+        x_quant: Tensor,
+        seq_mask: Tensor,
+        residue_index: Tensor | None = None,
+        x_emb: Tensor = None,
         cls_token: bool = False,
         **kwargs,
     ):

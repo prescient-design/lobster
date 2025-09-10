@@ -2,9 +2,17 @@ import os
 import pathlib
 from collections.abc import Callable
 import torch
-from torch_geometric.data import Dataset
-from loguru import logger
 import numpy as np
+import logging
+
+try:
+    from torch_geometric.transforms import Dataset
+
+    TORCH_GEOMETRIC_AVAILABLE = True
+except ImportError:
+    TORCH_GEOMETRIC_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class LigandDataset(Dataset):
@@ -21,6 +29,11 @@ class LigandDataset(Dataset):
         min_len: int = 1,
         testing: bool = False,
     ):
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
+
         self.root = pathlib.Path(root)
         self.transform_protein = transform_protein
         self.transform_ligand = transform_ligand

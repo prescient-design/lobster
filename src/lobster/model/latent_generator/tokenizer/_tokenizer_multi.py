@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 import lightning.pytorch as pl
 import torch
-from loguru import logger
+import logging
 from lobster.model.latent_generator.structure_encoder import BaseEncoder
 
 from lobster.model.latent_generator.structure_decoder import DecoderFactory
@@ -16,6 +16,8 @@ import omegaconf
 import math
 from einops import rearrange
 from lobster.model.latent_generator.utils.residue_constants import restype_order_with_x
+
+logger = logging.getLogger(__name__)
 
 
 class TokenizerMulti(pl.LightningModule):

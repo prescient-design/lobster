@@ -1,5 +1,7 @@
 import torch
-from loguru import logger as py_logger
+import logging
+
+py_logger = logging.getLogger(__name__)
 
 num2aa = [
     "ALA",

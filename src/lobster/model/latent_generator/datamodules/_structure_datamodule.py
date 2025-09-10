@@ -8,10 +8,9 @@ from typing import Any, TypeVar
 
 import torch
 from lightning import LightningDataModule
-from loguru import logger
+import logging
 from torch import Generator
 from torch.utils.data import DataLoader, Sampler
-from torch_geometric.transforms import Compose
 
 from lobster.model.latent_generator.datamodules._utils import collate_fn_backbone
 from lobster.model.latent_generator.datasets import StructureDataset, LigandDataset, RandomizedMinorityUpsampler
@@ -19,6 +18,16 @@ from lobster.model.latent_generator.datasets._structure_dataset_iterable import 
 from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform, StructureLigandTransform
 
 # from line_profiler import profile
+
+try:
+    from torch_geometric.transforms import Compose
+
+    TORCH_GEOMETRIC_AVAILABLE = True
+except ImportError:
+    Compose = None
+    TORCH_GEOMETRIC_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 # set HYDRA_FULL_ERROR=1 to see the full error message
@@ -114,6 +123,11 @@ class StructureLightningDataModule(LightningDataModule):
 
         """
         super().__init__()
+
+        if not TORCH_GEOMETRIC_AVAILABLE:
+            raise ImportError(
+                "TorchGeometric is not available. Please install `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`"
+            )
 
         if lengths is None:
             lengths = [0.4, 0.4, 0.2]
