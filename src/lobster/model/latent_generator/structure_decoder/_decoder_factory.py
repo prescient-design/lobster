@@ -1,5 +1,3 @@
-from typing import Dict
-
 import torch
 from torch import nn
 
@@ -13,7 +11,7 @@ class DecoderFactory(nn.Module):
         self.decoder2loss_dict = decoder2loss_dict
 
     @classmethod
-    def from_mapping(cls, decoder_mapping: Dict[str, BaseDecoder], **kwargs):
+    def from_mapping(cls, decoder_mapping: dict[str, BaseDecoder], **kwargs):
         decoders = {decoder_name: decoder for decoder_name, decoder in decoder_mapping.items()}
         return cls(decoders, **kwargs)
 
@@ -23,5 +21,13 @@ class DecoderFactory(nn.Module):
     def get_loss(self, decoder_name):
         return self.decoder2loss_dict[decoder_name]
 
-    def forward(self, decoder_name: str, x_noise: torch.Tensor, x_quant: torch.Tensor, t: torch.Tensor, mask: torch.Tensor, **kwargs):
+    def forward(
+        self,
+        decoder_name: str,
+        x_noise: torch.Tensor,
+        x_quant: torch.Tensor,
+        t: torch.Tensor,
+        mask: torch.Tensor,
+        **kwargs,
+    ):
         return self.decoders[decoder_name](x_noise, x_quant, t, mask, **kwargs)

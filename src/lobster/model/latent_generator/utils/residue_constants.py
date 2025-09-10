@@ -18,14 +18,14 @@
 import collections
 import functools
 from importlib import resources
-from typing import List, Mapping, Tuple
+from collections.abc import Mapping
 
 import numpy as np
 import optree
 import torch
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 # Distance from one CA to next CA [trans configuration: omega = 180].
@@ -396,14 +396,12 @@ BondAngle = collections.namedtuple(
 )
 
 
-@functools.lru_cache(maxsize=None)
-def load_stereo_chemical_props() -> (
-    Tuple[
-        Mapping[str, List[Bond]],
-        Mapping[str, List[Bond]],
-        Mapping[str, List[BondAngle]],
-    ]
-):
+@functools.cache
+def load_stereo_chemical_props() -> tuple[
+    Mapping[str, list[Bond]],
+    Mapping[str, list[Bond]],
+    Mapping[str, list[BondAngle]],
+]:
     """Load stereo_chemical_props.txt into a nice structure.
 
     Load literature values for bond lengths and bond angles and translate
@@ -415,7 +413,7 @@ def load_stereo_chemical_props() -> (
       residue_virtual_bonds: Dict that maps resname -> list of Bond tuples
       residue_bond_angles: Dict that maps resname -> list of BondAngle tuples
     """
-    with open(resources.files("lmdd_denovo.extern.openfold.resources") / "stereo_chemical_props.txt", "r") as f:
+    with open(resources.files("lmdd_denovo.extern.openfold.resources") / "stereo_chemical_props.txt") as f:
         stereo_chemical_props = f.read()
 
     lines_iter = iter(stereo_chemical_props.splitlines())
@@ -670,26 +668,27 @@ restypes_with_x = restypes + ["X"] + ["."] + ["-"]
 restype_with_x_num = len(restypes_with_x)
 restype_order_with_x = {restype: i for i, restype in enumerate(restypes_with_x)}
 
-#invert restype_order_with_x
+# invert restype_order_with_x
 restype_order_with_x_inv = {v: k for k, v in restype_order_with_x.items()}
 
 
 # SABDAB chain IDs. Everything >1 is antigen
-AB_CHAIN_DICT = {'H': 0, 'L': 1, 'A': 2, 'B': 3, 'C': 4, 'D': 5, 'E': 6, 'F': 7, 'G': 8, 'I': 9}
+AB_CHAIN_DICT = {"H": 0, "L": 1, "A": 2, "B": 3, "C": 4, "D": 5, "E": 6, "F": 7, "G": 8, "I": 9}
 
 # Element vocabulary for ligand atom types (based on dataset analysis)
-ELEMENT_VOCAB = ['PAD', 'B', 'Bi', 'Br', 'C', 'Cl', 'F', 'H', 'I', 'N', 'O', 'P', 'S', 'Si']
+ELEMENT_VOCAB = ["PAD", "B", "Bi", "Br", "C", "Cl", "F", "H", "I", "N", "O", "P", "S", "Si"]
 ELEMENT_TO_IDX = {elem: idx for idx, elem in enumerate(ELEMENT_VOCAB)}
 
 # from funcbind
+
 
 # Chemical elements
 @dataclass
 class Element:
     symbol: str
     vdw_radius: float
-    color_ligand: Optional[Any]
-    color_ligand_sparse: Optional[Any]
+    color_ligand: Any | None
+    color_ligand_sparse: Any | None
 
 
 # The order defines the hashing. Atomic radii from
@@ -723,11 +722,11 @@ ELEMENTS = [
 ]
 
 ELEMENT_2_HASH_FUNCBIND = {e.symbol: i for i, e in enumerate(ELEMENTS)}
-#add padding
+# add padding
 ELEMENT_2_HASH_FUNCBIND["-"] = len(ELEMENT_2_HASH_FUNCBIND)
 HASH_2_ELEMENT_FUNCBIND = {v: k for k, v in ELEMENT_2_HASH_FUNCBIND.items()}
 MOLECULE_TYPES = ["peptide", "dna", "rna", "ligand"]
-#PEPTIDE_ALPHABET = "XACDEFGHIKLMNPQRSTVWYacgut"
+# PEPTIDE_ALPHABET = "XACDEFGHIKLMNPQRSTVWYacgut"
 PEPTIDE_ALPHABET = [
     "A",
     "R",
@@ -756,7 +755,7 @@ PEPTIDE_ALPHABET = [
     "c",
     "g",
     "u",
-    "t"
+    "t",
 ]
 
 # Table 10 of the AlphaFold 3 supplement
@@ -767,10 +766,15 @@ LIGAND_EXCLUSION_SET = set(
 )
 # Nucleic Acids
 NUCLEATIC_MAP_TO_1 = {
-    "A": "a", "C": "c", "G": "g", "U": "u",
-    "DA": "a", "DC": "c", "DG": "g", "DT": "t",
+    "A": "a",
+    "C": "c",
+    "G": "g",
+    "U": "u",
+    "DA": "a",
+    "DC": "c",
+    "DG": "g",
+    "DT": "t",
 }
-
 
 
 def sequence_to_onehot(sequence: str, mapping: Mapping[str, int], map_unknown_to_x: bool = False) -> np.ndarray:
@@ -796,8 +800,7 @@ def sequence_to_onehot(sequence: str, mapping: Mapping[str, int], map_unknown_to
 
     if sorted(set(mapping.values())) != list(range(num_entries)):
         raise ValueError(
-            "The mapping must have values from 0 to num_unique_aas-1 "
-            "without any gaps. Got: %s" % sorted(mapping.values())
+            f"The mapping must have values from 0 to num_unique_aas-1 without any gaps. Got: {sorted(mapping.values())}"
         )
 
     one_hot_arr = np.zeros((len(sequence), num_entries), dtype=np.int32)
@@ -1330,7 +1333,7 @@ def _make_restype_rigidgroup_base_atom_wide_idx():
 
 
 # ---- precompute data structures used for struct violation loss
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def get_bond_lengths_data():
     """Create data structures used in bond length violation calculation.
 
@@ -1393,7 +1396,7 @@ def get_bond_lengths_data():
     return bond_lengths_i1, bond_lengths_i2, bond_lengths_target, bond_lengths_std, bond_lengths_mask
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def get_between_res_bond_lengths_data():
     """Create data structures used in between-residue bond length violation calculation.
 
@@ -1415,7 +1418,7 @@ def get_between_res_bond_lengths_data():
     return interres_bond_atom1_idx, interres_bond_atom2_idx, bond_lengths_target, bond_lengths_std
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def get_clash_exclusion_indices():
     """Return indices of atoms to exclude in clash loss."""
     bb_atoms = ["N", "CA", "C", "O", "CB", "CD"]
@@ -1428,7 +1431,7 @@ def get_clash_exclusion_indices():
     return idxs1, idxs2
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def get_van_der_waals_data():
     atom_types_width = torch.from_numpy(np.array([van_der_waals_radius[atom[0]] for atom in atom_types]))
     # we treat sulfur as a special case. exclude close sulfur-sulfur contacts from clash loss.
@@ -1440,7 +1443,7 @@ def get_van_der_waals_data():
     return atom_types_width, atom_types_is_sulfer
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def get_bond_angles_data():
     """Create data structures used in bond angle violation calculation.
 
@@ -1500,7 +1503,7 @@ def get_bond_angles_data():
     return bond_angles_i1, bond_angles_i2, bond_angles_i3, bond_angles_target, bond_angles_std, bond_angles_mask
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def get_between_res_bond_angles_data():
     """Create data structures used in between-residue bond angle violation calculation.
 

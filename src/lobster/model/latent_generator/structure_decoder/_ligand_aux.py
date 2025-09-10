@@ -1,5 +1,5 @@
+# ruff: noqa: F722
 import torch
-from typing import Optional
 from lobster.model.latent_generator.structure_decoder import BaseDecoder
 from torchtyping import TensorType
 from lobster.model.latent_generator.models.vit._vit_utils import expand
@@ -28,10 +28,10 @@ class RgDecoder(BaseDecoder):
         self,
         x_quant: TensorType["b n a x", float],
         seq_mask: TensorType["b n", float],
-        residue_index: Optional[TensorType["b n", int]] = None, 
+        residue_index: TensorType["b n", int] | None = None,
         x_emb: TensorType["b n a x", float] = None,
         cls_token: bool = False,
-        **kwargs
+        **kwargs,
     ):
         if isinstance(x_quant, dict):
             ligand_present = True
@@ -53,10 +53,10 @@ class RgDecoder(BaseDecoder):
                     seq_mask = seq_mask["ligand_mask"]
                 else:
                     raise ValueError(f"Unknown seq_mask keys: {list(seq_mask.keys())}")
-                    
-            B, L = seq_mask.shape 
-            x_emb = x_emb[:,:L,:]
-            
+
+            B, L = seq_mask.shape
+            x_emb = x_emb[:, :L, :]
+
         # Create a copy of the mask to avoid in-place operations
         seq_mask = seq_mask.clone()
         seq_mask[torch.isnan(seq_mask)] = 0
@@ -68,7 +68,7 @@ class RgDecoder(BaseDecoder):
         # Global sum pooling for Rg (single value per structure)
         emb_masked = emb * expand(seq_mask, emb)  # Apply mask
         pooled = emb_masked.sum(dim=1)  # (B, 1) - sum instead of average
-        
+
         return pooled.squeeze(-1)  # (B,)
 
 
@@ -95,10 +95,10 @@ class SasaDecoder(BaseDecoder):
         self,
         x_quant: TensorType["b n a x", float],
         seq_mask: TensorType["b n", float],
-        residue_index: Optional[TensorType["b n", int]] = None, 
+        residue_index: TensorType["b n", int] | None = None,
         x_emb: TensorType["b n a x", float] = None,
         cls_token: bool = False,
-        **kwargs
+        **kwargs,
     ):
         if isinstance(x_quant, dict):
             ligand_present = True
@@ -120,10 +120,10 @@ class SasaDecoder(BaseDecoder):
                     seq_mask = seq_mask["ligand_mask"]
                 else:
                     raise ValueError(f"Unknown seq_mask keys: {list(seq_mask.keys())}")
-                    
-            B, L = seq_mask.shape 
-            x_emb = x_emb[:,:L,:]
-            
+
+            B, L = seq_mask.shape
+            x_emb = x_emb[:, :L, :]
+
         # Create a copy of the mask to avoid in-place operations
         seq_mask = seq_mask.clone()
         seq_mask[torch.isnan(seq_mask)] = 0
@@ -135,5 +135,5 @@ class SasaDecoder(BaseDecoder):
         # Global sum pooling for SASA (single value per structure)
         emb_masked = emb * expand(seq_mask, emb)  # Apply mask
         pooled = emb_masked.sum(dim=1)  # (B, 1) - sum instead of average
-        
+
         return pooled.squeeze(-1)  # (B,)

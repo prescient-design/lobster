@@ -1,7 +1,8 @@
 from torch import nn
 import abc
 
-#base class for decoders
+
+# base class for decoders
 class BaseDecoder(nn.Module, abc.ABC):
     def __init__(self):
         super().__init__()

@@ -7,22 +7,16 @@ Author: Alex Chu
 Neural network modules. Many of these are adapted from open source modules.
 """
 
-from typing import List, Sequence, Optional
-
 from einops import rearrange
 from einops.layers.torch import Rearrange
-import numpy as np
 from rotary_embedding_torch import RotaryEmbedding
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from icecream import ic
-from torch import einsum
 from loguru import logger
-import os
-import time
 from lobster.model.latent_generator.utils.residue_constants import ELEMENT_VOCAB
-#os.environ["HYDRA_FULL_ERROR"] = "1"
+# os.environ["HYDRA_FULL_ERROR"] = "1"
+
 
 def expand(x, tgt=None, dim=1):
     if tgt is None:
@@ -51,11 +45,10 @@ def upsample_coords(x, shape):
 # Adapted from https://github.com/aqlaboratory/openfold
 
 
-def permute_final_dims(tensor: torch.Tensor, inds: List[int]):
+def permute_final_dims(tensor: torch.Tensor, inds: list[int]):
     zero_index = -1 * len(inds)
     first_inds = list(range(len(tensor.shape[:zero_index])))
     return tensor.contiguous().permute(first_inds + [zero_index + i for i in inds])
-
 
 
 class RelativePositionalEncoding(nn.Module):
@@ -86,9 +79,7 @@ class Noise_Embedding(nn.Module):
         self.endpoint = endpoint
 
     def forward(self, x):
-        freqs = torch.arange(
-            start=0, end=self.num_channels // 2, dtype=torch.float32, device=x.device
-        )
+        freqs = torch.arange(start=0, end=self.num_channels // 2, dtype=torch.float32, device=x.device)
         freqs = freqs / (self.num_channels // 2 - (1 if self.endpoint else 0))
         freqs = (1 / self.max_positions) ** freqs
         x = x.outer(freqs.to(x.dtype))
@@ -151,9 +142,7 @@ class NoiseConditioningBlock(nn.Module):
 
 
 class TimeCondResnetBlock(nn.Module):
-    def __init__(
-        self, nic, noc, cond_nc, conv_layer=nn.Conv2d, dropout=0.1, n_norm_in_groups=4
-    ):
+    def __init__(self, nic, noc, cond_nc, conv_layer=nn.Conv2d, dropout=0.1, n_norm_in_groups=4):
         super().__init__()
         self.block1 = nn.Sequential(
             nn.GroupNorm(num_groups=nic // n_norm_in_groups, num_channels=nic),
@@ -236,12 +225,11 @@ class TimeCondAttention(nn.Module):
 
         self.to_q = nn.Linear(dim, hidden_dim, bias=False)
         self.to_kv = nn.Linear(dim_context, hidden_dim * 2, bias=False)
-        
+
         # Handle both sequential and single layer architectures
         if use_sequential_to_out:
             self.to_out = nn.Sequential(
-                nn.Linear(hidden_dim, dim, bias=False),
-                nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+                nn.Linear(hidden_dim, dim, bias=False), nn.Dropout(dropout) if dropout > 0 else nn.Identity()
             )
             nn.init.zeros_(self.to_out[0].weight)
             logger.info(f"Using sequential to_out: {use_sequential_to_out}")
@@ -249,7 +237,6 @@ class TimeCondAttention(nn.Module):
         else:
             self.to_out = nn.Linear(hidden_dim, dim, bias=False)
             nn.init.zeros_(self.to_out.weight)
-        
 
         self.use_rope = False
         if rotary_embedding_module is not None:
@@ -259,7 +246,16 @@ class TimeCondAttention(nn.Module):
         self.attention_dropout = nn.Dropout(attention_dropout) if attention_dropout > 0 else nn.Identity()
         logger.info(f"Attention dropout: {attention_dropout}")
 
-    def forward(self, x, context=None, time=None, attn_bias=None, seq_mask=None, attn_drop_out_rate=0.0, spatial_attention_mask= None):
+    def forward(
+        self,
+        x,
+        context=None,
+        time=None,
+        attn_bias=None,
+        seq_mask=None,
+        attn_drop_out_rate=0.0,
+        spatial_attention_mask=None,
+    ):
         # attn_bias is b, c, i, j
         h = self.heads
         has_context = exists(context)
@@ -309,7 +305,7 @@ class TimeCondAttention(nn.Module):
             spatial_attention_mask = spatial_attention_mask[:, None]
             spatial_attention_mask = 1e6 * -1 * (1 - spatial_attention_mask)
             sim += spatial_attention_mask
-            
+
         attn = sim.softmax(dim=-1)
         attn = self.attention_dropout(attn)
 
@@ -346,7 +342,7 @@ class TimeCondFeedForward(nn.Module):
         if dropout is not None:
             self.dropout = nn.Dropout(dropout)
         logger.info(f"Dropout: {dropout}")
-        
+
         self.linear_out = nn.Linear(inner_dim, dim_out)
         nn.init.zeros_(self.linear_out.weight)
         nn.init.zeros_(self.linear_out.bias)
@@ -413,9 +409,7 @@ class TimeCondTransformer(nn.Module):
                             attention_dropout=attention_dropout,
                             use_sequential_to_out=use_sequential_to_out,
                         ),
-                        TimeCondFeedForward(
-                            dim, mlp_inner_dim_mult, time_cond_dim=time_cond_dim, dropout=dropout
-                        ),
+                        TimeCondFeedForward(dim, mlp_inner_dim_mult, time_cond_dim=time_cond_dim, dropout=dropout),
                     ]
                 )
             )
@@ -447,13 +441,20 @@ class TimeCondTransformer(nn.Module):
 
         for i, (attn, ff) in enumerate(self.layers):
             x = x + attn(
-                x, context=context, time=time, attn_bias=attn_bias, seq_mask=seq_mask, attn_drop_out_rate=attn_drop_out_rate, spatial_attention_mask=spatial_attention_mask
+                x,
+                context=context,
+                time=time,
+                attn_bias=attn_bias,
+                seq_mask=seq_mask,
+                attn_drop_out_rate=attn_drop_out_rate,
+                spatial_attention_mask=spatial_attention_mask,
             )
             x = x + ff(x, time=time)
             if seq_mask is not None:
                 x = x * seq_mask[..., None]
 
         return x
+
 
 class TimeCondUViTEncoder(nn.Module):
     def __init__(
@@ -498,11 +499,13 @@ class TimeCondUViTEncoder(nn.Module):
         self.add_cls_token = add_cls_token
         self.sequence_embedding = sequence_embedding
         self.ligand_atom_embedding = ligand_atom_embedding
-        
+
         if sequence_embedding:
             self.sequence_embedding = nn.Embedding(23, embed_dim_hidden)
-        
-        if encode_ligand: #need to make sure it is spatially aware of the protein too, especially with attention mechanism
+
+        if (
+            encode_ligand
+        ):  # need to make sure it is spatially aware of the protein too, especially with attention mechanism
             logger.info(f"Encoding ligand with {embed_dim_hidden} hidden dimensions")
             self.ligand_to_embedding = nn.Sequential(
                 nn.Linear(3, embed_dim_hidden, bias=False),
@@ -510,10 +513,10 @@ class TimeCondUViTEncoder(nn.Module):
                 nn.Linear(embed_dim_hidden, embed_dim_hidden),
                 LayerNorm(embed_dim_hidden),
             )
-            
+
             # Ligand atom type embedding using element vocabulary
             if ligand_atom_embedding:
-                logger.info(f"Adding ligand atom type embeddings")
+                logger.info("Adding ligand atom type embeddings")
                 # Use element vocabulary size
                 self.ligand_atom_type_embedding = nn.Embedding(len(ELEMENT_VOCAB), embed_dim_hidden)
         transformer_seq_len = seq_len // (2**1)
@@ -523,9 +526,9 @@ class TimeCondUViTEncoder(nn.Module):
 
         # Make transformer
         if add_cls_token:
-            logger.info(f"Adding CLS token to encoder")
+            logger.info("Adding CLS token to encoder")
             self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim_hidden))
-            
+
         self.to_patch_embedding = nn.Sequential(
             Rearrange("b c (n p) a -> b n (p c a)", p=patch_size),
             nn.Linear(patch_dim, embed_dim_hidden),
@@ -548,7 +551,7 @@ class TimeCondUViTEncoder(nn.Module):
         if self.concat_sine_pw:
             logger.info(f"Using concat_sine_pw with angstrom cutoff {self.angstrom_cutoff}")
             self.pw_to_embedding = nn.Sequential(
-                nn.Linear((n_atoms)**2, embed_dim_hidden, bias=False),
+                nn.Linear((n_atoms) ** 2, embed_dim_hidden, bias=False),
                 nn.ReLU(),
                 nn.Linear(embed_dim_hidden, embed_dim_hidden),
                 LayerNorm(embed_dim_hidden),
@@ -559,7 +562,6 @@ class TimeCondUViTEncoder(nn.Module):
                 nn.Linear(embed_dim_hidden, embed_dim_hidden),
                 LayerNorm(embed_dim_hidden),
             )
-
 
         self.to_hidden = nn.Sequential(
             LayerNorm(embed_dim_hidden),
@@ -578,9 +580,9 @@ class TimeCondUViTEncoder(nn.Module):
             coords_n = coords[:, :, 0, :]
             coords_ca = coords[:, :, 1, :]
             coords_c = coords[:, :, 2, :]
-            coords_n = torch.cat([coords_n, ligand_coords], dim=1) #concatenate ligand coords to protein N coords
-            coords_ca = torch.cat([coords_ca, ligand_coords], dim=1) #concatenate ligand coords to protein Ca coords
-            coords_c = torch.cat([coords_c, ligand_coords], dim=1) #concatenate ligand coords to protein C coords
+            coords_n = torch.cat([coords_n, ligand_coords], dim=1)  # concatenate ligand coords to protein N coords
+            coords_ca = torch.cat([coords_ca, ligand_coords], dim=1)  # concatenate ligand coords to protein Ca coords
+            coords_c = torch.cat([coords_c, ligand_coords], dim=1)  # concatenate ligand coords to protein C coords
             coords_n_ = torch.cdist(coords_n, coords_n, p=2).unsqueeze(-1)
             coords_ca_ = torch.cdist(coords_ca, coords_ca, p=2).unsqueeze(-1)
             coords_c_ = torch.cdist(coords_c, coords_c, p=2).unsqueeze(-1)
@@ -600,11 +602,37 @@ class TimeCondUViTEncoder(nn.Module):
                 coords_ca_c_ = torch.clamp(coords_ca_c_, max=self.angstrom_cutoff)
             else:
                 coords_lig = torch.clamp(coords_lig, max=self.angstrom_cutoff)
-        #note that we are repeating some to fit the expected 9 dim embedding layer
+        # note that we are repeating some to fit the expected 9 dim embedding layer
         if coords is not None:
-            coords = torch.cat([coords_n_, coords_ca_, coords_c_, coords_n_ca_, coords_n_c_, coords_ca_c_, coords_n_ca_, coords_n_c_, coords_ca_c_], dim=-1)
+            coords = torch.cat(
+                [
+                    coords_n_,
+                    coords_ca_,
+                    coords_c_,
+                    coords_n_ca_,
+                    coords_n_c_,
+                    coords_ca_c_,
+                    coords_n_ca_,
+                    coords_n_c_,
+                    coords_ca_c_,
+                ],
+                dim=-1,
+            )
         else:
-            coords = torch.cat([coords_lig, coords_lig, coords_lig, coords_lig, coords_lig, coords_lig, coords_lig, coords_lig, coords_lig], dim=-1)
+            coords = torch.cat(
+                [
+                    coords_lig,
+                    coords_lig,
+                    coords_lig,
+                    coords_lig,
+                    coords_lig,
+                    coords_lig,
+                    coords_lig,
+                    coords_lig,
+                    coords_lig,
+                ],
+                dim=-1,
+            )
         return coords
 
     def pairwise_distances(self, coords, ligand_coords=None, clamp=True):
@@ -619,7 +647,7 @@ class TimeCondUViTEncoder(nn.Module):
             coords = torch.clamp(coords, max=self.angstrom_cutoff)
         return coords.reshape(B, L, L, -1)
 
-    def create_distance_attention_mask(self, distance_matrix, max_distance= 30.0):
+    def create_distance_attention_mask(self, distance_matrix, max_distance=30.0):
         """Create an attention mask based on distance cutoff.
 
         Args:
@@ -643,10 +671,23 @@ class TimeCondUViTEncoder(nn.Module):
         return attention_mask
 
     def forward(
-        self, coords, time_cond=None, pair_bias=None, seq_mask=None, residue_index=None, attn_drop_out_rate=0.0, return_embeddings=False, ligand_coords=None, ligand_mask=None, ligand_residue_index=None, sequence=None, ligand_atom_types=None, **kwargs
+        self,
+        coords,
+        time_cond=None,
+        pair_bias=None,
+        seq_mask=None,
+        residue_index=None,
+        attn_drop_out_rate=0.0,
+        return_embeddings=False,
+        ligand_coords=None,
+        ligand_mask=None,
+        ligand_residue_index=None,
+        sequence=None,
+        ligand_atom_types=None,
+        **kwargs,
     ):
         if coords is not None:
-            B,L,n_atoms = coords.shape[:3]
+            B, L, n_atoms = coords.shape[:3]
             coords_gt = coords.clone()
             x = rearrange(coords, "b n a c -> b c n a")
             x = self.to_patch_embedding(x)
@@ -657,12 +698,12 @@ class TimeCondUViTEncoder(nn.Module):
 
         if self.encode_ligand and ligand_coords is not None:
             ligand_embedding = self.ligand_to_embedding(ligand_coords)
-            
+
             # Add ligand atom type embeddings if available
             if self.ligand_atom_embedding and ligand_atom_types is not None:
                 ligand_type_embedding = self.ligand_atom_type_embedding(ligand_atom_types)
                 ligand_embedding = ligand_embedding + ligand_type_embedding
-            
+
             if coords is not None:
                 x = torch.cat([x, ligand_embedding], -2)
                 seq_mask = torch.cat([seq_mask, ligand_mask], -1)
@@ -681,8 +722,12 @@ class TimeCondUViTEncoder(nn.Module):
 
         if self.spatial_attention_mask:
             with torch.no_grad():
-                pw_distance_matrix = self.pairwise_distances(coords_gt, ligand_coords=ligand_coords, clamp=False)[:, :, :, 1]
-                spatial_attention_mask_ = self.create_distance_attention_mask(pw_distance_matrix, self.angstrom_cutoff_spatial).float()
+                pw_distance_matrix = self.pairwise_distances(coords_gt, ligand_coords=ligand_coords, clamp=False)[
+                    :, :, :, 1
+                ]
+                spatial_attention_mask_ = self.create_distance_attention_mask(
+                    pw_distance_matrix, self.angstrom_cutoff_spatial
+                ).float()
         else:
             spatial_attention_mask_ = None
 
@@ -697,7 +742,7 @@ class TimeCondUViTEncoder(nn.Module):
             residue_index = torch.cat([torch.zeros(B, 1, device=x.device), residue_index], dim=1)
             if spatial_attention_mask_ is not None:
                 padding_col = torch.ones(B, 1, L, device=x.device)
-                padding_row = torch.ones(B, L+1, 1, device=x.device)
+                padding_row = torch.ones(B, L + 1, 1, device=x.device)
                 spatial_attention_mask_ = torch.cat([padding_col, spatial_attention_mask_], dim=1)
                 spatial_attention_mask_ = torch.cat([padding_row, spatial_attention_mask_], dim=2)
 
@@ -708,15 +753,16 @@ class TimeCondUViTEncoder(nn.Module):
             seq_mask=seq_mask,
             residue_index=residue_index,
             attn_drop_out_rate=attn_drop_out_rate,
-            spatial_attention_mask = spatial_attention_mask_,
+            spatial_attention_mask=spatial_attention_mask_,
         )
-        
+
         x_out = self.to_hidden(x)
 
         if return_embeddings:
             return x_out, x
 
         return x_out
+
 
 class TimeCondUViTDecoder(nn.Module):
     def __init__(
@@ -755,8 +801,7 @@ class TimeCondUViTDecoder(nn.Module):
 
         self.refinement_module = refinement_module
 
-
-        #embedding for structure tokens
+        # embedding for structure tokens
         if indexed:
             self.embed_struc_tokens = nn.Embedding(struc_token_codebook_size, struc_token_dim)
         else:
@@ -766,10 +811,9 @@ class TimeCondUViTDecoder(nn.Module):
             logger.info(f"Encoding ligand with {struc_token_dim} hidden dimensions")
             self.embed_ligand_tokens = nn.Linear(ligand_struc_token_codebook_size, struc_token_dim, bias=False)
             self.from_patch_ligand = nn.Sequential(
-                    LayerNorm(struc_token_dim),
-                    nn.Linear(struc_token_dim, 3),
-                )
-
+                LayerNorm(struc_token_dim),
+                nn.Linear(struc_token_dim, 3),
+            )
 
         self.transformer = TimeCondTransformer(
             struc_token_dim,
@@ -796,7 +840,7 @@ class TimeCondUViTDecoder(nn.Module):
                 dropout=dropout,
                 attention_dropout=attention_dropout,
                 use_sequential_to_out=use_sequential_to_out,
-                )
+            )
             self.refinement_ffn = nn.Sequential(
                 LayerNorm(struc_token_dim),
                 nn.Linear(struc_token_dim, struc_token_dim),
@@ -809,7 +853,7 @@ class TimeCondUViTDecoder(nn.Module):
                 Rearrange("b n (p c a) -> b c (n p) a", p=patch_size, a=dim_a),
             )
 
-        #make nn.sequence for residual connection after transformer
+        # make nn.sequence for residual connection after transformer
         self.ffn = nn.Sequential(
             LayerNorm(struc_token_dim),
             nn.Linear(struc_token_dim, struc_token_dim),
@@ -823,9 +867,16 @@ class TimeCondUViTDecoder(nn.Module):
             Rearrange("b n (p c a) -> b c (n p) a", p=patch_size, a=dim_a),
         )
 
-
     def forward(
-        self, x_quant, time_cond=None, pair_bias=None, seq_mask=None, residue_index=None, ligand_quant=None, ligand_mask=None, **kwargs
+        self,
+        x_quant,
+        time_cond=None,
+        pair_bias=None,
+        seq_mask=None,
+        residue_index=None,
+        ligand_quant=None,
+        ligand_mask=None,
+        **kwargs,
     ):
         if x_quant is not None:
             x_emb = self.embed_struc_tokens(x_quant)
@@ -852,7 +903,7 @@ class TimeCondUViTDecoder(nn.Module):
             seq_mask=seq_mask,
             residue_index=residue_index,
         )
-        #add skip connection
+        # add skip connection
         x_out = x_out + x_emb
 
         x = self.ffn(x_out)
@@ -874,7 +925,7 @@ class TimeCondUViTDecoder(nn.Module):
             out = {"protein_coords": x, "ligand_coords": ligand_x}
         else:
             out = x
-        
+
         if self.refinement_module:
             x_out = self.ffn(x_out)
             x_refinement = self.refinement_module_transformer(x_out)
@@ -882,14 +933,14 @@ class TimeCondUViTDecoder(nn.Module):
             x_refinement = self.refinement_ffn(x_refinement)
             x_refinement = self.refinement_to_coords(x_refinement)
             x_refinement = rearrange(x_refinement, "b c n a -> b n a c")
-            #if dictionary, add to it
+            # if dictionary, add to it
             if isinstance(out, dict):
                 out["protein_coords_refinement"] = x_refinement
             else:
                 out = {"protein_coords": x, "protein_coords_refinement": x_refinement}
 
-
         return out
+
 
 class TimeCondUViTAlignDecoder(nn.Module):
     def __init__(
@@ -918,16 +969,11 @@ class TimeCondUViTAlignDecoder(nn.Module):
         transformer_seq_len = seq_len // (2**1)
         assert transformer_seq_len % patch_size == 0
 
-        patch_dim_out = patch_size * n_atoms * 3
-        dim_a = n_atoms
-
-
-        #embedding for structure tokens
+        # embedding for structure tokens
         if indexed:
             self.embed_struc_tokens = nn.Embedding(struc_token_codebook_size, struc_token_dim)
         else:
             self.embed_struc_tokens = nn.Linear(struc_token_codebook_size, struc_token_dim, bias=False)
-
 
         self.transformer = TimeCondTransformer(
             struc_token_dim,
@@ -942,7 +988,7 @@ class TimeCondUViTAlignDecoder(nn.Module):
             use_sequential_to_out=use_sequential_to_out,
         )
 
-        #make nn.sequence for residual connection after transformer
+        # make nn.sequence for residual connection after transformer
         self.ffn = nn.Sequential(
             LayerNorm(struc_token_dim),
             nn.Linear(struc_token_dim, struc_token_dim),
@@ -950,10 +996,7 @@ class TimeCondUViTAlignDecoder(nn.Module):
             nn.Linear(struc_token_dim, struc_token_dim),
         )
 
-    def forward(
-        self, x_quant, time_cond=None, pair_bias=None, seq_mask=None, residue_index=None, **kwargs
-    ):
-
+    def forward(self, x_quant, time_cond=None, pair_bias=None, seq_mask=None, residue_index=None, **kwargs):
         x_emb = self.embed_struc_tokens(x_quant)
 
         if seq_mask is not None and x_emb.shape[1] == seq_mask.shape[1]:
@@ -967,13 +1010,14 @@ class TimeCondUViTAlignDecoder(nn.Module):
             seq_mask=seq_mask,
             residue_index=residue_index,
         )
-        #add skip connection
+        # add skip connection
         x = x + x_emb
 
         x = self.ffn(x)
 
         return x
-    
+
+
 class PLMUViTEncoder(nn.Module):
     def __init__(
         self,
@@ -1001,9 +1045,9 @@ class PLMUViTEncoder(nn.Module):
         self.use_template_coords = use_template_coords
         if self.use_template_coords:
             self.to_patch_embedding = nn.Sequential(
-            Rearrange("b c (n p) a -> b n (p c a)", p=1),
-            nn.Linear(9, embed_dim_hidden),
-            LayerNorm(embed_dim_hidden),
+                Rearrange("b c (n p) a -> b n (p c a)", p=1),
+                nn.Linear(9, embed_dim_hidden),
+                LayerNorm(embed_dim_hidden),
             )
 
         self.transformer = TimeCondTransformer(
@@ -1019,15 +1063,21 @@ class PLMUViTEncoder(nn.Module):
             use_sequential_to_out=use_sequential_to_out,
         )
 
-
-
         self.to_hidden = nn.Sequential(
             LayerNorm(embed_dim_hidden),
             nn.Linear(embed_dim_hidden, embed_dim),
         )
 
     def forward(
-        self, plm_embeddings, time_cond=None, seq_mask=None, residue_index=None, coords=None, attn_drop_out_rate=0.0, return_embeddings=False, **kwargs
+        self,
+        plm_embeddings,
+        time_cond=None,
+        seq_mask=None,
+        residue_index=None,
+        coords=None,
+        attn_drop_out_rate=0.0,
+        return_embeddings=False,
+        **kwargs,
     ):
         x = self.sequence_embedding(plm_embeddings)
 
@@ -1039,7 +1089,6 @@ class PLMUViTEncoder(nn.Module):
         if seq_mask is not None and x.shape[1] == seq_mask.shape[1]:
             x *= seq_mask[..., None]
 
-
         x = self.transformer(
             x,
             time=time_cond,
@@ -1047,9 +1096,9 @@ class PLMUViTEncoder(nn.Module):
             seq_mask=seq_mask,
             residue_index=residue_index,
             attn_drop_out_rate=attn_drop_out_rate,
-            spatial_attention_mask = None,
+            spatial_attention_mask=None,
         )
-        
+
         x_out = self.to_hidden(x)
 
         if return_embeddings:

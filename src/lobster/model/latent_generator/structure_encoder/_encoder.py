@@ -1,7 +1,8 @@
 from torch import nn
 import abc
 
-#base class for encoders, that has a featurize method, forwad pass, and a featurize method
+
+# base class for encoders, that has a featurize method, forwad pass, and a featurize method
 class BaseEncoder(nn.Module, abc.ABC):
     def __init__(self):
         super().__init__()
