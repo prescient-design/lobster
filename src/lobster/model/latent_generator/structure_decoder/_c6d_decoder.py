@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 
-from lobster.model.latent_generator.structure_decoder import BaseDecoder
+from ._decoder import BaseDecoder
 
 
 class C6DDecoder(BaseDecoder):

@@ -14,8 +14,9 @@ from einops import rearrange
 
 from lobster.model.latent_generator.structure_decoder import DecoderFactory
 from lobster.model.latent_generator.structure_encoder import BaseEncoder
-from lobster.model.latent_generator.tokenizer import LossFactory
 from lobster.model.latent_generator.utils.residue_constants import restype_order_with_x
+
+from ._loss_factory import LossFactory
 
 logger = logging.getLogger(__name__)
 

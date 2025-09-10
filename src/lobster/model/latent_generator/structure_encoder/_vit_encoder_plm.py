@@ -5,7 +5,7 @@ from lobster.model.latent_generator.models.vit._vit_utils import (
     PLMUViTEncoder,
     expand,
 )
-from lobster.model.latent_generator.structure_encoder import BaseEncoder
+from ._encoder import BaseEncoder
 from lobster.model.latent_generator.utils import apply_random_se3_batched
 
 

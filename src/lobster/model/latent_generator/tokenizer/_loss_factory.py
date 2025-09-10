@@ -1,6 +1,6 @@
 from torch import nn
 
-from lobster.model.latent_generator.tokenizer import TokenizerLoss
+from ._losses import TokenizerLoss
 
 
 class LossFactory(nn.Module):

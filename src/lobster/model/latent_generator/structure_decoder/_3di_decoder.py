@@ -2,7 +2,7 @@ import torch
 from torch import Tensor
 
 from lobster.model.latent_generator.models.vit._vit_utils import expand
-from lobster.model.latent_generator.structure_decoder import BaseDecoder
+from ._decoder import BaseDecoder
 
 
 class FoldSeek3diDecoder(BaseDecoder):

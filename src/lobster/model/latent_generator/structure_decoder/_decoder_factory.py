@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from lobster.model.latent_generator.structure_decoder import BaseDecoder
+from ._decoder import BaseDecoder
 
 
 class DecoderFactory(nn.Module):
