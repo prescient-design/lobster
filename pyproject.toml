@@ -1,0 +1,257 @@
+[project]
+name = "lbster"
+readme = "README.md"
+description = "Language models for Biological Sequence Transformation and Evolutionary Representation."
+authors = [{name = "Nathan C. Frey", email = "frey.nathan.nf1@gene.com"}]
+dynamic = ["version"]
+requires-python = ">=3.11, <3.13"
+dependencies = [
+    "pooch",
+    "torch",
+    "tqdm",
+    "lightning",
+    "torchmetrics",
+    "biopython",
+    "torchvision",
+    "universal_pathlib",
+    "pandas",
+    "scipy",
+    "pyarrow",
+    "s3fs[boto3]",
+    "biopandas",
+    "wandb",
+    "hydra-core",
+    "datasets>2",
+    "tokenizers",
+    "transformers>=4.24.0",
+    "scikit-learn",
+    "python-dotenv",
+    "torcheval",
+    "datasketch",
+    "peft",
+    "edlib",
+    "onnx",
+    "onnxscript",
+    "onnxruntime",
+    "einops",
+    "beignet[datasets]>=0.0.13",
+    "dotenv>=0.9.9",
+    "litdata>=0.2.49",
+    "seaborn>=0.13.2",
+    "dgeb>=0.2.0",
+    "huggingface-hub>=0.33.2",
+    "polars>=1.33.0",
+]
+
+[build-system]
+requires = ["setuptools >= 65", "setuptools_scm[toml]>=6.2"]
+build-backend = 'setuptools.build_meta'
+
+[project.scripts]
+lobster_train = "lobster.cmdline:train"
+lobster_embed = "lobster.cmdline:embed"
+lobster_predict = "lobster.cmdline:predict"
+lobster_intervene = "lobster.cmdline:intervene"
+lobster_intervene_multiproperty = "lobster.cmdline:intervene_multiproperty"
+lobster_perplexity = "lobster.cmdline:perplexity"
+lobster_eval_embed = "lobster.cmdline:eval_embed"
+lobster_eval = "lobster.cmdline:evaluate"
+lobster_dgeb_eval = "lobster.cmdline.dgeb_eval:main"
+lobster_dgeb_mock_eval = "lobster.evaluation.dgeb_mock_runner:main"
+lobster_mcp_server = "lobster.mcp.server:main"
+lobster_mcp_setup = "lobster.mcp.setup:main"
+lobster_ume_checkpoints = "lobster.cmdline.manage_ume_checkpoints:main"
+
+[project.optional-dependencies]
+
+lg-cpu = [
+    "biopandas==0.5.0.dev0",
+    "torch-geometric",
+    "torch-cluster", 
+    "torch-scatter",
+    "torch_spline_conv",
+    "omegaconf",
+    "polars",
+    "optree",
+    "biotite",
+    "tensordict",
+    "loguru",
+    "icecream",
+    "mpmath",
+    "rotary-embedding-torch",
+    "torchtyping",
+    "matplotlib",
+    "boto3",
+    "botocore",
+    "lightning-utilities",
+    "mini3di",
+    "cpdb-protein"
+]
+lg-gpu = [
+    "biopandas==0.5.0.dev0",
+    "torch-geometric",
+    "torch-cluster", 
+    "torch-scatter",
+    "torch_spline_conv",
+    "omegaconf",
+    "polars",
+    "optree",
+    "biotite",
+    "tensordict",
+    "loguru",
+    "icecream",
+    "mpmath",
+    "rotary-embedding-torch",
+    "torchtyping",
+    "matplotlib",
+    "boto3",
+    "botocore",
+    "lightning-utilities",
+    "mini3di",
+    "cpdb-protein"
+]
+mgm = [
+    "rdkit>=2024.9.4",
+    "selfies>=2.1.2",
+]
+flash = [
+    "flash-attn>=2.8.0.post2; sys_platform == 'linux'",
+    "rotary-embedding-torch",
+
+]
+mcp = [
+    "mcp[cli]>=1.0.0",
+    "fastmcp>=0.2.0",
+    "python-Levenshtein>=0.20.0",
+    "pydantic>=2.0.0",
+]
+# eval = [
+#      "umap-learn<=0.5.6"
+# ]
+trl = [
+    "trl",
+    "accelerate",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lobster = ["*.txt", "*.json", "*.yaml"]
+"lobster.assets" = ["**/*.txt", "**/*.json", "**/*.yaml"]
+"lobster.hydra_config" = [ "**/*.yaml"]
+
+[tool.setuptools_scm]
+search_parent_directories = true
+version_scheme = "no-guess-dev"
+fallback_version = "0.0.0"
+local_scheme = "no-local-version" # see https://github.com/pypa/setuptools-scm/issues/455
+
+[tool.ruff]
+line-length = 120
+exclude = [
+  "scripts",
+  "notebooks",
+  "examples",
+  "src/lobster/extern/openfold_utils",
+  "src/lobster/model/openfold_utils",
+  "src/lobster/model/modern_bert"
+]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP",  # pyupgrade
+]
+
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "B905",  # requires python >= 3.10
+    "B007",  # unused-loop-control-variable
+    "E741",  # ambiguous-variable-name
+    "E902",  # file not found error
+    "UP038",  # Use X | Y in isinstance call instead of (X, Y)
+    "I001",  # Import block is un-sorted or un-formatted
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "F401", # MODULE IMPORTED BUT UNUSED
+]
+"tests/**/*.py" = [
+  "D"
+]
+
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+no-build-isolation-package = ["flash-attn"]
+allow-insecure-host = ["https://data.pyg.org/whl/torch-2.7.0+cpu.html"]
+conflicts = [
+  [
+    { extra = "lg-cpu" },
+    { extra = "lg-gpu" },
+  ],
+]
+constraint-dependencies = [
+    "torch>=2.0.0; extra != 'flash'",
+    "torch==2.7.0; extra == 'flash'",
+] # flash-attn wheels available
+
+[[tool.uv.dependency-metadata]]
+name = "flash-attn"
+version = "2.8.0"
+requires-dist = ["torch", "einops"]
+
+[tool.uv.sources]
+torch-cluster = [
+  { index = "pyg-cpu", extra = "lg-cpu" },
+  { index = "pyg-cu128", extra = "lg-gpu" },
+]
+torch-scatter = [
+  { index = "pyg-cpu", extra = "lg-cpu" },
+  { index = "pyg-cu128", extra = "lg-gpu" },
+]
+torch-spline-conv = [
+  { index = "pyg-cpu", extra = "lg-cpu" },
+  { index = "pyg-cu128", extra = "lg-gpu" },
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "mypy>=1.14.1",
+    "pre-commit>=4.0.1",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.1",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cpu"
+url = "https://data.pyg.org/whl/torch-2.7.0+cpu.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu128"
+url = "https://data.pyg.org/whl/torch-2.7.0+cu128.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+url = "https://pypi.python.org/simple"
