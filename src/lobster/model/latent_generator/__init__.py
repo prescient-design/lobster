@@ -1,7 +1,6 @@
 import warnings
 from importlib.metadata import PackageNotFoundError, version
 
-import tensordict
 import torch
 from lightning_utilities.core.imports import RequirementCache
 
