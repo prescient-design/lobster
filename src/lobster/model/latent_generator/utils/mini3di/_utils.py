@@ -4,7 +4,6 @@ from collections import deque
 
 import numpy
 
-from types import ModuleType
 from typing import Annotated, Literal, TypeVar
 import numpy.typing
 
@@ -44,8 +43,7 @@ def relu(
 
 
 def last(it):
-    """Get the last element of an iterator.
-    """
+    """Get the last element of an iterator."""
     it = iter(it)
     dd = deque(it, maxlen=1)
     return dd.pop()

@@ -1,10 +1,4 @@
 import torch
-from biopandas.pdb import PandasPdb
-import os
-from typing import Optional, Union, Dict, Tuple
-import numpy as np
-from loguru import logger as py_logger
-
 
 
 def batch_align_on_calpha(x, y):
@@ -75,11 +69,12 @@ def kabsch_torch_batched_old(P, Q, mask):
     R = torch.matmul(Vt.transpose(1, 2), U.transpose(1, 2))
 
     # RMSD
-    #rmsd = torch.sqrt(torch.sum(torch.square(torch.matmul(p, R.transpose(1, 2)) - q), dim=(1, 2)) / P.shape[1])
+    # rmsd = torch.sqrt(torch.sum(torch.square(torch.matmul(p, R.transpose(1, 2)) - q), dim=(1, 2)) / P.shape[1])
 
-    #apply R and t to P
+    # apply R and t to P
     P_aligned = torch.matmul(p, R.transpose(1, 2)) + centroid_Q
     return P_aligned
+
 
 def kabsch_torch_batched(P, Q, mask, return_transform=False):
     """Compute the optimal rotation and translation to align two sets of points (P -> Q),
@@ -93,7 +88,7 @@ def kabsch_torch_batched(P, Q, mask, return_transform=False):
     """
     assert P.shape == Q.shape, "Matrix dimensions must match"
     assert mask.shape == P.shape[:2], "Mask dimensions must match the first two dimensions of P and Q"
-    #turn to full precision
+    # turn to full precision
     P = P.to(torch.float32)
     Q = Q.to(torch.float32)
 
@@ -101,8 +96,12 @@ def kabsch_torch_batched(P, Q, mask, return_transform=False):
     mask_expanded = mask.unsqueeze(-1)  # BxNx1
 
     # Compute weighted centroids
-    centroid_P = torch.sum(P * mask_expanded, dim=1, keepdims=True) / torch.sum(mask_expanded, dim=1, keepdims=True)  # Bx1x3
-    centroid_Q = torch.sum(Q * mask_expanded, dim=1, keepdims=True) / torch.sum(mask_expanded, dim=1, keepdims=True)  # Bx1x3
+    centroid_P = torch.sum(P * mask_expanded, dim=1, keepdims=True) / torch.sum(
+        mask_expanded, dim=1, keepdims=True
+    )  # Bx1x3
+    centroid_Q = torch.sum(Q * mask_expanded, dim=1, keepdims=True) / torch.sum(
+        mask_expanded, dim=1, keepdims=True
+    )  # Bx1x3
 
     # Optimal translation
     t = centroid_Q - centroid_P  # Bx1x3
@@ -139,6 +138,7 @@ def kabsch_torch_batched(P, Q, mask, return_transform=False):
     else:
         return P_aligned
 
+
 def random_continuous_crops_with_mask(tokens, crop_length_range, mask):
     """Extract random continuous crops of length sampled from `crop_length_range` along the L dimension and update the mask.
 
@@ -168,9 +168,11 @@ def random_continuous_crops_with_mask(tokens, crop_length_range, mask):
         if len(valid_indices) < crop_length:
             # Use as many valid indices as possible and pad the rest
             start_idx = valid_indices[0].item() if len(valid_indices) > 0 else 0
-            crop_length = len(valid_indices) #note if you have the case where non padded regions has zeros, then we will count them as valid indices
+            crop_length = len(
+                valid_indices
+            )  # note if you have the case where non padded regions has zeros, then we will count them as valid indices
         else:
-            start_idx = valid_indices[:-(crop_length-1)].tolist()
+            start_idx = valid_indices[: -(crop_length - 1)].tolist()
             start_idx = start_idx[torch.randint(len(start_idx), (1,)).item()]
         end_idx = start_idx + crop_length
         cropped_tokens = torch.zeros((crop_length, tokens.shape[-1]), device=device)
@@ -189,6 +191,7 @@ def random_continuous_crops_with_mask(tokens, crop_length_range, mask):
 
     return final_cropped_tokens, crop_indices, updated_mask
 
+
 def extract_cropped_coordinates(atom_coords, updated_mask):
     """Extract cropped coordinates from atom_coords based on the updated_mask.
 
@@ -205,9 +208,12 @@ def extract_cropped_coordinates(atom_coords, updated_mask):
     for b in range(B):
         valid_indices = torch.where(updated_mask[b] == 1)[0]
         crop_length = valid_indices[-1] - valid_indices[0] + 1
-        cropped_coords = atom_coords[b,  valid_indices[0]:valid_indices[-1]+1]
+        cropped_coords = atom_coords[b, valid_indices[0] : valid_indices[-1] + 1]
         cropped_coords_list.append(cropped_coords)
-        c_mask = torch.ones(crop_length, dtype=torch.int, device=atom_coords.device) * updated_mask[b, valid_indices[0]:valid_indices[-1]+1]
+        c_mask = (
+            torch.ones(crop_length, dtype=torch.int, device=atom_coords.device)
+            * updated_mask[b, valid_indices[0] : valid_indices[-1] + 1]
+        )
         new_mask_list.append(c_mask)
 
     # Determine the maximum crop length to pad the cropped coordinates

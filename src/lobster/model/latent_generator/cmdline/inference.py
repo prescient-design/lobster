@@ -1,18 +1,14 @@
 # File: encode_latents.py
 
 import os
-import pathlib
-import sys
-from typing import Optional, Union, Dict, Any, List
+from typing import Any
 import urllib.request
 import urllib.parse
 
-import dotenv
 import hydra
 import torch
 from omegaconf import OmegaConf, DictConfig
 from loguru import logger as py_logger
-from lightning.pytorch.utilities import rank_zero_only
 
 from lobster.model.latent_generator.tokenizer import TokenizerMulti
 import argparse
@@ -20,7 +16,7 @@ from lobster.model.latent_generator.io import writepdb, load_pdb, load_ligand, w
 import boto3
 from botocore.exceptions import NoCredentialsError
 from dataclasses import dataclass
-from typing import List, Optional
+
 
 # Pre-configured model configurations
 # These configurations include all necessary overrides and settings
@@ -28,29 +24,28 @@ from typing import List, Optional
 @dataclass
 class ModelConfig:
     """Configuration for a model checkpoint."""
+
     checkpoint: str
     config_path: str
     config_name: str
-    overrides: List[str]
+    overrides: list[str]
+
 
 @dataclass
 class ModelInfo:
     """Information about a model including its configuration."""
+
     description: str
-    features: List[str]
+    features: list[str]
     model_config: ModelConfig
+
 
 methods = {
     # Ligand Models
     # These models are optimized for ligand structure analysis
     "LG Ligand 20A": ModelInfo(
         description="Ligand only model with 20Å spatial attention",
-        features=[
-            "256-dim embeddings",
-            "20Å spatial attention",
-            "Ligand only decoder",
-            "512 ligand tokens"
-        ],
+        features=["256-dim embeddings", "20Å spatial attention", "Ligand only decoder", "512 ligand tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -63,7 +58,7 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer.structure_encoder.encode_ligand=true",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=512",
@@ -72,18 +67,12 @@ methods = {
                 "tokenizer/quantizer=slq_quantizer_ligand",
                 "tokenizer/decoder_factory=struc_decoder_ligand",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
-            ]
-        )
+            ],
+        ),
     ),
-    
     "LG Ligand 20A 512 1024": ModelInfo(
         description="Ligand only model with 20Å spatial attention",
-        features=[
-            "512-dim embeddings",
-            "20Å spatial attention",
-            "Ligand only decoder",
-            "1024 ligand tokens"
-        ],
+        features=["512-dim embeddings", "20Å spatial attention", "Ligand only decoder", "1024 ligand tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_512_1024.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -105,19 +94,13 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=1024",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=1024",
                 "tokenizer.quantizer.ligand_embed_dim=512",
-                "tokenizer.quantizer.ligand_n_tokens=1024"
-            ]
-        )
+                "tokenizer.quantizer.ligand_n_tokens=1024",
+            ],
+        ),
     ),
-    
     "LG Ligand 20A 512 1024 element": ModelInfo(
         description="Ligand only model with 20Å spatial attention",
-        features=[
-            "512-dim embeddings",
-            "20Å spatial attention",
-            "Ligand only decoder",
-            "1024 ligand tokens"
-        ],
+        features=["512-dim embeddings", "20Å spatial attention", "Ligand only decoder", "1024 ligand tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_512_1024_element.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -141,19 +124,13 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=1024",
                 "tokenizer.decoder_factory.decoder_mapping.element_decoder.struc_token_codebook_size=512",
                 "tokenizer.quantizer.ligand_embed_dim=512",
-                "tokenizer.quantizer.ligand_n_tokens=1024"
-            ]
-        )
+                "tokenizer.quantizer.ligand_n_tokens=1024",
+            ],
+        ),
     ),
-    
     "LG Ligand 20A continuous": ModelInfo(
         description="Ligand only model with 20Å spatial attention",
-        features=[
-            "512-dim embeddings",
-            "20Å spatial attention",
-            "Ligand only decoder",
-            "Continuous ligand encoding"
-        ],
+        features=["512-dim embeddings", "20Å spatial attention", "Ligand only decoder", "Continuous ligand encoding"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_continuous.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -167,17 +144,16 @@ methods = {
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
                 "tokenizer.structure_encoder.embed_dim_hidden=512",
-                "tokenizer.structure_encoder.embed_dim=4", 
+                "tokenizer.structure_encoder.embed_dim=4",
                 "tokenizer.structure_encoder.encode_ligand=true",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=4",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=512",
                 "tokenizer.quantizer=null",
                 "tokenizer/decoder_factory=struc_decoder_ligand",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
-            ]
-        )
+            ],
+        ),
     ),
-    
     # Protein-Ligand Models
     # These models can handle both protein and ligand structures
     "LG Ligand 20A seq 3di Aux": ModelInfo(
@@ -188,7 +164,7 @@ methods = {
             "Sequence and 3Di decoder",
             "Ligand encoding support",
             "512 ligand tokens",
-            "512 protein tokens"
+            "512 protein tokens",
         ],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_Ligand_20A_seq_3di_Aux.ckpt",
@@ -202,7 +178,7 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer.structure_encoder.encode_ligand=true",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=512",
@@ -211,20 +187,14 @@ methods = {
                 "tokenizer/quantizer=slq_quantizer_ligand",
                 "tokenizer/decoder_factory=struc_decoder_ligand_3di_sequence",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
-            ]
-        )
+            ],
+        ),
     ),
-
     # Protein-Only Models
     # These models are optimized for protein structure analysis
     "LG 20A seq Aux": ModelInfo(
         description="Sequence-aware protein model",
-        features=[
-            "256-dim embeddings",
-            "20Å spatial attention",
-            "Sequence decoder",
-            "256 protein tokens"
-        ],
+        features=["256-dim embeddings", "20Å spatial attention", "Sequence decoder", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_Aux.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -237,21 +207,15 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
-                "tokenizer/decoder_factory=struc_decoder_sequence"
-            ]
-        )
+                "tokenizer/decoder_factory=struc_decoder_sequence",
+            ],
+        ),
     ),
-
     "LG 20A seq 3di c6d Aux": ModelInfo(
         description="Sequence, 3Di and C6D-aware protein model",
-        features=[
-            "256-dim embeddings",
-            "20Å spatial attention",
-            "Sequence + 3Di + C6D decoder",
-            "256 protein tokens"
-        ],
+        features=["256-dim embeddings", "20Å spatial attention", "Sequence + 3Di + C6D decoder", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -264,21 +228,15 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
-            ]
-        )
+            ],
+        ),
     ),
-
     "LG 20A seq 3di c6d Aux Pinder": ModelInfo(
         description="Sequence, 3Di and C6D-aware protein model",
-        features=[
-            "256-dim embeddings",
-            "20Å spatial attention",
-            "Sequence + 3Di + C6D decoder",
-            "256 protein tokens"
-        ],
+        features=["256-dim embeddings", "20Å spatial attention", "Sequence + 3Di + C6D decoder", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_Pinder.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -291,21 +249,15 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
-            ]
-        )
+            ],
+        ),
     ),
-
     "LG 20A seq 3di c6d Aux PDB": ModelInfo(
         description="Sequence, 3Di and C6D-aware protein model",
-        features=[
-            "256-dim embeddings",
-            "20Å spatial attention",
-            "Sequence + 3Di + C6D decoder",
-            "256 protein tokens"
-        ],
+        features=["256-dim embeddings", "20Å spatial attention", "Sequence + 3Di + C6D decoder", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -318,21 +270,15 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
-            ]
-        )
+            ],
+        ),
     ),
-
     "LG 20A seq 3di c6d Aux PDB Pinder": ModelInfo(
         description="Sequence, 3Di and C6D-aware protein model",
-        features=[
-            "256-dim embeddings",
-            "20Å spatial attention",
-            "Sequence + 3Di + C6D decoder",
-            "256 protein tokens"
-        ],
+        features=["256-dim embeddings", "20Å spatial attention", "Sequence + 3Di + C6D decoder", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB_Pinder.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -345,21 +291,15 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
-            ]
-        )
+            ],
+        ),
     ),
-
     "LG 20A seq 3di c6d Aux PDB Pinder Finetune": ModelInfo(
         description="Sequence, 3Di and C6D-aware protein model",
-        features=[
-            "256-dim embeddings",
-            "20Å spatial attention",
-            "Sequence + 3Di + C6D decoder",
-            "256 protein tokens"
-        ],
+        features=["256-dim embeddings", "20Å spatial attention", "Sequence + 3Di + C6D decoder", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A_seq_3di_c6d_Aux_PDB_Pinder_Finetune.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -372,20 +312,15 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1",
                 "+tokenizer.structure_encoder.dropout=0.1",
                 "+tokenizer.structure_encoder.attention_dropout=0.1",
-                "tokenizer.structure_encoder.embed_dim=256", 
+                "tokenizer.structure_encoder.embed_dim=256",
                 "tokenizer.quantizer.embed_dim=256",
                 "tokenizer/decoder_factory=struc_decoder_3di_c6d_sequence",
-            ]
-        )
+            ],
+        ),
     ),
-
     "LG 20A": ModelInfo(
         description="Basic protein model with 20Å cutoff",
-        features=[
-            "Standard configuration",
-            "20Å spatial attention",
-            "256 protein tokens"
-        ],
+        features=["Standard configuration", "20Å spatial attention", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_20A.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -393,18 +328,13 @@ methods = {
             overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=20.0",
-                "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0"
-            ]
-        )
+                "+tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0",
+            ],
+        ),
     ),
-
     "LG 10A": ModelInfo(
         description="Basic protein model with 10Å cutoff",
-        features=[
-            "Standard configuration",
-            "10Å spatial attention",
-            "256 protein tokens"
-        ],
+        features=["Standard configuration", "10Å spatial attention", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_10A.ckpt",
             config_path="../../latent_generator/hydra_config/",
@@ -412,25 +342,20 @@ methods = {
             overrides=[
                 "+tokenizer.structure_encoder.spatial_attention_mask=true",
                 "+tokenizer.structure_encoder.angstrom_cutoff=10.0",
-                "+tokenizer.structure_encoder.angstrom_cutoff_spatial=10.0"
-            ]
-        )
+                "+tokenizer.structure_encoder.angstrom_cutoff_spatial=10.0",
+            ],
+        ),
     ),
-
     "LG full attention": ModelInfo(
         description="Full attention model without spatial masking",
-        features=[
-            "Standard configuration",
-            "Full attention (no spatial masking)",
-            "256 protein tokens"
-        ],
+        features=["Standard configuration", "Full attention (no spatial masking)", "256 protein tokens"],
         model_config=ModelConfig(
             checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_full_attention.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
-            overrides=[]
-        )
-    )
+            overrides=[],
+        ),
+    ),
 }
 
 
@@ -446,7 +371,8 @@ def format_resolver(x, pattern):
     """
     return f"{x:{pattern}}"
 
-def instantiate_dict_cfg(cfg: Optional[DictConfig], verbose=False):
+
+def instantiate_dict_cfg(cfg: DictConfig | None, verbose=False):
     """Instantiate each value in a dictionary and return a list of the instantiated objects."""
     out = []
 
@@ -467,9 +393,11 @@ def instantiate_dict_cfg(cfg: Optional[DictConfig], verbose=False):
 
     return out
 
+
 OmegaConf.register_new_resolver("format", format_resolver, replace=True)
 
-def load_config(config_path: str, config_name: str, overrides: Optional[List[str]] = None) -> DictConfig:
+
+def load_config(config_path: str, config_name: str, overrides: list[str] | None = None) -> DictConfig:
     # Initialize Hydra with the configuration path
     with hydra.initialize(config_path=config_path, version_base=None):
         # Compose the configuration object from the specified config name
@@ -479,6 +407,7 @@ def load_config(config_path: str, config_name: str, overrides: Optional[List[str
             cfg = hydra.compose(config_name=config_name)
     return cfg
 
+
 class LatentEncoderDecoder:
     """A utility class for loading a TokenizerMulti model and encoding inputs to latent vectors."""
 
@@ -486,7 +415,9 @@ class LatentEncoderDecoder:
         self.model = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def load_model(self, checkpoint_path: str, cfg_path: str, cfg_name: str, overrides: Optional[List[str]] = None) -> None:
+    def load_model(
+        self, checkpoint_path: str, cfg_path: str, cfg_name: str, overrides: list[str] | None = None
+    ) -> None:
         """Load a TokenizerMulti model from a checkpoint path.
 
         Args:
@@ -501,27 +432,27 @@ class LatentEncoderDecoder:
                 local_checkpoint_path = "/tmp/" + os.path.basename(key)  # Temporary local path
                 s3.download_file(bucket_name, key, local_checkpoint_path)
                 checkpoint_path = local_checkpoint_path  # Update checkpoint_path to the local file
-            except NoCredentialsError:
-                raise RuntimeError("AWS credentials not found. Ensure they are configured properly.")
+            except NoCredentialsError as e:
+                raise RuntimeError("AWS credentials not found. Ensure they are configured properly.") from e
             except Exception as e:
-                raise RuntimeError(f"Failed to download checkpoint from S3: {e}")
+                raise RuntimeError(f"Failed to download checkpoint from S3: {e}") from e
         elif checkpoint_path.startswith("https://huggingface.co/"):
             # Handle Hugging Face path
             try:
                 # Convert Hugging Face blob URL to raw URL
                 if "/blob/" in checkpoint_path:
                     checkpoint_path = checkpoint_path.replace("/blob/", "/resolve/")
-                
+
                 # Extract filename from URL
                 filename = os.path.basename(urllib.parse.urlparse(checkpoint_path).path)
                 local_checkpoint_path = "/tmp/" + filename
-                
+
                 py_logger.info(f"Downloading checkpoint from Hugging Face: {checkpoint_path}")
                 urllib.request.urlretrieve(checkpoint_path, local_checkpoint_path)
                 checkpoint_path = local_checkpoint_path  # Update checkpoint_path to the local file
                 py_logger.info(f"Checkpoint downloaded to: {checkpoint_path}")
             except Exception as e:
-                raise RuntimeError(f"Failed to download checkpoint from Hugging Face: {e}")
+                raise RuntimeError(f"Failed to download checkpoint from Hugging Face: {e}") from e
         else:
             # Handle local path
             if not os.path.exists(checkpoint_path):
@@ -534,27 +465,32 @@ class LatentEncoderDecoder:
         tokenizer = hydra.utils.instantiate(cfg.tokenizer)
 
         tokenizer = TokenizerMulti.load_from_checkpoint(
-                checkpoint_path,
-                structure_encoder=tokenizer.encoder,
-                decoder_factory=tokenizer.decoder_factory,
-                loss_factory=tokenizer.loss_factory,
-                optim=tokenizer.optim_factory,
-                lr_scheduler=tokenizer.lr_scheduler,
-                quantizer=tokenizer.quantizer,
-                freeze_decoder=tokenizer.freeze_decoder,
-                freeze_encoder=tokenizer.freeze_encoder,
-                freeze_quantizer=tokenizer.freeze_quantizer,
-                strict=True,
-            )
+            checkpoint_path,
+            structure_encoder=tokenizer.encoder,
+            decoder_factory=tokenizer.decoder_factory,
+            loss_factory=tokenizer.loss_factory,
+            optim=tokenizer.optim_factory,
+            lr_scheduler=tokenizer.lr_scheduler,
+            quantizer=tokenizer.quantizer,
+            freeze_decoder=tokenizer.freeze_decoder,
+            freeze_encoder=tokenizer.freeze_encoder,
+            freeze_quantizer=tokenizer.freeze_quantizer,
+            strict=True,
+        )
 
         self.model = tokenizer
-
 
         self.model = self.model.to(self.device)
         self.model.eval()
         py_logger.info(f"Model loaded successfully and moved to {self.device}")
 
-    def encode(self, inputs: Union[torch.Tensor, Dict[str, Any]], discrete: bool = True, return_embeddings: bool = False, **kwargs) -> torch.Tensor:
+    def encode(
+        self,
+        inputs: torch.Tensor | dict[str, Any],
+        discrete: bool = True,
+        return_embeddings: bool = False,
+        **kwargs,
+    ) -> torch.Tensor:
         """Encode inputs to latent vectors.
 
         Args:
@@ -576,8 +512,7 @@ class LatentEncoderDecoder:
         if isinstance(inputs, torch.Tensor):
             inputs = inputs.to(self.device)
         elif isinstance(inputs, dict):
-            inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                    for k, v in inputs.items()}
+            inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
 
         # Ensure model is in eval mode
         self.model.eval()
@@ -591,15 +526,19 @@ class LatentEncoderDecoder:
             if discrete:
                 if isinstance(latents, dict):
                     if "protein_tokens" in latents:
-                        _,_,n_tokens = latents["protein_tokens"].shape
+                        _, _, n_tokens = latents["protein_tokens"].shape
                         latents_protein = torch.argmax(latents["protein_tokens"], dim=-1)
-                        latents["protein_tokens"] = torch.nn.functional.one_hot(latents_protein, num_classes=n_tokens).float()
-                    _,_,n_tokens_ligand = latents["ligand_tokens"].shape
+                        latents["protein_tokens"] = torch.nn.functional.one_hot(
+                            latents_protein, num_classes=n_tokens
+                        ).float()
+                    _, _, n_tokens_ligand = latents["ligand_tokens"].shape
                     latents_ligand = torch.argmax(latents["ligand_tokens"], dim=-1)
-                    latents["ligand_tokens"] = torch.nn.functional.one_hot(latents_ligand, num_classes=n_tokens_ligand).float()
+                    latents["ligand_tokens"] = torch.nn.functional.one_hot(
+                        latents_ligand, num_classes=n_tokens_ligand
+                    ).float()
                     return latents, embeddings
                 else:
-                    _,_,n_tokens = latents.shape
+                    _, _, n_tokens = latents.shape
                     latents = torch.argmax(latents, dim=-1)
                     latents = torch.nn.functional.one_hot(latents, num_classes=n_tokens).float()
                     return latents, embeddings
@@ -609,21 +548,25 @@ class LatentEncoderDecoder:
         if discrete:
             if isinstance(latents, dict):
                 if "protein_tokens" in latents:
-                    _,_,n_tokens = latents["protein_tokens"].shape
+                    _, _, n_tokens = latents["protein_tokens"].shape
                     latents_protein = torch.argmax(latents["protein_tokens"], dim=-1)
-                    latents["protein_tokens"] = torch.nn.functional.one_hot(latents_protein, num_classes=n_tokens).float()
-                _,_,n_tokens_ligand = latents["ligand_tokens"].shape
+                    latents["protein_tokens"] = torch.nn.functional.one_hot(
+                        latents_protein, num_classes=n_tokens
+                    ).float()
+                _, _, n_tokens_ligand = latents["ligand_tokens"].shape
                 latents_ligand = torch.argmax(latents["ligand_tokens"], dim=-1)
-                latents["ligand_tokens"] = torch.nn.functional.one_hot(latents_ligand, num_classes=n_tokens_ligand).float()
+                latents["ligand_tokens"] = torch.nn.functional.one_hot(
+                    latents_ligand, num_classes=n_tokens_ligand
+                ).float()
                 return latents
             else:
-                _,_,n_tokens = latents.shape
+                _, _, n_tokens = latents.shape
                 latents = torch.argmax(latents, dim=-1)
                 latents = torch.nn.functional.one_hot(latents, num_classes=n_tokens).float()
 
         return latents
 
-    def decode(self, latents: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
+    def decode(self, latents: torch.Tensor, **kwargs) -> dict[str, torch.Tensor]:
         """Decode latent vectors back to original inputs.
 
         Args:
@@ -638,8 +581,7 @@ class LatentEncoderDecoder:
 
         # Move latents to device
         if isinstance(latents, dict):
-            latents = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                    for k, v in latents.items()}
+            latents = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in latents.items()}
         else:
             latents = latents.to(self.device)
 
@@ -655,7 +597,7 @@ class LatentEncoderDecoder:
             decoded_sequence = decoded_outputs["sequence_decoder"]
         else:
             decoded_sequence = None
-        
+
         return decoded_structure, decoded_sequence
 
 
@@ -664,6 +606,7 @@ encoder_decoder = LatentEncoderDecoder()
 load_model = encoder_decoder.load_model
 encode = encoder_decoder.encode
 decode = encoder_decoder.decode
+
 
 def main():
     """
@@ -795,9 +738,11 @@ LG full attention
     - Standard configuration
     - Full attention (no spatial masking)
     - 256 protein tokens
-"""
+""",
     )
-    parser.add_argument("--model_name", type=str, required=False, help=f"Name of the model to load. Options: {list(methods.keys())}")
+    parser.add_argument(
+        "--model_name", type=str, required=False, help=f"Name of the model to load. Options: {list(methods.keys())}"
+    )
     parser.add_argument("--ckpt_path", type=str, required=False, help="Path to the checkpoint file")
     parser.add_argument("--cfg_path", type=str, required=False, help="Path to the configuration file")
     parser.add_argument("--cfg_name", type=str, default="train_multi", help="Name of the configuration to load")
@@ -806,8 +751,12 @@ LG full attention
     parser.add_argument("--decode", action="store_true", help="Decode latents back to original inputs")
     parser.add_argument("--decode_latents", type=str, help="Path to latents to decode")
     parser.add_argument("--batch_file", type=str, help="Path to a batch file to encode")
-    parser.add_argument("--output_file_encode", type=str, default="encoded_latents.pt", help="Path to save encoded outputs")
-    parser.add_argument("--output_file_decode", type=str, default="decoded_outputs.pt", help="Path to save decoded outputs")
+    parser.add_argument(
+        "--output_file_encode", type=str, default="encoded_latents.pt", help="Path to save encoded outputs"
+    )
+    parser.add_argument(
+        "--output_file_decode", type=str, default="decoded_outputs.pt", help="Path to save decoded outputs"
+    )
     parser.add_argument("--overrides", type=str, nargs="+", help="Configuration overrides in the format key=value")
 
     args = parser.parse_args()
@@ -819,11 +768,22 @@ LG full attention
         py_logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
 
     # Load the model with overrides if provided
-    if (args.model_name != "LG Ligand 20A seq 3di Aux" and args.model_name != "LG Ligand 20A" and args.model_name != "LG Ligand 20A continuous") and args.ligand_path is not None:
-        raise ValueError("Ligand path is only supported for LG Ligand 20A seq 3di Aux model, LG Ligand 20A model or LG Ligand 20A continuous model")
+    if (
+        args.model_name != "LG Ligand 20A seq 3di Aux"
+        and args.model_name != "LG Ligand 20A"
+        and args.model_name != "LG Ligand 20A continuous"
+    ) and args.ligand_path is not None:
+        raise ValueError(
+            "Ligand path is only supported for LG Ligand 20A seq 3di Aux model, LG Ligand 20A model or LG Ligand 20A continuous model"
+        )
 
     if args.model_name in methods:
-        load_model(methods[args.model_name].model_config.checkpoint, methods[args.model_name].model_config.config_path, methods[args.model_name].model_config.config_name, overrides=methods[args.model_name].model_config.overrides)
+        load_model(
+            methods[args.model_name].model_config.checkpoint,
+            methods[args.model_name].model_config.config_path,
+            methods[args.model_name].model_config.config_name,
+            overrides=methods[args.model_name].model_config.overrides,
+        )
     elif args.ckpt_path and args.cfg_path:
         py_logger.info(f"Loading model from {args.ckpt_path}")
         load_model(args.ckpt_path, args.cfg_path, args.cfg_name, overrides=args.overrides)
@@ -837,7 +797,7 @@ LG full attention
             py_logger.info(f"Encoding PDB from {args.pdb_path}")
             pdb_data = load_pdb(args.pdb_path)
         else:
-            py_logger.info(f"No PDB path provided, using empty protein data")
+            py_logger.info("No PDB path provided, using empty protein data")
             pdb_data = {"protein_coords": None, "protein_mask": None, "protein_seq": None}
 
         if args.ligand_path and os.path.exists(args.ligand_path):
@@ -849,8 +809,14 @@ LG full attention
             pdb_data["ligand_atom_names"] = ligand_data["atom_names"]
             pdb_data["ligand_indices"] = ligand_data["atom_indices"]
 
-        if args.model_name in ["LG ESMC 300M 256 cont", "LG ESMC 300M 512 cont", "LG ESMC 300M 960 cont", "LG ESMC 300M 960 full cont"]:
+        if args.model_name in [
+            "LG ESMC 300M 256 cont",
+            "LG ESMC 300M 512 cont",
+            "LG ESMC 300M 960 cont",
+            "LG ESMC 300M 960 full cont",
+        ]:
             from lobster.model.latent_generator.latent_generator.datasets._transforms import ESMEmbeddingTransform
+
             esm_transform = ESMEmbeddingTransform(model_name="esmc_300m", device="auto")
             pdb_data = esm_transform(pdb_data)
             pdb_data["plm_embeddings"] = pdb_data["esm_c_embeddings"]
@@ -883,9 +849,23 @@ LG full attention
                     ligand_chain = "L"
                     ligand_resname = "LIG"
                     if x_recon_xyz is not None:
-                        writepdb_ligand_complex(filename, ligand_atoms=ligand_atoms, ligand_atom_names=ligand_atom_names, ligand_chain=ligand_chain, ligand_resname=ligand_resname, protein_atoms=x_recon_xyz[0], protein_seq=seq[0])
+                        writepdb_ligand_complex(
+                            filename,
+                            ligand_atoms=ligand_atoms,
+                            ligand_atom_names=ligand_atom_names,
+                            ligand_chain=ligand_chain,
+                            ligand_resname=ligand_resname,
+                            protein_atoms=x_recon_xyz[0],
+                            protein_seq=seq[0],
+                        )
                     else:
-                        writepdb_ligand_complex(filename, ligand_atoms=ligand_atoms, ligand_atom_names=ligand_atom_names, ligand_chain=ligand_chain, ligand_resname=ligand_resname)
+                        writepdb_ligand_complex(
+                            filename,
+                            ligand_atoms=ligand_atoms,
+                            ligand_atom_names=ligand_atom_names,
+                            ligand_chain=ligand_chain,
+                            ligand_resname=ligand_resname,
+                        )
             else:
                 if sequence_outputs is not None:
                     seq = sequence_outputs.argmax(dim=-1)

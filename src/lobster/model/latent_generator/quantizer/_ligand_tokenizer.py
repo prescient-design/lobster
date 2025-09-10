@@ -1,8 +1,10 @@
 import torch
 from lobster.model.latent_generator.quantizer._slq import SimpleLinearQuantizer
 
+
 class LigandTokenizer(torch.nn.Module):
-    def __init__(self, 
+    def __init__(
+        self,
         n_tokens: int = 256,
         embed_dim: int = 4,
         softmax: bool = False,
@@ -16,10 +18,21 @@ class LigandTokenizer(torch.nn.Module):
         ligand_emb_noise: float = 0.0,
         ligand_gumbel: bool = True,
         ligand_use_gumbel_noise: bool = True,
-        ligand_tau: float = 0.5):
+        ligand_tau: float = 0.5,
+    ):
         super().__init__()
-        self.protein_tokenizer = SimpleLinearQuantizer(n_tokens, embed_dim, softmax, emb_noise, gumbel, use_gumbel_noise, tau)
-        self.ligand_tokenizer = SimpleLinearQuantizer(ligand_n_tokens, ligand_embed_dim, ligand_softmax, ligand_emb_noise, ligand_gumbel, ligand_use_gumbel_noise, ligand_tau)
+        self.protein_tokenizer = SimpleLinearQuantizer(
+            n_tokens, embed_dim, softmax, emb_noise, gumbel, use_gumbel_noise, tau
+        )
+        self.ligand_tokenizer = SimpleLinearQuantizer(
+            ligand_n_tokens,
+            ligand_embed_dim,
+            ligand_softmax,
+            ligand_emb_noise,
+            ligand_gumbel,
+            ligand_use_gumbel_noise,
+            ligand_tau,
+        )
 
     def quantize(self, z, mask=None, ligand_mask=None):
         if mask is not None:

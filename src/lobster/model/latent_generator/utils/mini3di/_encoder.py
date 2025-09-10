@@ -1,32 +1,33 @@
 from __future__ import annotations
 
 import abc
-import enum
-import functools
-import struct
+import argparse
 import typing
-from collections import deque
+from importlib.resources import files as resource_files
+from typing import Literal
 
 import numpy
 import numpy.ma
 import torch
-
-from lobster.model.latent_generator.utils.mini3di import _unkerasify
-from lobster.model.latent_generator.utils.mini3di._layers import Layer, CentroidLayer, Model
-from lobster.model.latent_generator.utils.mini3di._utils import ArrayNx3, ArrayN, ArrayNx2, ArrayNx10, ArrayNxM, normalize, last
-
-
-from importlib.resources import files as resource_files
-from lobster.model.latent_generator.io import load_pdb
-import argparse
-
-T = typing.TypeVar("T")
 from Bio.PDB import Chain
 
-from typing import Literal
+from lobster.model.latent_generator.io import load_pdb
+from lobster.model.latent_generator.utils.mini3di import _unkerasify
+from lobster.model.latent_generator.utils.mini3di._layers import CentroidLayer, Model
+from lobster.model.latent_generator.utils.mini3di._utils import (
+    ArrayNx3,
+    ArrayN,
+    ArrayNx2,
+    ArrayNx10,
+    normalize,
+    last,
+)
+
+T = typing.TypeVar("T")
 
 DISTANCE_ALPHA_BETA = 1.5336
 ALPHABET = numpy.array(list("ACDEFGHIKLMNPQRSTVWYX"))
+
 
 class _BaseEncoder(abc.ABC, typing.Generic[T]):
     @abc.abstractmethod
@@ -118,7 +119,7 @@ class VirtualCenterEncoder(_BaseEncoder["ArrayNx3[numpy.float32]"]):
     def __init__(
         self,
         *,
-        distance_alpha_beta = DISTANCE_ALPHA_BETA,
+        distance_alpha_beta=DISTANCE_ALPHA_BETA,
         distance_alpha_v: float = 2.0,
         theta: float = 270.0,
         tau: float = 0.0,
@@ -224,8 +225,7 @@ class VirtualCenterEncoder(_BaseEncoder["ArrayNx3[numpy.float32]"]):
         n: ArrayNx3[numpy.floating],
         c: ArrayNx3[numpy.floating],
     ) -> ArrayNx3[numpy.bool_]:
-        """Mask any column which contains at least one NaN value.
-        """
+        """Mask any column which contains at least one NaN value."""
         mask_ca = numpy.isnan(ca).max(axis=1)
         mask_n = numpy.isnan(n).max(axis=1)
         mask_c = numpy.isnan(c).max(axis=1)
@@ -301,7 +301,8 @@ class PartnerIndexEncoder(_BaseEncoder["ArrayN[numpy.int64]"]):
         vc = self.vc_encoder.encode_atoms(ca, cb, n, c)
         # find closest neighbor for each residue
         return self._find_residue_partners(vc)
-    
+
+
 def calculate_cb(batch):
     """
     Calculate the Cb coordinates for a batch of structures.
@@ -310,7 +311,7 @@ def calculate_cb(batch):
     N = coords[..., 0]
     Ca = coords[..., 1]
     C = coords[..., 2]
-    
+
     b = Ca - N
     c = C - Ca
     a = torch.cross(b, c, dim=-1)
@@ -320,13 +321,12 @@ def calculate_cb(batch):
     Cb = Cb.cpu().numpy()
     N = N.cpu().numpy()
     C = C.cpu().numpy()
-    
+
     return Ca, Cb, N, C
 
 
 class FeatureEncoder(_BaseEncoder["ArrayN[numpy.float32]"]):
-    """An encoder for converting a protein structure to structural descriptors.
-    """
+    """An encoder for converting a protein structure to structural descriptors."""
 
     def __init__(self) -> None:
         self.partner_index_encoder = PartnerIndexEncoder()
@@ -336,10 +336,9 @@ class FeatureEncoder(_BaseEncoder["ArrayN[numpy.float32]"]):
         self,
         ca: ArrayNx3[numpy.floating],
         partner_index: ArrayN[numpy.int64],
-        dtype: typing.Type[numpy.floating] = numpy.float32,
+        dtype: type[numpy.floating] = numpy.float32,
     ) -> ArrayNx10[numpy.floating]:
         # build arrays of indices to use for vectorized angles
-        n = ca.shape[0]
         I = numpy.arange(1, ca.shape[-2] - 1)
         J = partner_index[I]
         # compute conformational descriptors
@@ -369,9 +368,9 @@ class FeatureEncoder(_BaseEncoder["ArrayN[numpy.float32]"]):
         I = numpy.arange(1, mask.shape[0] - 1)
         J = partner_index[I]
         out = numpy.zeros((mask.shape[0], 10), dtype=numpy.bool_)
-        out[1:-1, :] |= (
-            mask[I - 1] | mask[I] | mask[I + 1] | mask[J - 1] | mask[J] | mask[J + 1]
-        ).reshape(mask.shape[0]-2, 1)
+        out[1:-1, :] |= (mask[I - 1] | mask[I] | mask[I + 1] | mask[J - 1] | mask[J] | mask[J + 1]).reshape(
+            mask.shape[0] - 2, 1
+        )
         out[0] = out[-1] = True
         return out
 
@@ -398,8 +397,7 @@ class FeatureEncoder(_BaseEncoder["ArrayN[numpy.float32]"]):
 
 
 class Encoder(_BaseEncoder["ArrayN[numpy.uint8]"]):
-    """An encoder for converting a protein structure to 3di states.
-    """
+    """An encoder for converting a protein structure to 3di states."""
 
     _INVALID_STATE = 2
     _CENTROIDS: ArrayNx2[numpy.float32] = numpy.array(
@@ -436,6 +434,7 @@ class Encoder(_BaseEncoder["ArrayN[numpy.uint8]"]):
         except (AttributeError, FileNotFoundError):
             # Fallback to direct file path
             import os
+
             current_dir = os.path.dirname(os.path.abspath(__file__))
             weights_path = os.path.join(current_dir, "encoder_weights_3di.kerasify")
             with open(weights_path, "rb") as f:
@@ -457,18 +456,16 @@ class Encoder(_BaseEncoder["ArrayN[numpy.uint8]"]):
             mask=descriptors.mask[:, 0],
             fill_value=self._INVALID_STATE,
         )
-        out = {
-            "states": states,
-            "descriptors": descriptors
-        }
+        out = {"states": states, "descriptors": descriptors}
         return out
 
     def build_sequence(self, states: ArrayN[numpy.uint8]) -> str:
-        return "".join( ALPHABET[states.filled()] )
-    
+        return "".join(ALPHABET[states.filled()])
+
+
 def main():
-    parser = argparse.ArgumentParser(description='Process a PDB file into a graph representation')
-    parser.add_argument('--pdb_path', type=str, required=True, help='Path to the PDB file')
+    parser = argparse.ArgumentParser(description="Process a PDB file into a graph representation")
+    parser.add_argument("--pdb_path", type=str, required=True, help="Path to the PDB file")
 
     args = parser.parse_args()
 
@@ -477,14 +474,12 @@ def main():
 
     feature_encoder = FeatureEncoder()
     Ca, Cb, N, C = calculate_cb(pdb_data)
-    features = feature_encoder.encode_atoms(Ca, Cb, N, C)
+    feature_encoder.encode_atoms(Ca, Cb, N, C)
 
     encoder = Encoder()
     out = encoder.encode_atoms(Ca, Cb, N, C)
-    sequence = encoder.build_sequence(out["states"])
+    encoder.build_sequence(out["states"])
 
 
 if __name__ == "__main__":
     main()
-
-
