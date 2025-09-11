@@ -15,12 +15,12 @@ from lobster.model.latent_generator.io import load_pdb
 from lobster.model.latent_generator.utils.mini3di import _unkerasify
 from lobster.model.latent_generator.utils.mini3di._layers import CentroidLayer, Model
 from lobster.model.latent_generator.utils.mini3di._utils import (
-    ArrayNx3,
     ArrayN,
     ArrayNx2,
+    ArrayNx3,
     ArrayNx10,
-    normalize,
     last,
+    normalize,
 )
 
 T = typing.TypeVar("T")

@@ -1,11 +1,24 @@
 import os
-import pytest
-import torch
+import importlib.util
 from pathlib import Path
 
-from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
-from lobster.model.latent_generator.io import load_pdb, load_ligand, writepdb, writepdb_ligand_complex
+import pytest
+import torch
+
+from lobster.model.latent_generator.cmdline import decode, encode, load_model, methods
+from lobster.model.latent_generator.io import load_ligand, load_pdb, writepdb, writepdb_ligand_complex
 from lobster.model.latent_generator.tokenizer import L2Loss, LigandL2Loss
+
+# Check for optional dependencies
+if importlib.util.find_spec("cpdb"):
+    HAS_CPDB = True
+else:
+    HAS_CPDB = False
+
+if importlib.util.find_spec("rotary_embedding_torch"):
+    HAS_ROTARY_EMBEDDING = True
+else:
+    HAS_ROTARY_EMBEDDING = False
 
 # Test data paths
 TEST_DATA_DIR = (
@@ -67,6 +80,10 @@ class TestProteinOnlyModels:
             "LG full attention",
         ],
     )
+    @pytest.mark.skipif(
+        not HAS_CPDB,
+        reason="cpdb is not installed. Please install it with `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`",
+    )
     def test_protein_encoding_decoding(self, model_name, protein_data):
         """Test encoding and decoding of protein structures."""
         # Load model
@@ -121,6 +138,10 @@ class TestProteinLigandModels:
         [
             "LG Ligand 20A seq 3di Aux",
         ],
+    )
+    @pytest.mark.skipif(
+        not HAS_CPDB,
+        reason="cpdb is not installed. Please install it with `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`",
     )
     def test_protein_ligand_encoding_decoding(self, model_name, protein_ligand_data):
         """Test encoding and decoding of protein-ligand structures."""
@@ -182,6 +203,10 @@ class TestLigandOnlyModels:
         [
             "LG Ligand 20A",
         ],
+    )
+    @pytest.mark.skipif(
+        not HAS_ROTARY_EMBEDDING,
+        reason="rotary_embedding_torch is not installed. Please install it to use rotary embeddings.",
     )
     def test_ligand_encoding_decoding(self, model_name, ligand_data):
         """Test encoding and decoding of ligand structures."""

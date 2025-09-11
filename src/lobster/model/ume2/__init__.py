@@ -1,4 +1,4 @@
-from ._ume_sequence_encoder import UMESequenceEncoderModule, AuxiliaryTask, AuxiliaryRegressionTaskHead
+from ._ume_sequence_encoder import AuxiliaryRegressionTaskHead, AuxiliaryTask, UMESequenceEncoderModule
 from ._ume_sequence_encoder_lightning_module import UMESequenceEncoderLightningModule
 
 __all__ = [

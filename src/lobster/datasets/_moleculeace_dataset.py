@@ -4,11 +4,11 @@ from pathlib import Path
 import pandas
 import pooch
 import torch
-from lobster.transforms import Transform
 from torch import Tensor
 from torch.utils.data import Dataset
 
 from lobster.constants import MOLECULEACE_TASKS
+from lobster.transforms import Transform
 
 
 class MoleculeACEDataset(Dataset):

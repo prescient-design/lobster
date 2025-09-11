@@ -1,12 +1,11 @@
-# ruff: noqa: F722
 import torch
-from lobster.model.latent_generator.structure_decoder import BaseDecoder
+from torch import Tensor
+
 from lobster.model.latent_generator.models.vit._vit_utils import (
     TimeCondUViTDecoder,
     expand,
 )
-from torchtyping import TensorType
-
+from ._decoder import BaseDecoder
 
 # TODO replace tensortyping with jaxtyping
 
@@ -64,7 +63,7 @@ class ViTDecoder(BaseDecoder):
             refinement_module=refinement_module,
         )
 
-    def preprocess(self, coords: TensorType["b n a x", float], mask: TensorType["b n", float], **kwargs):
+    def preprocess(self, coords: Tensor, mask: Tensor, **kwargs):
         return coords, mask
 
     def get_output_dim(self):
@@ -72,9 +71,9 @@ class ViTDecoder(BaseDecoder):
 
     def forward(
         self,
-        x_quant: TensorType["b n a x", float],
-        seq_mask: TensorType["b n", float],
-        residue_index: TensorType["b n", int] | None = None,
+        x_quant: Tensor,
+        seq_mask: Tensor,
+        residue_index: Tensor | None = None,
         **kwargs,
     ):
         if isinstance(x_quant, dict):

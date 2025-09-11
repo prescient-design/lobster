@@ -1,8 +1,12 @@
+import logging
+
 import numpy as np
 import torch
-from loguru import logger
+
 from ._lrf import apply_stochastic_fa as apply_stochastic_fa_func
 from ._molecular_frame import get_grf_from_lrf_from_backbone_coords
+
+logger = logging.getLogger(__name__)
 
 PARAMS = {
     "DMIN": 2.0,

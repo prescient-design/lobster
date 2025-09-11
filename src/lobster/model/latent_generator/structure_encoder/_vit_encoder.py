@@ -1,16 +1,17 @@
-# ruff: noqa: F722
-import torch
+import logging
 from typing import Literal
-from lobster.model.latent_generator.structure_encoder import BaseEncoder
-from lobster.model.latent_generator.utils import apply_random_se3_batched, apply_global_frame_to_coords
+
+import torch
+from torch import Tensor
+
 from lobster.model.latent_generator.models.vit._vit_utils import (
     TimeCondUViTEncoder,
     expand,
 )
-from torchtyping import TensorType
-from loguru import logger
+from ._encoder import BaseEncoder
+from lobster.model.latent_generator.utils import apply_global_frame_to_coords, apply_random_se3_batched
 
-# TODO replace tensortyping with jaxtyping
+logger = logging.getLogger(__name__)
 
 
 class ViTEncoder(BaseEncoder):
@@ -226,14 +227,14 @@ class ViTEncoder(BaseEncoder):
 
     def forward(
         self,
-        coords: TensorType["b n a x", float],
-        seq_mask: TensorType["b n", float],
-        residue_index: TensorType["b n", int] | None = None,
-        sequence: TensorType["b n", int] | None = None,
-        ligand_coords: TensorType["b n a x", float] | None = None,
-        ligand_mask: TensorType["b n", float] | None = None,
-        ligand_residue_index: TensorType["b n", int] | None = None,
-        ligand_atom_types: TensorType["b n", int] | None = None,
+        coords: Tensor,
+        seq_mask: Tensor,
+        residue_index: Tensor | None = None,
+        sequence: Tensor | None = None,
+        ligand_coords: Tensor | None = None,
+        ligand_mask: Tensor | None = None,
+        ligand_residue_index: Tensor | None = None,
+        ligand_atom_types: Tensor | None = None,
         return_embeddings: bool = False,
         **kwargs,
     ):

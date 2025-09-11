@@ -14,7 +14,7 @@ from typing import BinaryIO
 
 import numpy
 
-from lobster.model.latent_generator.utils.mini3di._layers import Layer, DenseLayer
+from lobster.model.latent_generator.utils.mini3di._layers import DenseLayer, Layer
 
 
 class LayerType(enum.IntEnum):

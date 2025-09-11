@@ -2,18 +2,19 @@
 
 import inspect
 from unittest.mock import Mock
+
 import pytest
+from fastmcp import FastMCP
 
 from lobster.mcp.tool_factory import ToolFactory, create_and_register_tools
 from lobster.mcp.tools import (
-    list_available_models,
-    get_sequence_representations,
-    get_sequence_concepts,
-    intervene_on_sequence,
-    get_supported_concepts,
     compute_naturalness,
+    get_sequence_concepts,
+    get_sequence_representations,
+    get_supported_concepts,
+    intervene_on_sequence,
+    list_available_models,
 )
-from fastmcp import FastMCP
 
 
 class TestToolFactory:

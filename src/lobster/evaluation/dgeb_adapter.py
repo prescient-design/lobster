@@ -5,12 +5,13 @@ from typing import Literal
 
 import numpy as np
 import torch
-from dgeb.models import BioSeqTransformer
 from dgeb.modality import Modality
+from dgeb.models import BioSeqTransformer
 
 from lobster.constants import Modality as LobsterModality
 from lobster.model import UME
-from lobster.model.modern_bert._padding import unpad_input, pad_input
+from lobster.model.modern_bert._padding import pad_input, unpad_input
+
 from ._pooling_utils import apply_dgeb_pooling
 
 logger = logging.getLogger(__name__)

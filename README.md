@@ -97,14 +97,15 @@ where <group name i> can be one of
 * `mgm` for UME dependencies 
 * `flash` for flash-attention on GPU
 * `mcp` for MCP servers
+* `trl` for transformer reinforcement learning
 
 Recommended installation of all optional dependencies on a CPU:
 ```
-uv sync --extra mgm --extra mcp --extra lg-cpu
+uv sync --extra mgm --extra mcp --extra lg-cpu --extra trl
 ```
 Recommended installation of all optional dependencies on a GPU:
 ```
-uv sync --extra mgm --extra mcp --extra lg-gpu --extra flash
+uv sync --extra mgm --extra mcp --extra lg-gpu --extra flash --extra trl
 ```
 
 

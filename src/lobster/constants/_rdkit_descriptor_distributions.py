@@ -1,5 +1,5 @@
-from collections.abc import Mapping
 import math
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Protocol
 

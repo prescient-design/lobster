@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections import deque
+from typing import Annotated, Literal, TypeVar
 
 import numpy
-
-from typing import Annotated, Literal, TypeVar
 import numpy.typing
 
 DType = TypeVar("DType", bound=numpy.generic)

@@ -1,13 +1,15 @@
+import logging
 import os
 from dataclasses import dataclass
-import logging
 from typing import Literal
+
+import torch
 import torch.nn as nn
 from torch import Tensor
-import torch
-from ..neobert import NeoBERTModule
 
 from lobster.data import download_from_s3
+
+from ..neobert import NeoBERTModule
 
 logger = logging.getLogger(__name__)
 

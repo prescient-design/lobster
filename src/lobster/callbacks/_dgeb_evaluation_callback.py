@@ -8,7 +8,7 @@ import torch
 from lightning.pytorch.callbacks import Callback
 from transformers.tokenization_utils_base import BatchEncoding
 
-from lobster.evaluation import run_evaluation, generate_report
+from lobster.evaluation import generate_report, run_evaluation
 
 logger = logging.getLogger(__name__)
 
@@ -285,9 +285,11 @@ class DGEBEvaluationCallback(Callback):
     ) -> dict[str, Any]:
         """Direct evaluation approach for ESM models."""
         try:
+            from datetime import datetime
+
             import dgeb
             from dgeb.modality import Modality as DGEBModality
-            from datetime import datetime
+
             from lobster.evaluation import ESMAdapterDGEB
 
             # Create output directory

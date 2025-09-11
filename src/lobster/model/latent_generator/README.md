@@ -103,7 +103,7 @@ load_model(
 )
 
 # Load a PDB file
-pdb_data = load_pdb("src/lobster/model/lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb")
+pdb_data = load_pdb("src/lobster/model//latent_generator/example/example_pdbs/7kdr_protein.pdb")
 
 # Get tokens (discrete representations) and embeddings (continuous representations)
 tokens, embeddings = encode(pdb_data, return_embeddings=True)

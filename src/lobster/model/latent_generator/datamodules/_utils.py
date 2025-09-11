@@ -1,7 +1,7 @@
 import torch
+import torch.nn.functional as F
 
 from lobster.model.latent_generator.utils import residue_constants
-import torch.nn.functional as F
 
 
 def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:

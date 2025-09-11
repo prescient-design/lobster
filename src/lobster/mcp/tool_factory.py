@@ -5,8 +5,8 @@ all available tools with the FastMCP server, eliminating code duplication.
 """
 
 import inspect
-from typing import Any, get_type_hints
 from collections.abc import Callable
+from typing import Any, get_type_hints
 
 from fastmcp import FastMCP
 

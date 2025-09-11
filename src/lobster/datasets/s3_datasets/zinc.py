@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from lobster.constants import Modality, Split, S3_BUCKET
+from lobster.constants import S3_BUCKET, Modality, Split
 
 from .base import UMEStreamingDataset
 

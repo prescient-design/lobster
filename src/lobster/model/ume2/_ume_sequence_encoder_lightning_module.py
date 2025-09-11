@@ -1,6 +1,6 @@
 import logging
-from typing import Literal
 from collections.abc import Sequence
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -8,10 +8,10 @@ import transformers
 from lightning import LightningModule
 from torch import Tensor
 
-from lobster.tokenization import UMETokenizerTransform
-from lobster.constants import ModalityType, Modality
+from lobster.constants import Modality, ModalityType
 from lobster.model.neobert import mask_tokens
 from lobster.model.utils import _detect_modality
+from lobster.tokenization import UMETokenizerTransform
 
 from ._ume_sequence_encoder import AuxiliaryTask, UMESequenceEncoderModule
 

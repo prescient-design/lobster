@@ -1,9 +1,10 @@
-import torch.nn as nn
-from torch import Tensor
 from typing import Literal
 
-from ._model import NeoBERTConfig, NeoBERT
+import torch.nn as nn
+from torch import Tensor
+
 from ._config import NEOBERT_CONFIGS
+from ._model import NeoBERT, NeoBERTConfig
 
 
 class NeoBERTModule(nn.Module):
