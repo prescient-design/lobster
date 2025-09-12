@@ -66,7 +66,7 @@ def _make_smiles_tokenizer(save_dirpath: str | Path | None = PRETRAINED_TOKENIZE
     )
 
 
-class SmilesTokenizerFast(PreTrainedTokenizerFast):
+class SMILESTokenizerFast(PreTrainedTokenizerFast):
     padding_side = "right"
     truncation_side = "right"
     model_input_names = ["input_ids", "attention_mask"]

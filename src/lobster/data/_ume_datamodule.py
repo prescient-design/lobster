@@ -23,6 +23,7 @@ class UMELightningDataModule(LightningDataModule):
         datasets: Sequence[str],
         root: str | None = None,
         max_length: int | None = 1024,
+        use_shared_tokenizer: bool = True,
         weights: None | Sequence[float] | dict[str, float] = None,
         seed: int = 0,
         batch_size: int = 1,
@@ -35,6 +36,7 @@ class UMELightningDataModule(LightningDataModule):
         self.dataset_names = datasets
         self.batch_size = batch_size
         self.max_length = max_length
+        self.use_shared_tokenizer = use_shared_tokenizer
 
         self.root = root
         self.generator = Generator().manual_seed(seed)
@@ -47,6 +49,20 @@ class UMELightningDataModule(LightningDataModule):
 
         self._validate_and_process_weights()
         self._initialize_datasets()
+
+        logger.info(
+            "Initialized UMELightningDataModule:\n"
+            f"  Datasets: {self.dataset_names}\n"
+            f"  Shared tokenizer: {self.use_shared_tokenizer}\n"
+            f"  Batch size: {self.batch_size}\n"
+            f"  Max length: {self.max_length}\n"
+            f"  Root: {self.root}\n"
+            f"  Seed: {self.seed}\n"
+            f"  Pin memory: {self.pin_memory}\n"
+            f"  Num workers: {self.num_workers}\n"
+            f"  Weights: {self.weights}\n"
+            f"  Dataset kwargs: {self.dataset_kwargs}"
+        )
 
     def _validate_and_process_weights(self) -> None:
         """Validate and process weights, converting dict to sequence if needed."""
@@ -87,6 +103,7 @@ class UMELightningDataModule(LightningDataModule):
             "seed": self.seed,
             "cache_dir": self.root,
             "use_optimized": True,
+            "use_shared_tokenizer": self.use_shared_tokenizer,
         }
         kwargs.update(self.dataset_kwargs.get(dataset_name, {}))
 

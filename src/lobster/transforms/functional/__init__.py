@@ -1,4 +1,4 @@
-from ._biopython import get_biopython_features
+from ._biopython import get_biopython_features, get_standardized_biopython_features
 from ._convert_seqs import (
     convert_aa_to_nt,
     convert_aa_to_nt_probabilistic,
@@ -32,6 +32,7 @@ from ._utils import (
 
 __all__ = [
     "get_biopython_features",
+    "get_standardized_biopython_features",
     "_sample_tokenized_input",
     "sample_item",
     "convert_aa_to_nt",

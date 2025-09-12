@@ -115,7 +115,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
             return {}
 
         output = self.encoder(
-            input_idse=batch["input_ids"], attention_mask=batch["attention_mask"], return_auxiliary_tasks=True
+            input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], return_auxiliary_tasks=True
         )
 
         auxiliary_losses = {}

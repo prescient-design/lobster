@@ -1,3 +1,5 @@
+"""Adapted from https://github.com/bp-kelley/descriptastorus/blob/master/descriptastorus/descriptors/dists.py"""
+
 import math
 from collections.abc import Mapping
 from types import MappingProxyType

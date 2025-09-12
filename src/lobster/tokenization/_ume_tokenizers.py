@@ -17,7 +17,7 @@ To create the tokenizers, run
     from lobster.tokenization._ume_tokenizers import (
         _make_ume_tokenizers,
         UMEAminoAcidTokenizerFast,
-        UMESmilesTokenizerFast,
+        UMESMILESTokenizerFast,
         UMENucleotideTokenizerFast,
     )
     # Create and save tokenizers
@@ -25,7 +25,7 @@ To create the tokenizers, run
 
     tokenizers = [
             UMEAminoAcidTokenizerFast(),
-            UMESmilesTokenizerFast(),
+            UMESMILESTokenizerFast(),
             UMENucleotideTokenizerFast(),
     ]
 
@@ -355,7 +355,7 @@ class UMEAminoAcidTokenizerFast(PreTrainedTokenizerFast):
         )
 
 
-class UMESmilesTokenizerFast(PreTrainedTokenizerFast):
+class UMESMILESTokenizerFast(PreTrainedTokenizerFast):
     padding_side = "right"
     truncation_side = "right"
     model_input_names = ["input_ids", "attention_mask"]
@@ -451,15 +451,15 @@ class UMETokenizerTransform(Module):
 
         self.modality = Modality(modality) if isinstance(modality, str) else modality
 
-        modality = Modality(modality) if isinstance(modality, str) else modality
-
-        match modality:
+        match self.modality:
             case Modality.AMINO_ACID:
                 self.tokenizer = UMEAminoAcidTokenizerFast()
             case Modality.SMILES:
-                self.tokenizer = UMESmilesTokenizerFast()
+                self.tokenizer = UMESMILESTokenizerFast()
             case Modality.NUCLEOTIDE:
                 self.tokenizer = UMENucleotideTokenizerFast()
+            case _:
+                raise ValueError(f"Unsupported modality: {self.modality}")
 
     def _encode(self, item: str | list[str]) -> dict[str, Tensor]:
         """Tokenize and encode input."""

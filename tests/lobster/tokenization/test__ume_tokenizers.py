@@ -5,7 +5,7 @@ from lobster.constants import Modality
 from lobster.tokenization._ume_tokenizers import (
     UMEAminoAcidTokenizerFast,
     UMENucleotideTokenizerFast,
-    UMESmilesTokenizerFast,
+    UMESMILESTokenizerFast,
     UMETokenizerTransform,
     _add_reserved_tokens,
 )
@@ -74,7 +74,7 @@ def test_ume_amino_acid_tokenizer():
 
 
 def test_ume_smiles_tokenizer():
-    tokenizer = UMESmilesTokenizerFast()
+    tokenizer = UMESMILESTokenizerFast()
     encoded = [2, 54, 54, 58, 4]
 
     assert tokenizer.tokenize("CCO") == ["C", "C", "O"]
@@ -98,7 +98,7 @@ class TestUMETokenizerTransform:
 
         assert transform.modality == Modality.SMILES
         assert transform.max_length is None
-        assert isinstance(transform.tokenizer, UMESmilesTokenizerFast)
+        assert isinstance(transform.tokenizer, UMESMILESTokenizerFast)
 
     @pytest.mark.parametrize(
         "modality,input_text,max_length,expected_input_ids,expected_attention_mask,expected_modality",

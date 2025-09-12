@@ -1,7 +1,12 @@
 # @package _global_
 
 defaults:
-  - ume-2/base
+  - override /data: null
+  - override /callbacks: [base]
+  - override /model: null
+  - override /lr_scheduler: null
+
+compile: false
 
 rdkit_descriptors:
   - MolWt
@@ -12,11 +17,18 @@ rdkit_descriptors:
   - BertzCT
 
 data:
+  _target_: lobster.data.UMELightningDataModule
   datasets:
     - ZINC
+  root: ${oc.env:LOBSTER_DATA_DIR}
+  max_length: 1024
+  seed: 0
   batch_size: 64
+  pin_memory: true
+  num_workers: 8
   dataset_kwargs:
     ZINC:
+      use_shared_tokenizer: false
       extra_transform_fns:
         rdkit:
           _target_: lobster.transforms.SmilesToRDKitDescriptorsTransform
@@ -25,6 +37,7 @@ data:
           descriptor_list: ${rdkit_descriptors}
 
 model:
+  _target_: lobster.model.ume2.UMESequenceEncoderLightningModule 
   auxiliary_tasks:
     - _target_: lobster.model.ume2.AuxiliaryTask
       name: rdkit
@@ -35,28 +48,50 @@ model:
       pooling: mean
       num_layers: 2
       dropout: 0.1
-  lr: 0.00002 #1e-5
-  mask_probability: 0.15
+  lr: 1e-5
+  scheduler: constant_with_warmup
   scheduler_kwargs:
     num_warmup_steps: 0
+  weight_decay: 0.01
+  mask_token_id: 4
+  pad_token_id: 1
+  special_token_ids: [0, 1, 2, 3, 4, 5]
+  mask_probability: 0.15
   ckpt_path: null
   encoder_kwargs:
+    max_length: ${data.max_length}
     model_ckpt: s3://prescient-lobster/ume/runs/2025-09-03T15-31-34/epoch=2-step=89000-val_loss=0.8960.ckpt
     cache_dir: /data2/ume/checkpoints
     model_size: small
+    vocab_size: 1226
+
+logger:
+  name: UME-2-${model.encoder_kwargs.model_size}_${data.datasets}_sweep_${paths.timestamp}
+  project: lobster
+  entity: ${oc.env:LOBSTER_USER}
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
 
 paths:
   timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S} 
-
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
 
 trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: 500
+  limit_val_batches: 50_000
+  precision: 16-mixed
   accumulate_grad_batches: 4
+  devices: auto
 
-
-logger:
-  name: UME-2-Aux-from-pretrained-${model.encoder_kwargs.model_size}_${data.datasets}_sweep_${paths.timestamp}
-
-# callbacks:
+callbacks:
+  model_checkpoint:
+    save_top_k: -1
+    every_n_train_steps: 500
   # batch_size_finder:
   #   _target_: lightning.pytorch.callbacks.BatchSizeFinder
   #   mode: power

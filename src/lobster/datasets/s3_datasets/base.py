@@ -9,7 +9,13 @@ from litdata.streaming.item_loader import ParquetLoader
 from upath import UPath
 
 from lobster.constants import Modality, Split
-from lobster.tokenization import UMETokenizerTransform
+from lobster.tokenization import (
+    AminoAcidTokenizerFast,
+    NucleotideTokenizerFast,
+    SMILESTokenizerFast,
+    UMETokenizerTransform,
+)
+from lobster.transforms import TokenizerTransform
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +105,9 @@ class UMEStreamingDataset(StreamingDataset):
             Whether to tokenize sequences. If False, raw sequences will be returned.
         use_optimized : bool, default=False
             Whether to use optimized dataset format. Requires OPTIMIZED_SPLITS to be defined.
+        use_shared_tokenizer : bool, default=True
+            Whether to use tokenizers that share the same vocabulary (UMETokenizerTransform)
+            or whether to use individual tokenizers for each modality.
         max_length : int | None, default=8192
             Maximum sequence length for tokenization. Required if tokenize is True.
         **kwargs : Any
@@ -249,14 +258,23 @@ class UMEStreamingDataset(StreamingDataset):
             }
         else:
             self.tokenizer_registry = {
-                Modality.AMINO_ACID: UMETokenizerTransform(
-                    modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
+                Modality.AMINO_ACID: TokenizerTransform(
+                    AminoAcidTokenizerFast(),
+                    padding="max_length",
+                    truncation=True,
+                    max_length=max_length,
                 ),
-                Modality.SMILES: UMETokenizerTransform(
-                    modality=Modality.SMILES, max_length=max_length, return_modality=False
+                Modality.SMILES: TokenizerTransform(
+                    SMILESTokenizerFast(),
+                    padding="max_length",
+                    truncation=True,
+                    max_length=max_length,
                 ),
-                Modality.NUCLEOTIDE: UMETokenizerTransform(
-                    modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
+                Modality.NUCLEOTIDE: TokenizerTransform(
+                    NucleotideTokenizerFast(),
+                    padding="max_length",
+                    truncation=True,
+                    max_length=max_length,
                 ),
             }
 

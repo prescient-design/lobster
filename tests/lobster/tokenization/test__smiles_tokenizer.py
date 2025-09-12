@@ -1,12 +1,12 @@
 import pytest
 from transformers import PreTrainedTokenizerFast
 
-from lobster.tokenization._smiles_tokenizer import SmilesTokenizerFast, _make_smiles_tokenizer
+from lobster.tokenization._smiles_tokenizer import SMILESTokenizerFast, _make_smiles_tokenizer
 
 
 @pytest.fixture
 def tokenizer():
-    return SmilesTokenizerFast()
+    return SMILESTokenizerFast()
 
 
 def test__make_smiles_tokenizer():
@@ -34,7 +34,7 @@ def test__make_smiles_tokenizer():
     }
 
 
-class TestSmilesTokenizerFast:
+class TestSMILESTokenizerFast:
     def test_smiles_tokenizer_fast(self, tokenizer):
         assert isinstance(tokenizer, PreTrainedTokenizerFast)
 
