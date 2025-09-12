@@ -16,7 +16,6 @@ from lobster.model.latent_generator.datasets import LigandDataset, RandomizedMin
 from lobster.model.latent_generator.datasets._structure_dataset_iterable import ShardedStructureDataset
 from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform, StructureLigandTransform
 
-
 try:
     from torch_geometric.transforms import Compose
 except ImportError:

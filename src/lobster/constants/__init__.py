@@ -1,5 +1,11 @@
 from ._architecture_analyzer import GPUType, ModelType
-from ._biopython_features import BIOPYTHON_FEATURES
+from ._biopython_features import (
+    BIOPYTHON_FEATURE_AGGREGATION_METHODS,
+    BIOPYTHON_FEATURES,
+    BIOPYTHON_PEPTIDE_SCALER_PARAMS,
+    BIOPYTHON_PROTEIN_SCALER_PARAMS,
+    PEPTIDE_WARNING_THRESHOLD,
+)
 from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, MAX_SEQUENCE_LENGTH, CALMSpecies, CALMTask
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
 from ._hf import HF_UME_MODEL_DIRPATH, HF_UME_REPO_ID
@@ -16,7 +22,7 @@ from ._peer_tasks import (
     PEERTaskCategory,
 )
 from ._pooling import PoolingType
-from ._rdkit_descriptor_distributions import RDKIT_DESCRIPTOR_DISTRIBUTIONS
+from ._rdkit_descriptor_distributions import RDKIT_DESCRIPTOR_DISTRIBUTIONS, SupportsCDF
 from ._s3 import S3_BUCKET
 from ._scheduler_type import SchedulerType
 from ._split import Split
@@ -31,6 +37,11 @@ from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_S
 
 __all__ = [
     "BIOPYTHON_FEATURES",
+    "BIOPYTHON_FEATURE_AGGREGATION_METHODS",
+    "BIOPYTHON_PEPTIDE_SCALER_PARAMS",
+    "BIOPYTHON_PROTEIN_SCALER_PARAMS",
+    "PEPTIDE_WARNING_THRESHOLD",
+    "SupportsCDF",
     "HF_UME_REPO_ID",
     "HF_UME_MODEL_DIRPATH",
     "Modality",

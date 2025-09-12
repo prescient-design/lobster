@@ -8,8 +8,9 @@ from lobster.model.latent_generator.models.vit._vit_utils import (
     TimeCondUViTEncoder,
     expand,
 )
-from ._encoder import BaseEncoder
 from lobster.model.latent_generator.utils import apply_global_frame_to_coords, apply_random_se3_batched
+
+from ._encoder import BaseEncoder
 
 logger = logging.getLogger(__name__)
 
