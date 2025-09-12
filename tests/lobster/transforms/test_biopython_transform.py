@@ -73,6 +73,10 @@ class TestProteinToBioPythonFeaturesTransform:
         assert len(out) == 13
         assert out == {
             "sequence_length": 24.0,
+            # MW for the complex is slightly different than for 1 chain (the test above)
+            # this is because when you have separate chains, each chain has its own N-terminus (NH₂) and C-terminus (COOH)
+            # when chains are connected in a single peptide, the internal peptide bonds eliminate water
+            # The difference = ~ weight of 1 water molecule
             "molecular_weight": 2622.2406,
             "aromaticity_index": 0.08391608391608392,
             "instability_index": 51.251398601398606,
