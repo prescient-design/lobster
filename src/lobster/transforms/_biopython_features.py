@@ -103,7 +103,7 @@ class ProteinToBioPythonFeaturesTransform(Transform):
             The BioPython features for the input protein sequence as a tensor or dictionary,
             depending on the return_dict parameter.
         """
-        if len(protein_sequence) <= self._peptide_threshold:
+        if len(protein_sequence) < self._peptide_threshold:
             is_peptide = True
         else:
             is_peptide = False
@@ -124,7 +124,7 @@ class ProteinToBioPythonFeaturesTransform(Transform):
                     return_as_tensor=not self._return_dict,
                     complex_separator=self._complex_separator,
                 )
-        except ValueError as e:
+        except (ValueError, KeyError) as e:
             logger.error(f"Error computing BioPython features for protein sequence: {e}")
             return None
 

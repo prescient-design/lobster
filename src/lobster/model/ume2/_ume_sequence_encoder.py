@@ -14,52 +14,6 @@ from ..neobert import NeoBERTModule
 logger = logging.getLogger(__name__)
 
 
-def _map_checkpoint_keys(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-    """
-    Map checkpoint keys to match current model structure.
-
-    The checkpoint contains keys with an extra 'model.' prefix that needs to be removed.
-    For example: 'model.model.encoder.weight' -> 'model.encoder.weight'
-
-    Parameters
-    ----------
-    state_dict : dict[str, torch.Tensor]
-        The original state dict from the checkpoint
-
-    Returns
-    -------
-    dict[str, torch.Tensor]
-        The mapped state dict with corrected keys
-    """
-    mapped_state_dict = {}
-
-    for key, value in state_dict.items():
-        # Remove the extra 'model.' prefix if it exists
-        if key.startswith("model.model."):
-            new_key = key.replace("model.model.", "model.", 1)
-            mapped_state_dict[new_key] = value
-            logger.debug(f"Mapped key: {key} -> {new_key}")
-
-        elif key.startswith("model.decoder."):
-            new_key = key.replace("model.decoder.", "decoder.", 1)
-            mapped_state_dict[new_key] = value
-            logger.debug(f"Mapped key: {key} -> {new_key}")
-
-        else:
-            mapped_state_dict[key] = value
-
-    return mapped_state_dict
-
-
-# class UMESequenceStructureEncoder(nn.Module):
-#     # Sequence and structure encoder that uses structural tokens
-#     pass
-
-# class UMESequenceAwareEncoder(nn.Module):
-#     # Sequence-only encoder that has been aligned with structure encoder
-#     pass
-
-
 @dataclass
 class AuxiliaryTask:
     name: str
@@ -190,3 +144,30 @@ class UMESequenceEncoderModule(nn.Module):
                 output[task_name] = task_head(embeddings)
 
         return output
+
+
+def _map_checkpoint_keys(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """
+    Map checkpoint keys of NeoBERTLightningModuleto match current model structure.
+
+    The checkpoint contains keys with an extra 'model.' prefix that needs to be removed.
+    For example: 'model.model.encoder.weight' -> 'model.encoder.weight'
+    """
+    mapped_state_dict = {}
+
+    for key, value in state_dict.items():
+        # Remove the extra 'model.' prefix if it exists
+        if key.startswith("model.model."):
+            new_key = key.replace("model.model.", "model.", 1)
+            mapped_state_dict[new_key] = value
+            logger.debug(f"Mapped key: {key} -> {new_key}")
+
+        elif key.startswith("model.decoder."):
+            new_key = key.replace("model.decoder.", "decoder.", 1)
+            mapped_state_dict[new_key] = value
+            logger.debug(f"Mapped key: {key} -> {new_key}")
+
+        else:
+            mapped_state_dict[key] = value
+
+    return mapped_state_dict

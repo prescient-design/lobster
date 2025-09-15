@@ -114,6 +114,9 @@ class UMESequenceEncoderLightningModule(LightningModule):
         if self.auxiliary_tasks is None:
             return {}
 
+        if all(task.loss_weight == 0.0 for task in self.auxiliary_tasks):
+            return {task.name: torch.tensor(0.0) for task in self.auxiliary_tasks}
+
         output = self.encoder(
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], return_auxiliary_tasks=True
         )
@@ -142,6 +145,8 @@ class UMESequenceEncoderLightningModule(LightningModule):
         batch_size = batch["input_ids"].shape[0]
 
         mlm_loss = self.compute_mlm_loss(batch)
+        self.log(f"{stage}_mlm_loss", mlm_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
+
         auxiliary_losses = self.compute_auxiliary_tasks_loss(batch)
         total_loss = mlm_loss
 
@@ -165,7 +170,6 @@ class UMESequenceEncoderLightningModule(LightningModule):
                 batch_size=batch_size,
             )
 
-        self.log(f"{stage}_mlm_loss", mlm_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
         self.log(f"{stage}_loss", total_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
 
         return total_loss

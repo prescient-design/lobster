@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 #SBATCH --partition b200
-#SBATCH --nodes 1
+#SBATCH --nodes 10
 #SBATCH --ntasks-per-node 8
 #SBATCH --gpus-per-node 8
 #SBATCH --cpus-per-task 16
 #SBATCH -o slurm/logs/train/%J_%x.out
 #SBATCH -q preempt
 #SBATCH --mem=256G
-#SBATCH --job-name=ume
+#SBATCH --job-name=ume-prot-pretrain
 #SBATCH -t 7-00:00:00
 
 
@@ -37,6 +37,6 @@ umask g+w
 
 srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose \
     lobster_train \
-    experiment=ume-2/small_molecule \
+    experiment=ume-2/amino_acid \
     data.num_workers=8 \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES

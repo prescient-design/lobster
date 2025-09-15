@@ -111,3 +111,27 @@ class TestSequenceEncoderLightningModule:
 
         assert embeddings.shape == (1, 2)
         assert torch.allclose(embeddings, torch.tensor([[0.5312, 0.4737]]), atol=1e-3)
+
+    def test_compute_auxiliary_tasks_loss(self, model):
+        batch = {
+            "input_ids": torch.randint(3, 100, (1, 4)),
+            "attention_mask": torch.tensor([[1, 1, 1, 0]]),
+            "aux-task-1": torch.randn(1, 1),
+        }
+
+        mlm_loss = model.compute_mlm_loss(batch)
+        auxiliary_loss = model.compute_auxiliary_tasks_loss(batch)["aux-task-1"]
+        total_loss = model.step(batch, 0, "train")
+
+        assert torch.isclose(auxiliary_loss, torch.tensor(0.0543), atol=1e-3)
+        assert total_loss == mlm_loss + auxiliary_loss
+
+        # Check that the loss is 0 when the loss weight is 0
+        model.auxiliary_tasks[0].loss_weight = 0.0
+
+        mlm_loss = model.compute_mlm_loss(batch)
+        auxiliary_loss = model.compute_auxiliary_tasks_loss(batch)["aux-task-1"]
+        total_loss = model.step(batch, 0, "train")
+
+        assert torch.isclose(auxiliary_loss, torch.tensor(0.0), atol=1e-3)
+        assert total_loss == mlm_loss

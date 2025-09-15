@@ -2,14 +2,14 @@
 
 #SBATCH --partition b200
 #SBATCH --no-requeue
-#SBATCH --nodes 5
+#SBATCH --nodes 10
 #SBATCH --ntasks-per-node 8
 #SBATCH --gpus-per-node 8
 #SBATCH --cpus-per-task 16
 #SBATCH -o slurm/logs/train/%J_%x.out
 #SBATCH -q preempt
 #SBATCH --mem=256G
-#SBATCH --job-name=neo-small-restart
+#SBATCH --job-name=neo-medium
 #SBATCH -t 7-00:00:00
 
 # srun hostname
@@ -39,5 +39,5 @@ umask g+w
 
 srun -u --cpus-per-task 16 --cpu-bind=cores,verbose \
     lobster_train \
-    experiment=neobert/train_neobert_small \
+    experiment=neobert/train_neobert_medium \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES
