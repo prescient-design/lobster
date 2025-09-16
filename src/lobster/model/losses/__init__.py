@@ -20,7 +20,7 @@ from ._registry import (
 __all__ = [
     # Loss function classes
     "InfoNCELoss",
-    "SymileLoss", 
+    "SymileLoss",
     "FocalLoss",
     "MSELossWithSmoothing",
     "HuberLossWithSmoothing",

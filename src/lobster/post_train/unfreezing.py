@@ -13,7 +13,6 @@ from lobster.model import UME
 logger = logging.getLogger(__name__)
 
 
-
 def set_unfrozen_layers(model: UME, num_layers: int) -> None:
     """Set how many encoder layers are unfrozen.
 
@@ -67,21 +66,21 @@ def _unfreeze_last_n_layers(model: UME, n: int) -> None:
 
     # Get the transformer layers from the underlying model (be robust to nesting)
     encoder = None
-    inner = getattr(model, 'model', model)
-    if hasattr(inner, 'encoder'):
+    inner = getattr(model, "model", model)
+    if hasattr(inner, "encoder"):
         encoder = inner.encoder
-    elif hasattr(inner, 'model') and hasattr(inner.model, 'encoder'):
+    elif hasattr(inner, "model") and hasattr(inner.model, "encoder"):
         encoder = inner.model.encoder
 
     if encoder is None:
         logger.warning("Could not access encoder layers in UME model")
         return
 
-    if hasattr(encoder, 'layers'):
+    if hasattr(encoder, "layers"):
         layers = encoder.layers
-    elif hasattr(encoder, 'layer'):
+    elif hasattr(encoder, "layer"):
         layers = encoder.layer
-    elif hasattr(encoder, 'blocks'):
+    elif hasattr(encoder, "blocks"):
         layers = encoder.blocks
     else:
         logger.warning("Could not find transformer layers attribute on encoder (expected 'layers' or 'layer')")
@@ -96,11 +95,11 @@ def _unfreeze_last_n_layers(model: UME, n: int) -> None:
             param.requires_grad = True
 
     # Also unfreeze the final layer norm and pooler if they exist
-    if hasattr(model.model, 'pooler') and model.model.pooler is not None:
+    if hasattr(model.model, "pooler") and model.model.pooler is not None:
         for param in model.model.pooler.parameters():
             param.requires_grad = True
 
-    if hasattr(model.model, 'LayerNorm'):
+    if hasattr(model.model, "LayerNorm"):
         for param in model.model.LayerNorm.parameters():
             param.requires_grad = True
 
@@ -110,11 +109,7 @@ def _unfreeze_last_n_layers(model: UME, n: int) -> None:
     )
 
 
-def get_layer_wise_parameter_groups(
-    model: UME,
-    base_lr: float = 2e-4,
-    decay_factor: float = 0.9
-) -> list[dict]:
+def get_layer_wise_parameter_groups(model: UME, base_lr: float = 2e-4, decay_factor: float = 0.9) -> list[dict]:
     """Get parameter groups with layer-wise learning rate decay.
 
     This implements layer-wise learning rate decay (LLRD) where earlier
@@ -148,11 +143,11 @@ def get_layer_wise_parameter_groups(
     param_groups = []
 
     # Get the transformer layers
-    if hasattr(model, 'model') and hasattr(model.model, 'encoder'):
+    if hasattr(model, "model") and hasattr(model.model, "encoder"):
         encoder = model.model.encoder
-        if hasattr(encoder, 'layer'):
+        if hasattr(encoder, "layer"):
             layers = encoder.layer
-        elif hasattr(encoder, 'layers'):
+        elif hasattr(encoder, "layers"):
             layers = encoder.layers
         else:
             # Fallback to single group
@@ -169,11 +164,13 @@ def get_layer_wise_parameter_groups(
         # Earlier layers get lower learning rates
         layer_lr = base_lr * (decay_factor ** (num_layers - 1 - i))
 
-        param_groups.append({
-            "params": list(layer.parameters()),
-            "lr": layer_lr,
-            "layer_id": i,
-        })
+        param_groups.append(
+            {
+                "params": list(layer.parameters()),
+                "lr": layer_lr,
+                "layer_id": i,
+            }
+        )
 
     # Add other parameters (embeddings, pooler, etc.) with base learning rate
     other_params = []
@@ -190,21 +187,19 @@ def get_layer_wise_parameter_groups(
             other_params.append(param)
 
     if other_params:
-        param_groups.append({
-            "params": other_params,
-            "lr": base_lr,
-            "layer_id": "other",
-        })
+        param_groups.append(
+            {
+                "params": other_params,
+                "lr": base_lr,
+                "layer_id": "other",
+            }
+        )
 
     logger.info(f"Created {len(param_groups)} parameter groups with layer-wise learning rates")
     return param_groups
 
 
-def progressive_unfreezing_schedule(
-    model: UME,
-    current_epoch: int,
-    unfreeze_schedule: list[int]
-) -> None:
+def progressive_unfreezing_schedule(model: UME, current_epoch: int, unfreeze_schedule: list[int]) -> None:
     """Apply progressive unfreezing based on training epoch.
 
     References

@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 import logging
 
-import torch
 import torch.nn as nn
 from torch import Tensor
 
@@ -56,12 +55,12 @@ class TaskConfig:
     output_dim: int
     task_type: Literal["regression", "binary_classification", "multiclass_classification"] = "regression"
     pooling: Literal["cls", "mean", "attn", "weighted_mean"] = "mean"
-    hidden_sizes: Optional[List[int]] = None
+    hidden_sizes: list[int] | None = None
     dropout: float = 0.1
     activation: str = "auto"
     loss_function: str = "auto"
     loss_weight: float = 1.0
-    mixture_components: Optional[int] = None
+    mixture_components: int | None = None
 
     def __post_init__(self):
         if self.pooling not in POOLERS:
@@ -110,7 +109,7 @@ class TaskHead(nn.Module):
         self,
         input_dim: int,
         task_config: TaskConfig,
-        encoder_config: Optional[Any] = None,
+        encoder_config: Any | None = None,
     ):
         super().__init__()
         self.task_config = task_config
@@ -130,9 +129,7 @@ class TaskHead(nn.Module):
 
         # Determine output dimensionality. For MDN regression with diagonal Gaussians,
         # output size = K * (2*D + 1), where D = task_config.output_dim
-        is_mdn = (
-            task_config.task_type == "regression" and task_config.loss_function == "mdn_gaussian"
-        )
+        is_mdn = task_config.task_type == "regression" and task_config.loss_function == "mdn_gaussian"
         if is_mdn:
             if task_config.output_dim <= 0:
                 raise ValueError("TaskConfig.output_dim must be >= 1 for MDN regression")
@@ -174,7 +171,7 @@ class TaskHead(nn.Module):
             layers.append(nn.Linear(current_dim, computed_output_dim))
             self.mlp = nn.Sequential(*layers)
 
-    def forward(self, hidden_states: Tensor, attention_mask: Optional[Tensor] = None) -> Tensor:
+    def forward(self, hidden_states: Tensor, attention_mask: Tensor | None = None) -> Tensor:
         """
         Parameters
         ----------
@@ -207,8 +204,8 @@ class MultiTaskHead(nn.Module):
     def __init__(
         self,
         input_dim: int,
-        task_configs: List[TaskConfig],
-        encoder_config: Optional[Any] = None,
+        task_configs: list[TaskConfig],
+        encoder_config: Any | None = None,
     ):
         super().__init__()
         self.task_configs = {config.name: config for config in task_configs}
@@ -219,8 +216,8 @@ class MultiTaskHead(nn.Module):
         )
 
     def forward(
-        self, hidden_states: Tensor, attention_mask: Optional[Tensor] = None, task_names: Optional[List[str]] = None
-    ) -> Dict[str, Tensor]:
+        self, hidden_states: Tensor, attention_mask: Tensor | None = None, task_names: list[str] | None = None
+    ) -> dict[str, Tensor]:
         """
         Parameters
         ----------
@@ -254,9 +251,9 @@ class FlexibleEncoderWithHeads(nn.Module):
     def __init__(
         self,
         encoder: nn.Module,
-        task_configs: Optional[List[TaskConfig]] = None,
+        task_configs: list[TaskConfig] | None = None,
         encoder_output_key: str = "last_hidden_state",
-        hidden_size: Optional[int] = None,
+        hidden_size: int | None = None,
     ):
         """
         Parameters
@@ -309,7 +306,7 @@ class FlexibleEncoderWithHeads(nn.Module):
         self.task_configs[task_config.name] = task_config
 
     def _get_hidden_states(
-        self, input_ids: Optional[Tensor], attention_mask: Optional[Tensor], **kwargs
+        self, input_ids: Tensor | None, attention_mask: Tensor | None, **kwargs
     ) -> tuple[Tensor, Any]:
         """
         Get token-level hidden states from encoder.
@@ -351,12 +348,12 @@ class FlexibleEncoderWithHeads(nn.Module):
 
     def forward(
         self,
-        input_ids: Optional[Tensor] = None,
-        attention_mask: Optional[Tensor] = None,
-        task_names: Optional[List[str]] = None,
+        input_ids: Tensor | None = None,
+        attention_mask: Tensor | None = None,
+        task_names: list[str] | None = None,
         return_hidden_states: bool = False,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Parameters
         ----------
@@ -386,7 +383,7 @@ class FlexibleEncoderWithHeads(nn.Module):
 
         return outputs
 
-    def get_loss_functions(self) -> Dict[str, nn.Module]:
+    def get_loss_functions(self) -> dict[str, nn.Module]:
         """Get loss functions for each task based on their configurations."""
         loss_functions = {}
         for task_name, config in self.task_configs.items():

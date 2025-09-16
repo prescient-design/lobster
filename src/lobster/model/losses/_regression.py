@@ -5,7 +5,7 @@ import torch.nn.functional as F
 """
 Note: For standard regression losses without additional features, use PyTorch's built-in functions:
 - torch.nn.MSELoss (mean squared error)
-- torch.nn.HuberLoss (robust to outliers)  
+- torch.nn.HuberLoss (robust to outliers)
 - torch.nn.SmoothL1Loss (smooth L1 loss)
 - torch.nn.L1Loss (mean absolute error)
 
@@ -41,12 +41,7 @@ class MSELossWithSmoothing(nn.Module):
     >>> loss = loss_fn(pred, target)
     """
 
-    def __init__(
-        self,
-        label_smoothing: float = 0.0,
-        smoothing_method: str = "gaussian",
-        reduction: str = "mean"
-    ):
+    def __init__(self, label_smoothing: float = 0.0, smoothing_method: str = "gaussian", reduction: str = "mean"):
         super().__init__()
         self.label_smoothing = label_smoothing
         self.smoothing_method = smoothing_method
@@ -94,10 +89,7 @@ class MSELossWithSmoothing(nn.Module):
         pred.var()
 
         # Apply smoothing between prediction and target statistics
-        smoothed_target = (
-            self.label_smoothing * pred_mean +
-            (1.0 - self.label_smoothing) * target
-        )
+        smoothed_target = self.label_smoothing * pred_mean + (1.0 - self.label_smoothing) * target
 
         return smoothed_target
 
@@ -296,7 +288,7 @@ class NaturalGaussianLoss(nn.Module):
         log_scale_min: float = -8.0,
         log_scale_max: float = 8.0,
         label_smoothing: float = 0.0,
-        reduction: str = "mean"
+        reduction: str = "mean",
     ):
         super().__init__()
         self.log_scale_min = log_scale_min
@@ -394,9 +386,7 @@ class MixtureGaussianNLLLoss(nn.Module):
         # Infer K from P and D: P = K*(2D+1)
         two_d_plus_1 = 2 * D + 1
         if P % two_d_plus_1 != 0:
-            raise ValueError(
-                f"Invalid MDN param size: got input dim {P} that is not divisible by 2*D+1={two_d_plus_1}"
-            )
+            raise ValueError(f"Invalid MDN param size: got input dim {P} that is not divisible by 2*D+1={two_d_plus_1}")
         K = P // two_d_plus_1
 
         # Split parameters
@@ -422,7 +412,7 @@ class MixtureGaussianNLLLoss(nn.Module):
         log_prob = -(log_two_pi_d + log_det + sq_mahalanobis)  # (N, K)
 
         # Mixture log-sum-exp
-        log_weights = logits - torch.logsumexp(logits, dim=-1, keepdim=True)  # stable softmax in log-space
+        logits - torch.logsumexp(logits, dim=-1, keepdim=True)  # stable softmax in log-space
         # But we want logsumexp(logits + log_prob) directly for stability
         nll = -torch.logsumexp(logits + log_prob, dim=-1)  # (N,)
 

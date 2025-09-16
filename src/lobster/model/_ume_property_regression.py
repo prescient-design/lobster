@@ -5,7 +5,6 @@ from typing import Literal
 import lightning as L
 from torchmetrics import MeanAbsoluteError, R2Score, SpearmanCorrCoef, PearsonCorrCoef
 import torch
-import torch.nn as nn
 
 from ._heads import TaskConfig, FlexibleEncoderWithHeads
 from ._ume import UME
@@ -63,9 +62,7 @@ class UMEPropertyRegression(L.LightningModule):
         )
 
         # Apply unfreezing if requested via config
-        logging.getLogger(__name__).info(
-            f"UMEPropertyRegression: unfreeze_last_n_layers={cfg.unfreeze_last_n_layers}"
-        )
+        logging.getLogger(__name__).info(f"UMEPropertyRegression: unfreeze_last_n_layers={cfg.unfreeze_last_n_layers}")
         if cfg.unfreeze_last_n_layers is not None:
             n = int(cfg.unfreeze_last_n_layers)
             # New convention:

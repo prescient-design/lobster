@@ -6,7 +6,7 @@ from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 import wandb
-from lobster.model._ume_property_regression import UMEPropertyRegression, UMEPropertyRegressionConfig
+from lobster.model._ume_property_regression import UMEPropertyRegression
 from lobster.model._ume import UME
 from lobster.post_train.unfreezing import set_unfrozen_layers
 
@@ -130,5 +130,3 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
 
 if __name__ == "__main__":
     finetune()
-
-

@@ -4,7 +4,6 @@ from lobster.post_train.unfreezing import (
     set_unfrozen_layers,
     _freeze_all_parameters,
     _unfreeze_all_parameters,
-    _unfreeze_last_n_layers,
     get_layer_wise_parameter_groups,
     progressive_unfreezing_schedule,
 )
@@ -99,5 +98,3 @@ def test_layer_wise_parameter_groups_and_progressive():
     progressive_unfreezing_schedule(m, current_epoch=5, unfreeze_schedule=[2, 5])
     trainable = _count_trainable(m)
     assert trainable > 0
-
-

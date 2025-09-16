@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 """Classification loss functions for fine-tuning.
 
-Note: For standard cross-entropy and binary cross-entropy losses, 
+Note: For standard cross-entropy and binary cross-entropy losses,
 use PyTorch's built-in functions directly:
 - torch.nn.CrossEntropyLoss (supports label_smoothing, weight, reduction)
 - torch.nn.functional.cross_entropy (functional version)
@@ -12,6 +12,7 @@ use PyTorch's built-in functions directly:
 
 This module provides specialized losses not available in PyTorch.
 """
+
 
 class FocalLoss(nn.Module):
     """Focal loss for addressing class imbalance.
@@ -42,12 +43,7 @@ class FocalLoss(nn.Module):
     >>> loss = loss_fn(pred, target)
     """
 
-    def __init__(
-        self,
-        alpha: float = 1.0,
-        gamma: float = 2.0,
-        reduction: str = "mean"
-    ):
+    def __init__(self, alpha: float = 1.0, gamma: float = 2.0, reduction: str = "mean"):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
