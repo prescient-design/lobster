@@ -1,4 +1,10 @@
-"""Unfreezing strategies for fine-tuning UME models."""
+"""Layer unfreezing control for fine-tuning UME models.
+
+Single-parameter API:
+- num_layers = -1  => unfreeze all
+- num_layers = 0   => freeze all
+- num_layers = n>0 => unfreeze last n encoder layers
+"""
 
 import logging
 
@@ -8,64 +14,29 @@ logger = logging.getLogger(__name__)
 
 
 
-def apply_unfreezing_strategy(
-    model: UME,
-    strategy: str,
-    num_layers: int | None = None,
-    layer_wise_lr_decay: float | None = None
-) -> None:
-    """Apply unfreezing strategy to a UME model.
-
-    References
-    ----------
-    Fine-tuning strategies: "How to Fine-Tune BERT for Text Classification?" (Sun et al., 2019)
+def set_unfrozen_layers(model: UME, num_layers: int) -> None:
+    """Set how many encoder layers are unfrozen.
 
     Parameters
     ----------
     model : UME
-        The UME model to apply unfreezing to
-    strategy : str
-        Unfreezing strategy. Options:
-        - "full": Unfreeze all parameters
-        - "partial": Unfreeze last N layers (specify num_layers)
-        - "partial_last_3": Unfreeze last 3 layers
-        - "partial_last_6": Unfreeze last 6 layers
-        - "progressive": Gradually unfreeze layers (for use during training)
-        - "freeze_all": Freeze all parameters (useful for feature extraction)
-    num_layers : int, optional
-        Number of layers to unfreeze for partial strategies, by default None
-    layer_wise_lr_decay : float, optional
-        Learning rate decay factor for layer-wise learning rates, by default None
-
-    Examples
-    --------
-    >>> from lobster.model import UME
-    >>> model = UME(model_name="UME_mini")
-    >>> apply_unfreezing_strategy(model, "partial_last_3")
-    >>>
-    >>> # Check which parameters are trainable
-    >>> trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    >>> print(f"Trainable parameters: {trainable_params}")
+        The UME model to modify.
+    num_layers : int
+        -1 => unfreeze all parameters
+         0 => freeze all parameters
+         n > 0 => unfreeze last n encoder layers
     """
-    if strategy == "full":
+    if num_layers < 0:
         _unfreeze_all_parameters(model)
-    elif strategy == "partial":
-        if num_layers is None:
-            raise ValueError("num_layers must be specified for partial unfreezing")
-        _unfreeze_last_n_layers(model, num_layers)
-    elif strategy == "partial_last_3":
-        _unfreeze_last_n_layers(model, 3)
-    elif strategy == "partial_last_6":
-        _unfreeze_last_n_layers(model, 6)
-    elif strategy == "progressive":
-        logger.warning("Progressive unfreezing requires manual implementation during training")
-        _unfreeze_all_parameters(model)  # Start with all unfrozen
-    elif strategy == "freeze_all":
+        strategy = "full"
+    elif num_layers == 0:
         _freeze_all_parameters(model)
+        strategy = "freeze_all"
     else:
-        raise ValueError(f"Unknown unfreezing strategy: {strategy}")
+        _freeze_all_parameters(model)
+        _unfreeze_last_n_layers(model, num_layers)
+        strategy = f"partial(n={num_layers})"
 
-    # Log the unfreezing results
     _log_parameter_status(model, strategy)
 
 
@@ -94,19 +65,26 @@ def _unfreeze_last_n_layers(model: UME, n: int) -> None:
     # First freeze all parameters
     _freeze_all_parameters(model)
 
-    # Get the transformer layers from the underlying model
-    # UME wraps a FlexBERT model, so we need to access it
-    if hasattr(model, 'model') and hasattr(model.model, 'encoder'):
-        encoder = model.model.encoder
-        if hasattr(encoder, 'layer'):
-            layers = encoder.layer
-        elif hasattr(encoder, 'layers'):
-            layers = encoder.layers
-        else:
-            logger.warning("Could not find transformer layers in model")
-            return
-    else:
+    # Get the transformer layers from the underlying model (be robust to nesting)
+    encoder = None
+    inner = getattr(model, 'model', model)
+    if hasattr(inner, 'encoder'):
+        encoder = inner.encoder
+    elif hasattr(inner, 'model') and hasattr(inner.model, 'encoder'):
+        encoder = inner.model.encoder
+
+    if encoder is None:
         logger.warning("Could not access encoder layers in UME model")
+        return
+
+    if hasattr(encoder, 'layers'):
+        layers = encoder.layers
+    elif hasattr(encoder, 'layer'):
+        layers = encoder.layer
+    elif hasattr(encoder, 'blocks'):
+        layers = encoder.blocks
+    else:
+        logger.warning("Could not find transformer layers attribute on encoder (expected 'layers' or 'layer')")
         return
 
     # Unfreeze the last n layers
@@ -126,7 +104,10 @@ def _unfreeze_last_n_layers(model: UME, n: int) -> None:
         for param in model.model.LayerNorm.parameters():
             param.requires_grad = True
 
-    logger.info(f"Unfroze last {layers_to_unfreeze} layers out of {total_layers} total layers")
+    trainable = sum(any(p.requires_grad for p in l.parameters()) for l in layers)
+    logger.info(
+        f"Unfreezing: requested n={n}, applied={layers_to_unfreeze}, encoder_layers_trainable={trainable}/{total_layers}"
+    )
 
 
 def get_layer_wise_parameter_groups(

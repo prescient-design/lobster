@@ -8,6 +8,7 @@ from ._regression import (
     SmoothL1LossWithSmoothing,
     ExponentialParameterizedLoss,
     NaturalGaussianLoss,
+    MixtureGaussianNLLLoss,
 )
 
 
@@ -19,6 +20,7 @@ AVAILABLE_LOSS_FUNCTIONS = {
         "smooth_l1": SmoothL1LossWithSmoothing,
         "exponential": ExponentialParameterizedLoss,
         "gaussian": NaturalGaussianLoss,
+        "mdn_gaussian": MixtureGaussianNLLLoss,
         "mse_pytorch": nn.MSELoss,
         "huber_pytorch": nn.HuberLoss,
         "smooth_l1_pytorch": nn.SmoothL1Loss,

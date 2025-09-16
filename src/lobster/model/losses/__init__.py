@@ -7,6 +7,7 @@ from ._regression import (
     SmoothL1LossWithSmoothing,
     ExponentialParameterizedLoss,
     NaturalGaussianLoss,
+    MixtureGaussianNLLLoss,
 )
 
 # Import registry data
@@ -26,6 +27,7 @@ __all__ = [
     "SmoothL1LossWithSmoothing",
     "ExponentialParameterizedLoss",
     "NaturalGaussianLoss",
+    "MixtureGaussianNLLLoss",
     # Registry constants and function
     "AVAILABLE_LOSS_FUNCTIONS",
     "DEFAULT_LOSS_FUNCTIONS",

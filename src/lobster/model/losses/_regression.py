@@ -344,3 +344,90 @@ class NaturalGaussianLoss(nn.Module):
             return nll.sum()
         else:
             return nll
+
+
+class MixtureGaussianNLLLoss(nn.Module):
+    """Negative log-likelihood loss for Mixture Density Networks (diagonal Gaussians).
+
+    Expects predictions that parameterize a K-component diagonal Gaussian mixture over
+    a D-dimensional target.
+
+    Input format per sample: [logits_K, means_{K x D}, log_scales_{K x D}].
+
+    Parameters
+    ----------
+    min_log_scale : float
+        Lower clamp for log-scales for numerical stability
+    max_log_scale : float
+        Upper clamp for log-scales for numerical stability
+    reduction : str
+        One of {"mean", "sum", "none"}
+    """
+
+    def __init__(
+        self,
+        min_log_scale: float = -8.0,
+        max_log_scale: float = 8.0,
+        reduction: str = "mean",
+    ):
+        super().__init__()
+        self.min_log_scale = min_log_scale
+        self.max_log_scale = max_log_scale
+        self.reduction = reduction
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute MDN negative log-likelihood.
+
+        Parameters
+        ----------
+        input : Tensor
+            Shape (N, P) where P = K * (2*D + 1)
+        target : Tensor
+            Shape (N,) or (N, 1) or (N, D) where D is target dimension
+        """
+        if target.dim() == 1:
+            target = target.unsqueeze(-1)
+
+        N, P = input.shape
+        D = target.shape[-1]
+
+        # Infer K from P and D: P = K*(2D+1)
+        two_d_plus_1 = 2 * D + 1
+        if P % two_d_plus_1 != 0:
+            raise ValueError(
+                f"Invalid MDN param size: got input dim {P} that is not divisible by 2*D+1={two_d_plus_1}"
+            )
+        K = P // two_d_plus_1
+
+        # Split parameters
+        logits = input[:, :K]  # (N, K)
+        means = input[:, K : K + K * D]  # (N, K*D)
+        log_scales = input[:, K + K * D :]  # (N, K*D)
+
+        means = means.view(N, K, D)
+        log_scales = log_scales.view(N, K, D)
+
+        # Clamp and exponentiate to get scales
+        log_scales = torch.clamp(log_scales, self.min_log_scale, self.max_log_scale)
+        scales = torch.exp(log_scales)
+
+        # Expand target to (N, K, D)
+        target_exp = target.unsqueeze(1).expand(-1, K, -1)
+
+        # Diagonal Gaussian log-prob summed over D
+        var = scales * scales
+        log_det = torch.sum(torch.log(var + 1e-12), dim=-1) * 0.5  # (N, K)
+        sq_mahalanobis = torch.sum(((target_exp - means) ** 2) / (var + 1e-12), dim=-1) * 0.5  # (N, K)
+        log_two_pi_d = 0.5 * D * torch.log(torch.tensor(2 * torch.pi, device=input.device, dtype=input.dtype))
+        log_prob = -(log_two_pi_d + log_det + sq_mahalanobis)  # (N, K)
+
+        # Mixture log-sum-exp
+        log_weights = logits - torch.logsumexp(logits, dim=-1, keepdim=True)  # stable softmax in log-space
+        # But we want logsumexp(logits + log_prob) directly for stability
+        nll = -torch.logsumexp(logits + log_prob, dim=-1)  # (N,)
+
+        if self.reduction == "mean":
+            return nll.mean()
+        if self.reduction == "sum":
+            return nll.sum()
+        return nll

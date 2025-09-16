@@ -5,8 +5,8 @@ import lightning.pytorch as pl
 import torch
 import torch.nn as nn
 from torch.nn import BCEWithLogitsLoss
-from torcheval.metrics import BinaryAUPRC
 from torchmetrics import MatthewsCorrCoef, Precision, Recall
+from torchmetrics.classification import AveragePrecision
 
 from ._utils import model_typer
 
@@ -93,8 +93,8 @@ class PPIClassifier(pl.LightningModule):
         self.train_mc = MatthewsCorrCoef(**metric_params)
         self.val_mc = MatthewsCorrCoef(**metric_params)
 
-        self.train_auprc = BinaryAUPRC()
-        self.val_auprc = BinaryAUPRC()
+        self.train_auprc = AveragePrecision(task="binary")
+        self.val_auprc = AveragePrecision(task="binary")
 
         self.BCEWithLogitsLoss = BCEWithLogitsLoss()
 
@@ -136,7 +136,8 @@ class PPIClassifier(pl.LightningModule):
         precision = self.train_precision(preds, targets)
         recall = self.train_recall(preds, targets)
         mc = self.train_mc(preds, targets)
-        auprc = self.train_auprc.update(preds, targets).compute()
+        self.train_auprc.update(preds, targets)
+        auprc = self.train_auprc.compute()
 
         loss_dict = {
             "train/precision": precision,
@@ -153,7 +154,8 @@ class PPIClassifier(pl.LightningModule):
         precision = self.val_precision(preds, targets)
         recall = self.val_recall(preds, targets)
         mc = self.val_mc(preds, targets)
-        auprc = self.val_auprc.update(preds, targets).compute()
+        self.val_auprc.update(preds, targets)
+        auprc = self.val_auprc.compute()
 
         loss_dict = {
             "val/precision": precision,

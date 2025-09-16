@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from lobster.post_train.unfreezing import (
-    apply_unfreezing_strategy,
+    set_unfrozen_layers,
     _freeze_all_parameters,
     _unfreeze_all_parameters,
     _unfreeze_last_n_layers,
@@ -48,24 +48,42 @@ def test_freeze_and_unfreeze_all():
     assert _count_trainable(m) > 0
 
 
-def test_unfreeze_last_n_layers_and_apply_strategy():
+def test_set_unfrozen_layers_behavior():
     m = _DummyUME(num_layers=5)
-    _freeze_all_parameters(m)
-    _unfreeze_last_n_layers(m, 2)
-    # Ensure only parameters in last 2 layers are trainable
-    trainable_ids = {id(p) for p in m.parameters() if p.requires_grad}
-    # Recompute after freezing all to get ids per-layer
-    all_layers = list(m.model.encoder.layer)
-    unfrozen_ids = set()
-    for lyr in all_layers[-2:]:
-        for p in lyr.parameters():
-            unfrozen_ids.add(id(p))
-    assert unfrozen_ids.issubset(trainable_ids)
 
-    # API surface: apply strategy routes correctly
-    apply_unfreezing_strategy(m, "partial_last_3")
-    apply_unfreezing_strategy(m, "freeze_all")
-    apply_unfreezing_strategy(m, "full")
+    # Partial: unfreeze last 2
+    _freeze_all_parameters(m)
+    set_unfrozen_layers(m, 2)
+    trainable_ids = {id(p) for p in m.parameters() if p.requires_grad}
+    all_layers = list(m.model.encoder.layer)
+    unfrozen_ids = {id(p) for lyr in all_layers[-2:] for p in lyr.parameters()}
+    frozen_ids = {id(p) for lyr in all_layers[:-2] for p in lyr.parameters()}
+    assert unfrozen_ids.issubset(trainable_ids)
+    assert trainable_ids.isdisjoint(frozen_ids)
+
+    # Freeze all
+    set_unfrozen_layers(m, 0)
+    assert _count_trainable(m) == 0
+
+    # Unfreeze all via -1
+    set_unfrozen_layers(m, -1)
+    assert _count_trainable(m) > 0
+
+    # Clamp: request more than available -> unfreeze all
+    _freeze_all_parameters(m)
+    set_unfrozen_layers(m, 10)
+    trainable_layer_flags = [any(p.requires_grad for p in lyr.parameters()) for lyr in all_layers]
+    assert all(trainable_layer_flags)
+
+    # Explicit cases using the new API
+    set_unfrozen_layers(m, 0)
+    assert _count_trainable(m) == 0
+    set_unfrozen_layers(m, -1)
+    assert _count_trainable(m) > 0
+    set_unfrozen_layers(m, 3)
+    trainable_layer_flags = [any(p.requires_grad for p in lyr.parameters()) for lyr in all_layers]
+    assert trainable_layer_flags[-3:] == [True, True, True]
+    assert trainable_layer_flags[:-3] == [False] * (len(trainable_layer_flags) - 3)
 
 
 def test_layer_wise_parameter_groups_and_progressive():
