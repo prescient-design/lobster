@@ -24,7 +24,7 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
     # Instantiate arbitrary pre-setup (seed, plugins, etc.)
     hydra.utils.instantiate(cfg.setup)
 
-    # Data module (expecting our gRED finetune DataModule config)
+    # Data module from Hydra config
     datamodule = hydra.utils.instantiate(cfg.data)
 
     # Model: construct UME and head via Hydra targets while enforcing required params
