@@ -4,10 +4,10 @@ readme = "README.md"
 description = "Language models for Biological Sequence Transformation and Evolutionary Representation."
 authors = [{name = "Nathan C. Frey", email = "frey.nathan.nf1@gene.com"}]
 dynamic = ["version"]
-requires-python = ">=3.11, <3.13"
+requires-python = ">=3.11, <3.14"
 dependencies = [
     "pooch",
-    "torch",
+    "torch>=2.8.0",
     "tqdm",
     "lightning",
     "torchmetrics",
@@ -26,7 +26,6 @@ dependencies = [
     "transformers>=4.24.0",
     "scikit-learn",
     "python-dotenv",
-    "torcheval",
     "datasketch",
     "peft",
     "edlib",
@@ -60,6 +59,7 @@ lobster_dgeb_mock_eval = "lobster.evaluation.dgeb_mock_runner:main"
 lobster_mcp_server = "lobster.mcp.server:main"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 lobster_ume_checkpoints = "lobster.cmdline.manage_ume_checkpoints:main"
+lobster_finetune = "lobster.cmdline:finetune"
 
 [project.optional-dependencies]
 mgm = [
@@ -164,3 +164,6 @@ dev = [
 
 [[tool.uv.index]]
 url = "https://pypi.python.org/simple"
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu128"
