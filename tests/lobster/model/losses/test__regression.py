@@ -92,9 +92,6 @@ def test_exponential_parameterized_loss_and_gaussian_nll():
     # wrong shape raises
     try:
         NaturalGaussianLoss()(torch.randn(6, 3), target)
-        assert False, "Expected ValueError on wrong shape"
+        raise AssertionError("Expected ValueError on wrong shape")
     except ValueError:
         pass
-
-
-

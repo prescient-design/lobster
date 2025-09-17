@@ -15,28 +15,28 @@ def test_taskconfig_auto_and_validation():
     # invalid pooling
     try:
         TaskConfig(name="bad", output_dim=1, pooling="max")
-        assert False, "Expected ValueError for bad pooling"
+        raise AssertionError("Expected ValueError for bad pooling")
     except ValueError:
         pass
 
     # binary classification must have output_dim=1
     try:
         TaskConfig(name="bin", output_dim=2, task_type="binary_classification")
-        assert False, "Expected ValueError for binary classification output_dim"
+        raise AssertionError("Expected ValueError for binary classification output_dim")
     except ValueError:
         pass
 
     # invalid activation
     try:
         TaskConfig(name="act", output_dim=1, activation="unknown")
-        assert False, "Expected ValueError for activation"
+        raise AssertionError("Expected ValueError for activation")
     except ValueError:
         pass
 
     # invalid loss for task type
     try:
         TaskConfig(name="loss", output_dim=1, loss_function="does_not_exist")
-        assert False, "Expected ValueError for loss function"
+        raise AssertionError("Expected ValueError for loss function")
     except ValueError:
         pass
 
@@ -133,12 +133,12 @@ def test_add_task_and_get_loss_functions():
     wrapper.add_task(TaskConfig(name="mc", output_dim=5, task_type="multiclass_classification"))
     # Ensure predictions include both when requested
     batch, seq = 2, 4
-    outs = wrapper(input_ids=torch.ones(batch, seq, dtype=torch.long), attention_mask=torch.ones(batch, seq, dtype=torch.long))
+    outs = wrapper(
+        input_ids=torch.ones(batch, seq, dtype=torch.long), attention_mask=torch.ones(batch, seq, dtype=torch.long)
+    )
     assert set(outs.keys()) - {"encoder_outputs"} == {"reg", "mc"}
 
     # Loss functions retrieved from registry
     losses = wrapper.get_loss_functions()
     assert isinstance(losses["reg"], MSELossWithSmoothing)
     assert "mc" in losses
-
-
