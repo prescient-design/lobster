@@ -22,5 +22,3 @@ def test_focal_loss_shapes_and_reduction():
     loss_fn_none = FocalLoss(alpha=1.0, gamma=2.0, reduction="none")
     loss_vec = loss_fn_none(logits, targets)
     assert loss_vec.shape == (10,)
-
-
