@@ -1,22 +1,23 @@
 import logging
+import math
 from collections.abc import Callable
 from typing import Literal
 
 import lightning as L
 import numpy as np
 import torch
-import math
-from lobster.transforms import Transform
 from lightning.pytorch.callbacks import Callback
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LinearRegression, LogisticRegression, ElasticNet
+from sklearn.linear_model import ElasticNet, LinearRegression, LogisticRegression
 from sklearn.model_selection import KFold
 from sklearn.multioutput import MultiOutputClassifier
-from sklearn.svm import SVC, SVR
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC, SVR
 from torch import Tensor
 from torch.utils.data import DataLoader
-from torchmetrics import AUROC, Accuracy, F1Score, MeanSquaredError, R2Score, SpearmanCorrCoef, PearsonCorrCoef
+from torchmetrics import AUROC, Accuracy, F1Score, MeanSquaredError, PearsonCorrCoef, R2Score, SpearmanCorrCoef
+
+from lobster.transforms import Transform
 
 # Optional import for better multilabel stratification
 try:

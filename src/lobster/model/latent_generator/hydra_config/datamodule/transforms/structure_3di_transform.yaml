@@ -1,0 +1,2 @@
+structure_3di_transform:
+  _target_: lobster.model.latent_generator.datasets._transforms.Structure3diTransform

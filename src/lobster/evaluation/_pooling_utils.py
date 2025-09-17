@@ -1,6 +1,7 @@
 """Shared pooling utilities for DGEB adapters."""
 
 import torch
+
 from lobster.constants import PoolingType
 
 

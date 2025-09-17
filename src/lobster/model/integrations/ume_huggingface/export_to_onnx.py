@@ -1,7 +1,7 @@
 import onnxruntime as ort
 import torch
 
-from lobster.constants import HF_UME_MODEL_DIRPATH, UMEModelVersion, Modality
+from lobster.constants import HF_UME_MODEL_DIRPATH, Modality, UMEModelVersion
 from lobster.model import UME
 
 

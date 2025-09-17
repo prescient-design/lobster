@@ -1,0 +1,2 @@
+_target_: lobster.model.latent_generator.datamodules._utils.collate_fn_ligand
+_partial_: true

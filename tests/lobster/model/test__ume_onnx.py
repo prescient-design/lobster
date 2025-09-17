@@ -6,7 +6,7 @@ from torch import Size, Tensor
 
 from lobster.constants import Modality
 from lobster.model import UME
-from lobster.model._onnx_utils import run_onnx_inference, benchmark_onnx_pytorch
+from lobster.model._onnx_utils import benchmark_onnx_pytorch, run_onnx_inference
 
 # Performance optimizations for CI/CD:
 # - Reduced max_length from 128 to 64

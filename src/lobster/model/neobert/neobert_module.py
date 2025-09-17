@@ -1,9 +1,10 @@
-import torch.nn as nn
-from torch import Tensor
 from typing import Literal
 
-from ._model import NeoBERTConfig, NeoBERT
+import torch.nn as nn
+from torch import Tensor
+
 from ._config import NEOBERT_CONFIGS
+from ._model import NeoBERT, NeoBERTConfig
 
 
 class NeoBERTModule(nn.Module):
@@ -88,6 +89,8 @@ class NeoBERTModule(nn.Module):
         output_hidden_states: bool = False,
         output_attentions: bool = False,
     ) -> Tensor:
+        input_ids, attention_mask = self.ensure_2d(input_ids, attention_mask)
+
         output = self.model.forward(
             input_ids=input_ids,
             position_ids=position_ids,
@@ -98,3 +101,39 @@ class NeoBERTModule(nn.Module):
             output_attentions=output_attentions,
         )
         return self.decoder(output.last_hidden_state)
+
+    def ensure_2d(self, input_ids: Tensor, attention_mask: Tensor) -> tuple[Tensor, Tensor]:
+        if input_ids.dim() == 3 and input_ids.shape[1] == 1:
+            input_ids = input_ids.squeeze(1)
+        if attention_mask.dim() == 3 and attention_mask.shape[1] == 1:
+            attention_mask = attention_mask.squeeze(1)
+
+        assert input_ids.dim() == 2, "Input IDs must have shape: (batch_size, seq_len)"
+        assert attention_mask.dim() == 2, "Attention mask must have shape: (batch_size, seq_len)"
+
+        return input_ids, attention_mask
+
+    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
+        input_ids, attention_mask = self.ensure_2d(inputs["input_ids"], inputs["attention_mask"])
+
+        device = next(iter(self.parameters())).device
+
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+
+        output = self(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
+
+        if not aggregate:
+            return output["last_hidden_state"]
+
+        if not ignore_padding:
+            return output["last_hidden_state"].mean(dim=1)
+
+        mask = attention_mask.to(dtype=output["last_hidden_state"].dtype).unsqueeze(-1)
+
+        masked_embeddings = output["last_hidden_state"] * mask
+
+        sum_embeddings = masked_embeddings.sum(dim=1)
+        token_counts = mask.sum(dim=1)
+
+        return sum_embeddings / token_counts

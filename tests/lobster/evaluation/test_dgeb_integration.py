@@ -3,15 +3,15 @@
 import logging
 import os
 import tempfile
-from pathlib import Path
 import types
+from pathlib import Path
 
 import pytest
 import torch
 
+from lobster.evaluation import dgeb_runner
 from lobster.evaluation.dgeb_adapter import UMEAdapterDGEB
 from lobster.model import UME
-from lobster.evaluation import dgeb_runner
 
 logger = logging.getLogger(__name__)
 

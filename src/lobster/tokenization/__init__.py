@@ -17,10 +17,10 @@ from ._pmlm_tokenizer_transform import (
     PT5TeacherForcingTransform,
     PT5TokenizerTransform,
 )
-from ._smiles_tokenizer import SmilesTokenizerFast
+from ._smiles_tokenizer import SMILESTokenizerFast
 from ._ume_tokenizers import (
     UMEAminoAcidTokenizerFast,
     UMENucleotideTokenizerFast,
-    UMESmilesTokenizerFast,
+    UMESMILESTokenizerFast,
     UMETokenizerTransform,
 )

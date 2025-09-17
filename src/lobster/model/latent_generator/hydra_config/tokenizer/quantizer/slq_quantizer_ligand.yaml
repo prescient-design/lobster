@@ -1,0 +1,12 @@
+_target_: lobster.model.latent_generator.quantizer.LigandTokenizer
+n_tokens: 256
+gumbel: true
+tau: 0.5
+embed_dim: 256
+ligand_n_tokens: 256
+ligand_embed_dim: 256
+ligand_softmax: false
+ligand_emb_noise: 0.0
+ligand_gumbel: true
+ligand_use_gumbel_noise: true
+ligand_tau: 0.5

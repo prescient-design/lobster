@@ -10,11 +10,11 @@ from ._moleculeace_dataset import MoleculeACEDataset
 from ._multiplexed_sampling_dataset import MultiplexedSamplingDataset
 from ._open_genome_2 import OpenGenome2IterableDataset
 from ._peer_dataset import PEERDataset
+from ._ptm_dataset import PTMDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
-from ._ume_streaming_dataset import UMEStreamingDataset
 from ._zinc_dataset import ZINCIterableDataset
-from ._ptm_dataset import PTMDataset
+from .s3_datasets.base import UMEStreamingDataset
 
 __all__ = [
     "CalmDataset",

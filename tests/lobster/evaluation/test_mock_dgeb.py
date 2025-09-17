@@ -7,10 +7,10 @@ from pathlib import Path
 # Add the src directory to the path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from lobster.evaluation.dgeb_mock_runner import run_mock_evaluation, generate_mock_report
+from lobster.evaluation.dgeb_mock_runner import generate_mock_report, run_mock_evaluation
 
 
-def test_mock_evaluation():
+def test_mock_evaluation(tmp_path):
     """Test the mock DGEB evaluation with a small subset of tasks."""
 
     print("Testing mock DGEB evaluation...")
@@ -20,7 +20,7 @@ def test_mock_evaluation():
         model_name="test-mock-ume",
         modality="protein",
         tasks=["ec_classification"],  # Just one task for testing
-        output_dir="test_mock_results",
+        output_dir=tmp_path / "test_mock_results",
         batch_size=4,
         max_seq_length=512,
         l2_norm=True,
@@ -44,7 +44,7 @@ def test_mock_evaluation():
     assert results["model_metadata"]["num_params"] == 0, "Mock model should have 0 parameters"
 
     # Generate a report
-    report_dir = Path("test_mock_results") / "test_report"
+    report_dir = tmp_path / "test_mock_results" / "test_report"
     report_dir.mkdir(parents=True, exist_ok=True)
     generate_mock_report(results, report_dir)
 

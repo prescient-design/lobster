@@ -1,15 +1,16 @@
+from collections.abc import Sequence
+
 import torch
 import torch.nn as nn
-from torch import Tensor
-from collections.abc import Sequence
-from lightning import LightningModule
 import transformers
+from lightning import LightningModule
+from torch import Tensor
 
+from lobster.constants import Modality, ModalityType
 from lobster.tokenization import UMETokenizerTransform
-from lobster.constants import ModalityType, Modality
 
-from .neobert_module import NeoBERTModule
 from ._masking import mask_tokens
+from .neobert_module import NeoBERTModule
 
 
 class NeoBERTLightningModule(LightningModule):
@@ -55,7 +56,7 @@ class NeoBERTLightningModule(LightningModule):
         )
 
     def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
-        input_ids, attention_mask = self._ensure_2d(inputs["input_ids"], inputs["attention_mask"])
+        input_ids, attention_mask = self.model.ensure_2d(inputs["input_ids"], inputs["attention_mask"])
 
         input_ids = input_ids.to(self.device)
         attention_mask = attention_mask.to(self.device)

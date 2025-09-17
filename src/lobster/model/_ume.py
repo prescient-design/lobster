@@ -3,6 +3,7 @@ import os
 import warnings
 from collections.abc import Callable, Sequence
 from typing import Literal
+
 import lightning as L
 import torch
 import transformers
@@ -10,14 +11,15 @@ from torch import Tensor
 from torchmetrics.text import Perplexity
 
 from lobster.constants import (
+    UME_MODEL_VERSION_TYPES,
     Modality,
     ModalityType,
     SchedulerType,
+    UMEModelVersion,
 )
 from lobster.tokenization import UMETokenizerTransform
-from lobster.constants import UMEModelVersion, UME_MODEL_VERSION_TYPES
 
-from ._utils_checkpoint import get_ume_checkpoints, load_checkpoint_with_retry, get_s3_last_modified_timestamp
+from ._utils_checkpoint import get_s3_last_modified_timestamp, get_ume_checkpoints, load_checkpoint_with_retry
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
