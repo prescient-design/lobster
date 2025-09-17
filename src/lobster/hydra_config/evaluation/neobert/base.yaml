@@ -8,13 +8,13 @@ datamodule:
   _target_: lobster.data.UMELightningDataModule
   datasets: ["Calm", "AMPLIFY", "ZINC", "M320M", "PeptideAtlas"]
 
-# model:
-#   _target_: lobster.model.UMESequenceEncoderLightningModule
-#   ckpt_path: s3://prescient-lobster/ume/runs/2025-09-12T19-51-14/epoch=0-step=7500-val_loss=0.0687.ckpt
+model:
+  _target_: lobster.model.UMESequenceEncoderLightningModule
+  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-12T19-51-14/epoch=0-step=7500-val_loss=0.0687.ckpt
 
-# ckpt_path: ${model.ckpt_path}
-# model_alias: UME-prot-aux
-# wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/hhr8f8bt/logs
+ckpt_path: ${model.ckpt_path}
+model_alias: UME-prot-aux
+wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/hhr8f8bt/logs
 
 # model:
 #   _target_: lobster.model.NeoBERTLightningModule

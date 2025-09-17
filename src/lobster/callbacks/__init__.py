@@ -8,6 +8,7 @@ from ._perturbation_score_callback import PerturbationScoreCallback
 from ._tokens_per_second_callback import TokensPerSecondCallback, default_batch_length_fn, default_batch_size_fn
 from ._umap_visualization_callback import UmapVisualizationCallback
 from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
+from ._auxiliary_task_loss_weight_scheduler import AuxiliaryTaskWeightScheduler, MultiTaskWeightScheduler
 
 __all__ = [
     "MoleculeACELinearProbeCallback",
@@ -22,4 +23,6 @@ __all__ = [
     "default_batch_size_fn",
     "UmapVisualizationCallback",
     "UmeGrpoLoggingCallback",
+    "AuxiliaryTaskWeightScheduler",
+    "MultiTaskWeightScheduler",
 ]
