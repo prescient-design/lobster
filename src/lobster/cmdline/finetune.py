@@ -19,10 +19,8 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
     if rank_zero_only.rank == 0:
         print(OmegaConf.to_yaml(log_cfg))
 
-    # Instantiate arbitrary pre-setup (seed, plugins, etc.)
     hydra.utils.instantiate(cfg.setup)
 
-    # Data module (expecting our gRED finetune DataModule config)
     datamodule = hydra.utils.instantiate(cfg.data)
 
     # Model: construct UME and head via Hydra targets while enforcing required params
@@ -42,7 +40,7 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
             use_flash_attn = bool(ume_cfg.get("use_flash_attn"))
         cache_dir = ume_cfg.get("cache_dir")
 
-    # Provide a reasonable default model if not specified
+    # default to ume-mini if not set
     if model_name in (None, ""):
         model_name = "ume-mini-base-12M"
 

@@ -18,7 +18,6 @@ from ._mmseqs import MMSeqsRunner
 from ._structure_datamodule import PDBDataModule
 from ._ume_datamodule import UMELightningDataModule
 from ._utils import download_from_s3, get_s3_bucket_and_key, load_pickle, upload_to_s3
-from ._gred_affinity_regression_datamodule import GredAffinityStreamingDataModule
 
 __all__ = [
     "CalmLightningDataModule",
@@ -42,5 +41,4 @@ __all__ = [
     "upload_to_s3",
     "download_from_s3",
     "get_s3_bucket_and_key",
-    "GredAffinityStreamingDataModule",
 ]
