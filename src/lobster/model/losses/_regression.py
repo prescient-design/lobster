@@ -326,16 +326,15 @@ class NaturalGaussianLoss(nn.Module):
             noise = torch.randn_like(target) * self.label_smoothing
             target = target + noise
 
-        # Compute negative log likelihood
+        # Compute NLL and apply requested reduction
         dist = torch.distributions.Normal(mean, scale)
         nll = -dist.log_prob(target)
 
         if self.reduction == "mean":
             return nll.mean()
-        elif self.reduction == "sum":
+        if self.reduction == "sum":
             return nll.sum()
-        else:
-            return nll
+        return nll
 
 
 class MixtureGaussianNLLLoss(nn.Module):

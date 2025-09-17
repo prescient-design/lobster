@@ -13,22 +13,54 @@ from ..post_train.unfreezing import set_unfrozen_layers
 
 @dataclass
 class UMEPropertyRegressionConfig:
+    """Configuration for training a property regression head on a UME encoder.
+
+    Parameters
+    - task_name: Name of the task/head; used to route outputs and metrics.
+    - loss_function: Regression loss to use. Supported examples include
+      'auto', 'l1', 'mse', 'huber', 'gaussian', 'mdn_gaussian'. For
+      'gaussian', the head outputs two values per example (mean, log_scale).
+      For 'mdn_gaussian', the head outputs parameters for a K-component
+      Gaussian mixture; K is set by `mixture_components`.
+    - hidden_sizes: Sizes of the MLP layers in the head. When None, a single
+      linear layer is used.
+    - dropout: Dropout probability applied inside the head MLP.
+    - activation: Activation function for the head MLP. 'auto' picks a
+      sensible default.
+    - pooling: How to pool token embeddings into a sequence embedding.
+      One of 'cls', 'mean', 'attn', 'weighted_mean'.
+    - lr: Learning rate for the optimizer configured by this module.
+    - weight_decay: Weight decay for the optimizer.
+    - unfreeze_last_n_layers: Controls encoder layer unfreezing via
+      `set_unfrozen_layers`:
+        - None: leave `requires_grad` as-is
+        - -1: unfreeze all encoder layers
+        - 0: freeze all encoder layers
+        - >0: unfreeze the last N encoder layers
+    - mixture_components: Number of mixture components K for 'mdn_gaussian'.
+    """
     task_name: str = "property"
-    loss_function: str = "auto"  # see AVAILABLE_LOSS_FUNCTIONS["regression"]
+    loss_function: str = "auto"
     hidden_sizes: list[int] | None = None
     dropout: float = 0.1
     activation: str = "auto"
     pooling: Literal["cls", "mean", "attn", "weighted_mean"] = "mean"
     lr: float = 1e-3
     weight_decay: float = 0.0
-    # If set, controls encoder layer unfreezing: None = no change, 0 = freeze all, >0 = unfreeze last N layers
     unfreeze_last_n_layers: int | None = None
-    # Number of MDN components (K) when using 'mdn_gaussian' loss
     mixture_components: int | None = None
 
 
 class UMEPropertyRegression(L.LightningModule):
-    """LightningModule to train a regression head on top of a frozen/partially unfrozen UME encoder."""
+    """LightningModule for training a regression head on top of a UME encoder.
+
+    Args:
+        ume: The pretrained `UME` encoder used as the backbone.
+        config: `UMEPropertyRegressionConfig` controlling the head, loss,
+            optimizer, pooling, and encoder unfreezing policy. See
+            `UMEPropertyRegressionConfig.unfreeze_last_n_layers` for the
+            freezing/unfreezing convention.
+    """
 
     def __init__(self, ume: UME, *, config: UMEPropertyRegressionConfig | None = None) -> None:
         super().__init__()
@@ -65,10 +97,6 @@ class UMEPropertyRegression(L.LightningModule):
         logging.getLogger(__name__).info(f"UMEPropertyRegression: unfreeze_last_n_layers={cfg.unfreeze_last_n_layers}")
         if cfg.unfreeze_last_n_layers is not None:
             n = int(cfg.unfreeze_last_n_layers)
-            # New convention:
-            #  -1 => unfreeze all
-            #   0 => freeze all
-            #  >0 => unfreeze last N layers
             set_unfrozen_layers(self.ume, n)
 
         self.loss_fns = self.model.get_loss_functions()

@@ -6,9 +6,7 @@ from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 import wandb
-from lobster.model._ume_property_regression import UMEPropertyRegression
 from lobster.model._ume import UME
-from lobster.post_train.unfreezing import set_unfrozen_layers
 
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="train")
@@ -24,7 +22,7 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
     # Instantiate arbitrary pre-setup (seed, plugins, etc.)
     hydra.utils.instantiate(cfg.setup)
 
-    # Data module from Hydra config
+    # Data module (expecting our gRED finetune DataModule config)
     datamodule = hydra.utils.instantiate(cfg.data)
 
     # Model: construct UME and head via Hydra targets while enforcing required params
@@ -32,19 +30,21 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
     if model_cfg is None:
         raise ValueError("Missing 'model' section in config")
 
+    # Optional 'model.ume' block: if absent, use conservative defaults
     ume_cfg = model_cfg.get("ume")
-    if ume_cfg is None:
-        raise ValueError("Missing 'model.ume' section in config")
+    model_name = None
+    use_flash_attn = False  # default to False for broader GPU compatibility
+    cache_dir = None
+    if ume_cfg is not None:
+        model_name = ume_cfg.get("model_name")
+        # Only override default if explicitly set
+        if "use_flash_attn" in ume_cfg and ume_cfg.get("use_flash_attn") is not None:
+            use_flash_attn = bool(ume_cfg.get("use_flash_attn"))
+        cache_dir = ume_cfg.get("cache_dir")
 
-    # Require model_name and use_flash_attn with no defaults
-    if "model_name" not in ume_cfg or ume_cfg.get("model_name") in (None, ""):
-        raise ValueError("'model.ume.model_name' is required and must be non-empty")
-    if "use_flash_attn" not in ume_cfg or ume_cfg.get("use_flash_attn") is None:
-        raise ValueError("'model.ume.use_flash_attn' is required and must be set to true/false")
-
-    model_name = ume_cfg.get("model_name")
-    use_flash_attn = bool(ume_cfg.get("use_flash_attn"))
-    cache_dir = ume_cfg.get("cache_dir")
+    # Provide a reasonable default model if not specified
+    if model_name in (None, ""):
+        model_name = "ume-mini-base-12M"
 
     # Instantiate encoder
     ume = UME.from_pretrained(model_name=model_name, use_flash_attn=use_flash_attn, cache_dir=cache_dir)
@@ -63,13 +63,6 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
     model_cls = hydra.utils.get_class(target_str)
     model = model_cls(ume=ume, config=head_cfg)
 
-    # Optional: configurable unfreezing via single parameter
-    if isinstance(model, UMEPropertyRegression):
-        unfreeze_cfg = cfg.get("unfreezing")
-        if unfreeze_cfg is not None:
-            num_layers = unfreeze_cfg.get("num_layers")
-            if num_layers is not None:
-                set_unfrozen_layers(model.ume, int(num_layers))
 
     # Compile if requested
     if cfg.compile:
