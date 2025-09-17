@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Literal
 from lightning import Callback, LightningModule, Trainer
 
@@ -62,8 +63,6 @@ class AuxiliaryTaskWeightScheduler(Callback):
         if self.schedule_type == "linear":
             weight = progress * self.max_weight
         elif self.schedule_type == "cosine":
-            import math
-
             weight = 0.5 * (1 - math.cos(math.pi * progress)) * self.max_weight
         elif self.schedule_type == "exponential":
             weight = (progress**2) * self.max_weight

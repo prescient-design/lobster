@@ -9,7 +9,7 @@
 #SBATCH -o slurm/logs/train/%J_%x.out
 #SBATCH -q preempt
 #SBATCH --mem=256G
-#SBATCH --job-name=neo-medium
+#SBATCH --job-name=neo-mini
 #SBATCH -t 7-00:00:00
 
 # srun hostname
@@ -39,5 +39,5 @@ umask g+w
 
 srun -u --cpus-per-task 16 --cpu-bind=cores,verbose \
     lobster_train \
-    experiment=neobert/train_neobert_medium \
+    experiment=neobert/train_neobert_mini \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES

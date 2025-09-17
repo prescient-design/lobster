@@ -1,0 +1,15 @@
+# @package _global_
+
+
+defaults:
+  - base #evaluation/neobert/base
+
+model:
+  _target_: lobster.model.NeoBERTLightningModule
+  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-03T15-31-34/epoch=2-step=89000-val_loss=0.8960.ckpt #s3://prescient-lobster/ume/runs/2025-09-03T15-31-34/epoch=5-step=167500-val_loss=0.8774.ckpt
+
+ckpt_path: ${model.ckpt_path}
+model_alias: UME-neo-small-base-for-aux
+wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/2v3j9ori/
+
+

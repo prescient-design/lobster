@@ -8,7 +8,7 @@
 #SBATCH -o slurm/logs/train/%J_%x.out
 #SBATCH -q preempt
 #SBATCH --mem=256G
-#SBATCH --job-name=ume-prot-pretrain
+#SBATCH --job-name=ume-prot-aux-debug
 #SBATCH -t 7-00:00:00
 
 
@@ -37,6 +37,6 @@ umask g+w
 
 srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose \
     lobster_train \
-    experiment=ume-2/amino_acid \
+    experiment=ume-2/amino_acid_aux \
     data.num_workers=8 \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES
