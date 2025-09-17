@@ -19,6 +19,7 @@ UME_MODEL_VERSION_TYPES = Literal[
 
 class UMEModelVersion(StrEnum):
     """Enum for UME model versions."""
+
     LARGE_870M = "ume-large-base-870M"
     LARGE = "ume-large-base-740M"
     MEDIUM = "ume-medium-base-480M"

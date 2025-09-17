@@ -63,7 +63,6 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
     model_cls = hydra.utils.get_class(target_str)
     model = model_cls(ume=ume, config=head_cfg)
 
-
     # Compile if requested
     if cfg.compile:
         model.compile()

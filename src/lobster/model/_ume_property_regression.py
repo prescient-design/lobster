@@ -39,6 +39,7 @@ class UMEPropertyRegressionConfig:
         - >0: unfreeze the last N encoder layers
     - mixture_components: Number of mixture components K for 'mdn_gaussian'.
     """
+
     task_name: str = "property"
     loss_function: str = "auto"
     hidden_sizes: list[int] | None = None
