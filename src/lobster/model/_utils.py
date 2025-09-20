@@ -19,3 +19,17 @@ POOLERS = {
     "cls": LMClsPooler,
     "weighted_mean": LMWeightedMeanPooler,
 }
+
+
+def get_pooler_class(pooler_name: str):
+    """Return the pooler class by name, raising a helpful error if unknown."""
+    if pooler_name not in POOLERS:
+        available = list(POOLERS.keys())
+        raise ValueError(f"Unknown pooler '{pooler_name}'. Available: {available}")
+    return POOLERS[pooler_name]
+
+
+def create_pooler(pooler_name: str, config):
+    """Instantiate a pooler by name with the provided config."""
+    pooler_cls = get_pooler_class(pooler_name)
+    return pooler_cls(config=config)

@@ -1,4 +1,5 @@
 from collections.abc import Callable
+import inspect
 import torch.nn as nn
 
 from .neobert._swiglu import SwiGLU
@@ -18,6 +19,26 @@ ACTIVATION_FUNCTIONS = {
 }
 
 
+def _instantiate_with_supported_kwargs(activation_class: type[nn.Module], **kwargs) -> nn.Module:
+    """
+    Instantiate a torch.nn activation class, passing only supported kwargs.
+    """
+    try:
+        signature = inspect.signature(activation_class)
+    except (TypeError, ValueError):
+        # Fallback if signature introspection fails for any reason
+        return activation_class()
+
+    supported_kwargs = {}
+    for param_name in signature.parameters.keys():
+        if param_name == "self":
+            continue
+        if param_name in kwargs:
+            supported_kwargs[param_name] = kwargs[param_name]
+
+    return activation_class(**supported_kwargs)
+
+
 def get_activation_function(
     activation_name: str, input_dim: int | None = None, hidden_dim: int | None = None, **kwargs
 ) -> nn.Module | Callable:
@@ -35,15 +56,7 @@ def get_activation_function(
 
     activation_class = ACTIVATION_FUNCTIONS[activation_name]
 
-    # Handle activations that accept parameters
-    if activation_name == "leaky_relu":
-        return activation_class(negative_slope=kwargs.get("negative_slope", 0.01))
-    elif activation_name == "prelu":
-        return activation_class(num_parameters=kwargs.get("num_parameters", 1))
-    elif activation_name == "elu":
-        return activation_class(alpha=kwargs.get("alpha", 1.0))
-    else:
-        return activation_class()
+    return _instantiate_with_supported_kwargs(activation_class, **kwargs)
 
 
 def get_recommended_activation(task_type: str) -> str:

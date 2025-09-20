@@ -8,7 +8,7 @@ import torch
 
 from ._heads import TaskConfig, FlexibleEncoderWithHeads
 from ._ume import UME
-from ..post_train.unfreezing import set_unfrozen_layers
+from lobster.post_train.unfreezing import set_unfrozen_layers
 
 
 @dataclass

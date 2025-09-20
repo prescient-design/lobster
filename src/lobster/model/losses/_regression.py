@@ -17,15 +17,15 @@ and uncertainty quantification for specialized applications.
 class MSELossWithSmoothing(nn.Module):
     """Mean Squared Error loss with optional label smoothing.
 
-    Supports both simple Gaussian noise smoothing and Cortex-style
-    moment averaging for more sophisticated label smoothing.
+    Supports simple Gaussian noise smoothing. For moment-averaging style
+        smoothing, use `NaturalGaussianLoss`
 
     Parameters
     ----------
     label_smoothing : float, optional
         Label smoothing factor, by default 0.0
     smoothing_method : str, optional
-        Method for label smoothing: "gaussian" or "moment_average", by default "gaussian"
+        Method for label smoothing. Only "gaussian" is supported. Defaults to "gaussian".
     reduction : str, optional
         Reduction method, by default "mean"
 
@@ -35,7 +35,7 @@ class MSELossWithSmoothing(nn.Module):
 
     Examples
     --------
-    >>> loss_fn = MSELossWithSmoothing(label_smoothing=0.1, smoothing_method="moment_average")
+    >>> loss_fn = MSELossWithSmoothing(label_smoothing=0.1)
     >>> pred = torch.randn(32, 1)
     >>> target = torch.randn(32, 1)
     >>> loss = loss_fn(pred, target)
@@ -63,35 +63,13 @@ class MSELossWithSmoothing(nn.Module):
             Loss value
         """
         if self.label_smoothing > 0.0:
-            if self.smoothing_method == "gaussian":
-                # Simple Gaussian noise smoothing
-                noise = torch.randn_like(target) * self.label_smoothing
-                target = target + noise
-            elif self.smoothing_method == "moment_average":
-                # Cortex-style moment averaging (simplified version)
-                target = self._apply_moment_averaging(input, target)
+            # Simple Gaussian noise smoothing
+            noise = torch.randn_like(target) * self.label_smoothing
+            target = target + noise
 
         return F.mse_loss(input, target, reduction=self.reduction)
 
-    def _apply_moment_averaging(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        """Apply moment averaging label smoothing (inspired by Cortex).
-
-        This is a simplified version of Cortex's moment averaging.
-
-        References
-        ----------
-        Moment averaging label smoothing: Cortex (https://github.com/prescient-design/cortex/blob/main/cortex/model/leaf/_regressor_leaf.py)
-        Moment averaging theory: "Adaptive Approximate Inference in Bayesian Neural Networks" (Maddison et al., 2017)
-        https://www.cs.toronto.edu/~cmaddis/pubs/aais.pdf
-        """
-        # Compute standard statistics
-        pred_mean = pred.mean()
-        pred.var()
-
-        # Apply smoothing between prediction and target statistics
-        smoothed_target = self.label_smoothing * pred_mean + (1.0 - self.label_smoothing) * target
-
-        return smoothed_target
+    # Note: Moment averaging has been removed from MSELossWithSmoothing. Use NaturalGaussianLoss for that functionality.
 
 
 class HuberLossWithSmoothing(nn.Module):
@@ -289,12 +267,20 @@ class NaturalGaussianLoss(nn.Module):
         log_scale_max: float = 8.0,
         label_smoothing: float = 0.0,
         reduction: str = "mean",
+        moment_averaging: bool = False,
+        nominal_label_var: float = 0.25**2,
+        standard_mean: float = 0.0,
+        standard_var: float = 1.0,
     ):
         super().__init__()
         self.log_scale_min = log_scale_min
         self.log_scale_max = log_scale_max
         self.label_smoothing = label_smoothing
         self.reduction = reduction
+        self.moment_averaging = moment_averaging
+        self.nominal_label_var = nominal_label_var
+        self.standard_mean = standard_mean
+        self.standard_var = standard_var
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -320,11 +306,49 @@ class NaturalGaussianLoss(nn.Module):
         # Clamp log_scale for numerical stability
         log_scale = torch.clamp(log_scale, self.log_scale_min, self.log_scale_max)
         scale = torch.exp(log_scale)
+        var_pred = scale * scale
 
-        # Apply label smoothing if specified
-        if self.label_smoothing > 0.0:
-            noise = torch.randn_like(target) * self.label_smoothing
-            target = target + noise
+        # Apply moment averaging if enabled and alpha > 0
+        if self.moment_averaging and self.label_smoothing > 0.0:
+            alpha = self.label_smoothing
+
+            if target.dim() == 1:
+                target = target.unsqueeze(-1)
+
+            # Standard/prior stats and label stats
+            standard_mean = torch.as_tensor(self.standard_mean, device=target.device, dtype=target.dtype)
+            standard_var = torch.as_tensor(self.standard_var, device=target.device, dtype=target.dtype)
+            label_mean = target
+            label_var = torch.full_like(target, self.nominal_label_var)
+
+            # Moment averaging with cross term
+            smoothed_mean = alpha * standard_mean + (1.0 - alpha) * label_mean
+            mean_diff = standard_mean - label_mean
+            cross_var_term = alpha * (1.0 - alpha) * mean_diff.pow(2)
+            smoothed_var = alpha * standard_var + (1.0 - alpha) * label_var + cross_var_term
+
+            # Convert to natural parameters
+            canon_p = torch.stack(
+                [
+                    smoothed_mean / smoothed_var.clamp_min(1e-12),
+                    -1.0 / (2 * smoothed_var.clamp_min(1e-12)),
+                ]
+            )
+
+            canon_q = torch.stack(
+                [
+                    mean / var_pred.clamp_min(1e-12),
+                    -1.0 / (2 * var_pred.clamp_min(1e-12)),
+                ]
+            )
+
+            kl = _diag_natural_gaussian_kl_divergence(canon_p, canon_q)
+
+            if self.reduction == "mean":
+                return kl.mean()
+            if self.reduction == "sum":
+                return kl.sum()
+            return kl
 
         # Compute NLL and apply requested reduction
         dist = torch.distributions.Normal(mean, scale)

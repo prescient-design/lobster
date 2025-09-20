@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from ._utils import POOLERS
-from ._activations import get_activation_function, get_recommended_activation, ACTIVATION_FUNCTIONS
+from ._activations import get_activation_function, get_recommended_activation
 from .losses._registry import get_loss_function, DEFAULT_LOSS_FUNCTIONS, AVAILABLE_LOSS_FUNCTIONS
 
 logger = logging.getLogger(__name__)
@@ -79,10 +79,10 @@ class TaskConfig:
         if self.activation == "auto":
             self.activation = get_recommended_activation(self.task_type)
 
-        # Validate activation function
-        if self.activation.lower() not in ACTIVATION_FUNCTIONS and self.activation.lower() != "swiglu":
-            available = list(ACTIVATION_FUNCTIONS.keys())
-            raise ValueError(f"Unknown activation function: {self.activation}. Available: {available}")
+        # Validate activation function via factory (SwiGLU needs dims, so skip here)
+        if self.activation.lower() != "swiglu":
+            # This will raise a ValueError with available options if unknown
+            get_activation_function(self.activation.lower())
 
         # Handle auto loss function selection and validation
         if self.loss_function == "auto":

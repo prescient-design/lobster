@@ -6,10 +6,9 @@ from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 import wandb
-from lobster.model._ume import UME
 
 
-@hydra.main(version_base=None, config_path="../hydra_config", config_name="train")
+@hydra.main(version_base=None, config_path="../hydra_config", config_name="finetune")
 def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, list[pl.Callback]]:
     dotenv.load_dotenv(".env")
 
@@ -23,46 +22,15 @@ def finetune(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModul
 
     datamodule = hydra.utils.instantiate(cfg.data)
 
-    # Model: construct UME and head via Hydra targets while enforcing required params
     model_cfg = cfg.get("model")
     if model_cfg is None:
         raise ValueError("Missing 'model' section in config")
 
-    # Optional 'model.ume' block: if absent, use conservative defaults
-    ume_cfg = model_cfg.get("ume")
-    model_name = None
-    use_flash_attn = False  # default to False for broader GPU compatibility
-    cache_dir = None
-    if ume_cfg is not None:
-        model_name = ume_cfg.get("model_name")
-        # Only override default if explicitly set
-        if "use_flash_attn" in ume_cfg and ume_cfg.get("use_flash_attn") is not None:
-            use_flash_attn = bool(ume_cfg.get("use_flash_attn"))
-        cache_dir = ume_cfg.get("cache_dir")
-
-    # default to ume-mini if not set
-    if model_name in (None, ""):
-        model_name = "ume-mini-base-12M"
-
-    # Instantiate encoder
-    ume = UME.from_pretrained(model_name=model_name, use_flash_attn=use_flash_attn, cache_dir=cache_dir)
-
-    # Instantiate head config via Hydra to keep YAML declarative and swappable
-    cfg_src = model_cfg.get("config")
-    if cfg_src is None or "_target_" not in cfg_src:
-        raise ValueError("'model.config' must be provided with a Hydra _target_ for the head config class")
-    head_cfg = hydra.utils.instantiate(cfg_src)
-
-    # Instantiate model class via Hydra target, injecting built ume and head_cfg
-    class_spec = model_cfg.get("class")
-    if class_spec is None or "_target_" not in class_spec:
-        raise ValueError("'model.class' must be provided with a Hydra _target_ for the model class")
-    target_str = class_spec.get("_target_")
-    model_cls = hydra.utils.get_class(target_str)
-    model = model_cls(ume=ume, config=head_cfg)
+    # Generic Hydra instantiation of the model (and nested encoder/config)
+    model = hydra.utils.instantiate(model_cfg)
 
     # Compile if requested
-    if cfg.compile:
+    if cfg.compile and hasattr(model, "compile"):
         model.compile()
 
     # Logger
