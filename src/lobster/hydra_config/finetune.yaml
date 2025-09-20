@@ -1,0 +1,18 @@
+defaults:
+  - _self_
+  - data: fasta.yaml
+  - model: regression.yaml
+  - callbacks: default.yaml
+  - logger: wandb.yaml
+  - trainer: default.yaml
+  - setup: default.yaml
+  - paths: default.yaml
+  - lr_scheduler: default.yaml
+  - plugins: null
+  - experiment: null
+
+dryrun: false
+run_test: false
+compile: false
+
+

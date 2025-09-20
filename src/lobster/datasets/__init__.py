@@ -33,7 +33,7 @@ __all__ = [
     "RoundRobinConcatIterableDataset",
     "PEERDataset",
     "RoundRobinConcatIterableDataset",
-    "LatentGeneratorPinderIterableDataset",
+    "LatentGeneratorPinderDataset",
     "ZINCIterableDataset",
     "OpenGenome2IterableDataset",
     "UMEStreamingDataset",

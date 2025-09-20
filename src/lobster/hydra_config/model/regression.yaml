@@ -1,0 +1,20 @@
+_target_: lobster.model._property_regression.PropertyRegression
+
+# Instantiate base encoder from pretrained ume-mini and partially unfreeze
+encoder:
+  _target_: lobster.model.UME.from_pretrained
+  model_name: ume-mini-base-12M
+  use_flash_attn: false
+
+config:
+  _target_: lobster.model._property_regression.PropertyRegressionConfig
+  task_name: property
+  loss_function: ${training.loss_function}  # e.g., mse, huber, smooth_l1, gaussian, exponential
+  hidden_sizes: [512]
+  dropout: 0.1
+  activation: auto
+  pooling: mean
+  lr: 1e-3
+  weight_decay: 0.0
+
+
