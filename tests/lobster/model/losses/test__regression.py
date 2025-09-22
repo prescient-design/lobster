@@ -23,10 +23,9 @@ def test_mse_with_smoothing_gaussian():
     # Gaussian smoothing adds noise - verify it produces different result from no smoothing
     # and that the result is reasonable (finite and positive)
     loss_g = MSELossWithSmoothing(label_smoothing=0.1, smoothing_method="gaussian")(pred, target)
-    loss_no_smooth = MSELossWithSmoothing(label_smoothing=0.0)(pred, target)
+    MSELossWithSmoothing(label_smoothing=0.0)(pred, target)
     assert torch.isfinite(loss_g)
     assert loss_g > 0.0
-
 
 
 def test_huber_and_smoothl1_with_smoothing():
