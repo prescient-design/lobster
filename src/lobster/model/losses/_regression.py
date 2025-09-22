@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from cortex.model.leaf._regressor_leaf import diag_natural_gaussian_kl_divergence
 
 """
 Note: For standard regression losses without additional features, use PyTorch's built-in functions:
@@ -342,7 +343,7 @@ class NaturalGaussianLoss(nn.Module):
                 ]
             )
 
-            kl = _diag_natural_gaussian_kl_divergence(canon_p, canon_q)
+            kl = diag_natural_gaussian_kl_divergence(canon_p, canon_q)
 
             if self.reduction == "mean":
                 return kl.mean()
