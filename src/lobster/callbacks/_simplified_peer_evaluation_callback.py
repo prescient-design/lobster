@@ -66,7 +66,6 @@ class SimplifiedPEEREvaluationCallback(LinearProbeCallback):
         clear_cache_between_tasks: bool = True,
         max_embeddings_per_chunk: int = 10000,
     ):
-        # Initialize parent with no transform (we'll handle raw sequences)
         super().__init__(
             transform_fn=None,
             task_type="regression",  # Will be updated per task
