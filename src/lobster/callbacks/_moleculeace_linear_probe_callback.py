@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from collections.abc import Sequence
 
@@ -10,14 +11,15 @@ from lobster.datasets import MoleculeACEDataset
 
 from ._linear_probe_callback import LinearProbeCallback
 
+logger = logging.getLogger(__name__)
+
 
 class MoleculeACELinearProbeCallback(LinearProbeCallback):
     """Callback for evaluating embedding models on the Molecule Activity Cliff
     Estimation (MoleculeACE) dataset from Tilborg et al. (2022).
 
-    Currently assumes models can embed raw SMILES sequences via
-    ``embed_sequences(..., modality="SMILES")`` through the base callback's
-    embedding helper.
+    Uses the model's embed_sequences method with modality="smiles" to embed
+    raw SMILES sequences directly.
 
     This callback assesses how well a molecular embedding model captures activity
     cliffs by training linear probes on frozen embeddings to predict pEC50/pKi
@@ -78,7 +80,7 @@ class MoleculeACELinearProbeCallback(LinearProbeCallback):
                     aggregate_metrics[metric_name].append(value)
 
             except Exception as e:
-                print(f"Error processing task {task}: {str(e)}")
+                logger.error(f"Error processing task {task}: {str(e)}")
                 continue
 
         mean_metrics = {}

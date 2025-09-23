@@ -10,12 +10,8 @@ from upath import UPath
 
 from lobster.constants import Modality, Split
 from lobster.tokenization import (
-    AminoAcidTokenizerFast,
-    NucleotideTokenizerFast,
-    SMILESTokenizerFast,
-    UMETokenizerTransform,
+    get_ume_tokenizer_transforms,
 )
-from lobster.transforms import TokenizerTransform
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +65,7 @@ class UMEStreamingDataset(StreamingDataset):
         extra_transform_fns: dict[str, Callable] | None = None,
         tokenize: bool = True,
         use_optimized: bool = False,
-        use_shared_tokenizer: bool = True,
+        use_shared_tokenizer: bool = False,
         max_length: int | None = 8192,
     ) -> None:
         """
@@ -244,39 +240,9 @@ class UMEStreamingDataset(StreamingDataset):
         if max_length is None:
             raise ValueError("max_length must be provided when tokenize is True")
 
-        if use_shared_tokenizer:
-            self.tokenizer_registry = {
-                Modality.AMINO_ACID: UMETokenizerTransform(
-                    modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
-                ),
-                Modality.SMILES: UMETokenizerTransform(
-                    modality=Modality.SMILES, max_length=max_length, return_modality=False
-                ),
-                Modality.NUCLEOTIDE: UMETokenizerTransform(
-                    modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
-                ),
-            }
-        else:
-            self.tokenizer_registry = {
-                Modality.AMINO_ACID: TokenizerTransform(
-                    AminoAcidTokenizerFast(),
-                    padding="max_length",
-                    truncation=True,
-                    max_length=max_length,
-                ),
-                Modality.SMILES: TokenizerTransform(
-                    SMILESTokenizerFast(),
-                    padding="max_length",
-                    truncation=True,
-                    max_length=max_length,
-                ),
-                Modality.NUCLEOTIDE: TokenizerTransform(
-                    NucleotideTokenizerFast(),
-                    padding="max_length",
-                    truncation=True,
-                    max_length=max_length,
-                ),
-            }
+        self.tokenizer_registry = get_ume_tokenizer_transforms(
+            max_length=max_length, use_shared_tokenizer=use_shared_tokenizer
+        )
 
     def __next__(self) -> dict[str, Any]:
         item: dict = super().__next__()

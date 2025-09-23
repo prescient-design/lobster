@@ -4,8 +4,6 @@ from collections.abc import Sequence
 
 import lightning as L
 import numpy as np
-import torch
-from torch import Tensor
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 from tqdm import tqdm
 
@@ -91,9 +89,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
         probe_type: str = "linear",
         classification_threshold: float = 0.5,
     ):
-        # Don't use transform_fn - we'll handle raw sequences with explicit modality
+        # Initialize parent without transform_fn - we'll use embed_sequences directly
         super().__init__(
-            transform_fn=None,
             task_type="regression",
             batch_size=batch_size,
             run_every_n_epochs=run_every_n_epochs,
@@ -171,52 +168,6 @@ class CalmLinearProbeCallback(LinearProbeCallback):
 
         return train_dataset, test_dataset
 
-    def _get_embeddings(
-        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader
-    ) -> tuple[Tensor, Tensor]:
-        """Extract embeddings from the model for a given dataloader.
-
-        Handles CALM-specific data format where CalmPropertyDataset returns raw strings
-        that are batched into lists by the DataLoader. Works with both CaLM and UME models.
-
-        Parameters
-        ----------
-        model : Union[L.LightningModule, torch.nn.Module]
-            The model to extract embeddings from (CaLM or UME)
-        dataloader : DataLoader
-            DataLoader for the data to extract embeddings for
-
-        Returns
-        -------
-        Tuple[Tensor, Tensor]
-            Tuple of (embeddings, targets)
-        """
-        embeddings = []
-        targets = []
-
-        model.eval()
-
-        with torch.no_grad():
-            for batch in dataloader:
-                x, y = batch
-
-                # CalmPropertyDataset returns strings, DataLoader batches them into lists
-                if isinstance(x, (list, tuple)):
-                    sequences = list(x)
-                elif isinstance(x, str):
-                    sequences = [x]
-                else:
-                    # Fallback for unexpected formats
-                    sequences = list(x)
-
-                # Both CaLM and UME models have embed_sequences method
-                batch_embeddings = model.embed_sequences(sequences=sequences)
-
-                embeddings.append(batch_embeddings.cpu())
-                targets.append(y.cpu())
-
-        return torch.cat(embeddings), torch.cat(targets)
-
     def _evaluate_task(
         self,
         task_key: str,
@@ -270,7 +221,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                 combined_loader = DataLoader(combined_dataset, batch_size=self.batch_size, shuffle=False)
 
                 # Get all embeddings and targets
-                all_embeddings, all_targets = self._get_embeddings(module, combined_loader)
+                all_embeddings, all_targets = self._get_embeddings(module, combined_loader, modality="amino_acid")
 
                 # Cross-validation: splitter choice is handled in base method
                 metrics = self._evaluate_with_cross_validation(all_embeddings, all_targets, task_key)
@@ -280,8 +231,8 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                 train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
                 test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
-                train_embeddings, train_targets = self._get_embeddings(module, train_loader)
-                test_embeddings, test_targets = self._get_embeddings(module, test_loader)
+                train_embeddings, train_targets = self._get_embeddings(module, train_loader, modality="amino_acid")
+                test_embeddings, test_targets = self._get_embeddings(module, test_loader, modality="amino_acid")
 
                 probe = self._train_probe(train_embeddings, train_targets, task_key)
                 self.probes[task_key] = probe

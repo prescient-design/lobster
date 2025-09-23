@@ -9,6 +9,7 @@ from ._tokens_per_second_callback import TokensPerSecondCallback, default_batch_
 from ._umap_visualization_callback import UmapVisualizationCallback
 from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
 from ._auxiliary_task_loss_weight_scheduler import AuxiliaryTaskWeightScheduler, MultiTaskWeightScheduler
+from ._simplified_peer_evaluation_callback import SimplifiedPEEREvaluationCallback
 
 __all__ = [
     "MoleculeACELinearProbeCallback",
@@ -25,4 +26,5 @@ __all__ = [
     "UmeGrpoLoggingCallback",
     "AuxiliaryTaskWeightScheduler",
     "MultiTaskWeightScheduler",
+    "SimplifiedPEEREvaluationCallback",
 ]

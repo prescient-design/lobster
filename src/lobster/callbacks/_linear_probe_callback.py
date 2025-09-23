@@ -19,7 +19,6 @@ from torchmetrics import AUROC, Accuracy, F1Score, MeanSquaredError, PearsonCorr
 
 from lobster.transforms import Transform
 
-# Optional import for better multilabel stratification
 try:
     from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 
@@ -135,18 +134,18 @@ class LinearProbeCallback(Callback):
         return trainer.current_epoch % self.run_every_n_epochs != 0
 
     def _get_embeddings(
-        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader, modality: str = None
+        self, model: L.LightningModule | torch.nn.Module, dataloader: DataLoader, modality: str = "amino_acid"
     ) -> tuple[Tensor, Tensor]:
-        """Extract embeddings from the model for a given dataloader.
+        """Extract embeddings from the model for a given dataloader using embed_sequences.
 
         Parameters
         ----------
         model : Union[L.LightningModule, torch.nn.Module]
-            The model to extract embeddings from (assumes UME)
+            The model to extract embeddings from
         dataloader : DataLoader
             DataLoader for the data to extract embeddings for
-        modality : str, optional
-            Explicit modality for embed_sequences. If None, falls back to embed() method.
+        modality : str, default="amino_acid"
+            Modality for embed_sequences
 
         Returns
         -------
@@ -162,54 +161,48 @@ class LinearProbeCallback(Callback):
             for batch in dataloader:
                 x, y = batch
 
-                # If modality is provided and inputs are raw strings, prefer embed_sequences
-                if modality is not None and (isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x)):
-                    try:
-                        batch_embeddings = model.embed_sequences(list(x), modality=modality, aggregate=True)
-                    except AttributeError as exc:
-                        raise AttributeError(
-                            "Model must implement embed_sequences(sequences, modality=..., aggregate=True) for raw sequence inputs"
-                        ) from exc
+                sequences = self._extract_sequences_from_input(x)
 
-                elif isinstance(x, dict) and modality is not None:
-                    # Common dict batches may contain raw text under these keys
-                    candidate_keys = ["text", "sequence", "Sequence", "cds", "smiles"]
-                    text_list = None
-                    for k in candidate_keys:
-                        v = x.get(k)
-                        if isinstance(v, (list, tuple)) and all(isinstance(s, str) for s in v):
-                            text_list = list(v)
-                            break
-
-                    if text_list is not None:
-                        try:
-                            batch_embeddings = model.embed_sequences(text_list, modality=modality, aggregate=True)
-                        except AttributeError as exc:
-                            raise AttributeError(
-                                "Model must implement embed_sequences(sequences, modality=..., aggregate=True) for raw sequence inputs"
-                            ) from exc
-                    else:
-                        # Otherwise defer to embed for dict inputs
-                        try:
-                            batch_embeddings = model.embed(x, aggregate=True)
-                        except AttributeError as exc:
-                            raise AttributeError(
-                                "Model must implement embed(inputs, aggregate=True) for dict or tensor inputs"
-                            ) from exc
-
-                else:
-                    # Default path: rely on model.embed for tensorized/tokenized or generic inputs
-                    try:
-                        batch_embeddings = model.embed(x, aggregate=True)
-                    except AttributeError as exc:
-                        raise AttributeError(
-                            "Model must implement embed(inputs, aggregate=True) or embed_sequences(sequences, modality=..., aggregate=True)"
-                        ) from exc
+                try:
+                    batch_embeddings = model.embed_sequences(sequences, modality=modality, aggregate=True)
+                except AttributeError as exc:
+                    raise AttributeError(
+                        "Model must implement embed_sequences(sequences, modality=..., aggregate=True)"
+                    ) from exc
 
                 embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
 
         return torch.cat(embeddings), torch.cat(targets)
+
+    def _extract_sequences_from_input(self, x) -> list[str]:
+        if isinstance(x, (list, tuple)) and all(isinstance(seq, str) for seq in x):
+            return list(x)
+
+        elif isinstance(x, str):
+            return [x]
+
+        # Handle dict with common sequence keys
+        elif isinstance(x, dict):
+            candidate_keys = ["text", "sequence", "Sequence", "sequences", "cds", "smiles"]
+            for key in candidate_keys:
+                if key in x:
+                    value = x[key]
+                    if isinstance(value, (list, tuple)):
+                        return list(value)
+                    elif isinstance(value, str):
+                        return [value]
+
+        # Handle objects with sequences attribute
+        elif hasattr(x, "sequences"):
+            sequences = x.sequences
+            if isinstance(sequences, (list, tuple)):
+                return list(sequences)
+            elif isinstance(sequences, str):
+                return [sequences]
+
+        else:
+            raise ValueError(f"Could not extract sequences from input of type {type(x)}: {x}")
 
     def _train_probe(self, embeddings: Tensor, targets: Tensor, task_key: str = "default"):
         """Train a probe on the given embeddings and targets."""
