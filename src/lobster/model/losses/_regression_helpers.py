@@ -1,12 +1,14 @@
 import torch
 
-'''
+"""
 Taken directly from pytorch-cortex: https://github.com/prescient-design/cortex/blob/main/cortex/model/leaf/_regressor_leaf.py
-'''
+"""
+
 
 def diag_gaussian_cumulant(canon_param):
     res = -1.0 * canon_param[0].pow(2) / (4 * canon_param[1]) - 0.5 * (-2.0 * canon_param[1]).log()
     return res
+
 
 def diag_natural_gaussian_kl_divergence(canon_param_p, canon_param_q):
     # https://people.eecs.berkeley.edu/~jordan/courses/260-spring10/other-readings/chapter8.pdf
