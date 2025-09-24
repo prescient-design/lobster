@@ -1,5 +1,4 @@
 import logging
-from collections.abc import Sequence
 from typing import Literal
 
 import torch
@@ -8,7 +7,6 @@ import transformers
 from lightning import LightningModule
 from torch import Tensor
 
-from lobster.constants import Modality, ModalityType
 from lobster.model.neobert import mask_tokens
 
 from .ume_sequence_encoder import AuxiliaryTask, UMESequenceEncoderModule
@@ -66,14 +64,6 @@ class UMESequenceEncoderLightningModule(LightningModule):
             use_shared_tokenizer=self.use_shared_tokenizer,
             **encoder_kwargs or {},
         )
-
-    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
-        return self.encoder.embed(inputs=inputs, aggregate=aggregate, ignore_padding=ignore_padding, **kwargs)
-
-    def embed_sequences(
-        self, sequences: Sequence[str] | str, modality: ModalityType | Modality = None, aggregate: bool = True
-    ) -> Tensor:
-        return self.encoder.embed_sequences(sequences, modality=modality, aggregate=aggregate)
 
     def compute_mlm_loss(self, batch: dict[str, Tensor]) -> Tensor:
         masked_inputs = mask_tokens(
@@ -160,10 +150,14 @@ class UMESequenceEncoderLightningModule(LightningModule):
         return total_loss
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        return self.step(batch, batch_idx, "train")
+        loss = self.step(batch, batch_idx, "train")
+        self.log("train_loss", loss, sync_dist=True, rank_zero_only=True, batch_size=batch["input_ids"].shape[0])
+        return loss
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        return self.step(batch, batch_idx, "val")
+        loss = self.step(batch, batch_idx, "val")
+        self.log("val_loss", loss, sync_dist=True, rank_zero_only=True, batch_size=batch["input_ids"].shape[0])
+        return loss
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

@@ -1,0 +1,56 @@
+# @package _global_
+
+defaults:
+  - override /hydra/launcher: submitit_slurm
+
+hydra:
+  run:
+    dir: outputs/${hydra:job.name}
+  job:
+    chdir: false
+  launcher:
+    timeout_min: 10080  # 7 days (7 * 24 * 60 = 10080 minutes)
+    cpus_per_task: 8
+    nodes: 1
+    tasks_per_node: 8
+    gpus_per_node: 8
+    mem_gb: 256
+    name: ${hydra.job.name}
+    partition: b200
+    qos: preempt
+    setup:
+      - "cd $SLURM_SUBMIT_DIR"
+      - "source .venv/bin/activate"
+      - "nvidia-smi"
+      - "export LD_LIBRARY_PATH=/opt/amazon/efa/lib64:/opt/amazon/openmpi/lib64:/opt/amazon/ofi-nccl/lib64"
+      - "export WANDB_BASE_URL=https://genentech.wandb.io"
+      - "export WANDB_MODE=online"
+      - "export WANDB_DIR=$SLURM_SUBMIT_DIR/wandb"
+      - "export WANDB_INSECURE_DISABLE_SSL=true"
+      - "export HYDRA_FULL_ERROR=1"
+      - "export PYTHONUNBUFFERED=1"
+      - "export NCCL_DEBUG=INFO"
+      - "export LOBSTER_RUNS_DIR=s3://prescient-lobster/ume/runs"
+      - "export LOBSTER_DATA_DIR=/data2/ume/.cache2/"
+      - "export LOBSTER_USER=$(whoami)"
+      - "export TOKENIZERS_PARALLELISM=true"
+      - "umask g+w"
+        # # Extra arguments:
+    # submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+    # gpus_per_node: null
+    # tasks_per_node: 1
+    # mem_gb: null
+    # comment: null
+    # constraint: null
+    # exclude: null
+    # gres: null
+    # cpus_per_gpu: null
+    # gpus_per_task: null
+    # mem_per_gpu: null
+    # mem_per_cpu: null
+    # account: null
+    # signal_delay_s: 120
+    # max_num_timeout: 0
+    # additional_parameters: {}
+    # array_parallelism: 256
+    # srun_args: null

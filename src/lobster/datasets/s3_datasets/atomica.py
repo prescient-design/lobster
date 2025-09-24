@@ -4,8 +4,7 @@ from collections.abc import Sequence
 
 from litdata import StreamingDataset
 
-from lobster.constants import S3_BUCKET, Split
-from lobster.constants._modality import Modality
+from lobster.constants import S3_BUCKET, Split, Modality, to_modality
 
 from .base import UMEStreamingDataset
 
@@ -23,9 +22,9 @@ class Atomica(UMEStreamingDataset):
     VAL_SIZE = 16309
 
     SPLITS = {
-        Split.TRAIN: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=train",
-        Split.VALIDATION: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=val",
-        Split.TEST: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=test",
+        Split.TRAIN: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=train/interaction_type=protein-protein/",
+        Split.VALIDATION: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=val/interaction_type=protein-protein/",
+        Split.TEST: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=test/interaction_type=protein-protein/",
     }
 
     OPTIMIZED_SPLITS = {
@@ -50,15 +49,13 @@ class Atomica(UMEStreamingDataset):
             seed=seed,
             cache_dir=cache_dir,
             transform_fn=transform_fn,
-            use_optimized=use_optimized,
+            use_optimized=False,
             tokenize=True,
             max_length=max_length,
             **kwargs,
         )
 
-        self.restrict_modalities = set(
-            Modality(modality) if isinstance(modality, str) else modality for modality in restrict_modalities or []
-        )
+        self.restrict_modalities = set(to_modality(modality) for modality in restrict_modalities or [])
 
     def __next__(self):
         item = StreamingDataset.__next__(self)
@@ -66,12 +63,23 @@ class Atomica(UMEStreamingDataset):
         sequence1 = item.pop(self.SEQUENCE_KEY_1)
         sequence2 = item.pop(self.SEQUENCE_KEY_2)
 
-        modality1 = item.pop(self.MODALITY_KEY_1)
-        modality2 = item.pop(self.MODALITY_KEY_2)
+        if sequence1 is None or sequence2 is None:
+            logger.debug(f"Skipping item with sequences {sequence1} and {sequence2}")
+            return self.__next__()
+
+        modality1 = to_modality(
+            "amino_acid"
+        )  # , item.pop(self.MODALITY_KEY_1)) # TODO temporary hard-coded modality, remove later!
+        modality2 = to_modality(
+            "amino_acid"
+        )  # , item.pop(self.MODALITY_KEY_2)) # TODO temporary hard-coded modality, remove later!
 
         if self.restrict_modalities and any(
             modality not in self.restrict_modalities for modality in [modality1, modality2]
         ):
+            logger.debug(
+                f"Skipping item with modalities {modality1} and {modality2} because they are not in {self.restrict_modalities}"
+            )
             return self.__next__()
 
         encoded1 = self.tokenizer_registry[modality1](sequence1)

@@ -51,8 +51,6 @@ class UMEInteractionLightningModule(LightningModule):
 
         super().__init__()
 
-        self.special_token_mappings = {to_modality(key): value for key, value in special_token_mappings.items()}
-
         self.mask_probability = mask_probability
         self.lr = lr
         self.beta1 = beta1
@@ -64,6 +62,8 @@ class UMEInteractionLightningModule(LightningModule):
 
         self.seed = seed
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
+
+        self.special_token_mappings = {to_modality(key): value for key, value in special_token_mappings.items()}
 
         self.encoder = UMEInteraction(
             checkpoints=checkpoints,
@@ -99,7 +99,7 @@ class UMEInteractionLightningModule(LightningModule):
             if len(set(modalities)) > 1:
                 raise NotImplementedError("Multiple modalities in a batch are not yet supported")
 
-            modality = modalities[0]
+            modality = to_modality(modalities[0])
 
             special_token_ids = self.special_token_mappings[modality].special_token_ids
             mask_token_id = self.special_token_mappings[modality].mask_token_id

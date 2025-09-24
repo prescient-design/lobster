@@ -12,6 +12,7 @@ from lobster.constants import Modality, Split
 from lobster.tokenization import (
     get_ume_tokenizer_transforms,
 )
+from lobster.transforms import TokenizerTransform
 
 logger = logging.getLogger(__name__)
 
@@ -237,10 +238,12 @@ class UMEStreamingDataset(StreamingDataset):
         ValueError
             If max_length is None
         """
+        logger.info(f"Using shared tokenizer: {use_shared_tokenizer}")
+
         if max_length is None:
             raise ValueError("max_length must be provided when tokenize is True")
 
-        self.tokenizer_registry = get_ume_tokenizer_transforms(
+        self.tokenizer_registry: dict[Modality, TokenizerTransform] = get_ume_tokenizer_transforms(
             max_length=max_length, use_shared_tokenizer=use_shared_tokenizer
         )
 
