@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Sequence
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 
@@ -9,7 +10,7 @@ from lobster.model.utils import _detect_modality
 from lobster.tokenization import get_ume_tokenizer_transforms
 
 from ..neobert import NeoBERTModule
-from ._checkpoint_utils import _load_checkpoint_from_path
+from ._checkpoint_utils import load_checkpoint_from_s3_uri_or_local_path, map_checkpoint_keys
 from .auxiliary_tasks import AuxiliaryRegressionTaskHead, AuxiliaryTask
 
 logger = logging.getLogger(__name__)
@@ -19,18 +20,15 @@ class UMESequenceEncoderModule(nn.Module):
     def __init__(
         self,
         auxiliary_tasks: list[AuxiliaryTask] | None = None,
-        model_ckpt: str | None = None,
-        cache_dir: str | None = None,
         use_shared_tokenizer: bool = False,
+        cache_dir: str | None = None,
         **neobert_kwargs,
     ) -> None:
         super().__init__()
 
         self.neobert = NeoBERTModule(**neobert_kwargs)
         self.use_shared_tokenizer = use_shared_tokenizer
-
-        if model_ckpt is not None:
-            _load_checkpoint_from_path(self.neobert, model_ckpt, cache_dir)
+        self.cache_dir = cache_dir
 
         if auxiliary_tasks is None:
             self.auxiliary_tasks = None
@@ -52,6 +50,36 @@ class UMESequenceEncoderModule(nn.Module):
                     for task in auxiliary_tasks
                 }
             )
+
+    @classmethod
+    def load_from_checkpoint(
+        cls, checkpoint_path: str, *, device: str | None = None, cache_dir: str | None = None, **kwargs
+    ) -> "UMESequenceEncoderModule":
+        """Utility function to load state_dict and hyper_parameters from UMESequenceEncoderLightningModule checkpoint."""
+
+        device = device or get_device()
+
+        checkpoint = load_checkpoint_from_s3_uri_or_local_path(checkpoint_path, device=device, cache_dir=cache_dir)
+
+        # Get and update hyper_parameters
+        hyper_parameters = checkpoint["hyper_parameters"] or {}
+        keys = ["auxiliary_tasks", "encoder_kwargs", "pad_token_id", "use_shared_tokenizer"]
+        hyper_parameters = {key: value for key, value in hyper_parameters.items() if key in keys}
+        hyper_parameters.update(kwargs)
+
+        state_dict = checkpoint["state_dict"]
+
+        encoder_kwargs = hyper_parameters.pop("encoder_kwargs", {})
+
+        # Initialize encoder
+        encoder = cls(**hyper_parameters, **encoder_kwargs)
+        encoder.to(device)
+
+        # Load state_dict
+        state_dict = map_checkpoint_keys(state_dict, original_prefix="encoder.neobert.", new_prefix="")
+        encoder.neobert.load_state_dict(state_dict)
+
+        return encoder
 
     def forward(
         self, input_ids: Tensor, attention_mask: Tensor, return_auxiliary_tasks: bool = False, **kwargs
@@ -92,3 +120,7 @@ class UMESequenceEncoderModule(nn.Module):
         encoded_batch = tokenizer_transform(sequences)
 
         return self.embed(encoded_batch, aggregate=aggregate)
+
+
+def get_device() -> str:
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")

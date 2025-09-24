@@ -1,6 +1,6 @@
 from torch import Tensor, nn
 
-from lobster.constants import Modality
+from lobster.constants import Modality, to_modality
 from lobster.model.ume2 import UMESequenceEncoderModule
 
 from .symmetric_cross_attention import SymmetricCrossAttentionModule
@@ -16,30 +16,47 @@ class UMEInteraction(nn.Module):
     def __init__(
         self,
         checkpoints: dict[str | Modality, str] | None = None,
+        supported_modalities: list[str | Modality] | None = None,
+        encoder_kwargs: dict[str | Modality, dict] | None = None,
         freeze_molecular_encoders: bool = False,
-        cache_dir: str | None = None,
-        use_shared_tokenizer: bool = False,
         num_heads: int = 8,
         num_layers: int = 2,
         dim_ffn: int = 2048,
         dropout: float = 0.1,
         shared_decoder: bool = False,
-        encoder_kwargs: dict | None = None,
+        cache_dir: str | None = None,
     ):
         super().__init__()
 
         self.shared_decoder = shared_decoder
         self.freeze_molecular_encoders = freeze_molecular_encoders
-        self.checkpoints = checkpoints if checkpoints is not None else {}
         self.molecular_encoders = {}
+        self.encoder_kwargs = encoder_kwargs or {}
+        self.encoder_kwargs = {to_modality(key): value for key, value in self.encoder_kwargs.items()}
+        self.supported_modalities = supported_modalities or self.SUPPORTED_MODALITIES
+        self.supported_modalities = [to_modality(modality) for modality in self.supported_modalities]
 
-        for modality in self.SUPPORTED_MODALITIES:
-            encoder = UMESequenceEncoderModule(
-                model_ckpt=self.checkpoints.get(modality),
-                cache_dir=cache_dir,
-                use_shared_tokenizer=use_shared_tokenizer,
-                **encoder_kwargs or {},
-            )
+        self.checkpoints = {to_modality(key): value for key, value in checkpoints.items()}
+
+        for modality in self.supported_modalities:
+            # Load from checkpoint
+            if (checkpoint := checkpoints.get(modality)) is not None:
+                encoder = UMESequenceEncoderModule.load_from_checkpoint(checkpoint, cache_dir=cache_dir)
+                logger.info(f"Loaded encoder for modality {modality} from checkpoint {checkpoint}")
+
+            # Or initialize a new encoder
+            else:
+                logger.warning(f"No checkpoint provided for modality {modality}, initializing a new encoder.")
+
+                if (kwargs := encoder_kwargs.get(modality)) is None:
+                    logger.critical(
+                        f"No checkpoint or encoder_kwargs were provided for modality {modality}. Please ensure this is intended."
+                    )
+
+                encoder = UMESequenceEncoderModule(
+                    **kwargs or {},
+                )
+
             if self.freeze_molecular_encoders:
                 for param in encoder.parameters():
                     param.requires_grad = False
@@ -83,6 +100,14 @@ class UMEInteraction(nn.Module):
             )
 
         return hidden_dims, vocab_sizes
+
+    def ensure_2d(self, input_ids: Tensor, attention_mask: Tensor) -> tuple[Tensor, Tensor]:
+        if input_ids.dim() == 3 and input_ids.shape[1] == 1:
+            input_ids = input_ids.squeeze(1)
+        if attention_mask.dim() == 3 and attention_mask.shape[1] == 1:
+            attention_mask = attention_mask.squeeze(1)
+
+        return input_ids, attention_mask
 
     def forward(
         self,

@@ -1,9 +1,11 @@
 import logging
 from collections.abc import Callable
+from collections.abc import Sequence
 
 from litdata import StreamingDataset
 
 from lobster.constants import S3_BUCKET, Split
+from lobster.constants._modality import Modality
 
 from .base import UMEStreamingDataset
 
@@ -40,6 +42,7 @@ class Atomica(UMEStreamingDataset):
         cache_dir: str | None = None,
         transform_fn: Callable | None = None,
         use_optimized: bool = False,
+        restrict_modalities: Sequence[Modality] | None = None,
         **kwargs,
     ):
         super().__init__(
@@ -53,6 +56,10 @@ class Atomica(UMEStreamingDataset):
             **kwargs,
         )
 
+        self.restrict_modalities = set(
+            Modality(modality) if isinstance(modality, str) else modality for modality in restrict_modalities or []
+        )
+
     def __next__(self):
         item = StreamingDataset.__next__(self)
 
@@ -62,15 +69,22 @@ class Atomica(UMEStreamingDataset):
         modality1 = item.pop(self.MODALITY_KEY_1)
         modality2 = item.pop(self.MODALITY_KEY_2)
 
-        inputs = (sequence1, sequence2)
-        modality = (modality1, modality2)
+        if self.restrict_modalities and any(
+            modality not in self.restrict_modalities for modality in [modality1, modality2]
+        ):
+            return self.__next__()
 
-        input_ids, attention_mask, modality = self._tokenize_pair(sequence=inputs, modalities=modality)
+        encoded1 = self.tokenizer_registry[modality1](sequence1)
+        encoded2 = self.tokenizer_registry[modality2](sequence2)
 
         return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "sequence": inputs,
-            "modality": modality,
+            "input_ids1": encoded1["input_ids"],
+            "attention_mask1": encoded1["attention_mask"],
+            "input_ids2": encoded2["input_ids"],
+            "attention_mask2": encoded2["attention_mask"],
+            "modality1": modality1,
+            "modality2": modality2,
+            "sequence1": sequence1,
+            "sequence2": sequence2,
             "dataset": self.__class__.__name__,
         }

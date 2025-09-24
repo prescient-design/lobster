@@ -2,76 +2,51 @@ import os
 import logging
 
 import torch
-import torch.nn as nn
 
 from lobster.data import download_from_s3
 
 logger = logging.getLogger(__name__)
 
 
-def _load_checkpoint_from_path(model: nn.Module, model_ckpt: str, cache_dir: str | None = None) -> None:
-    """
-    Load checkpoint from local path or S3 URL into the model.
+def load_checkpoint_from_s3_uri_or_local_path(
+    model_ckpt: str, device: str | None = None, cache_dir: str | None = None, force_redownload: bool = False
+) -> dict[str, torch.Tensor]:
+    """Load a checkpoint from a local path or S3 URI."""
 
-    Parameters
-    ----------
-    model : nn.Module
-        The model to load the checkpoint into
-    model_ckpt : str
-        Path to checkpoint file (local path or S3 URL)
-    cache_dir : str | None, optional
-        Directory to cache downloaded checkpoints (required for S3 URLs)
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    Raises
-    ------
-    ValueError
-        If cache_dir is None when model_ckpt is an S3 path
-    """
     if model_ckpt.startswith("s3://"):
         if cache_dir is None:
             raise ValueError("cache_dir must be provided if model_ckpt is an S3 path")
 
         model_name = model_ckpt.split("/")[-1]
-        local_filepath = os.path.join(cache_dir, model_name)
+        model_dirname = model_ckpt.split("/")[-2]
+        os.makedirs(os.path.join(cache_dir, model_dirname), exist_ok=True)
 
-        logger.info(f"Downloading checkpoint from {model_ckpt} to {local_filepath}")
-        download_from_s3(model_ckpt, local_filepath)
+        local_filepath = os.path.join(cache_dir, model_dirname, model_name)
+
+        if os.path.exists(local_filepath) and not force_redownload:
+            logger.info(f"Checkpoint already exists at {local_filepath}")
+
+        else:
+            logger.info(f"Downloading checkpoint from {model_ckpt} to {local_filepath}")
+            download_from_s3(model_ckpt, local_filepath)
 
         model_ckpt = local_filepath
 
-    device = next(iter(model.parameters())).device
+    logger.info(f"Loading checkpoint from {model_ckpt} with torch.load, map_location={device}, weights_only=False")
     checkpoint = torch.load(model_ckpt, map_location=device, weights_only=False)
 
-    logger.info(f"Loading checkpoint from {model_ckpt}")
-
-    # Map checkpoint keys to match current model structure
-    state_dict = checkpoint["state_dict"]
-    mapped_state_dict = _map_checkpoint_keys(state_dict)
-    model.load_state_dict(mapped_state_dict)
+    return checkpoint
 
 
-def _map_checkpoint_keys(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-    """
-    Map checkpoint keys of NeoBERTLightningModuleto match current model structure.
-
-    The checkpoint contains keys with an extra 'model.' prefix that needs to be removed.
-    For example: 'model.model.encoder.weight' -> 'model.encoder.weight'
-    """
+def map_checkpoint_keys(
+    state_dict: dict[str, torch.Tensor], original_prefix: str, new_prefix: str
+) -> dict[str, torch.Tensor]:
+    """Map checkpoint keys to match current model structure."""
     mapped_state_dict = {}
-
     for key, value in state_dict.items():
-        # Remove the extra 'model.' prefix if it exists
-        if key.startswith("model.model."):
-            new_key = key.replace("model.model.", "model.", 1)
-            mapped_state_dict[new_key] = value
-            logger.debug(f"Mapped key: {key} -> {new_key}")
-
-        elif key.startswith("model.decoder."):
-            new_key = key.replace("model.decoder.", "decoder.", 1)
-            mapped_state_dict[new_key] = value
-            logger.debug(f"Mapped key: {key} -> {new_key}")
-
-        else:
-            mapped_state_dict[key] = value
+        mapped_state_dict[key.replace(original_prefix, new_prefix, 1)] = value
 
     return mapped_state_dict

@@ -50,20 +50,6 @@ class UMELightningDataModule(LightningDataModule):
         self._validate_and_process_weights()
         self._initialize_datasets()
 
-        logger.info(
-            "Initialized UMELightningDataModule:\n"
-            f"  Datasets: {self.dataset_names}\n"
-            f"  Shared tokenizer: {self.use_shared_tokenizer}\n"
-            f"  Batch size: {self.batch_size}\n"
-            f"  Max length: {self.max_length}\n"
-            f"  Root: {self.root}\n"
-            f"  Seed: {self.seed}\n"
-            f"  Pin memory: {self.pin_memory}\n"
-            f"  Num workers: {self.num_workers}\n"
-            f"  Weights: {self.weights}\n"
-            f"  Dataset kwargs: {self.dataset_kwargs}"
-        )
-
     def _validate_and_process_weights(self) -> None:
         """Validate and process weights, converting dict to sequence if needed."""
         if self.weights:
@@ -139,11 +125,11 @@ class UMELightningDataModule(LightningDataModule):
             weights=self.weights,
             iterate_over_all=False,
         )
-        logging.info(f"Initialized training dataset: {self.train_dataset}")
+        logging.info(f"Initialized training dataset: {self.train_dataset.__class__.__name__}")
 
         self.val_dataset = CombinedStreamingDataset(self.val_datasets, seed=self.seed, iterate_over_all=False)
 
-        logging.info(f"Initialized validation dataset: {self.val_dataset}")
+        logging.info(f"Initialized validation dataset: {self.val_dataset.__class__.__name__}")
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         """Return the training dataloader."""
@@ -177,13 +163,25 @@ class UMELightningDataModule(LightningDataModule):
 
 
 def collate_with_modality(batch: list[dict[str, Tensor | Modality]]) -> dict[str, Tensor | list[Modality] | list[str]]:
-    modalities = [item.get("modality") for item in batch]
-    sequences = [item.get("sequence", "") for item in batch]
     dataset = [item.get("dataset", "") for item in batch]
 
     # Use default collate function for tensors
     tensor_batch = [{key: item[key] for key in item if isinstance(item[key], Tensor)} for item in batch]
     tensor_batch = torch.utils.data.default_collate(tensor_batch)
+
+    # Interaction datasets
+    if all(key in batch[0] for key in ["modality1", "modality2", "sequence1", "sequence2"]):
+        return {
+            **tensor_batch,
+            "modality1": [item["modality1"] for item in batch],
+            "modality2": [item["modality2"] for item in batch],
+            "sequence1": [item["sequence1"] for item in batch],
+            "sequence2": [item["sequence2"] for item in batch],
+            "dataset": dataset,
+        }
+    # Standard, single molecule datasets
+    modalities = [item.get("modality") for item in batch]
+    sequences = [item.get("sequence", "") for item in batch]
 
     return {
         **tensor_batch,
