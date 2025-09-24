@@ -40,7 +40,7 @@ class UMEInteraction(nn.Module):
 
         for modality in self.supported_modalities:
             # Load from checkpoint
-            if (checkpoint := checkpoints.get(modality)) is not None:
+            if (checkpoint := self.checkpoints.get(modality)) is not None:
                 encoder = UMESequenceEncoderModule.load_from_checkpoint(checkpoint, cache_dir=cache_dir)
                 logger.info(f"Loaded encoder for modality {modality} from checkpoint {checkpoint}")
 
@@ -48,7 +48,7 @@ class UMEInteraction(nn.Module):
             else:
                 logger.warning(f"No checkpoint provided for modality {modality}, initializing a new encoder.")
 
-                if (kwargs := encoder_kwargs.get(modality)) is None:
+                if (kwargs := self.encoder_kwargs.get(modality)) is None:
                     logger.critical(
                         f"No checkpoint or encoder_kwargs were provided for modality {modality}. Please ensure this is intended."
                     )

@@ -25,5 +25,4 @@ __all__ = [
     "UmeGrpoLoggingCallback",
     "AuxiliaryTaskWeightScheduler",
     "MultiTaskWeightScheduler",
-    "SimplifiedPEEREvaluationCallback",
 ]
