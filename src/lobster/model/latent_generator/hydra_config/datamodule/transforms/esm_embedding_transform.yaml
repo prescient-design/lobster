@@ -1,3 +1,0 @@
-_target_: lobster.model.latent_generator.datasets._transforms.ESMEmbeddingTransform
-model_name: "esmc_300m"
-device: "auto" 

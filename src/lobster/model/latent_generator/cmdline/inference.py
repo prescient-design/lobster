@@ -400,6 +400,11 @@ OmegaConf.register_new_resolver("format", format_resolver, replace=True)
 
 
 def load_config(config_path: str, config_name: str, overrides: list[str] | None = None) -> DictConfig:
+    from hydra.core.global_hydra import GlobalHydra
+    # Check if Hydra is already initialized
+    if GlobalHydra.instance().is_initialized():
+        GlobalHydra.instance().clear()
+
     # Initialize Hydra with the configuration path
     with hydra.initialize(config_path=config_path, version_base=None):
         # Compose the configuration object from the specified config name
@@ -461,6 +466,9 @@ class LatentEncoderDecoder:
                 raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
 
         py_logger.info(f"Loading model from {checkpoint_path}")
+        print(cfg_path)
+        print(cfg_name)
+        print(overrides)
         cfg = load_config(cfg_path, cfg_name, overrides)
 
         # If config path is provided, load the model with the config
@@ -483,7 +491,6 @@ class LatentEncoderDecoder:
         self.model = tokenizer
 
         self.model = self.model.to(self.device)
-        self.model.eval()
         py_logger.info(f"Model loaded successfully and moved to {self.device}")
 
     def encode(

@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 try:
-    from torch_geometric.transforms import Dataset
+    from torch_geometric.data import Dataset
 
 except ImportError:
     Dataset = None
