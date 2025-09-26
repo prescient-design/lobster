@@ -41,3 +41,4 @@ srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose \
     data.num_workers=8 \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES \
     trainer.num_sanity_val_steps=0 \
+    +trainer.strategy=ddp \

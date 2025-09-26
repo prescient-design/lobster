@@ -1,10 +1,10 @@
 _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule 
-lr: 1e-4
-scheduler: constant_with_warmup
+lr: 1e-3
+scheduler: cosine 
 scheduler_kwargs:
-  num_warmup_steps: 10_000
-num_warmup_steps: 20_000
-num_training_steps: 100_000
+  num_warmup_steps: 5_000
+num_warmup_steps: 5_000
+num_training_steps: 500_000
 weight_decay: 0.01
 mask_token_id: 8
 pad_token_id: 6
