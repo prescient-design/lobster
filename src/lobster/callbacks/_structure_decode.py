@@ -4,10 +4,9 @@ import torch
 from lobster.model.latent_generator.io import writepdb
 from loguru import logger
 
+
 class StructureDecode(lightning.Callback):
-    def __init__(self,
-                 structure_path: str = None,
-                 save_every_n: int = 1000):
+    def __init__(self, structure_path: str = None, save_every_n: int = 1000):
         self.STRUCTURE_PATH = structure_path
         self.save_every_n = save_every_n
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -38,10 +37,9 @@ class StructureDecode(lightning.Callback):
                 if "vit_decoder" == decoder_name:
                     x_recon_xyz = x_recon[decoder_name]
 
-
-            #save the pdb file
+            # save the pdb file
             if x_recon_xyz is not None:
-                seq = outputs["unmasked_x"]["sequence_logits"][:,:,:21]
+                seq = outputs["unmasked_x"]["sequence_logits"][:, :, :21]
                 seq = seq.argmax(dim=-1)
                 if t is not None:
                     filename = f"{self.STRUCTURE_PATH}decode/struc_{batch_idx}_{current_step}_t{str(t)}_cond{conditioning}_decode.pdb"
@@ -50,14 +48,13 @@ class StructureDecode(lightning.Callback):
                 writepdb(filename, x_recon_xyz[0], seq[0])
                 logger.info(f"Saved {filename}")
 
-                #save batch
+                # save batch
                 if t is not None:
                     filename = f"{self.STRUCTURE_PATH}decode/struc_{batch_idx}_{current_step}_t{str(t)}_cond{conditioning}_gt.pdb"
                 else:
                     filename = f"{self.STRUCTURE_PATH}decode/struc_{batch_idx}_{current_step}_tseq_{str(t_seq)}_tstruc_{str(t_struc)}_cond{conditioning}_gt.pdb"
                 seq = batch["sequence"][0]
-                #if naything >21, set to 20
+                # if naything >21, set to 20
                 seq[seq > 21] = 20
                 writepdb(filename, batch["coords_res"][0], seq)
                 logger.info(f"Saved {filename}")
-

@@ -4,13 +4,15 @@ import torch
 from lobster.model.latent_generator.io import writepdb
 from loguru import logger
 
+
 class UnconditionalGeneration(lightning.Callback):
-    def __init__(self,
-                 structure_path: str = None,
-                 save_every_n: int = 1000,
-                 length: int = 100,
-                 num_samples: int = 10,
-                 ):
+    def __init__(
+        self,
+        structure_path: str = None,
+        save_every_n: int = 1000,
+        length: int = 100,
+        num_samples: int = 10,
+    ):
         self.STRUCTURE_PATH = structure_path
         self.save_every_n = save_every_n
         self.length = length
@@ -21,8 +23,6 @@ class UnconditionalGeneration(lightning.Callback):
 
     def on_train_batch_end(self, trainer, gen_ume, outputs, batch, batch_idx):
         current_step = trainer.global_step
-
-        val_dataloader = trainer.datamodule.val_dataloader()
 
         if batch_idx % self.save_every_n == 0:
             generate_sample = gen_ume.generate_sample(length=self.length, num_samples=self.num_samples)
@@ -35,7 +35,7 @@ class UnconditionalGeneration(lightning.Callback):
 
             seq = generate_sample["sequence_logits"].argmax(dim=-1)
             seq[seq > 21] = 20
-            for i in range(10): 
+            for i in range(10):
                 filename = f"{self.STRUCTURE_PATH}unconditional/struc_{batch_idx}_{current_step}_{i}_unconditional.pdb"
                 writepdb(filename, x_recon_xyz[i], seq[i])
                 logger.info(f"Saved {filename}")

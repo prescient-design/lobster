@@ -1,5 +1,4 @@
 import logging
-import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -7,9 +6,9 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from lobster.data import download_from_s3
 
 from ..neobert import NeoBERTModule
+from ._checkpoint_utils import load_checkpoint_from_s3_uri_or_local_path, map_checkpoint_keys
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,6 @@ def _map_checkpoint_keys(state_dict: dict[str, torch.Tensor]) -> dict[str, torch
             mapped_state_dict[key] = value
 
     return mapped_state_dict
-
 
 
 @dataclass
@@ -153,21 +151,25 @@ class UMESequenceStructureEncoderModule(nn.Module):
         else:
             self.auxiliary_tasks = None
 
-        #embedding for sequence and structure tokens
-        self.sequence_embedding = nn.Embedding(sequence_token_vocab_size, self.neobert.config.hidden_size, padding_idx=sequence_token_pad_token_id)
-        self.structure_embedding = nn.Embedding(structure_token_vocab_size, self.neobert.config.hidden_size, padding_idx=structure_token_pad_token_id)
+        # embedding for sequence and structure tokens
+        self.sequence_embedding = nn.Embedding(
+            sequence_token_vocab_size, self.neobert.config.hidden_size, padding_idx=sequence_token_pad_token_id
+        )
+        self.structure_embedding = nn.Embedding(
+            structure_token_vocab_size, self.neobert.config.hidden_size, padding_idx=structure_token_pad_token_id
+        )
         self.conditioning_embedding = nn.Linear(conditioning_input_dim, self.neobert.config.hidden_size, bias=False)
         self.combine_embedding = nn.Linear(self.neobert.config.hidden_size * 3, self.neobert.config.hidden_size)
 
-        #output for sequence and structure tokens
+        # output for sequence and structure tokens
         self.sequence_output = nn.Linear(self.neobert.config.hidden_size, sequence_token_vocab_size)
         self.structure_output = nn.Linear(self.neobert.config.hidden_size, structure_token_vocab_size)
 
     @classmethod
     def load_from_checkpoint(
         cls, checkpoint_path: str, *, device: str | None = None, cache_dir: str | None = None, **kwargs
-    ) -> "UMESequenceEncoderModule":
-        """Utility function to load state_dict and hyper_parameters from UMESequenceEncoderLightningModule checkpoint."""
+    ) -> "UMESequenceStructureEncoderModule":
+        """Utility function to load state_dict and hyper_parameters from UMESequenceStructureEncoderLightningModule checkpoint."""
 
         device = device or get_device()
 
@@ -192,17 +194,33 @@ class UMESequenceStructureEncoderModule(nn.Module):
         encoder.neobert.load_state_dict(state_dict)
 
         return encoder
-    
+
     def forward(
-        self, sequence_input_ids: Tensor, structure_input_ids: Tensor, position_ids: Tensor, attention_mask: Tensor, conditioning_tensor: Tensor | None = None, return_auxiliary_tasks: bool = False, timesteps: Tensor | None = None, **kwargs
+        self,
+        sequence_input_ids: Tensor,
+        structure_input_ids: Tensor,
+        position_ids: Tensor,
+        attention_mask: Tensor,
+        conditioning_tensor: Tensor | None = None,
+        return_auxiliary_tasks: bool = False,
+        timesteps: Tensor | None = None,
+        **kwargs,
     ) -> Tensor:
         sequence_output = self.sequence_embedding(sequence_input_ids)
         structure_output = self.structure_embedding(structure_input_ids)
         conditioning_output = self.conditioning_embedding(conditioning_tensor)
-        combined_output = self.combine_embedding(torch.cat([sequence_output, structure_output, conditioning_output], dim=-1))
-        #removinf position_ids becuase not properly formulated for current neo architecture
+        combined_output = self.combine_embedding(
+            torch.cat([sequence_output, structure_output, conditioning_output], dim=-1)
+        )
+        # removinf position_ids becuase not properly formulated for current neo architecture
         position_ids = None
-        output = self.neobert(input_ids=None, inputs_embeds=combined_output, position_ids=position_ids, attention_mask=attention_mask, **kwargs)
+        output = self.neobert(
+            input_ids=None,
+            inputs_embeds=combined_output,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            **kwargs,
+        )
 
         sequence_output = self.sequence_output(output["last_hidden_state"])
         structure_output = self.structure_output(output["last_hidden_state"])
@@ -215,3 +233,7 @@ class UMESequenceStructureEncoderModule(nn.Module):
                 output[task_name] = task_head(embeddings)
 
         return output
+
+
+def get_device() -> str:
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")

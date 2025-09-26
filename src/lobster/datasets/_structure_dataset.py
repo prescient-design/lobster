@@ -136,7 +136,7 @@ class StructureDataset(Dataset):
         import lobster
 
         lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
-        #lobster.ensure_package("icream", group="lg-gpu (or --extra lg-cpu)")
+        # lobster.ensure_package("icream", group="lg-gpu (or --extra lg-cpu)")
 
         self.root = pathlib.Path(root)
         self.processed_dir = self.root
@@ -289,7 +289,6 @@ class StructureDataset(Dataset):
                         cluster_dict[cluster_id] = []
                     cluster_dict[cluster_id].append(i)
 
-
                 if self.testing and len(processed_files) > 500:
                     break
 
@@ -315,7 +314,7 @@ class StructureDataset(Dataset):
             try:
                 x = torch.load(self.processed_paths[idx])
             except Exception as e:
-                #ic(f"Error loading {self.processed_paths[idx]}: {e}")
+                # ic(f"Error loading {self.processed_paths[idx]}: {e}")
                 # load the next file if it exists
                 if idx + 1 < len(self.processed_paths):
                     return self.__getitem__(idx + 1)
