@@ -1,11 +1,25 @@
 # @package _global_
 
-
-defaults:
-  - base
-
 model:
-  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-12T19-51-14/epoch=0-step=7500-val_loss=0.0687.ckpt
+  _target_: lobster.model.UMESequenceEncoderLightningModule
+  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-22T01-52-39/epoch=1-step=50000-val_loss=0.4558.ckpt
 
-model_alias: UME-prot-aux
-wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/hhr8f8bt/logs
+model_alias: UME-prot-pretrain
+wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/6fcl8tyr/logs
+
+output_dir: ${hydra:runtime.cwd}/evaluation_results/${now:%Y%m%d}/${now:%H%M%S}-${model_alias}
+
+datamodule:
+  _target_: lobster.data.UMELightningDataModule
+  datasets: ["Calm", "AMPLIFY", "ZINC", "M320M", "PeptideAtlas"]
+
+
+callbacks:
+  - _target_: lobster.callbacks.PerturbationScoreCallback
+    sequence: QVKLQESGAELARPGASVKLSCKASGYTFTNYWMQWVKQRPGQGLDWIGAIYPGDGNTRYTHKFKGKATLTADKSSSTAYMQLSSLASEDSGVYYCARGEGNYAWFAYWGQGTTVTVSS
+    output_dir: ${output_dir}/perturbation_scores/amino_acid
+    save_heatmap: true
+
+  - _target_: lobster.callbacks.SimplifiedPEEREvaluationCallback
+
+

@@ -81,11 +81,7 @@ class AuxiliaryTaskWeightScheduler(Callback):
 
         for task in pl_module.auxiliary_tasks:
             if self.task_name is None or task.name == self.task_name:
-                old_weight = task.loss_weight
                 task.loss_weight = weight
-
-                if weight != old_weight:
-                    logger.info(f"Updated {task.name} loss weight: {old_weight:.6f} -> {weight:.6f}")
 
     def on_train_batch_start(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx: int):
         """Update weights at the start of each training batch."""
