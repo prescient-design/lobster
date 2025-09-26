@@ -108,6 +108,7 @@ class UMEInteraction(nn.Module):
         self,
         inputs1: dict[str, Tensor],
         inputs2: dict[str, Tensor],
+        use_cross_attention: bool = True,
     ):
         encoder1 = self.molecular_encoders[inputs1["modality"]]
         encoder2 = self.molecular_encoders[inputs2["modality"]]
@@ -118,14 +119,17 @@ class UMEInteraction(nn.Module):
         x1 = out1["last_hidden_state"]
         x2 = out2["last_hidden_state"]
 
-        x1, x2 = self.interaction_module(
-            x1, x2, x1_attention_mask=inputs1["attention_mask"], x2_attention_mask=inputs2["attention_mask"]
-        )
+        if use_cross_attention:
+            x1, x2 = self.interaction_module(
+                x1, x2, x1_attention_mask=inputs1["attention_mask"], x2_attention_mask=inputs2["attention_mask"]
+            )
 
         return x1, x2
 
-    def get_logits(self, inputs1: dict[str, Tensor], inputs2: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        x1, x2 = self.forward(inputs1, inputs2)
+    def get_logits(
+        self, inputs1: dict[str, Tensor], inputs2: dict[str, Tensor], use_cross_attention: bool = True
+    ) -> tuple[Tensor, Tensor]:
+        x1, x2 = self.forward(inputs1, inputs2, use_cross_attention)
 
         logits1 = self.decoders[inputs1["modality"]](x1)
         logits2 = self.decoders[inputs2["modality"]](x2)

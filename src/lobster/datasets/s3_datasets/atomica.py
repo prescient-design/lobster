@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class Atomica(UMEStreamingDataset):
     SEQUENCE_KEY_1 = "sequence1"
     SEQUENCE_KEY_2 = "sequence2"
+    SEQUENCE_KEY_3 = "sequence3"
 
     MODALITY_KEY_1 = "modality1"
     MODALITY_KEY_2 = "modality2"
@@ -56,15 +57,17 @@ class Atomica(UMEStreamingDataset):
         )
 
         self.restrict_modalities = set(to_modality(modality) for modality in restrict_modalities or [])
+        self.num_skipped_items = 0
 
     def __next__(self):
         item = StreamingDataset.__next__(self)
 
         sequence1 = item.pop(self.SEQUENCE_KEY_1)
         sequence2 = item.pop(self.SEQUENCE_KEY_2)
+        sequence3 = item.pop(self.SEQUENCE_KEY_3)
 
-        if sequence1 is None or sequence2 is None:
-            logger.debug(f"Skipping item with sequences {sequence1} and {sequence2}")
+        if self._should_skip(sequence1, sequence2, sequence3):
+            self.num_skipped_items += 1
             return self.__next__()
 
         modality1 = to_modality(
@@ -96,3 +99,26 @@ class Atomica(UMEStreamingDataset):
             "sequence2": sequence2,
             "dataset": self.__class__.__name__,
         }
+
+    def _should_skip(self, sequence1: str | None, sequence2: str | None, sequence3: str | None) -> bool:
+        if sequence1 is None or sequence2 is None:
+            logger.debug("Skipping item because sequence1 or sequence2 is None")
+            return True
+
+        if sequence3 is not None:
+            logger.debug(
+                "Skipping item because it has 2+ sequences (and we can't guarantee that interaction is between sequence1 and sequence2)"
+            )
+            return True
+
+        if sequence1 == sequence2:
+            logger.debug(f"Skipping item because sequences are the same: {sequence1}")
+            return True
+
+        if len(sequence1) > self.max_length or len(sequence2) > self.max_length:
+            logger.debug(
+                f"Skipping item because one or both sequences are too long: {len(sequence1)} and {len(sequence2)} (max length: {self.max_length})"
+            )
+            return True
+
+        return False

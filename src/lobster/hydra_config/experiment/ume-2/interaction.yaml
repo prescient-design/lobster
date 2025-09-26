@@ -5,7 +5,7 @@ defaults:
   - override /callbacks: [base]
   - override /model: null
   - override /lr_scheduler: null
-  - override /hydra/launcher: submitit_slurm
+  # - override /hydra/launcher: submitit_slurm
 
 compile: false
 
@@ -16,7 +16,7 @@ data:
   root: ${oc.env:LOBSTER_DATA_DIR}
   max_length: 1024
   seed: 0
-  batch_size: 64
+  batch_size: 32
   pin_memory: true
   num_workers: 8
   use_shared_tokenizer: false
@@ -31,8 +31,8 @@ model:
   seed: 0
   scheduler: cosine
   scheduler_kwargs:
-    num_warmup_steps: 5_000
-    num_training_steps: 500_500
+    num_warmup_steps: 1000
+    num_training_steps: 50000
   special_token_mappings:
     amino_acid:
       mask_token_id: 6
@@ -74,7 +74,8 @@ trainer:
   precision: 16-mixed
   accumulate_grad_batches: 2
   devices: auto
-  # strategy: ddp_find_unused_parameters_true
+  strategy: ddp_find_unused_parameters_true
+
 
 callbacks:
   model_checkpoint:

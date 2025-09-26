@@ -85,7 +85,7 @@ class UMEInteractionLightningModule(LightningModule):
     # ) -> Tensor:
     #     return self.encoder.embed_sequences(sequences, modality=modality, aggregate=aggregate)
 
-    def compute_mlm_loss(self, batch: dict[str, Tensor]) -> Tensor:
+    def compute_mlm_loss(self, batch: dict[str, Tensor], stage: Literal["train", "val"]) -> Tensor:
         inputs: list[dict[str, Tensor | Modality]] = []
         labels: list[Tensor] = []
 
@@ -129,6 +129,32 @@ class UMEInteractionLightningModule(LightningModule):
             inputs2=inputs[1],
         )
 
+        # DEBUGGING: verify that the loss is higher without cross attention
+        if stage == "val":
+            no_cross_attention_logits1, no_cross_attention_logits2 = self.encoder.get_logits(
+                inputs1=inputs[0],
+                inputs2=inputs[1],
+                use_cross_attention=False,
+            )
+            losses = []
+            for logits, label in [
+                (logits1, labels[0]),
+                (logits2, labels[1]),
+                (no_cross_attention_logits1, labels[0]),
+                (no_cross_attention_logits2, labels[1]),
+            ]:
+                logits = logits.view(-1, logits.size(-1))
+                label = label.view(-1)
+                losses.append(self.loss_fn(logits, label))
+
+            self.log(
+                "val_mlm_loss_no_interaction",
+                sum(losses) / len(losses),
+                sync_dist=True,
+                rank_zero_only=True,
+                batch_size=batch["input_ids1"].shape[0],
+            )
+
         losses = []
 
         for logits, label in [(logits1, labels[0]), (logits2, labels[1])]:
@@ -141,16 +167,20 @@ class UMEInteractionLightningModule(LightningModule):
     def step(self, batch: dict[str, Tensor], batch_idx: int, stage: Literal["train", "val"]) -> Tensor:
         batch_size = batch["input_ids1"].shape[0]
 
-        mlm_loss = self.compute_mlm_loss(batch)
+        mlm_loss = self.compute_mlm_loss(batch, stage)
         self.log(f"{stage}_mlm_loss", mlm_loss, sync_dist=True, rank_zero_only=True, batch_size=batch_size)
 
         return mlm_loss
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        return self.step(batch, batch_idx, "train")
+        loss = self.step(batch, batch_idx, "train")
+        self.log("train_loss", loss, sync_dist=True, rank_zero_only=True, batch_size=batch["input_ids1"].shape[0])
+        return loss
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        return self.step(batch, batch_idx, "val")
+        loss = self.step(batch, batch_idx, "val")
+        self.log("val_loss", loss, sync_dist=True, rank_zero_only=True, batch_size=batch["input_ids1"].shape[0])
+        return loss
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

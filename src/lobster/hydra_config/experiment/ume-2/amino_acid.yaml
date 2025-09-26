@@ -5,24 +5,9 @@ defaults:
   - override /callbacks: [base]
   - override /model: null
   - override /lr_scheduler: null
-  - override /hydra/launcher: submitit_slurm
+  # - override /hydra/launcher: submitit_slurm
 
 compile: false
-
-biopython_features: [
-    "molecular_weight",
-    "aromaticity_index",
-    "instability_index",
-    "isoelectric_point",
-    "alpha_helix_fraction",
-    "turn_structure_fraction",
-    "beta_sheet_fraction",
-    "molar_extinction_coefficient_reduced_cysteines",
-    "molar_extinction_coefficient_oxidized_cysteines",
-    "grand_average_hydropathy_index",
-    "net_charge_at_ph_6",
-    "net_charge_at_ph_7"
-  ]
 
 
 data:
@@ -37,32 +22,10 @@ data:
   pin_memory: true
   num_workers: 8
   use_shared_tokenizer: false
-  dataset_kwargs:
-    AMPLIFY:
-      extra_transform_fns:
-        biopython:
-          _target_: lobster.transforms.ProteinToBioPythonFeaturesTransform
-          feature_list: ${biopython_features}
-          standardize: true
-    PeptideAtlas:
-      extra_transform_fns:
-        biopython:
-          _target_: lobster.transforms.ProteinToBioPythonFeaturesTransform
-          feature_list: ${biopython_features}
-          standardize: true
+
 
 model:
   _target_: lobster.model.ume2.UMESequenceEncoderLightningModule 
-  auxiliary_tasks:
-    - _target_: lobster.model.ume2.AuxiliaryTask
-      name: biopython
-      task_type: regression
-      output_dim: 12
-      hidden_size: null
-      loss_weight: 0.01
-      pooling: mean
-      num_layers: 2
-      dropout: 0.1
   lr: 0.001
   scheduler: cosine
   scheduler_kwargs:
@@ -73,7 +36,7 @@ model:
   pad_token_id: 1
   special_token_ids: [0, 1, 2, 3, 32]
   mask_probability: 0.15
-  ckpt_path: null 
+  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-26T13-51-56/last.ckpt
   encoder_kwargs:
     max_length: ${data.max_length}
     cache_dir: /data2/ume/checkpoints
@@ -81,7 +44,7 @@ model:
     vocab_size: 33 # 33 for amino acids or 1280 for shared vocabulary
 
 logger:
-  name: UME-2-protein-with-aux_${paths.timestamp}
+  name: UME-2-protein-no-aux-${paths.timestamp}
   project: lobster
   entity: ${oc.env:LOBSTER_USER}
   save_dir: ${oc.env:LOBSTER_RUNS_DIR}
@@ -91,13 +54,14 @@ logger:
     - aa-tokenizer
     - sweep
     - cosine
+    - no-aux
     # - zero-weight-on-auxiliary-tasks
-  # resume: must
-  # id: wo79994t
-  # allow_val_change: true
+  resume: must
+  id: 88a7pgtu
+  allow_val_change: true
 
 paths:
-  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S} 
+  timestamp: 2025-09-26T13-51-56 #${now:%Y-%m-%d}T${now:%H-%M-%S} 
   output_dir: ${paths.root_dir}/${paths.timestamp}
   root_dir: ${oc.env:LOBSTER_RUNS_DIR}
 
@@ -112,19 +76,12 @@ trainer:
   precision: 16-mixed
   accumulate_grad_batches: 2
   devices: auto
-  strategy: ddp_find_unused_parameters_true
 
 callbacks:
   model_checkpoint:
     save_top_k: -1
     every_n_train_steps: ${trainer.val_check_interval}
-  auxiliary_task_weight_scheduler:
-    _target_: lobster.callbacks.AuxiliaryTaskWeightScheduler
-    schedule_type: linear
-    start_step: 80_000
-    ramp_steps: 100_000
-    max_weight: 0.01
-    task_name: biopython
+
   # batch_size_finder:
   #   _target_: lightning.pytorch.callbacks.BatchSizeFinder
   #   mode: power
@@ -134,35 +91,35 @@ callbacks:
   #   batch_arg_name: batch_size
 
 
-hydra:
-  run:
-    dir: outputs/${hydra:job.name}
-  job:
-    chdir: false
-  launcher:
-    timeout_min: 10080  # 7 days (7 * 24 * 60 = 10080 minutes)
-    cpus_per_task: 8
-    nodes: ${trainer.num_nodes}
-    tasks_per_node: 8
-    gpus_per_node: 8
-    mem_gb: 256
-    name: ${hydra.job.name}
-    partition: b200
-    qos: preempt
-    setup:
-      - "cd $SLURM_SUBMIT_DIR"
-      - "source .venv/bin/activate"
-      - "nvidia-smi"
-      - "export LD_LIBRARY_PATH=/opt/amazon/efa/lib64:/opt/amazon/openmpi/lib64:/opt/amazon/ofi-nccl/lib64"
-      - "export WANDB_BASE_URL=https://genentech.wandb.io"
-      - "export WANDB_MODE=online"
-      - "export WANDB_DIR=$SLURM_SUBMIT_DIR/wandb"
-      - "export WANDB_INSECURE_DISABLE_SSL=true"
-      - "export HYDRA_FULL_ERROR=1"
-      - "export PYTHONUNBUFFERED=1"
-      - "export NCCL_DEBUG=INFO"
-      - "export LOBSTER_RUNS_DIR=s3://prescient-lobster/ume/runs"
-      - "export LOBSTER_DATA_DIR=/data2/ume/.cache2/"
-      - "export LOBSTER_USER=$(whoami)"
-      - "export TOKENIZERS_PARALLELISM=true"
-      - "umask g+w"
+# hydra:
+#   run:
+#     dir: outputs/${hydra:job.name}
+#   job:
+#     chdir: false
+#   launcher:
+#     timeout_min: 10080  # 7 days (7 * 24 * 60 = 10080 minutes)
+#     cpus_per_task: 8
+#     nodes: ${trainer.num_nodes}
+#     tasks_per_node: 8
+#     gpus_per_node: 8
+#     mem_gb: 256
+#     name: ${hydra.job.name}
+#     partition: b200
+#     qos: preempt
+#     setup:
+#       - "cd $SLURM_SUBMIT_DIR"
+#       - "source .venv/bin/activate"
+#       - "nvidia-smi"
+#       - "export LD_LIBRARY_PATH=/opt/amazon/efa/lib64:/opt/amazon/openmpi/lib64:/opt/amazon/ofi-nccl/lib64"
+#       - "export WANDB_BASE_URL=https://genentech.wandb.io"
+#       - "export WANDB_MODE=online"
+#       - "export WANDB_DIR=$SLURM_SUBMIT_DIR/wandb"
+#       - "export WANDB_INSECURE_DISABLE_SSL=true"
+#       - "export HYDRA_FULL_ERROR=1"
+#       - "export PYTHONUNBUFFERED=1"
+#       - "export NCCL_DEBUG=INFO"
+#       - "export LOBSTER_RUNS_DIR=s3://prescient-lobster/ume/runs"
+#       - "export LOBSTER_DATA_DIR=/data2/ume/.cache2/"
+#       - "export LOBSTER_USER=$(whoami)"
+#       - "export TOKENIZERS_PARALLELISM=true"
+#       - "umask g+w"
