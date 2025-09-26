@@ -5,10 +5,10 @@
 #SBATCH --ntasks-per-node 8
 #SBATCH --gpus-per-node 8
 #SBATCH --cpus-per-task 16
-#SBATCH -o slurm/logs/train/%J_%x.out
+#SBATCH -o /data2/ume/gen_ume/slurm/logs/train/%J_%x.out
 #SBATCH -q preempt
 #SBATCH --mem=256G
-#SBATCH --job-name=ume
+#SBATCH --job-name=gen_ume
 #SBATCH -t 7-00:00:00
 
 

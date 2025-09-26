@@ -198,9 +198,9 @@ class ESMEmbeddingTransform(BaseTransform):
 
 class StructureBackboneTransform(BaseTransform):
     def __init__(self, max_length=512, **kwargs):
-        #import lobster
+        # import lobster
 
-        #lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        # lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         logger.info("StructureBackboneTransform")
         self.max_length = max_length
@@ -319,9 +319,9 @@ class StructureTemplateTransform(BaseTransform):
 
 class StructureLigandTransform(BaseTransform):
     def __init__(self, max_length=512, rand_permute_ligand=False, **kwargs):
-        #import lobster
+        # import lobster
 
-        #lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        # lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         logger.info("StructureLigandTransform")
         self.max_length = max_length
