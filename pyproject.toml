@@ -34,7 +34,7 @@ dependencies = [
     "onnxscript",
     "onnxruntime",
     "einops",
-    "beignet[datasets]>=0.0.13",
+    "beignet[datasets]",
     "dotenv>=0.9.9",
     "litdata>=0.2.49",
     "seaborn>=0.13.2",
