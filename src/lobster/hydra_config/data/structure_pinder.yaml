@@ -9,7 +9,7 @@ path_to_datasets: ["/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_p
 max_length: 512 
 cluster_file: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/cluster_dict.pt
 files_to_keep: /data/lisanzas/structure_tokenizer/studies/data/pinder/pinder_to_keep.pkl
-testing: true
+testing: false
 datasets: pinder
 use_shards: false
 
