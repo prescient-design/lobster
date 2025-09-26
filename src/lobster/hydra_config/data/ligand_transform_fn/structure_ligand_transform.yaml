@@ -1,0 +1,3 @@
+structure_ligand_transform:
+  _target_: lobster.transforms._structure_transforms.StructureLigandTransform
+  rand_permute_ligand: true

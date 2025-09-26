@@ -1,1 +1,1 @@
-from .inference import decode, encode, load_model, methods
+from .inference import decode, encode, load_model, methods, LatentEncoderDecoder
