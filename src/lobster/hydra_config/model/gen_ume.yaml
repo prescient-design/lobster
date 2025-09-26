@@ -1,5 +1,5 @@
 _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule 
-lr: 1e-5
+lr: 1e-4
 scheduler: constant_with_warmup
 scheduler_kwargs:
   num_warmup_steps: 10_000

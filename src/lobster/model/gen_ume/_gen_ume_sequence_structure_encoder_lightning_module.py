@@ -7,6 +7,7 @@ import torch.nn as nn
 import transformers
 from lightning import LightningModule
 from torch import Tensor
+from tqdm import tqdm
 
 from lobster.constants import Modality, ModalityType
 from lobster.model.neobert import mask_tokens
@@ -42,6 +43,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         beta1: float = 0.9,
         beta2: float = 0.98,
         eps: float = 1e-12,
+        num_warmup_steps: int = 20_000,
+        num_training_steps: int = 100_000,
         weight_decay: float = 0.0,
         scheduler: str = "constant",
         scheduler_kwargs: dict | None = None,
@@ -58,8 +61,6 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         interpolant: Callable[..., DiscreteFlowMatcher] = DiscreteFlowMatcher,
         inference_schedule: Callable[..., LinearInferenceSchedule] = LinearInferenceSchedule,
         use_masked_prior: bool = True,
-        num_warmup_steps: int = 20_000,
-        num_training_steps: int = 100_000,
     ):
         self.save_hyperparameters()
 
@@ -83,14 +84,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
             "regression": nn.MSELoss(),
         }
 
-
         #LatentGenerator params
-        #self.structure_encoder = structure_encoder
-        #self.quantizer = quantizer
-        #self.demasker = demasker
-        #self.decoder_factory = decoder_factory
-        #self.freeze_tokenizer = freeze_tokenizer
-        #self.freeze_decoder = freeze_decoder
         self.decode_tokens_during_training = decode_tokens_during_training
         self.structure_latent_encoder_decoder = LatentEncoderDecoder()
         self.structure_latent_encoder_decoder.load_model(
@@ -153,16 +147,19 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
     ) -> Tensor:
         raise NotImplementedError("Embedding for sequence and structure encoder is not implemented")
 
+    def embed_structures(self, structures: Sequence[str] | str, modality: ModalityType | Modality = None, aggregate: bool = True) -> Tensor:
+        raise NotImplementedError("Embedding for structure encoder is not implemented")
+
+    def embed_sequences_and_structures(self, sequences: Sequence[str] | str, structures: Sequence[str] | str, modality: ModalityType | Modality = None, aggregate: bool = True) -> Tensor:
+        raise NotImplementedError("Embedding for sequence and structure encoder is not implemented")
+
     def decode_structure(self, unmasked_x: dict[str, Tensor], mask: Tensor) -> dict[str, Tensor]:
         """Decode the model output."""
         decoder_name = "vit_decoder"
-
         decoded_x = {}
         struc_tokens=unmasked_x["structure_logits"][...,:self.quantizer.n_tokens]
-        #softmax with temp
         temp = 0.1
         struc_tokens_ = torch.softmax(struc_tokens / temp, dim=-1)
-
         decoded_x[decoder_name] = self.decoder_factory.decoders[decoder_name](
             struc_tokens_, mask
         )
@@ -177,6 +174,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         return x_quant, x_quant_emb, mask
 
     def apply_interpolant_loss(self, split: str, x_gt: dict[str, Tensor], unmasked_x: dict[str, Tensor], mask: Tensor, total_loss: Tensor, loss_dict: dict[str, Tensor], timesteps: dict[str, Tensor]) -> tuple[Tensor, dict[str, Tensor]]:
+        """Apply the interpolant loss to the model."""
         loss_seq = self.interpolant_seq.loss(unmasked_x['sequence_logits'], x_gt["sequence_tokens"], timesteps["sequence_tokens"]).mean()
         loss_struc = self.interpolant_struc.loss(unmasked_x['structure_logits'], x_gt["structure_tokens"], timesteps["structure_tokens"]).mean()
         loss = loss_seq + loss_struc
@@ -188,6 +186,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         return total_loss, loss_dict
 
     def apply_structure_decoder_loss(self, split: str, decoder_gt: dict[str, Tensor], decoded_x: dict[str, Tensor], mask: Tensor, total_loss: Tensor, loss_dict: dict[str, Tensor], just_loss: bool = False, keep_batch_dim: bool = False) -> tuple[Tensor, dict[str, Tensor]]:
+        """Apply the structure decoder loss to the model."""
         decoder_name = "vit_decoder"
         loss2apply = self.decoder_factory.get_loss(decoder_name)
 
@@ -231,10 +230,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
         # Generate a random mask for each batch index
         conditioning_mask = torch.rand(B, device=device) < cond_percentage
-
-
         epitope_cond = torch.full((B, x_quant.shape[1], 1), 0, device=device, requires_grad=True, dtype=torch.float)
-
 
         # Apply conditioning logic for indices where conditioning_mask is True
         for i in range(B):
@@ -258,7 +254,6 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
     def interpolate_tokens(self, input_tokens: dict[str, Tensor], timesteps: dict[str, Tensor]) -> dict[str, Tensor]:
         """Interpolate the tokens for the model."""
-        #sequence tokens
         x_1_seq = input_tokens["sequence_tokens"]
         x_1_struc = input_tokens["structure_tokens"]
         x_0_seq = self.interpolant_seq.sample_prior(x_1_seq.shape)
@@ -288,7 +283,6 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
     def step(self, batch: dict[str, Tensor], batch_idx: int, split: Literal["train", "val"] = "train") -> dict[str, Tensor]:
         """Single training/val/test step of the model."""
-
         #set losses
         total_loss = 0.0
         loss_dict = {}
@@ -353,9 +347,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         xt_seq = self.interpolant_seq.sample_prior((num_samples, length))
         xt_struc = self.interpolant_struc.sample_prior((num_samples, length))
-        xt_seq_oh = torch.nn.functional.one_hot(xt_seq.long(), num_classes=residue_constants.PEPTIDE_ALPHABET.index("-")+1).float()
-        xt_struc_oh = torch.nn.functional.one_hot(xt_struc.long(), num_classes=self.num_struc_classes).float()
-        xt = {"sequence_tokens_oh": xt_seq_oh, "structure_tokens_oh": xt_struc_oh}
+        xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
         if inference_schedule_seq is None:
             inference_schedule_seq = self.inference_schedule
         else:
@@ -379,12 +371,10 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
             t_struc = inference_schedule_struc.pad_time(num_samples, t_struc, device)
             timesteps = {"sequence_tokens": t_seq, "structure_tokens": t_struc}
             unmasked_x = self.forward(xt, mask, residue_index, conditioning_tensor, timesteps=timesteps)
-            unmasked_sequence_tokens = unmasked_x["mb_demasker"]["sequence_tokens"]
-            unmasked_structure_tokens = unmasked_x["mb_demasker"]["structure_tokens"]
+            unmasked_sequence_tokens = unmasked_x["sequence_logits"]
+            unmasked_structure_tokens = unmasked_x["structure_logits"]
             xt_seq = self.interpolant_seq.step(unmasked_sequence_tokens, t_seq, xt_seq, dt_seq, stochasticity=stochasticity_seq, temperature=temperature_seq)
             xt_struc = self.interpolant_struc.step(unmasked_structure_tokens, t_struc, xt_struc, dt_struc, stochasticity=stochasticity_struc, temperature=temperature_struc)
-            xt_seq_oh = torch.nn.functional.one_hot(xt_seq.long(), num_classes=residue_constants.PEPTIDE_ALPHABET.index("-")+1).float()
-            xt_struc_oh = torch.nn.functional.one_hot(xt_struc.long(), num_classes=self.num_struc_classes).float()
-            xt = {"sequence_tokens_oh": xt_seq_oh, "structure_tokens_oh": xt_struc_oh}
+            xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 
         return unmasked_x
