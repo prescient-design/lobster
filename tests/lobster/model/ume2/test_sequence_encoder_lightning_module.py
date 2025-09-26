@@ -1,10 +1,21 @@
+import unittest.mock
 import lightning as L
 import pytest
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 from lobster.constants import Modality
 from lobster.model.ume2 import AuxiliaryRegressionTaskHead, AuxiliaryTask, UMESequenceEncoderLightningModule
+
+
+@pytest.fixture
+def batch() -> dict[str, Tensor]:
+    return {
+        "input_ids": torch.randint(3, 100, (1, 4)),
+        "attention_mask": torch.tensor([[1, 1, 1, 0]]),
+        "aux-task-1": torch.randn(1, 1),
+    }
 
 
 class TestSequenceEncoderLightningModule:
@@ -77,30 +88,25 @@ class TestSequenceEncoderLightningModule:
         assert isinstance(model.encoder.auxiliary_tasks, nn.ModuleDict)
         assert isinstance(model.encoder.auxiliary_tasks["aux-task-1"], AuxiliaryRegressionTaskHead)
 
-    def test_compute_mlm_loss(self, model):
+    def test_compute_mlm_loss(self, model, batch):
         input_ids = torch.randint(3, 100, (1, 4))
         attention_mask = torch.ones(1, 4)
 
-        batch = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-        }
+        batch["input_ids"] = input_ids
+        batch["attention_mask"] = attention_mask
 
         loss = model.compute_mlm_loss(batch)
 
         assert torch.is_tensor(loss)
-        assert torch.isclose(loss, torch.tensor(7.0376), atol=1e-3)
+        assert torch.isclose(loss, torch.tensor(7.0413), atol=1e-3)
 
-    def test_embed(self, model):
-        ignore_padding = False
-        aggregate = True
-
+    def test_embed(self, model, batch):
         inputs = {
-            "input_ids": torch.randint(3, 100, (1, 4)),
-            "attention_mask": torch.tensor([[1, 1, 1, 0]]),
+            "input_ids": batch["input_ids"],
+            "attention_mask": batch["attention_mask"],
         }
 
-        embeddings = model.embed(inputs, aggregate=aggregate, ignore_padding=ignore_padding)
+        embeddings = model.embed(inputs, aggregate=True, ignore_padding=False)
 
         assert embeddings.shape == (1, 2)
         assert torch.allclose(embeddings, torch.tensor([[-0.3754, -1.0522]]), atol=1e-3)
@@ -111,3 +117,25 @@ class TestSequenceEncoderLightningModule:
 
         assert embeddings.shape == (1, 2)
         assert torch.allclose(embeddings, torch.tensor([[0.5312, 0.4737]]), atol=1e-3)
+
+    def test_compute_auxiliary_tasks_loss(self, model, batch):
+        mlm_loss = model.compute_mlm_loss(batch)
+        auxiliary_loss = model.compute_auxiliary_tasks_loss(batch)["aux-task-1"]
+        total_loss = model.step(batch, 0, "train")
+
+        assert torch.isclose(auxiliary_loss, torch.tensor(0.0543), atol=1e-3)
+        assert total_loss == mlm_loss + auxiliary_loss
+
+    def test_compute_auxiliary_tasks_loss_zero_weight(self, model, batch):
+        model.auxiliary_tasks[0].loss_weight = 0.0
+
+        with unittest.mock.patch.object(model.encoder, "__call__", wraps=model.encoder) as mock_encoder:
+            auxiliary_loss = model.compute_auxiliary_tasks_loss(batch)["aux-task-1"]
+
+        mlm_loss = model.compute_mlm_loss(batch)
+        total_loss = model.step(batch, 0, "train")
+
+        assert torch.isclose(auxiliary_loss, torch.tensor(0.0), atol=1e-3)
+        assert total_loss == mlm_loss
+
+        mock_encoder.assert_not_called()

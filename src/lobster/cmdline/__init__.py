@@ -2,6 +2,7 @@ from ._utils import instantiate_callbacks
 from .embed import embed
 from .eval_embed import eval_embed
 from .evaluate import evaluate
+from .finetune import finetune
 from .intervene import intervene
 from .intervene_multiproperty import intervene_multiproperty
 from .perplexity import perplexity
@@ -16,4 +17,5 @@ __all__ = [
     "train",
     "instantiate_callbacks",
     "evaluate",
+    "finetune",
 ]

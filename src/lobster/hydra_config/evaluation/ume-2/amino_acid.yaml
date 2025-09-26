@@ -1,0 +1,11 @@
+# @package _global_
+
+
+defaults:
+  - base
+
+model:
+  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-12T19-51-14/epoch=0-step=7500-val_loss=0.0687.ckpt
+
+model_alias: UME-prot-aux
+wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/hhr8f8bt/logs

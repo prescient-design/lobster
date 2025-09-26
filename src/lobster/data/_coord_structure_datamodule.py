@@ -18,7 +18,6 @@ from lobster.datasets._structure_dataset import StructureDataset
 from lobster.datasets._structure_dataset_iterable import ShardedStructureDataset
 from lobster.transforms._structure_transforms import StructureBackboneTransform, StructureLigandTransform
 
-
 try:
     from torch_geometric.transforms import Compose
 except ImportError:

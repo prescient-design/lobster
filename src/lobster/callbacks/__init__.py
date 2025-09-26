@@ -10,6 +10,7 @@ from ._umap_visualization_callback import UmapVisualizationCallback
 from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
 from ._structure_decode import StructureDecode
 from ._unconditional_generation import UnconditionalGeneration
+from ._auxiliary_task_loss_weight_scheduler import AuxiliaryTaskWeightScheduler, MultiTaskWeightScheduler
 
 __all__ = [
     "MoleculeACELinearProbeCallback",
@@ -24,4 +25,6 @@ __all__ = [
     "default_batch_size_fn",
     "UmapVisualizationCallback",
     "UmeGrpoLoggingCallback",
+    "AuxiliaryTaskWeightScheduler",
+    "MultiTaskWeightScheduler",
 ]

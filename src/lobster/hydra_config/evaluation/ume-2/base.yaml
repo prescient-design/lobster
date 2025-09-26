@@ -1,0 +1,58 @@
+# @package _global_
+
+# lobster_eval model.ckpt_path=path_to_your_checkpoint.ckpt wandb_id=your_wandb_id
+
+output_dir: ${hydra:runtime.cwd}/evaluation_results/${now:%Y%m%d}/${now:%H%M%S}-${model_alias}
+
+datamodule:
+  _target_: lobster.data.UMELightningDataModule
+  datasets: ["Calm", "AMPLIFY", "ZINC", "M320M", "PeptideAtlas"]
+
+model:
+  _target_: lobster.model.UMESequenceEncoderLightningModule
+  ckpt_path: ???
+
+ckpt_path: ${model.ckpt_path}
+model_alias: UME-prot-aux
+wandb_id: ???
+
+
+callbacks:
+  - _target_: lobster.callbacks.PerturbationScoreCallback
+    sequence: QVKLQESGAELARPGASVKLSCKASGYTFTNYWMQWVKQRPGQGLDWIGAIYPGDGNTRYTHKFKGKATLTADKSSSTAYMQLSSLASEDSGVYYCARGEGNYAWFAYWGQGTTVTVSS
+    output_dir: ${output_dir}/perturbation_scores/amino_acid
+    save_heatmap: true
+
+  - _target_: lobster.callbacks.PerturbationScoreCallback
+    sequence: C1=CC=C(C=C1)C(=O)N(C)C
+    output_dir: ${output_dir}/perturbation_scores/smiles
+    modality: SMILES
+    save_heatmap: true
+
+  - _target_: lobster.callbacks.UmapVisualizationCallback
+    output_dir: ${output_dir}
+    group_by: dataset
+    max_samples: 200
+
+  - _target_: lobster.callbacks.MoleculeACELinearProbeCallback
+    batch_size: 16
+
+  - _target_: lobster.callbacks.CalmLinearProbeCallback
+    max_length: 512
+    batch_size: 8
+    classification_threshold: 0.5
+    # Optional overrides (uncomment to customize)
+    # tasks: ["meltome", "solubility", "localization"]
+    # species: ["hsapiens", "ecoli", "scerevisiae"]
+    # use_cross_validation: false
+    # n_folds: 5
+    # dimensionality_reduction: false
+    # reduced_dim: 320
+    # probe_type: linear  # linear | elastic | svm
+    # species defaults to ["hsapiens", "ecoli", "scerevisiae"] if not specified
+
+  - _target_: lobster.callbacks.PEEREvaluationCallback
+    max_length: 512
+    batch_size: 16
+
+

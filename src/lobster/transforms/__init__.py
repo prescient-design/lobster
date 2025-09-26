@@ -7,6 +7,7 @@
 # )
 from ._auto_tokenizer_transform import AutoTokenizerTransform
 from ._binarize import BinarizeTransform
+from ._biopython_features import ProteinToBioPythonFeaturesTransform
 from ._equivalence_transforms import (
     AminoAcidToNucleotideAndSmilesTransform,
     AminoAcidToNucleotidePairTransform,
@@ -26,6 +27,7 @@ from ._transform import Transform
 __all__ = [
     "AutoTokenizerTransform",
     "BinarizeTransform",
+    "ProteinToBioPythonFeaturesTransform",
     "NucleotideToAminoAcidPairTransform",
     "NucleotideToAminoAcidAndSmilesTransform",
     "NucleotideToSmilesPairTransform",
