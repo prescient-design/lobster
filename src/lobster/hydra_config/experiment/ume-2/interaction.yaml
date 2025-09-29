@@ -16,7 +16,7 @@ data:
   root: ${oc.env:LOBSTER_DATA_DIR}
   max_length: 1024
   seed: 0
-  batch_size: 32
+  batch_size: 16 # debug
   pin_memory: true
   num_workers: 8
   use_shared_tokenizer: false
@@ -27,7 +27,7 @@ data:
 
 model:
   _target_: lobster.model.ume2.ume_interaction_lightning_module.UMEInteractionLightningModule 
-  lr: 0.001
+  lr: 0.0005
   seed: 0
   scheduler: cosine
   scheduler_kwargs:
@@ -39,7 +39,8 @@ model:
       pad_token_id: 0
       special_token_ids: [6,0]
   weight_decay: 0.01
-  mask_probability: 0.15
+  mask_probability: 0.3
+  freeze_molecular_encoders: true
   ckpt_path: null 
   checkpoints:
     amino_acid: s3://prescient-lobster/ume/runs/2025-09-22T20-00-55/epoch=3-step=182000-val_loss=0.4492.ckpt
@@ -49,7 +50,7 @@ model:
     
 
 logger:
-  name: UME-2-interaction-PP_${paths.timestamp}
+  name: UME-2-interaction-PP-frozen_${paths.timestamp}
   project: lobster
   entity: ${oc.env:LOBSTER_USER}
   save_dir: ${oc.env:LOBSTER_RUNS_DIR}
@@ -68,13 +69,14 @@ trainer:
   max_epochs: -1
   gradient_clip_val: 0.5
   max_time: null 
-  max_steps: ${model.scheduler_kwargs.num_training_steps}
+  # max_steps: ${model.scheduler_kwargs.num_training_steps}
   val_check_interval: 1000
   limit_val_batches: 50_000
   precision: 16-mixed
   accumulate_grad_batches: 2
   devices: auto
-  strategy: ddp_find_unused_parameters_true
+  max_steps: 100_000
+  # strategy: ddp_find_unused_parameters_true
 
 
 callbacks:

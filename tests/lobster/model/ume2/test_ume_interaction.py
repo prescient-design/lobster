@@ -62,8 +62,8 @@ class TestUMEInteraction:
         assert model.encoder.molecular_encoders[Modality.SMILES].neobert.config.vocab_size == VOCAB_SIZE_SMILES
 
     def test_compute_mlm_loss(self, model, batch):
-        loss = model.compute_mlm_loss(batch)
+        loss = model.compute_mlm_loss(batch, stage="val")
         assert loss is not None
         assert loss.shape == ()
 
-        assert torch.isclose(loss, torch.tensor(3.4675), atol=1e-3)
+        assert torch.isclose(loss, torch.tensor(3.1852), atol=1e-3)

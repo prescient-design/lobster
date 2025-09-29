@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Callable
 from collections.abc import Sequence
-
+import random
 from litdata import StreamingDataset
 
 from lobster.constants import S3_BUCKET, Split, Modality, to_modality
@@ -11,7 +11,7 @@ from .base import UMEStreamingDataset
 logger = logging.getLogger(__name__)
 
 
-class Atomica(UMEStreamingDataset):
+class RandomInteractions(UMEStreamingDataset):
     SEQUENCE_KEY_1 = "sequence1"
     SEQUENCE_KEY_2 = "sequence2"
     SEQUENCE_KEY_3 = "sequence3"
@@ -84,6 +84,11 @@ class Atomica(UMEStreamingDataset):
                 f"Skipping item with modalities {modality1} and {modality2} because they are not in {self.restrict_modalities}"
             )
             return self.__next__()
+
+        # Completely random sequences with amino acid vocabulary
+        amino_acids = "ACDEFGHIKLMNPQRSTVWY"
+        sequence1 = "".join(random.choice(amino_acids) for _ in range(len(sequence1)))
+        sequence2 = "".join(random.choice(amino_acids) for _ in range(len(sequence2)))
 
         encoded1 = self.tokenizer_registry[modality1](sequence1)
         encoded2 = self.tokenizer_registry[modality2](sequence2)

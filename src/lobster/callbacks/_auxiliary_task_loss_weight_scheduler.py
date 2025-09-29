@@ -30,7 +30,8 @@ class AuxiliaryTaskWeightScheduler(Callback):
         start_step : int
             Global step to start increasing weights from 0
         ramp_steps : int
-            Number of steps to ramp from 0 to max_weight (weight plateaus afterwards)
+            Number of steps to ramp from 0 to max_weight (weight plateaus afterwards).
+            If 0, weight jumps immediately to max_weight at start_step
         max_weight : float
             Maximum weight value to reach
         task_name : str, optional
@@ -42,8 +43,8 @@ class AuxiliaryTaskWeightScheduler(Callback):
         self.max_weight = max_weight
         self.task_name = task_name
 
-        if ramp_steps <= 0:
-            raise ValueError("ramp_steps must be positive")
+        if ramp_steps < 0:
+            raise ValueError("ramp_steps must be non-negative")
         if max_weight <= 0:
             raise ValueError("max_weight must be positive")
 
@@ -53,6 +54,10 @@ class AuxiliaryTaskWeightScheduler(Callback):
             return 0.0
 
         steps_since_start = current_step - self.start_step
+
+        # If ramp_steps is 0, immediately return max_weight
+        if self.ramp_steps == 0:
+            return self.max_weight
 
         if steps_since_start >= self.ramp_steps:
             return self.max_weight

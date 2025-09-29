@@ -26,17 +26,17 @@ data:
 
 model:
   _target_: lobster.model.ume2.UMESequenceEncoderLightningModule 
-  lr: 0.001
+  lr: 0.0005
   scheduler: cosine
   scheduler_kwargs:
     num_warmup_steps: 5_000
-    num_training_steps: 100_000
+    num_training_steps: 500_000
   weight_decay: 0.01
   mask_token_id: 32
   pad_token_id: 1
   special_token_ids: [0, 1, 2, 3, 32]
   mask_probability: 0.15
-  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-26T13-51-56/last.ckpt
+  ckpt_path: null #"s3://prescient-lobster/ume/runs/2025-09-28T00-45-59/last.ckpt"
   encoder_kwargs:
     max_length: ${data.max_length}
     cache_dir: /data2/ume/checkpoints
@@ -56,12 +56,12 @@ logger:
     - cosine
     - no-aux
     # - zero-weight-on-auxiliary-tasks
-  resume: must
-  id: 88a7pgtu
-  allow_val_change: true
+  # resume: must
+  # id: s1h2hfjy
+  # allow_val_change: true
 
 paths:
-  timestamp: 2025-09-26T13-51-56 #${now:%Y-%m-%d}T${now:%H-%M-%S} 
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S} 
   output_dir: ${paths.root_dir}/${paths.timestamp}
   root_dir: ${oc.env:LOBSTER_RUNS_DIR}
 

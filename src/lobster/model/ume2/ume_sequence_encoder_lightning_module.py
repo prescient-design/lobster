@@ -1,5 +1,6 @@
 import logging
 from typing import Literal
+from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
@@ -7,6 +8,7 @@ import transformers
 from lightning import LightningModule
 from torch import Tensor
 
+from lobster.constants import Modality, ModalityType
 from lobster.model.neobert import mask_tokens
 
 from .ume_sequence_encoder import AuxiliaryTask, UMESequenceEncoderModule
@@ -64,6 +66,14 @@ class UMESequenceEncoderLightningModule(LightningModule):
             use_shared_tokenizer=self.use_shared_tokenizer,
             **encoder_kwargs or {},
         )
+
+    def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
+        return self.encoder.embed(inputs, aggregate, ignore_padding, **kwargs)
+
+    def embed_sequences(
+        self, sequences: Sequence[str] | str, modality: ModalityType | Modality = None, aggregate: bool = True
+    ) -> Tensor:
+        return self.encoder.embed_sequences(sequences, modality, aggregate)
 
     def compute_mlm_loss(self, batch: dict[str, Tensor]) -> Tensor:
         masked_inputs = mask_tokens(

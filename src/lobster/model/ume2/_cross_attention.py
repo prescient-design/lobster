@@ -386,10 +386,10 @@ class SymmetricCrossAttentionModule(nn.Module):
             output_attentions=output_attentions,
         )
 
-        # x2 attends to x1
+        # x2 attends to x1_updated
         x2_updated, _ = self.cross_attn_2_to_1(
             query_seq=x2,
-            key_value_seq=x1,
+            key_value_seq=x1_updated,
             query_attention_mask=x2_attention_mask,
             kv_attention_mask=x1_attention_mask,
             freqs_cis=freqs_cis,

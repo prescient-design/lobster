@@ -117,8 +117,8 @@ class UMEInteractionLightningModule(LightningModule):
 
             inputs.append(
                 {
-                    "input_ids": input_ids,
-                    "attention_mask": attention_mask,
+                    "input_ids": masked_inputs["input_ids"],
+                    "attention_mask": masked_inputs["attention_mask"],
                     "modality": modality,
                 }
             )
@@ -130,7 +130,7 @@ class UMEInteractionLightningModule(LightningModule):
         )
 
         # DEBUGGING: verify that the loss is higher without cross attention
-        if stage == "val":
+        if False:  # stage == "val":
             no_cross_attention_logits1, no_cross_attention_logits2 = self.encoder.get_logits(
                 inputs1=inputs[0],
                 inputs2=inputs[1],
