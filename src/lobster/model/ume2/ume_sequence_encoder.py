@@ -89,7 +89,7 @@ class UMESequenceEncoderModule(nn.Module):
         if self.auxiliary_tasks is not None and return_auxiliary_tasks:
             for task_name, task_head in self.auxiliary_tasks.items():
                 embeddings = output["last_hidden_state"]
-                output[task_name] = task_head(embeddings)
+                output[task_name] = task_head(embeddings, attention_mask=attention_mask)
 
         return output
 

@@ -60,11 +60,16 @@ class AuxiliaryRegressionTaskHead(nn.Module):
 
         self.head = nn.Sequential(*layers)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, attention_mask: Tensor | None = None) -> Tensor:
         match self.pooling:
             case "cls":
                 x = x[:, 0, :]
             case "mean":
-                x = x.mean(dim=1)
+                if attention_mask is None:
+                    x = x.mean(dim=1)
+                else:
+                    mask = attention_mask.to(dtype=x.dtype).unsqueeze(-1)
+                    x = x * mask
+                    x = x.sum(dim=1) / mask.sum(dim=1)
 
         return self.head(x)

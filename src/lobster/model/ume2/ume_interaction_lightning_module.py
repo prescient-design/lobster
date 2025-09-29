@@ -77,14 +77,6 @@ class UMEInteractionLightningModule(LightningModule):
             cache_dir=cache_dir,
         )
 
-    # def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
-    #     return self.encoder.embed(inputs=inputs, aggregate=aggregate, ignore_padding=ignore_padding, **kwargs)
-
-    # def embed_sequences(
-    #     self, sequences: Sequence[str] | str, modality: ModalityType | Modality = None, aggregate: bool = True
-    # ) -> Tensor:
-    #     return self.encoder.embed_sequences(sequences, modality=modality, aggregate=aggregate)
-
     def compute_mlm_loss(self, batch: dict[str, Tensor], stage: Literal["train", "val"]) -> Tensor:
         inputs: list[dict[str, Tensor | Modality]] = []
         labels: list[Tensor] = []
