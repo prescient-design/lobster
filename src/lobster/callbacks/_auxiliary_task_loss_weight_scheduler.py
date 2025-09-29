@@ -65,17 +65,18 @@ class AuxiliaryTaskWeightScheduler(Callback):
         # Progress through the ramp period
         progress = steps_since_start / self.ramp_steps
 
-        if self.schedule_type == "linear":
-            weight = progress * self.max_weight
-        elif self.schedule_type == "cosine":
-            weight = 0.5 * (1 - math.cos(math.pi * progress)) * self.max_weight
-        elif self.schedule_type == "exponential":
-            weight = (progress**2) * self.max_weight
-        elif self.schedule_type == "step":
-            # Step function at 50% progress
-            weight = self.max_weight if progress >= 0.5 else 0.0
-        else:
-            raise ValueError(f"Unknown schedule_type: {self.schedule_type}")
+        match self.schedule_type:
+            case "linear":
+                weight = progress * self.max_weight
+            case "cosine":
+                weight = 0.5 * (1 - math.cos(math.pi * progress)) * self.max_weight
+            case "exponential":
+                weight = (math.exp(progress) - 1) / (math.e - 1) * self.max_weight
+            case "step":
+                # Step function at 50% progress
+                weight = self.max_weight if progress >= 0.5 else 0.0
+            case _:
+                raise ValueError(f"Unknown schedule_type: {self.schedule_type}")
 
         return weight
 
