@@ -120,7 +120,10 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         self.inference_schedule = inference_schedule
         time_distribution_seq = self.time_distribution_seq()
         time_distribution_struc = self.time_distribution_struc()
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        # device = torch.cuda.device(torch.cuda.current_device()) if torch.cuda.is_available() else "cpu"
+        # device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        # device = self.structure_latent_encoder_decoder.device
+        device = next(self.parameters()).device
         interpolant_seq = self.interpolant(
             time_distribution=time_distribution_seq, prior_distribution=prior_seq, device=device
         )
@@ -293,6 +296,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
     def interpolate_tokens(self, input_tokens: dict[str, Tensor], timesteps: dict[str, Tensor]) -> dict[str, Tensor]:
         """Interpolate the tokens for the model."""
+
         x_1_seq = input_tokens["sequence_tokens"]
         x_1_struc = input_tokens["structure_tokens"]
         x_0_seq = self.interpolant_seq.sample_prior(x_1_seq.shape)
@@ -337,6 +341,11 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         self, batch: dict[str, Tensor], batch_idx: int, split: Literal["train", "val"] = "train"
     ) -> dict[str, Tensor]:
         """Single training/val/test step of the model."""
+        # set device
+        device = batch["sequence"].device
+        self.interpolant_seq.device = device
+        self.interpolant_struc.device = device
+
         # set losses
         total_loss = 0.0
         loss_dict = {}
@@ -421,7 +430,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         temperature_struc: float = 1.0,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        device = next(self.parameters()).device
         xt_seq = self.interpolant_seq.sample_prior((num_samples, length))
         xt_struc = self.interpolant_struc.sample_prior((num_samples, length))
         xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}

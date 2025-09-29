@@ -25,7 +25,7 @@ trainer:
   gradient_clip_val: 0.5
   max_time: null
   max_steps: -1
-  val_check_interval: 1000
+  val_check_interval: 500
   limit_val_batches: 50_000
   precision: bf16-mixed
   accumulate_grad_batches: 16

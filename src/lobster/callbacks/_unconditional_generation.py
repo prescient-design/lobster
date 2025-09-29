@@ -3,6 +3,7 @@ import os
 import torch
 from lobster.model.latent_generator.io import writepdb
 from loguru import logger
+# TODO add folding with esmfold
 
 
 class UnconditionalGeneration(lightning.Callback):
@@ -19,7 +20,7 @@ class UnconditionalGeneration(lightning.Callback):
         self.num_samples = num_samples
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if not os.path.exists(f"{self.STRUCTURE_PATH}/unconditional"):
-            os.makedirs(f"{self.STRUCTURE_PATH}/unconditional")
+            os.makedirs(f"{self.STRUCTURE_PATH}/unconditional", exist_ok=True)
 
     def on_train_batch_end(self, trainer, gen_ume, outputs, batch, batch_idx):
         current_step = trainer.global_step

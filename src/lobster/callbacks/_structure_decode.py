@@ -11,7 +11,7 @@ class StructureDecode(lightning.Callback):
         self.save_every_n = save_every_n
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if not os.path.exists(f"{self.STRUCTURE_PATH}/decode"):
-            os.makedirs(f"{self.STRUCTURE_PATH}/decode")
+            os.makedirs(f"{self.STRUCTURE_PATH}/decode", exist_ok=True)
 
     def on_train_batch_end(self, trainer, laten_mlm, outputs, batch, batch_idx):
         current_step = trainer.global_step

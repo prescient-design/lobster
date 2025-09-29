@@ -196,12 +196,24 @@ class ESMEmbeddingTransform(BaseTransform):
         return x
 
 
+class UMEAminoAcidTokenizerTransform(BaseTransform):
+    def __init__(self, max_length=512, truncation=True, **kwargs):
+        from lobster.tokenization import AminoAcidTokenizerFast
+        from lobster.transforms import TokenizerTransform
+
+        self.tokenizer_transform = TokenizerTransform(
+            AminoAcidTokenizerFast(),
+            padding="max_length",
+            truncation=truncation,
+            max_length=max_length,
+        )
+
+    def __call__(self, x: dict) -> dict:
+        raise NotImplementedError("UMEAminoAcidTokenizerTransform is not implemented")
+
+
 class StructureBackboneTransform(BaseTransform):
     def __init__(self, max_length=512, **kwargs):
-        # import lobster
-
-        # lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
-
         logger.info("StructureBackboneTransform")
         self.max_length = max_length
         self.unk_idx = residue_constants.restype_order_with_x["X"]
@@ -210,7 +222,13 @@ class StructureBackboneTransform(BaseTransform):
         """Rename keys in the input dictionary to match the expected input of the backbone model and crops.
 
         Args:
-            x (dict): Input dictionary containing the data to be transformed.
+            x (dict): Input dictionary containing at least the following keys:
+                - "coords_res": Coordinates tensor of shape (seq_length, 3).
+                - "indices": Residue indices tensor of shape (seq_length,).
+                - "mask": Mask tensor of shape (seq_length,).
+                - "chains": Chains tensor of shape (seq_length,).
+                - "sequence": Sequence tensor of shape (seq_length,).
+                - "esm_c_embeddings": (optional) ESM-C embeddings tensor of shape (1, seq_length, 960).
 
         Returns:
             dict: Transformed dictionary with renamed keys.
