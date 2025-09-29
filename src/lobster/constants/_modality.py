@@ -21,13 +21,13 @@ def to_modality(modality: str | Modality) -> Modality:
     if isinstance(modality, str):
         normalized = modality.lower().strip()
 
-        if normalized in ("smiles", "smi"):
+        if normalized in ("smiles", "smi", "sm"):
             return Modality.SMILES
-        elif normalized in ("amino_acid", "amino acid", "protein", "prot"):
+        elif normalized in ("amino_acid", "amino acid", "protein", "prot", "aa"):
             return Modality.AMINO_ACID
-        elif normalized in ("nucleotide", "nucleotides", "dna", "rna"):
+        elif normalized in ("nucleotide", "nucleotides", "dna", "rna", "nt"):
             return Modality.NUCLEOTIDE
-        elif normalized in ("3d_coordinates", "3d coordinates", "coordinates", "coords"):
+        elif normalized in ("3d_coordinates", "3d coordinates", "coordinates", "coords", "3d"):
             return Modality.COORDINATES_3D
 
         try:

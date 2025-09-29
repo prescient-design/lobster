@@ -129,8 +129,8 @@ class UMEInteractionLightningModule(LightningModule):
             inputs2=inputs[1],
         )
 
-        # DEBUGGING: verify that the loss is higher without cross attention
-        if False:  # stage == "val":
+        # Verify that the loss is higher without cross attention
+        if stage == "val":
             no_cross_attention_logits1, no_cross_attention_logits2 = self.encoder.get_logits(
                 inputs1=inputs[0],
                 inputs2=inputs[1],

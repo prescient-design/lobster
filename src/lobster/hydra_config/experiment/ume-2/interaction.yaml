@@ -35,9 +35,9 @@ model:
     num_training_steps: 50000
   special_token_mappings:
     amino_acid:
-      mask_token_id: 6
-      pad_token_id: 0
-      special_token_ids: [6,0]
+      mask_token_id: 32
+      pad_token_id: 1
+      special_token_ids: [0, 1, 2, 3, 32]
   weight_decay: 0.01
   mask_probability: 0.3
   freeze_molecular_encoders: true
@@ -69,13 +69,12 @@ trainer:
   max_epochs: -1
   gradient_clip_val: 0.5
   max_time: null 
-  # max_steps: ${model.scheduler_kwargs.num_training_steps}
+  max_steps: ${model.scheduler_kwargs.num_training_steps}
   val_check_interval: 1000
   limit_val_batches: 50_000
   precision: 16-mixed
   accumulate_grad_batches: 2
   devices: auto
-  max_steps: 100_000
   # strategy: ddp_find_unused_parameters_true
 
 

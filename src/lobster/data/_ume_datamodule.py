@@ -181,7 +181,7 @@ def collate_with_modality(batch: list[dict[str, Tensor | Modality]]) -> dict[str
         }
     # Standard, single molecule datasets
     modalities = [item.get("modality") for item in batch]
-    sequences = [item.get("sequence", "") for item in batch]
+    sequences = [item.get("sequence") for item in batch]
 
     return {
         **tensor_batch,
