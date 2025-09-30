@@ -18,7 +18,7 @@ data:
   root: ${oc.env:LOBSTER_DATA_DIR}
   max_length: 1024
   seed: 0
-  batch_size: 64
+  batch_size: 32
   pin_memory: true
   num_workers: 8
   use_shared_tokenizer: false
@@ -29,7 +29,7 @@ model:
   lr: 0.0005
   scheduler: cosine
   scheduler_kwargs:
-    num_warmup_steps: 5_000
+    num_warmup_steps: 500
     num_training_steps: 500_000
   weight_decay: 0.01
   mask_token_id: 32
@@ -40,11 +40,11 @@ model:
   encoder_kwargs:
     max_length: ${data.max_length}
     cache_dir: /data2/ume/checkpoints
-    model_size: small
+    model_size: medium
     vocab_size: 33 # 33 for amino acids or 1280 for shared vocabulary
 
 logger:
-  name: UME-2-protein-no-aux-${paths.timestamp}
+  name: UME2-${model.encoder_kwargs.model_size}-protein-no-aux-${paths.timestamp}
   project: lobster
   entity: ${oc.env:LOBSTER_USER}
   save_dir: ${oc.env:LOBSTER_RUNS_DIR}
@@ -66,7 +66,7 @@ paths:
   root_dir: ${oc.env:LOBSTER_RUNS_DIR}
 
 trainer:
-  num_nodes: 1
+  num_nodes: 2
   max_epochs: -1
   gradient_clip_val: 0.5
   max_time: null 

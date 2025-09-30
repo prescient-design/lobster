@@ -23,9 +23,9 @@ class Atomica(UMEStreamingDataset):
     VAL_SIZE = 16309
 
     SPLITS = {
-        Split.TRAIN: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=train/interaction_type=protein-protein/",
-        Split.VALIDATION: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=val/interaction_type=protein-protein/",
-        Split.TEST: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=test/interaction_type=protein-protein/",
+        Split.TRAIN: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=train",
+        Split.VALIDATION: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=val",
+        Split.TEST: f"s3://{S3_BUCKET}/ume/datasets/atomica/processed/split=test",
     }
 
     OPTIMIZED_SPLITS = {
@@ -70,15 +70,11 @@ class Atomica(UMEStreamingDataset):
             self.num_skipped_items += 1
             return self.__next__()
 
-        modality1 = to_modality(
-            "amino_acid"
-        )  # , item.pop(self.MODALITY_KEY_1)) # TODO temporary hard-coded modality, remove later!
-        modality2 = to_modality(
-            "amino_acid"
-        )  # , item.pop(self.MODALITY_KEY_2)) # TODO temporary hard-coded modality, remove later!
+        modality1 = to_modality(item.pop(self.MODALITY_KEY_1))
+        modality2 = to_modality(item.pop(self.MODALITY_KEY_2))
 
-        if self.restrict_modalities and any(
-            modality not in self.restrict_modalities for modality in [modality1, modality2]
+        if self.restrict_modalities and (
+            modality1 not in self.restrict_modalities or modality2 not in self.restrict_modalities
         ):
             logger.debug(
                 f"Skipping item with modalities {modality1} and {modality2} because they are not in {self.restrict_modalities}"

@@ -56,4 +56,11 @@ lobster_train --multirun experiment=ume-2/small_molecule_slurm \
 ...
 ```
 
+
+```
+lobster_train --multirun experiment=ume-2/amino_acid \
+    model.lr=1e-4,2e-4,5e-4 \
+    trainer.accumulate_grad_batches=1,2
+```
+
 Each run is a slurm job with number of nodes and GPUs specified in the `small_molecule_slurm.yaml` file.
