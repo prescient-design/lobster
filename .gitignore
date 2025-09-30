@@ -32,6 +32,7 @@ src/lobster/mcp/claude_desktop_config.json
 
 notebooks/nathan/*
 notebooks/karina/*
+*.ipynb
 
 models/*
 
@@ -64,3 +65,5 @@ test_dxt/*
 
 # UME HF model
 src/lobster/model/integrations/ume_huggingface/model/*
+
+*.sh

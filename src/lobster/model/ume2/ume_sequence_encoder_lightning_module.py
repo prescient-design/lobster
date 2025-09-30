@@ -1,6 +1,6 @@
 import logging
-from collections.abc import Sequence
 from typing import Literal
+from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
@@ -10,10 +10,8 @@ from torch import Tensor
 
 from lobster.constants import Modality, ModalityType
 from lobster.model.neobert import mask_tokens
-from lobster.model.utils import _detect_modality
-from lobster.tokenization import UMETokenizerTransform
 
-from ._ume_sequence_encoder import AuxiliaryTask, UMESequenceEncoderModule
+from .ume_sequence_encoder import AuxiliaryTask, UMESequenceEncoderModule
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +33,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
         scheduler: str = "constant",
         scheduler_kwargs: dict | None = None,
         encoder_kwargs: dict | None = None,
+        use_shared_tokenizer: bool = False,
         ckpt_path: str | None = None,
     ):
         self.save_hyperparameters()
@@ -52,6 +51,7 @@ class UMESequenceEncoderLightningModule(LightningModule):
         self.weight_decay = weight_decay
         self.scheduler = scheduler
         self.scheduler_kwargs = scheduler_kwargs or {}
+        self.use_shared_tokenizer = use_shared_tokenizer
 
         self.seed = seed
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
@@ -63,32 +63,17 @@ class UMESequenceEncoderLightningModule(LightningModule):
         self.encoder = UMESequenceEncoderModule(
             auxiliary_tasks=auxiliary_tasks,
             pad_token_id=self.pad_token_id,
+            use_shared_tokenizer=self.use_shared_tokenizer,
             **encoder_kwargs or {},
         )
 
     def embed(self, inputs: dict[str, Tensor], aggregate: bool = True, ignore_padding: bool = True, **kwargs) -> Tensor:
-        return self.encoder.neobert.embed(inputs=inputs, aggregate=aggregate, ignore_padding=ignore_padding, **kwargs)
+        return self.encoder.embed(inputs, aggregate, ignore_padding, **kwargs)
 
     def embed_sequences(
         self, sequences: Sequence[str] | str, modality: ModalityType | Modality = None, aggregate: bool = True
     ) -> Tensor:
-        if isinstance(sequences, str):
-            sequences = [sequences]
-
-        if modality is None:
-            modality = set([_detect_modality(sequence) for sequence in sequences])
-
-            if len(modality) > 1:
-                raise ValueError(f"Multiple modalities detected: {modality}")
-
-            modality = modality.pop()
-
-        tokenizer_transform = UMETokenizerTransform(
-            modality=modality, max_length=self.encoder.neobert.config.max_length
-        )
-        encoded_batch = tokenizer_transform(sequences)
-
-        return self.embed(encoded_batch, aggregate=aggregate)
+        return self.encoder.embed_sequences(sequences, modality, aggregate)
 
     def compute_mlm_loss(self, batch: dict[str, Tensor]) -> Tensor:
         masked_inputs = mask_tokens(
@@ -175,10 +160,14 @@ class UMESequenceEncoderLightningModule(LightningModule):
         return total_loss
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        return self.step(batch, batch_idx, "train")
+        loss = self.step(batch, batch_idx, "train")
+        self.log("train_loss", loss, sync_dist=True, rank_zero_only=True, batch_size=batch["input_ids"].shape[0])
+        return loss
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        return self.step(batch, batch_idx, "val")
+        loss = self.step(batch, batch_idx, "val")
+        self.log("val_loss", loss, sync_dist=True, rank_zero_only=True, batch_size=batch["input_ids"].shape[0])
+        return loss
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

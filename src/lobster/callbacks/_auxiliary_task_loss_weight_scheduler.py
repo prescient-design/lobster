@@ -30,7 +30,8 @@ class AuxiliaryTaskWeightScheduler(Callback):
         start_step : int
             Global step to start increasing weights from 0
         ramp_steps : int
-            Number of steps to ramp from 0 to max_weight (weight plateaus afterwards)
+            Number of steps to ramp from 0 to max_weight (weight plateaus afterwards).
+            If 0, weight jumps immediately to max_weight at start_step
         max_weight : float
             Maximum weight value to reach
         task_name : str, optional
@@ -42,8 +43,8 @@ class AuxiliaryTaskWeightScheduler(Callback):
         self.max_weight = max_weight
         self.task_name = task_name
 
-        if ramp_steps <= 0:
-            raise ValueError("ramp_steps must be positive")
+        if ramp_steps < 0:
+            raise ValueError("ramp_steps must be non-negative")
         if max_weight <= 0:
             raise ValueError("max_weight must be positive")
 
@@ -54,23 +55,28 @@ class AuxiliaryTaskWeightScheduler(Callback):
 
         steps_since_start = current_step - self.start_step
 
+        # If ramp_steps is 0, immediately return max_weight
+        if self.ramp_steps == 0:
+            return self.max_weight
+
         if steps_since_start >= self.ramp_steps:
             return self.max_weight
 
         # Progress through the ramp period
         progress = steps_since_start / self.ramp_steps
 
-        if self.schedule_type == "linear":
-            weight = progress * self.max_weight
-        elif self.schedule_type == "cosine":
-            weight = 0.5 * (1 - math.cos(math.pi * progress)) * self.max_weight
-        elif self.schedule_type == "exponential":
-            weight = (progress**2) * self.max_weight
-        elif self.schedule_type == "step":
-            # Step function at 50% progress
-            weight = self.max_weight if progress >= 0.5 else 0.0
-        else:
-            raise ValueError(f"Unknown schedule_type: {self.schedule_type}")
+        match self.schedule_type:
+            case "linear":
+                weight = progress * self.max_weight
+            case "cosine":
+                weight = 0.5 * (1 - math.cos(math.pi * progress)) * self.max_weight
+            case "exponential":
+                weight = (math.exp(progress) - 1) / (math.e - 1) * self.max_weight
+            case "step":
+                # Step function at 50% progress
+                weight = self.max_weight if progress >= 0.5 else 0.0
+            case _:
+                raise ValueError(f"Unknown schedule_type: {self.schedule_type}")
 
         return weight
 
@@ -81,11 +87,7 @@ class AuxiliaryTaskWeightScheduler(Callback):
 
         for task in pl_module.auxiliary_tasks:
             if self.task_name is None or task.name == self.task_name:
-                old_weight = task.loss_weight
                 task.loss_weight = weight
-
-                if weight != old_weight:
-                    logger.info(f"Updated {task.name} loss weight: {old_weight:.6f} -> {weight:.6f}")
 
     def on_train_batch_start(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx: int):
         """Update weights at the start of each training batch."""

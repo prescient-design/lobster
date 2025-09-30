@@ -56,11 +56,14 @@ from torch.nn import Module
 from transformers import PreTrainedTokenizerFast
 
 from lobster.constants import Modality, ModalityType
+from lobster.transforms import TokenizerTransform
 
 from ._load_vocab_file import load_vocab_file
 from ._make_pretrained_tokenizer_fast import make_pretrained_tokenizer_fast
-from ._smiles_tokenizer import SMILES_REGEX_PATTERN
+from ._smiles_tokenizer import SMILES_REGEX_PATTERN, SMILESTokenizerFast
 from ._smiles_tokenizer import VOCAB_PATH as SMILES_VOCAB_PATH
+from ._nucleotide_tokenizer import NucleotideTokenizerFast
+from ._amino_acid import AminoAcidTokenizerFast
 
 TOKENIZERS_PATH = importlib.resources.files("lobster") / "assets" / "ume_tokenizers"
 
@@ -502,3 +505,58 @@ class UMETokenizerTransform(Module):
     def get_special_token_ids(self) -> list[int]:
         special_tokens = _get_special_tokens()
         return [self.tokenizer.convert_tokens_to_ids(token) for token in special_tokens]
+
+
+def get_ume_tokenizer_transforms(
+    max_length: int, use_shared_tokenizer: bool = True
+) -> dict[Modality, TokenizerTransform]:
+    """
+    Get UME tokenizers for all modalities. Uses either tokenizers
+    that share the same vocabulary (use_shared_tokenizer=True) or
+    individual tokenizers for each modality (use_shared_tokenizer=False).
+
+    Parameters
+    ----------
+    use_shared_tokenizer : bool, optional
+        Whether to use shared tokenizers. Default True.
+    max_length : int
+        Maximum sequence length.
+
+    Returns
+    -------
+    dict[Modality, TokenizerTransform]
+        Dictionary mapping modalities to their tokenizers.
+    """
+    if use_shared_tokenizer:
+        return {
+            Modality.AMINO_ACID: UMETokenizerTransform(
+                modality=Modality.AMINO_ACID, max_length=max_length, return_modality=False
+            ),
+            Modality.SMILES: UMETokenizerTransform(
+                modality=Modality.SMILES, max_length=max_length, return_modality=False
+            ),
+            Modality.NUCLEOTIDE: UMETokenizerTransform(
+                modality=Modality.NUCLEOTIDE, max_length=max_length, return_modality=False
+            ),
+        }
+    else:
+        return {
+            Modality.AMINO_ACID: TokenizerTransform(
+                AminoAcidTokenizerFast(),
+                padding="max_length",
+                truncation=True,
+                max_length=max_length,
+            ),
+            Modality.SMILES: TokenizerTransform(
+                SMILESTokenizerFast(),
+                padding="max_length",
+                truncation=True,
+                max_length=max_length,
+            ),
+            Modality.NUCLEOTIDE: TokenizerTransform(
+                NucleotideTokenizerFast(),
+                padding="max_length",
+                truncation=True,
+                max_length=max_length,
+            ),
+        }
