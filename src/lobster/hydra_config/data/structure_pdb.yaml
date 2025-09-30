@@ -1,6 +1,6 @@
 defaults:
   - sampler: randomized_minority_upsampler.yaml # Dataloader batch sampler
-  - transform_fn: structure_backbone_transform.yaml # Dataset transforms
+  - transform_fn: structure_backbone_aa_tokenizer_transform.yaml # Dataset transforms
   - collate_fn: collate_fn_backbone_binder_target.yaml # Collate function for the dataloader
 
 _target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule

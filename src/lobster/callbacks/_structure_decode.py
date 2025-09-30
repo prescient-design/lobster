@@ -5,7 +5,7 @@ from lobster.model.latent_generator.io import writepdb
 from loguru import logger
 
 
-class StructureDecode(lightning.Callback):
+class StructureDecodeCallback(lightning.Callback):
     def __init__(self, structure_path: str = None, save_every_n: int = 1000):
         self.STRUCTURE_PATH = structure_path
         self.save_every_n = save_every_n

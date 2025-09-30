@@ -120,8 +120,8 @@ class UMESequenceStructureEncoderModule(nn.Module):
         cache_dir: str | None = None,
         sequence_token_vocab_size: int = 33,
         structure_token_vocab_size: int = 258,
-        sequence_token_pad_token_id: int = 6,
-        structure_token_pad_token_id: int = 6,
+        sequence_token_pad_token_id: int = 1,
+        structure_token_pad_token_id: int = 257,
         conditioning_input_dim: int = 1,
         **neobert_kwargs,
     ) -> None:

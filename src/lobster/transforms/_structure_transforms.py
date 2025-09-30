@@ -196,20 +196,35 @@ class ESMEmbeddingTransform(BaseTransform):
         return x
 
 
-class UMEAminoAcidTokenizerTransform(BaseTransform):
+class AminoAcidTokenizerTransform(BaseTransform):
     def __init__(self, max_length=512, truncation=True, **kwargs):
         from lobster.tokenization import AminoAcidTokenizerFast
         from lobster.transforms import TokenizerTransform
 
         self.tokenizer_transform = TokenizerTransform(
             AminoAcidTokenizerFast(),
-            padding="max_length",
-            truncation=truncation,
+            padding="do_not_pad",
+            truncation=True,
             max_length=max_length,
         )
 
     def __call__(self, x: dict) -> dict:
-        raise NotImplementedError("UMEAminoAcidTokenizerTransform is not implemented")
+        """Tokenize the sequence and add it to the input dictionary.
+
+        Args:
+            x (dict): Input dictionary containing at least the following keys:
+                - "sequence": Sequence tensor of shape (seq_length,).
+
+        Returns:
+            dict: Transformed dictionary with added "sequence_tokenized" key.
+
+        """
+        sequence_string = "".join([residue_constants.restype_order_with_x_inv[i.item()] for i in x["sequence"]])
+        tokenized_sequence = self.tokenizer_transform(sequence_string)
+        x["sequence"] = tokenized_sequence["input_ids"][0]
+        # remove eos and cls tokens
+        x["sequence"] = x["sequence"][1:-1]
+        return x
 
 
 class StructureBackboneTransform(BaseTransform):

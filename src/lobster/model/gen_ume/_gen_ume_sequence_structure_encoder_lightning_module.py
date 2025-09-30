@@ -36,7 +36,6 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         mask_token_id: int,
         pad_token_id: int,
         vocab_size: int,
-        special_token_ids: list[int],
         auxiliary_tasks: list[AuxiliaryTask] | None = None,
         seed: int = 0,
         lr: float = 1e-3,
@@ -61,6 +60,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         interpolant: Callable[..., DiscreteFlowMatcher] = DiscreteFlowMatcher,
         inference_schedule: Callable[..., LinearInferenceSchedule] = LinearInferenceSchedule,
         use_masked_prior: bool = True,
+        inverse_folding: bool = False,
     ):
         self.save_hyperparameters()
 
@@ -69,7 +69,6 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
         self.vocab_size = vocab_size
-        self.special_token_ids = special_token_ids
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
@@ -99,6 +98,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         self.loss_factory = self.structure_latent_encoder_decoder.model.loss_factory
 
         # generation params
+        self.inverse_folding = inverse_folding
         self.prior_distribution_seq = prior_distribution_seq
         self.prior_distribution_struc = prior_distribution_struc
         if use_masked_prior:
@@ -120,9 +120,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         self.inference_schedule = inference_schedule
         time_distribution_seq = self.time_distribution_seq()
         time_distribution_struc = self.time_distribution_struc()
-        # device = torch.cuda.device(torch.cuda.current_device()) if torch.cuda.is_available() else "cpu"
-        # device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        # device = self.structure_latent_encoder_decoder.device
+
         device = next(self.parameters()).device
         interpolant_seq = self.interpolant(
             time_distribution=time_distribution_seq, prior_distribution=prior_seq, device=device
@@ -148,7 +146,10 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
         self.encoder = UMESequenceStructureEncoderModule(
             auxiliary_tasks=auxiliary_tasks,
-            pad_token_id=self.pad_token_id,
+            sequence_token_vocab_size=self.vocab_size,
+            structure_token_vocab_size=self.num_struc_classes,
+            sequence_token_pad_token_id=self.pad_token_id,
+            structure_token_pad_token_id=self.padding_index_struc_tokens,
             model_ckpt=ckpt_path,
             **encoder_kwargs or {},
         )
@@ -303,6 +304,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         x_0_struc = self.interpolant_struc.sample_prior(x_1_struc.shape)
         timesteps_seq = timesteps["sequence_tokens"]
         timesteps_struc = timesteps["structure_tokens"]
+        if self.inverse_folding:
+            timesteps_struc = torch.ones_like(timesteps_struc)
         x_t_seq = self.interpolant_seq.interpolate(x_1_seq, timesteps_seq, x_0_seq)
         x_t_struc = self.interpolant_struc.interpolate(x_1_struc, timesteps_struc, x_0_struc)
 
@@ -428,6 +431,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         stochasticity_struc: int = 0,
         temperature_seq: float = 1.0,
         temperature_struc: float = 1.0,
+        inverse_folding: bool = False,
+        structure_path: str = None,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -451,6 +456,11 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         mask = torch.ones((num_samples, length), device=device)
         residue_index = torch.arange(length, device=device)
         conditioning_tensor = torch.zeros((num_samples, length, 1), device=device)
+        if inverse_folding:
+            if structure_path is not None:
+                raise NotImplementedError("Inverse folding is not implemented yet")
+            else:
+                raise ValueError("Structure path is required for inverse folding")
 
         for dt_seq, dt_struc, t_seq, t_struc in tqdm(
             zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples"

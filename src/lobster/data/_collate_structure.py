@@ -45,6 +45,9 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         padded_template_coords = []
         padded_template_mask = []
 
+    if "sequence_tokenized" in batch[0]:
+        padded_sequence_tokenized = []
+
     for bb_dict in batch:
         coords_res = bb_dict["coords_res"]
         mask = bb_dict["mask"]
@@ -176,6 +179,20 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
                     dim=0,
                 )
             )
+
+        if "sequence_tokenized" in batch[0]:
+            padded_sequence_tokenized.append(
+                torch.cat(
+                    [
+                        bb_dict["sequence_tokenized"],
+                        torch.ones(
+                            max_length - bb_dict["sequence_tokenized"].shape[0],
+                            *bb_dict["sequence_tokenized"].shape[1:],
+                        ),
+                    ],
+                    dim=0,
+                )
+            )
     out = {
         "coords_res": torch.stack(padded_coords_res, dim=0),
         "mask": torch.stack(padded_mask, dim=0),
@@ -202,6 +219,8 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     if "template_coords" in batch[0]:
         out["template_coords"] = torch.stack(padded_template_coords, dim=0)
         out["template_mask"] = torch.stack(padded_template_mask, dim=0)
+    if "sequence_tokenized" in batch[0]:
+        out["sequence_tokenized"] = torch.stack(padded_sequence_tokenized, dim=0)
 
     if "name" in batch[0]:
         out["name"] = [bb_dict["name"] for bb_dict in batch]
