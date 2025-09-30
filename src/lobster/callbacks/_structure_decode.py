@@ -2,6 +2,7 @@ import lightning
 import os
 import torch
 from lobster.model.latent_generator.io import writepdb
+from lobster.model.latent_generator.utils import convert_lobster_aa_tokenization_to_standard_aa
 from loguru import logger
 
 
@@ -39,8 +40,13 @@ class StructureDecodeCallback(lightning.Callback):
 
             # save the pdb file
             if x_recon_xyz is not None:
-                seq = outputs["unmasked_x"]["sequence_logits"][:, :, :21]
-                seq = seq.argmax(dim=-1)
+                if outputs["unmasked_x"]["sequence_logits"].shape[-1] == 33:
+                    seq = convert_lobster_aa_tokenization_to_standard_aa(
+                        outputs["unmasked_x"]["sequence_logits"], device=self.device
+                    )
+                else:
+                    seq = outputs["unmasked_x"]["sequence_logits"].argmax(dim=-1)
+                    seq[seq > 21] = 20
                 if t is not None:
                     filename = f"{self.STRUCTURE_PATH}decode/struc_{batch_idx}_{current_step}_t{str(t)}_cond{conditioning}_decode.pdb"
                 else:
