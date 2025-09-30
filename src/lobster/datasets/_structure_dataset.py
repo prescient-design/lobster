@@ -136,7 +136,6 @@ class StructureDataset(Dataset):
         import lobster
 
         lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
-        # lobster.ensure_package("icream", group="lg-gpu (or --extra lg-cpu)")
 
         self.root = pathlib.Path(root)
         self.processed_dir = self.root

@@ -17,7 +17,6 @@ from ._minhasher import LobsterMinHasher
 from ._mmseqs import MMSeqsRunner
 from ._structure_datamodule import PDBDataModule
 
-# from ._coord_structure_datamodule import StructureLightningDataModule
 from ._ume_datamodule import UMELightningDataModule
 from ._utils import download_from_s3, get_s3_bucket_and_key, load_pickle, upload_to_s3
 
@@ -38,7 +37,6 @@ __all__ = [
     "LobsterMinHasher",
     "MMSeqsRunner",
     "PDBDataModule",
-    # "StructureLightningDataModule",
     "load_pickle",
     "UMELightningDataModule",
     "upload_to_s3",

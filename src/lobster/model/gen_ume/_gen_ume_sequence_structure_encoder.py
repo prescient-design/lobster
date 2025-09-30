@@ -8,6 +8,7 @@ from torch import Tensor
 
 
 from ..neobert import NeoBERTModule
+from ..ume2 import AuxiliaryRegressionTaskHead
 from ._checkpoint_utils import load_checkpoint_from_s3_uri_or_local_path, map_checkpoint_keys
 
 logger = logging.getLogger(__name__)
@@ -70,46 +71,6 @@ class AuxiliaryTask:
 
         if self.task_type not in {"regression"}:
             raise ValueError(f"Unsupported task type: {self.task_type}")
-
-
-class AuxiliaryRegressionTaskHead(nn.Module):
-    """Head for auxiliary regression tasks"""
-
-    def __init__(
-        self,
-        input_dim: int,
-        output_dim: int,
-        task_name: str,
-        hidden_size: int | None = None,
-        dropout: float = 0.1,
-        num_layers: int = 2,
-        pooling: Literal["cls", "mean"] = "mean",
-    ):
-        super().__init__()
-        self.task_name = task_name
-        self.hidden_size = hidden_size if hidden_size is not None else input_dim // 2
-        self.dropout = dropout
-        self.num_layers = num_layers
-        self.pooling = pooling
-        layers = []
-        current_dim = input_dim
-
-        for i in range(self.num_layers):
-            layers.extend([nn.Linear(current_dim, self.hidden_size), nn.ReLU(), nn.Dropout(self.dropout)])
-            current_dim = self.hidden_size
-
-        layers.append(nn.Linear(self.hidden_size, output_dim))
-
-        self.head = nn.Sequential(*layers)
-
-    def forward(self, x: Tensor) -> Tensor:
-        match self.pooling:
-            case "cls":
-                x = x[:, 0, :]
-            case "mean":
-                x = x.mean(dim=1)
-
-        return self.head(x)
 
 
 class UMESequenceStructureEncoderModule(nn.Module):

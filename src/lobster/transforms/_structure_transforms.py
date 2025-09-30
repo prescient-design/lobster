@@ -198,8 +198,11 @@ class ESMEmbeddingTransform(BaseTransform):
 
 class AminoAcidTokenizerTransform(BaseTransform):
     def __init__(self, max_length=512, truncation=True, **kwargs):
+        import lobster
         from lobster.tokenization import AminoAcidTokenizerFast
         from lobster.transforms import TokenizerTransform
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         self.tokenizer_transform = TokenizerTransform(
             AminoAcidTokenizerFast(),
@@ -229,6 +232,10 @@ class AminoAcidTokenizerTransform(BaseTransform):
 
 class StructureBackboneTransform(BaseTransform):
     def __init__(self, max_length=512, **kwargs):
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+
         logger.info("StructureBackboneTransform")
         self.max_length = max_length
         self.unk_idx = residue_constants.restype_order_with_x["X"]
@@ -352,9 +359,9 @@ class StructureTemplateTransform(BaseTransform):
 
 class StructureLigandTransform(BaseTransform):
     def __init__(self, max_length=512, rand_permute_ligand=False, **kwargs):
-        # import lobster
+        import lobster
 
-        # lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
 
         logger.info("StructureLigandTransform")
         self.max_length = max_length

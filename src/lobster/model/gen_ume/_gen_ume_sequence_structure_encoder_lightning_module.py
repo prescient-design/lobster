@@ -244,12 +244,6 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
         return total_loss, loss_dict
 
-    def compute_mlm_loss(self, batch: dict[str, Tensor]) -> Tensor:
-        raise NotImplementedError("MLM loss is not implemented for the model.")
-
-    def compute_auxiliary_tasks_loss(self, batch: dict[str, Tensor]) -> dict[str, Tensor]:
-        raise NotImplementedError("Auxiliary tasks are not implemented for the model.")
-
     def get_gen_gt_and_conditioning_tensor(
         self, batch: dict[str, Tensor], cond_percentage: float | None = None
     ) -> tuple[dict[str, Tensor], Tensor, Tensor, Tensor, bool]:

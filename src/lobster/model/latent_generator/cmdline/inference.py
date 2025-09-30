@@ -10,6 +10,7 @@ from typing import Any
 
 import boto3
 import hydra
+from hydra.core.global_hydra import GlobalHydra
 import torch
 from botocore.exceptions import NoCredentialsError
 from omegaconf import DictConfig, OmegaConf
@@ -400,8 +401,6 @@ OmegaConf.register_new_resolver("format", format_resolver, replace=True)
 
 
 def load_config(config_path: str, config_name: str, overrides: list[str] | None = None) -> DictConfig:
-    from hydra.core.global_hydra import GlobalHydra
-
     # Check if Hydra is already initialized
     if GlobalHydra.instance().is_initialized():
         GlobalHydra.instance().clear()
@@ -467,9 +466,7 @@ class LatentEncoderDecoder:
                 raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
 
         py_logger.info(f"Loading model from {checkpoint_path}")
-        print(cfg_path)
-        print(cfg_name)
-        print(overrides)
+
         cfg = load_config(cfg_path, cfg_name, overrides)
 
         # If config path is provided, load the model with the config
