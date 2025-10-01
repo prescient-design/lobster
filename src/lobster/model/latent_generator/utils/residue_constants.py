@@ -741,7 +741,7 @@ def convert_lobster_aa_tokenization_to_standard_aa(sequence_logits, device=None)
 
     seq = torch.stack(standard_seq_tokens, dim=0)
     # Clamp values > 21 to 20 (unknown)
-    seq[seq > 21] = 20
+    seq[seq > 20] = 20
 
     return seq
 

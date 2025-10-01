@@ -86,7 +86,8 @@ lg-cpu = [
     "lightning-utilities",
     "mini3di",
     "cpdb-protein",
-    "bionemo-moco"
+    "bionemo-moco",
+    "tmtools"
 ]
 lg-gpu = [
     "biopandas==0.5.0.dev0",
@@ -109,7 +110,8 @@ lg-gpu = [
     "lightning-utilities",
     "mini3di",
     "cpdb-protein",
-    "bionemo-moco"
+    "bionemo-moco",
+    "tmtools"
 ]
 mgm = [
     "selfies>=2.1.2",
