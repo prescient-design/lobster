@@ -271,7 +271,6 @@ class StructureBackboneTransform(BaseTransform):
             chain = list(set_chains)[chain]
 
             # get all indices in chain
-            # chain_indices = [i for i in range(len(chains)) if chains[i] == chain]
             chains_array = np.array(chains)
             chain_indices = np.where(chains_array == chain)[0].tolist()
 
@@ -432,6 +431,33 @@ class StructureC6DTransform(BaseTransform):
         c6d_mask = ca_dist_matrix < self.dist_cutoff
         x["c6d_mask"] = c6d_mask
         x["c6d_binned"] = c6d_to_bins(x["c6d"])
+        return x
+
+
+class AntibodyChainTransform(BaseTransform):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        logger.info("AntibodyChainTransform")
+
+    def __call__(self, x: dict) -> dict:
+        """Transform antibody chains to be one chain e.g H and L to be one chain (H and L become H).
+        Args:
+            x (dict): Input dictionary containing at least the following keys:
+                - "chains": Chains tensor of shape (seq_length,).
+
+        Returns:
+            dict: Transformed dictionary with transformed chains.
+
+        """
+        chain_H_id = ord("H")
+        chain_L_id = ord("L")
+        # check that H and L are present
+        if chain_H_id not in x["chains"] or chain_L_id not in x["chains"]:
+            return x
+        x["chains"][x["chains"] == chain_L_id] = chain_H_id
         return x
 
 

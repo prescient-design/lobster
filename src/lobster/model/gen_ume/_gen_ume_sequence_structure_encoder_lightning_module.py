@@ -24,6 +24,7 @@ from bionemo.moco.distributions.time import UniformTimeDistribution
 from bionemo.moco.interpolants import DiscreteFlowMatcher
 from bionemo.moco.schedules.inference_time_schedules import (
     LinearInferenceSchedule,
+    LogInferenceSchedule,
 )
 
 
@@ -418,12 +419,12 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         self,
         length,
         num_samples,
-        inference_schedule_seq: Callable[..., LinearInferenceSchedule] = LinearInferenceSchedule,
+        inference_schedule_seq: Callable[..., LinearInferenceSchedule] = LogInferenceSchedule,
         inference_schedule_struc: Callable[..., LinearInferenceSchedule] = LinearInferenceSchedule,
-        nsteps: int = 100,
-        stochasticity_seq: int = 0,
-        stochasticity_struc: int = 0,
-        temperature_seq: float = 1.0,
+        nsteps: int = 200,
+        stochasticity_seq: int = 20,
+        stochasticity_struc: int = 20,
+        temperature_seq: float = 0.5,
         temperature_struc: float = 1.0,
         inverse_folding: bool = False,
         structure_path: str = None,
