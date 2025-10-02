@@ -28,7 +28,7 @@ class SklearnProbeTaskConfig:
     num_classes: int | None = None
     modality: str | None = None
     dimensionality_reduction: bool = False
-    reduced_dim: int = 320
+    reduced_dim: int = 128
     classification_threshold: float = 0.5
 
 
@@ -39,7 +39,7 @@ class SklearnProbeTaskResult:
     config: SklearnProbeTaskConfig
     metrics: dict[str, float]
     probe: Any | None
-    preprocessors: dict[str, Any] | None  # scalers, PCA, etc.
+    preprocessors: dict[str, Any] | None
 
 
 class SklearnProbeCallback(Callback):
@@ -61,56 +61,51 @@ class SklearnProbeCallback(Callback):
         self.seed = seed
         self.task_results: dict[str, SklearnProbeTaskResult] = {}
 
-    def _create_metrics_for_task(
-        self, task_type: SklearnProbeTaskType, num_classes: int | None = None
-    ) -> dict[str, Any]:
-        """Create metrics dictionary for a specific task type.
-
-        Parameters
-        ----------
-        task_type : TaskType
-            The type of task (regression, binary, multiclass, multilabel)
-        num_classes : int | None
-            Number of classes for classification tasks
-
-        Returns
-        -------
-        dict[str, Any]
-            Dictionary of metric name to metric instance
-        """
-        if task_type == "regression":
+    def _create_metrics_for_task(self, task_config: SklearnProbeTaskConfig) -> dict[str, Any]:
+        """Create metrics dictionary for a specific task type."""
+        if task_config.task_type == "regression":
             return {
                 "mse": MeanSquaredError(),
                 "r2": R2Score(),
                 "spearman": SpearmanCorrCoef(),
                 "pearson": PearsonCorrCoef(),
             }
-        elif task_type in {"binary", "multiclass", "multilabel"}:
-            if task_type == "multilabel":
+        elif task_config.task_type in {"binary", "multiclass", "multilabel"}:
+            if task_config.task_type == "multilabel":
                 return {
                     "accuracy": Accuracy(
-                        task=task_type, num_labels=num_classes, threshold=self.classification_threshold
+                        task=task_config.task_type,
+                        num_labels=task_config.num_classes,
+                        threshold=task_config.classification_threshold,
                     ),
-                    "f1": F1Score(task=task_type, num_labels=num_classes, threshold=self.classification_threshold),
+                    "f1": F1Score(
+                        task=task_config.task_type,
+                        num_labels=task_config.num_classes,
+                        threshold=task_config.classification_threshold,
+                    ),
                     "f1_weighted": F1Score(
-                        task=task_type,
-                        num_labels=num_classes,
+                        task=task_config.task_type,
+                        num_labels=task_config.num_classes,
                         average="weighted",
-                        threshold=self.classification_threshold,
+                        threshold=task_config.classification_threshold,
                     ),
-                    "auroc": AUROC(task=task_type, num_labels=num_classes),
+                    "auroc": AUROC(task=task_config.task_type, num_labels=task_config.num_classes),
                 }
             else:
                 return {
-                    "accuracy": Accuracy(task=task_type, num_classes=num_classes),
-                    "f1": F1Score(task=task_type, num_classes=num_classes),
-                    "f1_weighted": F1Score(task=task_type, num_classes=num_classes, average="weighted"),
-                    "auroc": AUROC(task=task_type, num_classes=num_classes),
+                    "accuracy": Accuracy(task=task_config.task_type, num_classes=task_config.num_classes),
+                    "f1": F1Score(task=task_config.task_type, num_classes=task_config.num_classes),
+                    "f1_weighted": F1Score(
+                        task=task_config.task_type, num_classes=task_config.num_classes, average="weighted"
+                    ),
+                    "auroc": AUROC(task=task_config.task_type, num_classes=task_config.num_classes),
                 }
         else:
-            raise ValueError(f"Task type {task_type} not supported. Must be one of {SklearnProbeTaskType}")
+            raise ValueError(f"Task type {task_config.task_type} not supported. Must be one of {SklearnProbeTaskType}")
 
-    def _compute_regression_metrics(self, predictions: Tensor, targets: Tensor) -> dict[str, float]:
+    def _compute_regression_metrics(
+        self, predictions: Tensor, targets: Tensor, task_config: SklearnProbeTaskConfig
+    ) -> dict[str, float]:
         """Compute regression metrics for probe evaluation.
 
         Parameters
@@ -133,7 +128,7 @@ class SklearnProbeCallback(Callback):
             elif predictions.dim() == 1 and targets.dim() == 2:
                 predictions = predictions.unsqueeze(1)
 
-        metrics = self._create_metrics_for_task("regression")
+        metrics = self._create_metrics_for_task(task_config)
 
         results = {}
         results["mse"] = metrics["mse"](predictions, targets).item()
@@ -148,27 +143,10 @@ class SklearnProbeCallback(Callback):
         return results
 
     def _compute_classification_metrics(
-        self, predictions: Tensor, targets: Tensor, task_type: SklearnProbeTaskType, num_classes: int | None = None
+        self, predictions: Tensor, targets: Tensor, task_config: SklearnProbeTaskConfig
     ) -> dict[str, float]:
-        """Compute classification metrics for probe evaluation.
-
-        Parameters
-        ----------
-        predictions : Tensor
-            Model predictions (probabilities)
-        targets : Tensor
-            Ground truth targets
-        task_type : SklearnProbeTaskType
-            Type of classification task
-        num_classes : int | None
-            Number of classes for the task
-
-        Returns
-        -------
-        dict[str, float]
-            Dictionary of metric names to values
-        """
-        metrics = self._create_metrics_for_task(task_type, num_classes)
+        """Compute classification metrics for probe evaluation."""
+        metrics = self._create_metrics_for_task(task_config)
 
         return {metric_name: metrics[metric_name](predictions, targets).item() for metric_name in metrics}
 
@@ -306,11 +284,9 @@ class SklearnProbeCallback(Callback):
         )
 
         if task_config.task_type == "regression":
-            metrics = self._compute_regression_metrics(predictions, test_targets)
+            metrics = self._compute_regression_metrics(predictions, test_targets, task_config)
         else:
-            metrics = self._compute_classification_metrics(
-                predictions, test_targets, task_config.task_type, task_config.num_classes
-            )
+            metrics = self._compute_classification_metrics(predictions, test_targets, task_config)
 
         return SklearnProbeTaskResult(config=task_config, probe=probe, metrics=metrics, preprocessors=preprocessors)
 
@@ -322,7 +298,7 @@ class SklearnProbeCallback(Callback):
         n_folds: int = 5,
     ) -> SklearnProbeTaskResult:
         """Train and evaluate a probe on a given task using cross-validation."""
-        kfold = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.seed)
+        kfold = KFold(n_splits=n_folds, shuffle=True, random_state=self.seed)
 
         kfold_metrics = []
         indices = list(range(len(dataset)))
