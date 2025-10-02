@@ -60,26 +60,25 @@ class UnconditionalGenerationCallback(lightning.Callback):
         self.save_every_n = save_every_n
         self.length = length
         self.num_samples = num_samples
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.plm_fold = LobsterPLMFold(model_name="esmfold_v1", max_length=length).to(self.device)
+        self.plm_fold = LobsterPLMFold(model_name="esmfold_v1", max_length=length)
         if not os.path.exists(f"{self.structure_path}/unconditional"):
             os.makedirs(f"{self.structure_path}/unconditional", exist_ok=True)
 
     def on_train_batch_end(self, trainer, gen_ume, outputs, batch, batch_idx):
         current_step = trainer.global_step
+        device = batch["sequence"].device
+        self.plm_fold.to(device)
 
         if batch_idx % self.save_every_n == 0:
             generate_sample = gen_ume.generate_sample(length=self.length, num_samples=self.num_samples)
-            mask = torch.ones((self.num_samples, self.length), device=self.device)
+            mask = torch.ones((self.num_samples, self.length), device=device)
             decoded_x = gen_ume.decode_structure(generate_sample, mask)
 
             for decoder_name in decoded_x:
                 if "vit_decoder" == decoder_name:
                     x_recon_xyz = decoded_x[decoder_name]
             if generate_sample["sequence_logits"].shape[-1] == 33:
-                seq = convert_lobster_aa_tokenization_to_standard_aa(
-                    generate_sample["sequence_logits"], device=self.device
-                )
+                seq = convert_lobster_aa_tokenization_to_standard_aa(generate_sample["sequence_logits"], device=device)
             else:
                 seq = generate_sample["sequence_logits"].argmax(dim=-1)
                 seq[seq > 21] = 20
@@ -101,7 +100,7 @@ class UnconditionalGenerationCallback(lightning.Callback):
                 max_length=self.length,
                 add_special_tokens=False,
                 return_tensors="pt",
-            )["input_ids"].to(self.device)
+            )["input_ids"].to(device)
             with torch.no_grad():
                 outputs = self.plm_fold.model(tokenized_input)
             folded_structure_metrics, pred_coords = get_folded_structure_metrics(outputs, x_recon_xyz, sequence_str)

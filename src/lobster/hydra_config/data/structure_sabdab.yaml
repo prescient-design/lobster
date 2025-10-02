@@ -4,8 +4,8 @@ defaults:
   - collate_fn: collate_fn_backbone_binder_target.yaml # Collate function for the dataloader
 
 _target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
-root: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
-path_to_datasets: ["/data2/lisanzas/sabdab/train_denovo_processed_pt/train_denovo_data.pt", "/data2/lisanzas/sabdab/train_denovo_processed_pt/val_denovo_data.pt", "/data2/lisanzas/latent_generator_files/pdb_data/split_data/test.pt"]
+root: /data2/lisanzas/sabdab/temp/ # this doesnt do anything
+path_to_datasets: ["/data2/lisanzas/sabdab/train_denovo_processed_pt/train_denovo_data.pt", "/data2/lisanzas/sabdab/val_denovo_processed_pt/val_denovo_data.pt", "/data2/lisanzas/sabdab/test_denovo_processed_pt/test_dummy_denovo_data.pt"]
 max_length: 512 # Maximum length of the sequence; not used
 cluster_file: null
 files_to_keep: null # this doesnt do anything
