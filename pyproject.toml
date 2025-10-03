@@ -112,6 +112,9 @@ lg-gpu = [
 mgm = [
     "selfies>=2.1.2",
 ]
+calm = [
+    "calm @ git+https://github.com/oxpig/CaLM.git",
+]
 flash = [
     "flash-attn>=2.8.0.post2; sys_platform == 'linux'",
     "rotary-embedding-torch",
