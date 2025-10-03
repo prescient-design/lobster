@@ -1,0 +1,48 @@
+# Example configuration for inverse folding (sequence design for given structures)
+# Usage: uv run python -m lobster.cmdline.generate --config-path examples --config-name generate_inverse_folding
+#python -m lobster.cmdline.generate --config-path "/homefs/home/lisanzas/scratch/Develop/lobster/examples" --config-name generate_inverse_folding
+
+# Output directory
+output_dir: "./examples/generated_inverse_folding"
+
+# Random seed for reproducibility
+seed: 54321
+
+# Model configuration
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: "/data2/ume/gen_ume/runs/2025-10-02T16-15-21/last.ckpt"   # Update this path
+  mask_token_id: 32
+  pad_token_id: 1
+  vocab_size: 33
+  encoder_kwargs:
+    max_length: 512
+    model_size: mini
+
+# Generation settings
+generation:
+  mode: inverse_folding
+  nsteps: 100          # Fewer steps for inverse folding
+  batch_size: 2        # Process 2 structures at a time
+  
+  # Sequence generation parameters
+  temperature_seq: 0.5    
+  stochasticity_seq: 20   
+  temperature_struc: 1.0
+  stochasticity_struc: 20
+  
+  # Input structures - update these paths to your PDB files
+  # Examples of different input formats:
+  # Single file: input_structures: "/path/to/structure.pdb"
+  # Directory: input_structures: "/path/to/pdb/directory/"
+  # Glob pattern: input_structures: "/path/to/structures/*.pdb"
+  # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
+  input_structures: "/homefs/home/lisanzas/scratch/Develop/lobster/test_data/*.pdb"
+  
+  # Enable ESMFold validation
+  use_esmfold: true
+  max_length: 512
+  
+  # Not used for inverse folding
+  length: null
+  num_samples: null

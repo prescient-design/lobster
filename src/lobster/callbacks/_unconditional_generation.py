@@ -87,7 +87,9 @@ class UnconditionalGenerationCallback(lightning.Callback):
         )["input_ids"].to(device)
         with torch.no_grad():
             outputs = self.plm_fold.model(tokenized_input)
-        folded_structure_metrics, pred_coords = get_folded_structure_metrics(outputs, x_recon_xyz, sequence_str)
+        folded_structure_metrics, pred_coords = get_folded_structure_metrics(
+            outputs, x_recon_xyz, sequence_str, prefix="unconditional"
+        )
         total_loss = 0.0
         # save the folded structure
         for i in range(10):

@@ -2,7 +2,7 @@ import torch
 from tmtools import tm_align
 
 
-def get_folded_structure_metrics(outputs, ref_coords, ref_seq):
+def get_folded_structure_metrics(outputs, ref_coords, ref_seq, prefix=""):
     """
     Get the metrics of the folded structure.
     Args:
@@ -32,8 +32,8 @@ def get_folded_structure_metrics(outputs, ref_coords, ref_seq):
     tm_score = torch.tensor(tm_score).to(pred_coords.device)
     rmsd = torch.tensor(rmsd).to(pred_coords.device)
     return {
-        "plddt": plddt_scores.mean(),
-        "predicted_aligned_error": predicted_aligned_error.mean(),
-        "tm_score": tm_score.mean(),
-        "rmsd": rmsd.mean(),
+        f"{prefix}_plddt": plddt_scores.mean(),
+        f"{prefix}_predicted_aligned_error": predicted_aligned_error.mean(),
+        f"{prefix}_tm_score": tm_score.mean(),
+        f"{prefix}_rmsd": rmsd.mean(),
     }, pred_coords
