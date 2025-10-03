@@ -427,7 +427,9 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         temperature_seq: float = 0.5,
         temperature_struc: float = 1.0,
         inverse_folding: bool = False,
-        structure_path: str = None,
+        input_structure_coords: Tensor = None,
+        input_mask: Tensor = None,
+        input_indices: Tensor = None,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -452,8 +454,13 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         residue_index = torch.arange(length, device=device)
         conditioning_tensor = torch.zeros((num_samples, length, 1), device=device)
         if inverse_folding:
-            if structure_path is not None:
-                raise NotImplementedError("Inverse folding is not implemented yet")
+            if input_structure_coords is not None:
+                x_quant, x_quant_emb, mask = self.encode_structure(
+                    x_gt=input_structure_coords, mask=input_mask, residue_index=input_indices
+                )
+                xt_struc = x_quant.argmax(dim=-1)
+                xt["structure_tokens"] = xt_struc
+                ts_struc = torch.full_like(ts_struc, 0.9950)
             else:
                 raise ValueError("Structure path is required for inverse folding")
 

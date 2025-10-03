@@ -2,7 +2,7 @@
 defaults:
   - override /data: structure_sabdab
   - override /model: gen_ume
-  - override /callbacks: gen_ume
+  - override /callbacks: gen_ume_inv
 
 compile: false
 
