@@ -16,6 +16,8 @@ from lobster.callbacks._folding_structure_utils import get_folded_structure_metr
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
+# warning emsfolding does not take into account multiple chains
+# todo: add support for multiple chains
 
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="generate")
@@ -276,10 +278,12 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
             for i, valid_idx in enumerate(valid_indices):
                 original_path = batch_paths[valid_idx]
                 original_name = Path(original_path).stem
+                x_recon_xyz_i_masked = x_recon_xyz[i, mask[i] == 1]
+                seq_i_masked = seq[i, mask[i] == 1]
 
                 # Save generated structure
                 filename = output_dir / f"inverse_folding_{original_name}_generated.pdb"
-                writepdb(str(filename), x_recon_xyz[i], seq[i])
+                writepdb(str(filename), x_recon_xyz_i_masked, seq_i_masked)
                 logger.info(f"Saved: {filename}")
 
             # Optional ESMFold validation
@@ -293,6 +297,7 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
                     output_dir,
                     f"inverse_folding_batch{batch_idx:03d}",
                     original_paths=[batch_paths[i] for i in valid_indices],
+                    mask=mask,
                     max_length=max_length,
                 )
 
@@ -305,13 +310,19 @@ def _validate_with_esmfold(
     output_dir: Path,
     prefix: str,
     original_paths: list[str] | None = None,
+    mask: torch.Tensor | None = None,
     max_length: int | None = 512,
 ) -> None:
     """Validate generated structures using ESMFold."""
     # Convert sequences to strings
     sequence_str = []
     for i in range(seq.shape[0]):
-        sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq[i]]))
+        if mask is not None:
+            # do not include the padded positions in the sequence
+            seq_i = seq[i, mask[i] == 1]
+            sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq_i]))
+        else:
+            sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq[i]]))
 
     # Tokenize sequences
     tokenized_input = plm_fold.tokenizer.batch_encode_plus(
@@ -328,7 +339,7 @@ def _validate_with_esmfold(
         outputs = plm_fold.model(tokenized_input)
 
     # Get folding metrics
-    folded_structure_metrics, pred_coords = get_folded_structure_metrics(outputs, x_recon_xyz, sequence_str)
+    folded_structure_metrics, pred_coords = get_folded_structure_metrics(outputs, x_recon_xyz, sequence_str, mask=mask)
 
     # Log metrics
     logger.info("ESMFold validation metrics:")
@@ -344,7 +355,13 @@ def _validate_with_esmfold(
         else:
             # Use generic naming for unconditional generation
             filename = output_dir / f"{prefix}_esmfold_{i:03d}.pdb"
-        writepdb(str(filename), pred_coords[i], seq[i])
+        if mask is not None:
+            pred_coords_i_masked = pred_coords[i, mask[i] == 1]
+            seq_i_masked = seq[i, mask[i] == 1]
+        else:
+            pred_coords_i_masked = pred_coords[i]
+            seq_i_masked = seq[i]
+        writepdb(str(filename), pred_coords_i_masked, seq_i_masked)
         logger.info(f"Saved ESMFold structure: {filename}")
 
 
