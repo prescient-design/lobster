@@ -51,6 +51,11 @@ class UMESequenceEncoderModule(nn.Module):
                 }
             )
 
+    @property
+    def config(self):
+        """Expose neobert config for compatibility with downstream tasks."""
+        return self.neobert.config
+
     @classmethod
     def load_from_checkpoint(
         cls, checkpoint_path: str, *, device: str | None = None, cache_dir: str | None = None, **kwargs
