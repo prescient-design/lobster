@@ -2,18 +2,16 @@ _target_: lobster.model._property_regression.PropertyRegression
 
 # UME-2 encoder (UMESequenceEncoderModule)
 # 
-# Checkpoint loading behavior:
-# - Critical params (vocab_size, hidden_size) are auto-inferred from checkpoint weights
-# - Other params (model_size, pad_token_id, max_length) can be specified in experiment config
-# - device: Auto-detects (cuda if available, else cpu). Can override in experiment config.
+# Default: Load from checkpoint (most common for finetuning)
+# Override checkpoint_path in experiment config
 #
-# Random initialization (model_ckpt: null):
-# - Must specify all params: model_size, pad_token_id, max_length, vocab_size
+# For random initialization, override _target_ in experiment config:
+#   _target_: lobster.model.ume2.UMESequenceEncoderModule
+#   # Must specify: model_size, pad_token_id, max_length, vocab_size
 encoder:
-  _target_: lobster.model.ume2.UMESequenceEncoderModule
-  model_ckpt: ???  # Required: set to checkpoint path or null for random init
-  # cache_dir: only needed if model_ckpt is an S3 path (set in experiment config)
-  # device: auto-detects by default (cuda if available, else cpu)
+  _target_: lobster.model.ume2.UMESequenceEncoderModule.load_from_checkpoint
+  checkpoint_path: ???  # Required: set in experiment config
+  cache_dir: /data2/jorent/ume2_checkpoints
 
 config:
   _target_: lobster.model._property_regression.PropertyRegressionConfig
