@@ -22,11 +22,33 @@ class UMESequenceEncoderModule(nn.Module):
         auxiliary_tasks: list[AuxiliaryTask] | None = None,
         use_shared_tokenizer: bool = False,
         cache_dir: str | None = None,
+        model_ckpt: str | None = None,
         **neobert_kwargs,
     ) -> None:
         super().__init__()
 
-        self.neobert = NeoBERTModule(**neobert_kwargs)
+        # If loading from checkpoint, infer architecture params and load weights
+        if model_ckpt is not None:
+            device = get_device()
+            checkpoint = load_checkpoint_from_s3_uri_or_local_path(model_ckpt, device=device, cache_dir=cache_dir)
+            
+            # Infer critical params from state_dict
+            state_dict = checkpoint["state_dict"]
+            inferred_params = infer_architecture_from_state_dict(state_dict, prefix="encoder.neobert.")
+            
+            # Merge: user kwargs + inferred params (inferred takes priority)
+            neobert_kwargs = {**neobert_kwargs, **inferred_params}
+            logger.info(f"Loading from checkpoint with inferred params: {inferred_params}")
+            
+            # Create model and load weights
+            self.neobert = NeoBERTModule(**neobert_kwargs)
+            state_dict = map_checkpoint_keys(state_dict, original_prefix="encoder.neobert.", new_prefix="")
+            self.neobert.load_state_dict(state_dict)
+            logger.info("Successfully loaded checkpoint weights")
+        else:
+            # No checkpoint - create model from scratch
+            self.neobert = NeoBERTModule(**neobert_kwargs)
+        
         self.use_shared_tokenizer = use_shared_tokenizer
         self.cache_dir = cache_dir
 
