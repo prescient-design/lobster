@@ -10,7 +10,7 @@ from lobster.model.utils import _detect_modality
 from lobster.tokenization import get_ume_tokenizer_transforms
 
 from ..neobert import NeoBERTModule
-from ._checkpoint_utils import load_checkpoint_from_s3_uri_or_local_path, map_checkpoint_keys
+from ._checkpoint_utils import infer_architecture_from_state_dict, load_checkpoint_from_s3_uri_or_local_path, map_checkpoint_keys
 from .auxiliary_tasks import AuxiliaryRegressionTaskHead, AuxiliaryTask
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,11 @@ class UMESequenceEncoderModule(nn.Module):
         state_dict = checkpoint["state_dict"]
 
         encoder_kwargs = hyper_parameters.pop("encoder_kwargs", {})
+        
+        # Infer critical architecture params from state_dict (vocab_size, hidden_size)
+        # These override any values in encoder_kwargs to ensure consistency with checkpoint weights
+        inferred_params = infer_architecture_from_state_dict(state_dict, prefix="encoder.neobert.")
+        encoder_kwargs.update(inferred_params)
 
         # Initialize encoder
         encoder = cls(**hyper_parameters, **encoder_kwargs)
