@@ -302,6 +302,11 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
                 )
 
 
+def _generate_binders(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
+    """Generate binders."""
+    raise NotImplementedError("Binder generation is not implemented")
+
+
 def _validate_with_esmfold(
     seq: torch.Tensor,
     x_recon_xyz: torch.Tensor,

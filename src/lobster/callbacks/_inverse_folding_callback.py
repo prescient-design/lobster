@@ -145,6 +145,7 @@ class InverseFoldingCallback(lightning.Callback):
             B, L = val_example["mask"].shape
             sequence = val_example["sequence"].to(device)
             mask = val_example["mask"].to(device)
+            mask_orig = mask.clone()
             indices = val_example["indices"].to(device)
             coords_res = val_example["coords_res"].to(device)
             # Find the nans in coords_res and set the mask to 0 for those indices
@@ -185,20 +186,22 @@ class InverseFoldingCallback(lightning.Callback):
                 # folding with ESMFold
                 sequence_str = []
                 for i in range(seq.shape[0]):
-                    sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq[i]]))
+                    seq_i = seq[i, mask_orig[i] == 1]
+                    sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq_i]))
+                    # sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq[i]]))
 
                 tokenized_input = self.plm_fold.tokenizer.batch_encode_plus(
                     sequence_str,
                     padding=True,
                     truncation=True,
-                    max_length=self.max_length,
+                    max_length=max(len(seq_i) for seq_i in sequence_str),
                     add_special_tokens=False,
                     return_tensors="pt",
                 )["input_ids"].to(device)
                 with torch.no_grad():
                     outputs = self.plm_fold.model(tokenized_input)
                 folded_structure_metrics, pred_coords = get_folded_structure_metrics(
-                    outputs, x_recon_xyz, sequence_str, prefix="inverse_folding"
+                    outputs, x_recon_xyz, sequence_str, prefix="inverse_folding", mask=mask_orig
                 )
             else:
                 # Skip ESMFold for subsequent batches

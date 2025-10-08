@@ -6,6 +6,7 @@ defaults:
 _target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
 root: /data2/lisanzas/CATH_v4_3/temp/ # this doesnt do anything
 path_to_datasets: ["/data2/lisanzas/CATH_v4_3/processed_structures_pt/train/cath_train.pt", "/data2/lisanzas/CATH_v4_3/processed_structures_pt/val/cath_val.pt", "/data2/lisanzas/CATH_v4_3/processed_structures_pt/test/cath_test.pt"]
+max_length: 512 # Maximum length of the sequence; not used
 cluster_file: null
 files_to_keep: null # this doesnt do anything
 testing: false

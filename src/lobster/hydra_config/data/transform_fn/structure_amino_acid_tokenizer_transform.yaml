@@ -1,0 +1,2 @@
+structure_amino_acid_tokenizer_transform:
+  _target_: lobster.transforms._structure_transforms.AminoAcidTokenizerTransform

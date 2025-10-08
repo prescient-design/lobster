@@ -35,6 +35,7 @@ def get_folded_structure_metrics(outputs, ref_coords, ref_seq, prefix="", mask=N
         else:
             pred_coords_i = pred_coords[i, :, :, :]
             ref_coords_i = ref_coords[i, :, :, :]
+            ref_seq_i = ref_seq[i]
         tm_out = tm_align(
             pred_coords_i[:, 1, :].cpu().numpy(), ref_coords_i[:, 1, :].detach().cpu().numpy(), ref_seq_i, ref_seq_i
         )

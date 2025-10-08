@@ -48,6 +48,10 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     if "sequence_tokenized" in batch[0]:
         padded_sequence_tokenized = []
 
+    if "epitope_tensor" in batch[0]:
+        padded_epitope_tensor = []
+        padded_paratope_tensor = []
+
     for bb_dict in batch:
         coords_res = bb_dict["coords_res"]
         mask = bb_dict["mask"]
@@ -102,6 +106,29 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
                 dim=0,
             )
         )
+        if "epitope_tensor" in batch[0]:
+            padded_epitope_tensor.append(
+                torch.cat(
+                    [
+                        bb_dict["epitope_tensor"],
+                        torch.zeros(
+                            max_length - bb_dict["epitope_tensor"].shape[0], *bb_dict["epitope_tensor"].shape[1:]
+                        ),
+                    ],
+                    dim=0,
+                )
+            )
+            padded_paratope_tensor.append(
+                torch.cat(
+                    [
+                        bb_dict["paratope_tensor"],
+                        torch.zeros(
+                            max_length - bb_dict["paratope_tensor"].shape[0], *bb_dict["paratope_tensor"].shape[1:]
+                        ),
+                    ],
+                    dim=0,
+                )
+            )
         if "template_coords" in batch[0]:
             padded_template_coords.append(
                 torch.cat(
@@ -221,7 +248,9 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         out["template_mask"] = torch.stack(padded_template_mask, dim=0)
     if "sequence_tokenized" in batch[0]:
         out["sequence_tokenized"] = torch.stack(padded_sequence_tokenized, dim=0)
-
+    if "epitope_tensor" in batch[0]:
+        out["epitope_tensor"] = torch.stack(padded_epitope_tensor, dim=0)
+        out["paratope_tensor"] = torch.stack(padded_paratope_tensor, dim=0)
     if "name" in batch[0]:
         out["name"] = [bb_dict["name"] for bb_dict in batch]
 
