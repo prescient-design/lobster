@@ -1,0 +1,2 @@
+structure_complex_transform:
+  _target_: lobster.transforms._structure_transforms.StructureComplexTransform

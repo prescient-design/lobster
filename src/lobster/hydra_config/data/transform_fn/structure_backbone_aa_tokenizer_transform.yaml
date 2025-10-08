@@ -1,0 +1,4 @@
+defaults:
+  - structure_backbone_transform.yaml
+  - structure_amino_acid_tokenizer_transform.yaml
+  - _self_

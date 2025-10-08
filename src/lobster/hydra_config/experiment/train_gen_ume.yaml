@@ -1,0 +1,35 @@
+# @package _global_
+defaults:
+  - override /data: structure_sabdab
+  - override /model: gen_ume
+  - override /callbacks: gen_ume_inv
+
+compile: false
+
+logger:
+  name: gen_ume-${model.encoder_kwargs.model_size}_${data.datasets}_${paths.timestamp}
+  project: lobster_gen_ume
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S} 
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0
+
+

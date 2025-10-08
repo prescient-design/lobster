@@ -1,0 +1,40 @@
+# Example configuration for unconditional protein structure generation
+# Usage: uv run python -m lobster.cmdline.generate --config-path examples --config-name generate_unconditional
+#python -m lobster.cmdline.generate --config-path "/homefs/home/lisanzas/scratch/Develop/lobster/examples" --config-name generate_unconditional
+
+# Output directory
+output_dir: "./examples/generated_unconditional"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: "/data2/ume/gen_ume/runs/2025-10-02T16-15-21/last.ckpt"  # Update this path
+  mask_token_id: 32
+  pad_token_id: 1
+  vocab_size: 33
+  encoder_kwargs:
+    max_length: 512
+    model_size: mini
+
+# Generation parameters
+generation:
+  mode: unconditional
+  length: 100           # Generate 100 residue proteins
+  num_samples: 10       # Generate 10 samples
+  nsteps: 200          # Use 200 generation steps for higher quality
+  
+  # Fine-tune generation parameters
+  temperature_seq: 0.5    # Slightly higher temperature for more diversity
+  temperature_struc: 1.0  # Higher structure temperature
+  stochasticity_seq: 20
+  stochasticity_struc: 20
+  
+  # Enable ESMFold validation
+  use_esmfold: true
+  max_length: 512
+  
+  # Not used for unconditional generation
+  input_structures: null

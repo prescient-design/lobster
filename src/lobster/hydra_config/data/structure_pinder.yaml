@@ -1,0 +1,18 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml # Dataloader batch sampler
+  - transform_fn: structure_backbone_transform.yaml # Dataset transforms
+  - collate_fn: collate_fn_backbone_binder_target.yaml # Collate function for the dataloader
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+root: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
+path_to_datasets: ["/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/train.pt", "/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/val.pt", /data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/test.pt"]
+max_length: 512 
+cluster_file: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/cluster_dict.pt
+files_to_keep: /data/lisanzas/structure_tokenizer/studies/data/pinder/pinder_to_keep.pkl
+testing: false
+datasets: pinder
+use_shards: false
+
+# Dataloader Params
+batch_size: 40 # Batch size for the dataloader
+num_workers: 12 # Number of workers for the dataloader

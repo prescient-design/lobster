@@ -1,0 +1,2 @@
+structure_antibody_chain_transform:
+  _target_: lobster.transforms._structure_transforms.AntibodyChainTransform
