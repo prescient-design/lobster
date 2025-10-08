@@ -9,7 +9,7 @@ from torch import Tensor
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 from tqdm import tqdm
 
-from lobster.constants import CALM_TASKS
+from lobster.constants import CALM_TASKS, Modality
 from lobster.datasets import CalmPropertyDataset
 
 from ._linear_probe_callback import LinearProbeCallback
@@ -210,7 +210,7 @@ class CalmLinearProbeCallback(LinearProbeCallback):
                     sequences = list(x)
 
                 # Both CaLM and UME models have embed_sequences method
-                batch_embeddings = model.embed_sequences(sequences=sequences)
+                batch_embeddings = model.embed_sequences(sequences=sequences, modality=MODALITY.NUCLEOTIDE)
 
                 embeddings.append(batch_embeddings.cpu())
                 targets.append(y.cpu())
