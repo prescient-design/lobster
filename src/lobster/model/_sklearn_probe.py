@@ -239,8 +239,8 @@ def train_sklearn_probe(
         Tuple of (trained_probe, preprocessors_dict)
     """
     # Convert to numpy
-    embeddings_np = x.numpy()
-    targets_np = y.numpy()
+    embeddings_np = x.detach().numpy()
+    targets_np = y.detach().numpy()
 
     # Preprocess embeddings (scaling + dimensionality reduction)
     processed_embeddings, preprocessors = _create_and_fit_preprocessors(
@@ -284,7 +284,7 @@ def predict_with_sklearn_probe(
         Predictions (probabilities for classification, values for regression)
     """
     # Convert to numpy and apply preprocessing
-    embeddings_np = x.numpy()
+    embeddings_np = x.detach().numpy()
     processed_embeddings = _apply_preprocessors(embeddings_np, preprocessors)
 
     # Make predictions based on task type

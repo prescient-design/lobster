@@ -54,12 +54,14 @@ class PEERSklearnProbeCallback(SklearnProbeCallback):
         batch_size: int = 32,
         probe_type: SklearnProbeType = "linear",
         ignore_errors: bool = True,
+        use_joint_embedding_for_pairs: bool = False,
         seed: int = 0,
     ):
         super().__init__(batch_size=batch_size, seed=seed)
 
         self.probe_type = probe_type
         self.ignore_errors = ignore_errors
+        self.use_joint_embedding_for_pairs = use_joint_embedding_for_pairs
 
         # Convert string tasks to enum
         if tasks is not None:
@@ -130,8 +132,13 @@ class PEERSklearnProbeCallback(SklearnProbeCallback):
             with torch.no_grad():
                 # Handle protein-protein interactions
                 if task in {PEERTask.HUMANPPI, PEERTask.YEASTPPI, PEERTask.PPIAFFINITY}:
-                    emb1 = model.embed_sequences(seq1, modality=Modality.AMINO_ACID, aggregate=True)
-                    emb2 = model.embed_sequences(seq2, modality=Modality.AMINO_ACID, aggregate=True)
+                    if not self.use_joint_embedding_for_pairs:
+                        emb1 = model.embed_sequences(seq1, modality=Modality.AMINO_ACID, aggregate=True)
+                        emb2 = model.embed_sequences(seq2, modality=Modality.AMINO_ACID, aggregate=True)
+                    else:
+                        emb1, emb2 = model.embed_sequences(
+                            seq1, seq2, modality1=Modality.AMINO_ACID, modality2=Modality.AMINO_ACID, aggregate=True
+                        )
 
                 # Handle protein-ligand interactions
                 elif task in {PEERTask.BINDINGDB, PEERTask.PDBBIND}:
@@ -139,8 +146,13 @@ class PEERSklearnProbeCallback(SklearnProbeCallback):
                         f"Task {task} requires embeddings for SMILES modality. Please confirm model supports this.",
                         stacklevel=2,
                     )
-                    emb1 = model.embed_sequences(seq1, modality=Modality.AMINO_ACID, aggregate=True)
-                    emb2 = model.embed_sequences(seq2, modality=Modality.SMILES, aggregate=True)
+                    if not self.use_joint_embedding_for_pairs:
+                        emb1 = model.embed_sequences(seq1, modality=Modality.AMINO_ACID, aggregate=True)
+                        emb2 = model.embed_sequences(seq2, modality=Modality.SMILES, aggregate=True)
+                    else:
+                        emb1, emb2 = model.embed_sequences(
+                            seq1, seq2, modality1=Modality.AMINO_ACID, modality2=Modality.SMILES, aggregate=True
+                        )
 
                 else:
                     raise ValueError(f"Unknown paired task: {task}")
@@ -194,7 +206,7 @@ class PEERSklearnProbeCallback(SklearnProbeCallback):
         """Evaluate the model on PEER datasets using sklearn probes."""
         all_task_metrics = {}
 
-        for task in tqdm(self.selected_tasks, desc=self.__class__.__name__):
+        for task in tqdm(sorted(self.selected_tasks), desc=self.__class__.__name__):
             logger.info(f"Evaluating task: {task.value}")
 
             try:
