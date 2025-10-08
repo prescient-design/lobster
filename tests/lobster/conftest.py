@@ -221,6 +221,30 @@ class MockMoleculeACEDataset(Dataset):
         return len(self.smiles)
 
 
+class MockPEERDataset(Dataset):
+    """Mock PEER dataset."""
+
+    def __init__(self, task, split):
+        self.task = task
+        self.split = split
+
+        # Simple protein sequences for testing
+        if split == "train":
+            self.sequences = ["MKLLVLLFGA", "ATCGATCGAT", "AAAAAAAAAA"]
+            self.targets = [2.5, 3.1, 1.8]
+        else:  # test
+            self.sequences = ["CCCCCCCCCC", "GGGGGGGGGG"]
+            self.targets = [2.2, 3.5]
+
+    def __getitem__(self, idx):
+        seq = self.sequences[idx]
+        target = torch.tensor(self.targets[idx], dtype=torch.float32).unsqueeze(-1)
+        return seq, target
+
+    def __len__(self):
+        return len(self.sequences)
+
+
 @pytest.fixture
 def dummy_model():
     return DummyLightningModule()
@@ -261,3 +285,8 @@ def mock_calm_dataset():
 @pytest.fixture
 def mock_moleculeace_dataset():
     return MockMoleculeACEDataset
+
+
+@pytest.fixture
+def mock_peer_dataset():
+    return MockPEERDataset
