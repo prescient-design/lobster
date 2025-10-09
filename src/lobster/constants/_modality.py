@@ -23,16 +23,9 @@ def to_modality(modality: str | Modality) -> Modality:
 
         if normalized in ("smiles", "smi", "sm"):
             return Modality.SMILES
-        elif normalized in ("amino_acid", "amino acid", "protein", "prot", "aa"):
+        elif normalized in ("amino_acid", "amino acid", "protein", "prot", "aa", "peptide", "polypeptide(D)"):
             return Modality.AMINO_ACID
         elif normalized in ("nucleotide", "nucleotides", "dna", "rna", "nt"):
             return Modality.NUCLEOTIDE
-        elif normalized in ("3d_coordinates", "3d coordinates", "coordinates", "coords", "3d"):
-            return Modality.COORDINATES_3D
 
-        try:
-            return Modality(modality)
-        except ValueError:
-            pass
-
-    raise ValueError(f"Invalid modality: '{modality}'. Valid options are: {[m.value for m in Modality]}")
+        raise ValueError(f"Invalid modality: '{modality}'. Valid options are: {[m.value for m in Modality]}")

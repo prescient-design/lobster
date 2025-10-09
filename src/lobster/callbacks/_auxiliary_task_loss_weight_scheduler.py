@@ -1,6 +1,7 @@
 import logging
 import math
 from typing import Literal
+
 from lightning import Callback, LightningModule, Trainer
 
 logger = logging.getLogger(__name__)

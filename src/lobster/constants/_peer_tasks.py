@@ -95,6 +95,32 @@ PEER_TASKS = {
     PEERTask.BINDINGDB: ("regression", None),  # Protein-ligand Regression
 }
 
+# Define preferred single metric for tasks shown in PEER benchmark image
+# Tasks not listed here will return all metrics
+PEER_TASK_METRICS = {
+    # Function prediction tasks (correlation ρ)
+    PEERTask.GB1: "spearman",
+    PEERTask.THERMOSTABILITY: "spearman",
+    PEERTask.FLUORESCENCE: "spearman",
+    PEERTask.STABILITY: "spearman",
+    PEERTask.BETALACTAMASE: "spearman",
+    # Function prediction (accuracy)
+    PEERTask.SOLUBILITY: "accuracy",
+    # Structure prediction (accuracy)
+    PEERTask.FOLD: "accuracy",
+    PEERTask.SECONDARY_STRUCTURE: "accuracy",
+    # Localization prediction (accuracy)
+    PEERTask.BINARY_LOCALIZATION: "accuracy",
+    PEERTask.SUBCELLULAR_LOCALIZATION: "accuracy",
+    # Protein-protein interaction (accuracy)
+    PEERTask.YEASTPPI: "accuracy",
+    PEERTask.HUMANPPI: "accuracy",
+    # Protein-ligand interaction (RMSE - converted from MSE)
+    PEERTask.PPIAFFINITY: "rmse",
+    PEERTask.PDBBIND: "rmse",
+    PEERTask.BINDINGDB: "rmse",
+}
+
 # Define available splits for each task
 PEER_TASK_SPLITS = {
     # Standard tasks with train/valid/test
@@ -148,26 +174,21 @@ PEER_TASK_COLUMNS = {
 # Define task-specific metrics for evaluation
 # Maps each task to its most relevant evaluation metric
 PEER_TASK_METRICS = {
-    # Function prediction tasks - use Spearman correlation for regression
     PEERTask.GB1: "spearman",
     PEERTask.AAV: "spearman",
     PEERTask.THERMOSTABILITY: "spearman",
     PEERTask.FLUORESCENCE: "spearman",
     PEERTask.STABILITY: "spearman",
     PEERTask.BETALACTAMASE: "spearman",
-    PEERTask.SOLUBILITY: "accuracy",  # Binary classification
-    # Localization prediction tasks - use accuracy for classification
+    PEERTask.SOLUBILITY: "accuracy",
     PEERTask.SUBCELLULAR_LOCALIZATION: "accuracy",
     PEERTask.BINARY_LOCALIZATION: "accuracy",
-    # Structure prediction tasks
-    PEERTask.PROTEINNET: "l5_precision",  # Special metric for contact prediction
-    PEERTask.FOLD: "accuracy",  # Multiclass classification
-    PEERTask.SECONDARY_STRUCTURE: "accuracy",  # Multiclass classification
-    # Protein-protein interaction tasks
-    PEERTask.YEASTPPI: "accuracy",  # Binary classification
-    PEERTask.HUMANPPI: "accuracy",  # Binary classification
-    PEERTask.PPIAFFINITY: "rmse",  # Regression
-    # Protein-ligand interaction tasks - use RMSE for regression
+    PEERTask.PROTEINNET: "l5_precision",
+    PEERTask.FOLD: "accuracy",
+    PEERTask.SECONDARY_STRUCTURE: "accuracy",
+    PEERTask.YEASTPPI: "accuracy",
+    PEERTask.HUMANPPI: "accuracy",
+    PEERTask.PPIAFFINITY: "rmse",
     PEERTask.PDBBIND: "rmse",
     PEERTask.BINDINGDB: "rmse",
 }

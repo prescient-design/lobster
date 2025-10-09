@@ -36,6 +36,11 @@ class CALMTask(Enum):
     FUNCTION_MF = "function_mf"
 
 
+CALM_DEFAULT_SPECIES = ["hsapiens", "ecoli", "scerevisiae"]
+
+# Tasks that require species specification
+CALM_SPECIES_SPECIFIC_TASKS = ["protein_abundance", "transcript_abundance"]
+
 CALM_TASK_SPECIES = {
     CALMTask.PROTEIN_ABUNDANCE: [
         CALMSpecies.ATHALIANA,

@@ -50,7 +50,7 @@ class Atomica(UMEStreamingDataset):
             seed=seed,
             cache_dir=cache_dir,
             transform_fn=transform_fn,
-            use_optimized=False,
+            use_optimized=use_optimized,
             tokenize=True,
             max_length=max_length,
             **kwargs,
@@ -64,7 +64,7 @@ class Atomica(UMEStreamingDataset):
 
         sequence1 = item.pop(self.SEQUENCE_KEY_1)
         sequence2 = item.pop(self.SEQUENCE_KEY_2)
-        sequence3 = item.pop(self.SEQUENCE_KEY_3)
+        sequence3 = item.pop(self.SEQUENCE_KEY_3, None)
 
         if self._should_skip(sequence1, sequence2, sequence3):
             self.num_skipped_items += 1
