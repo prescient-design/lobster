@@ -100,11 +100,11 @@ class PropertyClassification(L.LightningModule):
         # Resolve encoder hidden size for head construction
         hidden_size = None
         if hasattr(self.encoder, "embedding_dim"):
-            hidden_size = getattr(self.encoder, "embedding_dim")
+            hidden_size = self.encoder.embedding_dim
         elif hasattr(self.encoder, "config") and hasattr(self.encoder.config, "hidden_size"):
             hidden_size = self.encoder.config.hidden_size
         elif hasattr(self.encoder, "hidden_size"):
-            hidden_size = getattr(self.encoder, "hidden_size")
+            hidden_size = self.encoder.hidden_size
 
         self.model = FlexibleEncoderWithHeads(
             encoder=self.encoder,
@@ -113,26 +113,32 @@ class PropertyClassification(L.LightningModule):
         )
 
         # Apply unfreezing if requested via config
-        logging.getLogger(__name__).info(
-            f"PropertyClassification: unfreeze_last_n_layers={cfg.unfreeze_last_n_layers}"
-        )
+        logging.getLogger(__name__).info(f"PropertyClassification: unfreeze_last_n_layers={cfg.unfreeze_last_n_layers}")
         if cfg.unfreeze_last_n_layers is not None:
             n = int(cfg.unfreeze_last_n_layers)
             set_unfrozen_layers(self.encoder, n)
 
         self.loss_fns = self.model.get_loss_functions()
-        
+
         # Metrics for binary classification
         if cfg.num_classes == 2:
             task_metric = "binary"
         else:
             task_metric = "multiclass"
-            
-        self.train_acc = Accuracy(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
+
+        self.train_acc = Accuracy(
+            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
+        )
         self.val_acc = Accuracy(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.train_precision = Precision(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.val_precision = Precision(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.train_recall = Recall(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
+        self.train_precision = Precision(
+            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
+        )
+        self.val_precision = Precision(
+            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
+        )
+        self.train_recall = Recall(
+            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
+        )
         self.val_recall = Recall(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
         self.train_f1 = F1Score(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
         self.val_f1 = F1Score(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
@@ -165,7 +171,7 @@ class PropertyClassification(L.LightningModule):
         recall = self.train_recall if stage == "train" else self.val_recall
         f1 = self.train_f1 if stage == "train" else self.val_f1
         auroc = self.train_auroc if stage == "train" else self.val_auroc
-        
+
         acc(preds, targets)
         precision(preds, targets)
         recall(preds, targets)
@@ -190,4 +196,3 @@ class PropertyClassification(L.LightningModule):
         params = [p for p in self.parameters() if p.requires_grad]
         optimizer = torch.optim.AdamW(params, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay)
         return optimizer
-
