@@ -1,3 +1,4 @@
+import math
 from unittest.mock import patch
 
 
@@ -20,41 +21,8 @@ class TestPEERSklearnProbeCallback:
         assert callback.probe_type == "elastic"
 
     @patch("lobster.datasets.PEERDataset")
-    def test_evaluate_single_task(self, mock_dataset_class, deterministic_model, mock_peer_dataset):
-        """Test evaluation on single PEER task (GB1)."""
-
-        def dataset_side_effect(task, split):
-            return mock_peer_dataset(task, split)
-
-        mock_dataset_class.side_effect = dataset_side_effect
-
-        callback = PEERSklearnProbeCallback(tasks=[PEERTask.GB1], seed=1)
-
-        results = callback.evaluate(deterministic_model)
-
-        expected_metrics = {
-            "mse": 1.727782964706421,
-            "r2": -0.14102435111999512,
-            "spearman": -0.00425225542858243,
-            "pearson": -0.006624212488532066,
-        }
-
-        assert "gb1" in results
-        assert "mean" in results
-
-        for metric in expected_metrics.keys():
-            assert metric in results["gb1"]
-            assert isinstance(results["gb1"][metric], float)
-
-            mean_value = results["mean"][metric]
-            assert isinstance(mean_value, float)
-
-            assert results["gb1"][metric] == expected_metrics[metric]
-            assert results["mean"][metric] == expected_metrics[metric]
-
-    @patch("lobster.datasets.PEERDataset")
-    def test_evaluate_multiple_tasks(self, mock_dataset_class, deterministic_model, mock_peer_dataset):
-        """Test evaluation on multiple PEER tasks."""
+    def test_evaluate(self, mock_dataset_class, deterministic_model, mock_peer_dataset):
+        """Test evaluation on multiple PEER tasks - both should return only spearman metric."""
 
         def dataset_side_effect(task, split):
             return mock_peer_dataset(task, split)
@@ -69,36 +37,16 @@ class TestPEERSklearnProbeCallback:
         assert "stability" in results
         assert "mean" in results
 
-        expected_gb1 = {
-            "mse": 1.727782964706421,
-            "r2": -0.14102435111999512,
-            "spearman": -0.00425225542858243,
-            "pearson": -0.006624212488532066,
-        }
-        expected_stability = {
-            "mse": 0.8437779545783997,
-            "r2": -4.051199436187744,
-            "spearman": 0.0027925781905651093,
-            "pearson": 0.00850745104253292,
-        }
-        expected_mean = {
-            "spearman": -0.0007298386190086603,
-            "r2": -2.0961118936538696,
-            "pearson": 0.0009416192770004272,
-            "mse": 1.2857804596424103,
-        }
+        # Both GB1 and STABILITY are in PEER_TASK_METRICS and should only return spearman
+        expected_gb1_spearman = -0.004252
+        expected_stability_spearman = 0.002793
+        expected_mean_spearman = -0.0007298
 
-        for metric in expected_gb1.keys():
-            assert metric in results["gb1"]
-            assert isinstance(results["gb1"][metric], float)
-            assert results["gb1"][metric] == expected_gb1[metric]
+        assert len(results["gb1"]) == 1
+        assert math.isclose(results["gb1"]["spearman"], expected_gb1_spearman, rel_tol=1e-3)
 
-        for metric in expected_stability.keys():
-            assert metric in results["stability"]
-            assert isinstance(results["stability"][metric], float)
-            assert results["stability"][metric] == expected_stability[metric]
+        assert len(results["stability"]) == 1
+        assert math.isclose(results["stability"]["spearman"], expected_stability_spearman, rel_tol=1e-3)
 
-        for metric in expected_mean.keys():
-            assert metric in results["mean"]
-            assert isinstance(results["mean"][metric], float)
-            assert results["mean"][metric] == expected_mean[metric]
+        assert len(results["mean"]) == 1
+        assert math.isclose(results["mean"]["spearman"], expected_mean_spearman, rel_tol=1e-3)

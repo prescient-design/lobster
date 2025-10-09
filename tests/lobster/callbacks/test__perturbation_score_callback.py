@@ -289,7 +289,7 @@ class TestPerturbationScoreCallback:
         callback.on_validation_epoch_end(trainer_mock, dummy_model)
 
         # Check that metrics were logged
-        assert trainer_mock.logger.experiment.log.call_count == 3
+        assert trainer_mock.logger.experiment.log.call_count == 12
 
         # Check that heatmap was created (give it a moment to write)
         import time

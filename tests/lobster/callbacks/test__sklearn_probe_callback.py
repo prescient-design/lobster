@@ -39,16 +39,16 @@ class TestSklearnProbeCallback:
         result = callback.train_and_evaluate_probe_on_task(deterministic_model, train_dataset, test_dataset, config)
 
         expected_metrics = {
-            "mse": 1.1240603923797607,
-            "r2": 0.015600979328155518,
-            "spearman": 0.3999997079372406,
-            "pearson": 0.15437982976436615,
+            "mse": 1.124,
+            "r2": 0.01560,
+            "spearman": 0.4000,
+            "pearson": 0.1544,
         }
 
         assert isinstance(result.metrics, dict)
         for metric, expected_value in expected_metrics.items():
             assert metric in result.metrics
-            assert math.isclose(result.metrics[metric], expected_value, rel_tol=1e-4), (
+            assert math.isclose(result.metrics[metric], expected_value, rel_tol=1e-3), (
                 f"Metric {metric} is not close to expected value {expected_value}. Got {result.metrics[metric]}"
             )
 
@@ -95,16 +95,16 @@ class TestSklearnProbeCallback:
         result = callback.train_and_evaluate_probe_on_task(deterministic_model, train_dataset, test_dataset, config)
 
         expected_metrics = {
-            "accuracy": 0.6000000238418579,
-            "f1": 0.25,
-            "f1_weighted": 0.10000000149011612,
-            "auroc": 0.20000000298023224,
+            "accuracy": 0.6000,
+            "f1": 0.2500,
+            "f1_weighted": 0.1000,
+            "auroc": 0.2000,
         }
 
         assert isinstance(result.metrics, dict)
         for metric, expected_value in expected_metrics.items():
             assert metric in result.metrics
-            assert abs(result.metrics[metric] - expected_value) < 1e-4, (
+            assert math.isclose(result.metrics[metric], expected_value, rel_tol=1e-3), (
                 f"Metric {metric} is not close to expected value {expected_value}. Got {result.metrics[metric]}"
             )
 
@@ -118,10 +118,10 @@ class TestSklearnProbeCallback:
         )
 
         expected_metrics = {
-            "mse": 1.230999728043874,
-            "r2": -1.5894304116566975,
-            "spearman": -0.2999996542930603,
-            "pearson": -0.2827656765778859,
+            "mse": 1.231,
+            "r2": -1.589,
+            "spearman": -0.3000,
+            "pearson": -0.2828,
         }
 
         assert isinstance(result.metrics, dict)

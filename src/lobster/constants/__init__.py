@@ -1,3 +1,4 @@
+from ._amino_acids import AMINO_ACID_GROUPS
 from ._architecture_analyzer import GPUType, ModelType
 from ._biopython_features import (
     BIOPYTHON_FEATURE_AGGREGATION_METHODS,
@@ -45,6 +46,7 @@ from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_S
 from ._sklearn_probe import SklearnProbeTaskType, SklearnProbeType
 
 __all__ = [
+    "AMINO_ACID_GROUPS",
     "BIOPYTHON_FEATURES",
     "BIOPYTHON_FEATURE_AGGREGATION_METHODS",
     "BIOPYTHON_PEPTIDE_SCALER_PARAMS",
