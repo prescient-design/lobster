@@ -67,3 +67,8 @@ test_dxt/*
 src/lobster/model/integrations/ume_huggingface/model/*
 
 *.sh
+# Dataset cache files
+data/**/*.parquet.cnt
+data/**/*.parquet.cnt.lock
+data/**/index.json.lock
+data/0c57441b132b458b45160a306ca82943/

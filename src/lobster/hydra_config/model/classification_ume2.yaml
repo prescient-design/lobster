@@ -1,0 +1,26 @@
+_target_: lobster.model._property_classification.PropertyClassification
+
+# UME-2 encoder (UMESequenceEncoderModule)
+# 
+# Default: Load from checkpoint (most common for finetuning)
+# Override checkpoint_path in experiment config
+#
+# For random initialization, override _target_ in experiment config:
+#   _target_: lobster.model.ume2.UMESequenceEncoderModule
+#   # Must specify: model_size, pad_token_id, max_length, vocab_size
+encoder:
+  _target_: lobster.model.ume2.UMESequenceEncoderModule.load_from_checkpoint
+  checkpoint_path: ???  # Required: set in experiment config
+  cache_dir: /data2/jorent/ume2_checkpoints
+
+config:
+  _target_: lobster.model._property_classification.PropertyClassificationConfig
+  task_name: property
+  num_classes: 2  # binary classification
+  loss_function: auto  # will use BCE for binary, CE for multi-class
+  hidden_sizes: [512]
+  dropout: 0.1
+  activation: auto
+  pooling: attn
+  lr: 1e-3
+  weight_decay: 0.0

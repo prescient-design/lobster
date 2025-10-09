@@ -13,6 +13,8 @@ from ._mlm_configuration import PMLM_CONFIG_ARGS, PMLMConfig
 from ._mlp import LobsterMLP
 from ._peft_lightning_module import LobsterPEFT
 from ._ppi_clf import PPIClassifier
+from ._property_classification import PropertyClassification, PropertyClassificationConfig
+from ._property_regression import PropertyRegression, PropertyRegressionConfig
 from ._seq2seq import PrescientPT5
 from ._ume import UME
 from ._heads import TaskConfig, TaskHead, MultiTaskHead, FlexibleEncoderWithHeads
