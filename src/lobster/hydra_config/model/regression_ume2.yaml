@@ -1,0 +1,25 @@
+_target_: lobster.model._property_regression.PropertyRegression
+
+# UME-2 encoder (UMESequenceEncoderModule)
+# 
+# Default: Load from checkpoint (most common for finetuning)
+# Override checkpoint_path in experiment config
+#
+# For random initialization, override _target_ in experiment config:
+#   _target_: lobster.model.ume2.UMESequenceEncoderModule
+#   # Must specify: model_size, pad_token_id, max_length, vocab_size
+encoder:
+  _target_: lobster.model.ume2.UMESequenceEncoderModule.load_from_checkpoint
+  checkpoint_path: ???  # Required: set in experiment config
+  cache_dir: null
+
+config:
+  _target_: lobster.model._property_regression.PropertyRegressionConfig
+  task_name: property
+  loss_function: ${training.loss_function}  # e.g., mse, huber, smooth_l1, gaussian, exponential
+  hidden_sizes: [512]
+  dropout: 0.1
+  activation: auto
+  pooling: mean
+  lr: 1e-3
+  weight_decay: 0.0

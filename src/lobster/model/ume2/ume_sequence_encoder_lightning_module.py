@@ -34,7 +34,6 @@ class UMESequenceEncoderLightningModule(LightningModule):
         scheduler_kwargs: dict | None = None,
         encoder_kwargs: dict | None = None,
         use_shared_tokenizer: bool = False,
-        ckpt_path: str | None = None,
     ):
         self.save_hyperparameters()
 
