@@ -11,7 +11,7 @@ cluster_file: null
 files_to_keep: null # this doesnt do anything
 testing: false
 use_shards: false
-datasets: pdb
+datasets: sabdab
 
 # Dataloader Params
 batch_size: 40 # Batch size for the dataloader

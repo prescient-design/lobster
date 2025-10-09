@@ -44,6 +44,10 @@ def get_folded_structure_metrics(outputs, ref_coords, ref_seq, prefix="", mask=N
     tm_score = torch.tensor(tm_score).to(pred_coords.device)
     rmsd = torch.tensor(rmsd).to(pred_coords.device)
 
+    # set masked coords to 0
+    if mask is not None:
+        pred_coords[mask == 0] = 0
+
     return {
         f"{prefix}_plddt": plddt_scores.mean(),
         f"{prefix}_predicted_aligned_error": predicted_aligned_error.mean(),
