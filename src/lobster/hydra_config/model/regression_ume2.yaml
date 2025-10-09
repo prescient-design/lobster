@@ -11,7 +11,7 @@ _target_: lobster.model._property_regression.PropertyRegression
 encoder:
   _target_: lobster.model.ume2.UMESequenceEncoderModule.load_from_checkpoint
   checkpoint_path: ???  # Required: set in experiment config
-  cache_dir: /data2/jorent/ume2_checkpoints
+  cache_dir: null
 
 config:
   _target_: lobster.model._property_regression.PropertyRegressionConfig

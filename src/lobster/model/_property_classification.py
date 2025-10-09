@@ -120,30 +120,20 @@ class PropertyClassification(L.LightningModule):
 
         self.loss_fns = self.model.get_loss_functions()
 
-        # Metrics for binary classification
-        if cfg.num_classes == 2:
-            task_metric = "binary"
-        else:
-            task_metric = "multiclass"
-
-        self.train_acc = Accuracy(
-            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
-        )
-        self.val_acc = Accuracy(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.train_precision = Precision(
-            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
-        )
-        self.val_precision = Precision(
-            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
-        )
-        self.train_recall = Recall(
-            task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None
-        )
-        self.val_recall = Recall(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.train_f1 = F1Score(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.val_f1 = F1Score(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.train_auroc = AUROC(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
-        self.val_auroc = AUROC(task=task_metric, num_classes=cfg.num_classes if task_metric == "multiclass" else None)
+        # Metrics for binary or multiclass classification
+        task_metric = "binary" if cfg.num_classes == 2 else "multiclass"
+        metric_kwargs = {"task": task_metric, "num_classes": cfg.num_classes if task_metric == "multiclass" else None}
+        
+        self.train_acc = Accuracy(**metric_kwargs)
+        self.val_acc = Accuracy(**metric_kwargs)
+        self.train_precision = Precision(**metric_kwargs)
+        self.val_precision = Precision(**metric_kwargs)
+        self.train_recall = Recall(**metric_kwargs)
+        self.val_recall = Recall(**metric_kwargs)
+        self.train_f1 = F1Score(**metric_kwargs)
+        self.val_f1 = F1Score(**metric_kwargs)
+        self.train_auroc = AUROC(**metric_kwargs)
+        self.val_auroc = AUROC(**metric_kwargs)
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
