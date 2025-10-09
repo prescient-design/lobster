@@ -1,4 +1,5 @@
 import logging
+import math
 from collections.abc import Sequence
 from typing import override
 import warnings
@@ -11,6 +12,7 @@ from tqdm import tqdm
 
 from lobster.constants import (
     PEER_TASK_CATEGORIES,
+    PEER_TASK_METRICS,
     PEER_TASKS,
     PEERTask,
     PEERTaskCategory,
@@ -71,6 +73,41 @@ class PEERSklearnProbeCallback(SklearnProbeCallback):
             self.selected_tasks = set(PEER_TASKS.keys()) - {PEERTask.PROTEINNET}
 
         logger.info(f"PEER tasks to evaluate: {sorted([task.value for task in self.selected_tasks])}")
+
+    def _filter_metrics_for_task(self, task: PEERTask, metrics: dict[str, float]) -> dict[str, float]:
+        """Filter metrics to return only the preferred metric for tasks shown in PEER benchmark image.
+
+        For tasks not in PEER_TASK_METRICS, returns all metrics unchanged.
+        For tasks in PEER_TASK_METRICS, returns only the single preferred metric.
+
+        Parameters
+        ----------
+        task : PEERTask
+            The PEER task being evaluated
+        metrics : dict[str, float]
+            Dictionary of all computed metrics for the task
+
+        Returns
+        -------
+        dict[str, float]
+            Filtered metrics dictionary
+        """
+        if task not in PEER_TASK_METRICS:
+            return metrics
+
+        preferred_metric = PEER_TASK_METRICS[task]
+
+        if preferred_metric == "rmse":
+            if "mse" in metrics:
+                return {"rmse": math.sqrt(metrics["mse"])}
+            else:
+                logger.warning(f"MSE metric not found for task {task.value}, cannot compute RMSE")
+                return metrics
+        elif preferred_metric in metrics:
+            return {preferred_metric: metrics[preferred_metric]}
+        else:
+            logger.warning(f"Preferred metric '{preferred_metric}' not found for task {task.value}")
+            return metrics
 
     def _get_task_test_split(self, task: PEERTask) -> str:
         """Get the most relevant test split for each task."""
@@ -236,11 +273,13 @@ class PEERSklearnProbeCallback(SklearnProbeCallback):
                 )
 
                 metrics = result.metrics
-                all_task_metrics[task.value] = metrics
+                # Filter metrics based on PEER_TASK_METRICS configuration
+                filtered_metrics = self._filter_metrics_for_task(task, metrics)
+                all_task_metrics[task.value] = filtered_metrics
 
-                # Log metrics using base class method
+                # Log filtered metrics using base class method
                 self.log_metrics(
-                    metrics=metrics,
+                    metrics=filtered_metrics,
                     task_name=task.value,
                     probe_type=self.probe_type,
                     trainer=trainer,
