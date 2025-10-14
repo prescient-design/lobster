@@ -91,7 +91,7 @@ class StructureDataset(Dataset):
         The root directory of the dataset.
 
     cluster_file : str | os.PathLike, optional
-        Path to the cluster file containing cluster assignments.
+        Path to the cluster file containing cluster assignments per training example.
 
     transform : callable, optional
         Transform to apply to the data.

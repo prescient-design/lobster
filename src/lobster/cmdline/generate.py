@@ -13,11 +13,46 @@ from lobster.model.latent_generator.utils.residue_constants import (
     restype_order_with_x_inv,
 )
 from lobster.callbacks._folding_structure_utils import get_folded_structure_metrics
+from lobster.transforms._structure_transforms import StructureBackboneTransform, AminoAcidTokenizerTransform
+from tmtools import tm_align
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 # warning emsfolding does not take into account multiple chains
 # todo: add support for multiple chains
+
+
+def calculate_percent_identity(ground_truth_seq, generated_seq, mask=None):
+    """
+    Calculate percent identity between ground truth and generated sequences.
+
+    Args:
+        ground_truth_seq: Ground truth sequence tensor of shape (B, L)
+        generated_seq: Generated sequence tensor of shape (B, L)
+        mask: Optional mask tensor of shape (B, L) to ignore padded positions
+
+    Returns:
+        Tensor of percent identities for each sequence in the batch
+    """
+    # Ensure both sequences have the same shape
+    assert ground_truth_seq.shape == generated_seq.shape, "Sequences must have the same shape"
+
+    # Calculate matches
+    matches = (ground_truth_seq == generated_seq).float()
+
+    if mask is not None:
+        # Only consider positions where mask is 1
+        matches = matches * mask.float()
+        valid_positions = mask.sum(dim=1).float()
+        # Avoid division by zero
+        valid_positions = torch.clamp(valid_positions, min=1.0)
+        percent_identity = (matches.sum(dim=1) / valid_positions) * 100.0
+    else:
+        # Consider all positions
+        sequence_length = ground_truth_seq.shape[1]
+        percent_identity = (matches.sum(dim=1) / sequence_length) * 100.0
+
+    return percent_identity
 
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="generate")
@@ -80,6 +115,8 @@ def generate(cfg: DictConfig) -> None:
         _generate_unconditional(model, cfg, device, output_dir, plm_fold)
     elif generation_mode == "inverse_folding":
         _generate_inverse_folding(model, cfg, device, output_dir, plm_fold)
+    elif generation_mode == "forward_folding":
+        _generate_forward_folding(model, cfg, device, output_dir, plm_fold)
     else:
         raise ValueError(f"Unknown generation mode: {generation_mode}")
 
@@ -142,7 +179,15 @@ def _generate_unconditional(model, cfg: DictConfig, device: torch.device, output
         # Optional ESMFold validation
         if plm_fold is not None:
             logger.info("Validating structures with ESMFold...")
-            _validate_with_esmfold(seq, x_recon_xyz, plm_fold, device, output_dir, "generated", max_length=length)
+            batch_metrics = _validate_with_esmfold(
+                seq, x_recon_xyz, plm_fold, device, output_dir, "generated", max_length=length
+            )
+
+            # Log metrics for unconditional generation
+            if batch_metrics:
+                logger.info("ESMFold validation metrics for unconditional generation:")
+                for key, value in batch_metrics.items():
+                    logger.info(f"  {key}: {value:.4f}")
 
 
 def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
@@ -155,21 +200,22 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
         raise ValueError("input_structures must be provided for inverse folding mode")
 
     # Handle different input formats
-    pdb_paths = []
+    structure_paths = []
     if isinstance(input_structures, str):
         # Single path or glob pattern
         if "*" in input_structures or "?" in input_structures:
             # Glob pattern
-            pdb_paths = glob.glob(input_structures)
+            structure_paths = glob.glob(input_structures)
         else:
             # Single file or directory
             path = Path(input_structures)
             if path.is_file():
-                pdb_paths = [str(path)]
+                structure_paths = [str(path)]
             elif path.is_dir():
-                # Find all PDB files in directory
-                pdb_paths = list(glob.glob(str(path / "*.pdb")))
-                pdb_paths.extend(glob.glob(str(path / "*.cif")))
+                # Find all structure files in directory (PDB, CIF, PT)
+                structure_paths = list(glob.glob(str(path / "*.pdb")))
+                structure_paths.extend(glob.glob(str(path / "*.cif")))
+                structure_paths.extend(glob.glob(str(path / "*.pt")))
             else:
                 raise ValueError(f"Input path does not exist: {input_structures}")
     elif isinstance(input_structures, (list, tuple)):
@@ -177,52 +223,104 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
         for path_str in input_structures:
             path = Path(path_str)
             if path.is_file():
-                pdb_paths.append(str(path))
+                structure_paths.append(str(path))
             else:
                 logger.warning(f"Skipping non-existent file: {path_str}")
     else:
         raise ValueError(f"Invalid input_structures format: {type(input_structures)}")
 
-    if not pdb_paths:
-        raise ValueError("No valid PDB files found in input_structures")
+    if not structure_paths:
+        raise ValueError("No valid structure files found in input_structures")
 
-    logger.info(f"Found {len(pdb_paths)} PDB files to process")
+    logger.info(f"Found {len(structure_paths)} structure files to process")
 
     gen_cfg = cfg.generation
     nsteps = gen_cfg.get("nsteps", 100)
     batch_size = gen_cfg.get("batch_size", 1)
+    n_trials = gen_cfg.get("n_trials", 1)  # Number of trials for best output selection
 
-    logger.info(f"Processing structures with {nsteps} generation steps, batch size {batch_size}")
+    logger.info(f"Processing structures with {nsteps} generation steps, batch size {batch_size}, n_trials {n_trials}")
+
+    # Initialize StructureBackboneTransform
+    structure_transform = StructureBackboneTransform(max_length=cfg.generation.get("max_length", 512))
+
+    # Initialize aggregate statistics collection
+    all_percent_identities = []
+    all_plddt_scores = []
+    all_predicted_aligned_errors = []
+    all_tm_scores = []
+    all_rmsd_scores = []
 
     with torch.no_grad():
-        # Process PDB files in batches
-        for batch_start in range(0, len(pdb_paths), batch_size):
-            batch_end = min(batch_start + batch_size, len(pdb_paths))
-            batch_paths = pdb_paths[batch_start:batch_end]
+        # Process structure files in batches
+        for batch_start in range(0, len(structure_paths), batch_size):
+            batch_end = min(batch_start + batch_size, len(structure_paths))
+            batch_paths = structure_paths[batch_start:batch_end]
             batch_idx = batch_start // batch_size
 
-            logger.info(f"Processing batch {batch_idx + 1}/{(len(pdb_paths) + batch_size - 1) // batch_size}")
+            logger.info(f"Processing batch {batch_idx + 1}/{(len(structure_paths) + batch_size - 1) // batch_size}")
 
-            # Load structures from PDB files
+            # Load structures from files
             batch_data = []
             valid_indices = []
 
-            for i, pdb_path in enumerate(batch_paths):
-                logger.info(f"Loading {pdb_path}")
-                structure_data = load_pdb(pdb_path, add_batch_dim=False)
-                if structure_data is not None:
-                    batch_data.append(structure_data)
-                    valid_indices.append(i)
+            for i, structure_path in enumerate(batch_paths):
+                logger.info(f"Loading {structure_path}")
+
+                # Check file extension to determine loading method
+                if structure_path.endswith(".pt"):
+                    # Load .pt file directly
+                    try:
+                        structure_data = torch.load(structure_path, map_location="cpu")
+                        if structure_data is not None:
+                            # Apply StructureBackboneTransform
+                            structure_data = structure_transform(structure_data)
+                            batch_data.append(structure_data)
+                            valid_indices.append(i)
+                        else:
+                            logger.warning(f"Failed to load structure from {structure_path} - data is None")
+                    except Exception as e:
+                        logger.warning(f"Failed to load .pt file {structure_path}: {e}")
                 else:
-                    logger.warning(f"Failed to load structure from {pdb_path}")
+                    # Load PDB/CIF file using existing method
+                    structure_data = load_pdb(structure_path, add_batch_dim=False)
+                    if structure_data is not None:
+                        # Apply StructureBackboneTransform
+                        structure_data = structure_transform(structure_data)
+                        batch_data.append(structure_data)
+                        valid_indices.append(i)
+                    else:
+                        logger.warning(f"Failed to load structure from {structure_path}")
 
             if not batch_data:
                 logger.warning(f"No valid structures in batch {batch_idx + 1}, skipping")
                 continue
 
+            # Filter structures by minimum length (30 residues) and make sure sequence tensor does not contain more than 10% 20s
+            filtered_batch_data = []
+            filtered_valid_indices = []
+            for i, data in enumerate(batch_data):
+                if data["coords_res"].shape[0] >= 30:
+                    percent_20s = (data["sequence"] == 20).sum() / data["sequence"].shape[0]
+                    if percent_20s > 0.1:
+                        logger.info(
+                            f"Skipping structure {batch_paths[valid_indices[i]]} - sequence tensor contains more than 10% 20s"
+                        )
+                        continue
+                    filtered_batch_data.append(data)
+                    filtered_valid_indices.append(valid_indices[i])
+                else:
+                    logger.info(
+                        f"Skipping structure {batch_paths[valid_indices[i]]} - too short ({data['coords_res'].shape[0]} residues, minimum 30)"
+                    )
+
+            if not filtered_batch_data:
+                logger.warning(f"No structures with sufficient length in batch {batch_idx + 1}, skipping")
+                continue
+
             # Prepare batch tensors
-            max_length = max(data["coords_res"].shape[0] for data in batch_data)
-            B = len(batch_data)
+            max_length = max(data["coords_res"].shape[0] for data in filtered_batch_data)
+            B = len(filtered_batch_data)
 
             # Initialize tensors
             coords_res = torch.zeros((B, max_length, 3, 3), device=device)
@@ -230,7 +328,7 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
             indices = torch.zeros((B, max_length), device=device, dtype=torch.long)
 
             # Fill batch tensors
-            for i, data in enumerate(batch_data):
+            for i, data in enumerate(filtered_batch_data):
                 L = data["coords_res"].shape[0]
                 coords_res[i, :L] = data["coords_res"].to(device)
                 mask[i, :L] = data["mask"].to(device)
@@ -243,39 +341,178 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
 
             logger.info(f"Batch {batch_idx + 1}: {B} structures, max length {max_length}")
 
-            # Generate sequences
-            generate_sample = model.generate_sample(
-                length=max_length,
-                num_samples=B,
-                inverse_folding=True,
-                nsteps=nsteps,
-                input_structure_coords=coords_res,
-                input_mask=mask,
-                input_indices=indices,
-                temperature_seq=gen_cfg.get("temperature_seq", 0.5),
-                stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
+            # Run multiple trials and select best based on TM-score
+            best_trial_results = []
+
+            for trial in range(n_trials):
+                logger.info(f"Trial {trial + 1}/{n_trials} for batch {batch_idx + 1}")
+
+                # Generate sequences
+                generate_sample = model.generate_sample(
+                    length=max_length,
+                    num_samples=B,
+                    inverse_folding=True,
+                    nsteps=nsteps,
+                    input_structure_coords=coords_res,
+                    input_mask=mask,
+                    input_indices=indices,
+                    temperature_seq=gen_cfg.get("temperature_seq", 0.5),
+                    stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
+                )
+
+                # Decode structures
+                decoded_x = model.decode_structure(generate_sample, mask)
+
+                # Extract coordinates
+                x_recon_xyz = None
+                for decoder_name in decoded_x:
+                    if "vit_decoder" == decoder_name:
+                        x_recon_xyz = decoded_x[decoder_name]
+                        break
+
+                # Extract sequences
+                if generate_sample["sequence_logits"].shape[-1] == 33:
+                    seq = convert_lobster_aa_tokenization_to_standard_aa(
+                        generate_sample["sequence_logits"], device=device
+                    )
+                else:
+                    seq = generate_sample["sequence_logits"].argmax(dim=-1)
+                    seq[seq > 21] = 20
+
+                # Calculate TM-scores for this trial
+                trial_tm_scores = []
+                outputs = None
+                pred_coords = None
+                trial_folded_structure_metrics = None
+
+                for i in range(B):
+                    # Get original coordinates
+                    orig_coords = coords_res[i, mask[i] == 1, :, :]  # Original structure
+
+                    # Get generated sequence
+                    seq_i = seq[i, mask[i] == 1]
+                    sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
+
+                    # For inverse folding, we need to fold the generated sequence with ESMFold
+                    # and compare with the original structure
+                    if plm_fold is not None:
+                        # Tokenize the generated sequence
+                        tokenized_input = plm_fold.tokenizer.encode_plus(
+                            sequence_str,
+                            padding=True,
+                            truncation=True,
+                            max_length=cfg.generation.get("max_length", 512),
+                            add_special_tokens=False,
+                            return_tensors="pt",
+                        )["input_ids"].to(device)
+
+                        # Fold with ESMFold
+                        with torch.no_grad():
+                            outputs = plm_fold.model(tokenized_input)
+
+                        # Get folded structure coordinates
+                        folded_structure_metrics, pred_coords = get_folded_structure_metrics(
+                            outputs, orig_coords[None], [sequence_str], mask=mask[i : i + 1]
+                        )
+
+                        trial_tm_scores.append(folded_structure_metrics["_tm_score"])
+                        trial_folded_structure_metrics = folded_structure_metrics  # Store for reuse
+                        print("TM-score: ", folded_structure_metrics["_tm_score"])
+
+                    else:
+                        # If ESMFold is not available, use generated structure as fallback
+                        gen_coords = x_recon_xyz[i, mask[i] == 1, :, :]  # Generated structure
+                        tm_out = tm_align(
+                            gen_coords[:, 1, :].cpu().numpy(),  # CA atoms of generated structure
+                            orig_coords[:, 1, :].detach().cpu().numpy(),  # CA atoms of original structure
+                            sequence_str,
+                            sequence_str,
+                        )
+                        trial_tm_scores.append(tm_out.tm_norm_chain1)
+
+                # Store trial results
+                best_trial_results.append(
+                    {
+                        "trial": trial,
+                        "tm_scores": trial_tm_scores,
+                        "avg_tm_score": sum(trial_tm_scores) / len(trial_tm_scores),
+                        "generate_sample": generate_sample,
+                        "x_recon_xyz": x_recon_xyz,
+                        "seq": seq,
+                        "esmfold_outputs": outputs,
+                        "esmfold_pred_coords": pred_coords,
+                        "folded_structure_metrics": trial_folded_structure_metrics,
+                    }
+                )
+
+            # Select best trial based on average TM-score
+            best_trial = max(best_trial_results, key=lambda x: x["avg_tm_score"])
+            logger.info(
+                f"Selected trial {best_trial['trial'] + 1} with average TM-score: {best_trial['avg_tm_score']:.3f}"
             )
 
-            # Decode structures
-            decoded_x = model.decode_structure(generate_sample, mask)
+            # Use best trial results
+            generate_sample = best_trial["generate_sample"]
+            x_recon_xyz = best_trial["x_recon_xyz"]
+            seq = best_trial["seq"]
 
-            # Extract coordinates
-            x_recon_xyz = None
-            for decoder_name in decoded_x:
-                if "vit_decoder" == decoder_name:
-                    x_recon_xyz = decoded_x[decoder_name]
-                    break
+            # Calculate percent identity for inverse folding (compare generated sequence with original)
+            # For inverse folding, we need to get the original sequence from the input structure
+            original_sequences = []
+            for i, valid_idx in enumerate(filtered_valid_indices):
+                structure_path = batch_paths[valid_idx]
+                if structure_path.endswith(".pt"):
+                    # For .pt files, the sequence should be in the loaded data
+                    structure_data = torch.load(structure_path, map_location="cpu")
+                    if "sequence" in structure_data:
+                        orig_seq = structure_data["sequence"]
+                        if orig_seq.dim() > 1:
+                            orig_seq = orig_seq.squeeze()
+                        original_sequences.append(orig_seq)
+                    else:
+                        raise ValueError(f"No sequence found for structure: {structure_path}")
+                else:
+                    # For PDB/CIF files, we need to extract sequence from the loaded structure
+                    # This is already done in the structure_transform, so we can get it from batch_data
+                    if i < len(batch_data) and "sequence" in batch_data[i]:
+                        orig_seq = batch_data[i]["sequence"]
+                        if orig_seq.dim() > 1:
+                            orig_seq = orig_seq.squeeze()
+                        original_sequences.append(orig_seq)
+                    else:
+                        raise ValueError(f"No sequence found for structure: {structure_path}")
 
-            # Extract sequences
-            if generate_sample["sequence_logits"].shape[-1] == 33:
-                seq = convert_lobster_aa_tokenization_to_standard_aa(generate_sample["sequence_logits"], device=device)
-            else:
-                seq = generate_sample["sequence_logits"].argmax(dim=-1)
-                seq[seq > 21] = 20
+            # Calculate percent identity for this batch
+            if original_sequences:
+                batch_percent_identities = []
+
+                for i, (orig_seq, gen_seq) in enumerate(zip(original_sequences, seq)):
+                    # Get the actual length of the original sequence (excluding padding)
+                    orig_len = len(orig_seq)
+                    gen_len = len(gen_seq)
+
+                    # Use the minimum length to avoid dimension mismatches
+                    min_len = min(orig_len, gen_len)
+
+                    if min_len > 0:
+                        # Truncate both sequences to the same length and ensure they're on the same device
+                        orig_seq_truncated = orig_seq[:min_len].to(device)
+                        gen_seq_truncated = gen_seq[:min_len].to(device)
+
+                        # Calculate percent identity for this single sequence
+                        percent_identity = calculate_percent_identity(
+                            orig_seq_truncated.unsqueeze(0), gen_seq_truncated.unsqueeze(0)
+                        )
+                        batch_percent_identities.append(percent_identity.item())
+                    else:
+                        # If sequences are empty, set percent identity to 0
+                        batch_percent_identities.append(0.0)
+
+                all_percent_identities.extend(batch_percent_identities)
 
             # Save results
             logger.info(f"Saving inverse folding results for batch {batch_idx + 1}...")
-            for i, valid_idx in enumerate(valid_indices):
+            for i, valid_idx in enumerate(filtered_valid_indices):
                 original_path = batch_paths[valid_idx]
                 original_name = Path(original_path).stem
                 x_recon_xyz_i_masked = x_recon_xyz[i, mask[i] == 1]
@@ -286,20 +523,421 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
                 writepdb(str(filename), x_recon_xyz_i_masked, seq_i_masked)
                 logger.info(f"Saved: {filename}")
 
-            # Optional ESMFold validation
+            # Optional ESMFold validation - reuse results from trial selection
             if plm_fold is not None:
-                logger.info(f"Validating batch {batch_idx + 1} with ESMFold...")
-                _validate_with_esmfold(
-                    seq,
-                    x_recon_xyz,
-                    plm_fold,
-                    device,
-                    output_dir,
-                    f"inverse_folding_batch{batch_idx:03d}",
-                    original_paths=[batch_paths[i] for i in valid_indices],
-                    mask=mask,
-                    max_length=max_length,
+                logger.info(f"Validating batch {batch_idx + 1} with ESMFold (reusing trial results)...")
+
+                # Reuse ESMFold results from the best trial
+                if best_trial["folded_structure_metrics"] is not None and best_trial["esmfold_pred_coords"] is not None:
+                    # Use stored metrics without recalculation
+                    folded_structure_metrics = best_trial["folded_structure_metrics"]
+                    pred_coords = best_trial["esmfold_pred_coords"]
+
+                    # Log metrics
+                    logger.info("ESMFold validation metrics:")
+                    for key, value in folded_structure_metrics.items():
+                        logger.info(f"  {key}: {value:.4f}")
+
+                    # Save folded structures
+                    for i in range(seq.shape[0]):
+                        original_name = Path(batch_paths[filtered_valid_indices[i]]).stem
+                        filename = output_dir / f"inverse_folding_{original_name}_esmfold.pdb"
+                        pred_coords_i_masked = pred_coords[i, mask[i] == 1]
+                        seq_i_masked = seq[i, mask[i] == 1]
+                        writepdb(str(filename), pred_coords_i_masked, seq_i_masked)
+                        logger.info(f"Saved ESMFold structure: {filename}")
+
+                    batch_metrics = folded_structure_metrics
+                else:
+                    # Fallback to original validation if no stored results
+                    logger.warning("No stored ESMFold results, running validation...")
+                    batch_metrics = _validate_with_esmfold(
+                        seq,
+                        x_recon_xyz,
+                        plm_fold,
+                        device,
+                        output_dir,
+                        f"inverse_folding_batch{batch_idx:03d}",
+                        original_paths=[batch_paths[i] for i in filtered_valid_indices],
+                        mask=mask,
+                        max_length=max_length,
+                    )
+
+                # Collect metrics for aggregate statistics
+                if batch_metrics:
+                    all_plddt_scores.append(batch_metrics["_plddt"])
+                    all_predicted_aligned_errors.append(batch_metrics["_predicted_aligned_error"])
+                    all_tm_scores.append(batch_metrics["_tm_score"])
+                    all_rmsd_scores.append(batch_metrics["_rmsd"])
+
+    # Calculate and report aggregate statistics
+    logger.info("=" * 80)
+    logger.info("INVERSE FOLDING AGGREGATE STATISTICS")
+    logger.info("=" * 80)
+
+    if all_percent_identities:
+        avg_percent_identity = sum(all_percent_identities) / len(all_percent_identities)
+        logger.info(f"Average Percent Identity: {avg_percent_identity:.2f}% (n={len(all_percent_identities)})")
+    else:
+        logger.warning("No percent identity data collected")
+
+    if all_plddt_scores:
+        avg_plddt = sum(all_plddt_scores) / len(all_plddt_scores)
+        logger.info(f"Average pLDDT: {avg_plddt:.2f} (n={len(all_plddt_scores)})")
+    else:
+        logger.warning("No pLDDT data collected")
+
+    if all_predicted_aligned_errors:
+        avg_pae = sum(all_predicted_aligned_errors) / len(all_predicted_aligned_errors)
+        logger.info(f"Average Predicted Aligned Error: {avg_pae:.2f} (n={len(all_predicted_aligned_errors)})")
+    else:
+        logger.warning("No Predicted Aligned Error data collected")
+
+    if all_tm_scores:
+        avg_tm_score = sum(all_tm_scores) / len(all_tm_scores)
+        logger.info(f"Average TM-Score: {avg_tm_score:.3f} (n={len(all_tm_scores)})")
+    else:
+        logger.warning("No TM-Score data collected")
+
+    if all_rmsd_scores:
+        avg_rmsd = sum(all_rmsd_scores) / len(all_rmsd_scores)
+        logger.info(f"Average RMSD: {avg_rmsd:.2f} Å (n={len(all_rmsd_scores)})")
+    else:
+        logger.warning("No RMSD data collected")
+
+    logger.info("=" * 80)
+
+
+def _generate_forward_folding(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
+    """Generate structures from given input structures (forward folding)."""
+    logger.info("Starting forward folding generation...")
+
+    # Get input structure paths
+    input_structures = cfg.generation.input_structures
+    if not input_structures:
+        raise ValueError("input_structures must be provided for forward folding mode")
+
+    # Handle different input formats (same as inverse folding)
+    structure_paths = []
+    if isinstance(input_structures, str):
+        # Single path or glob pattern
+        if "*" in input_structures or "?" in input_structures:
+            # Glob pattern
+            structure_paths = glob.glob(input_structures)
+        else:
+            # Single file or directory
+            path = Path(input_structures)
+            if path.is_file():
+                structure_paths = [str(path)]
+            elif path.is_dir():
+                # Find all structure files in directory (PDB, CIF, PT)
+                structure_paths = list(glob.glob(str(path / "*.pdb")))
+                structure_paths.extend(glob.glob(str(path / "*.cif")))
+                structure_paths.extend(glob.glob(str(path / "*.pt")))
+            else:
+                raise ValueError(f"Input path does not exist: {input_structures}")
+    elif isinstance(input_structures, (list, tuple)):
+        # List of paths
+        for path_str in input_structures:
+            path = Path(path_str)
+            if path.is_file():
+                structure_paths.append(str(path))
+            else:
+                logger.warning(f"Skipping non-existent file: {path_str}")
+    else:
+        raise ValueError(f"Invalid input_structures format: {type(input_structures)}")
+
+    if not structure_paths:
+        raise ValueError("No valid structure files found in input_structures")
+
+    logger.info(f"Found {len(structure_paths)} structure files to process")
+
+    gen_cfg = cfg.generation
+    nsteps = gen_cfg.get("nsteps", 200)  # More steps for forward folding
+    batch_size = gen_cfg.get("batch_size", 1)
+    n_trials = gen_cfg.get("n_trials", 1)  # Number of trials for best output selection
+
+    logger.info(f"Processing structures with {nsteps} generation steps, batch size {batch_size}, n_trials {n_trials}")
+
+    # Initialize transforms
+    structure_transform = StructureBackboneTransform(max_length=cfg.generation.get("max_length", 512))
+    tokenizer_transform = AminoAcidTokenizerTransform(max_length=cfg.generation.get("max_length", 512))
+
+    # Initialize aggregate statistics collection
+    all_tm_scores = []
+    all_rmsd_scores = []
+
+    with torch.no_grad():
+        # Process structure files in batches
+        for batch_start in range(0, len(structure_paths), batch_size):
+            batch_end = min(batch_start + batch_size, len(structure_paths))
+            batch_paths = structure_paths[batch_start:batch_end]
+            batch_idx = batch_start // batch_size
+
+            logger.info(f"Processing batch {batch_idx + 1}/{(len(structure_paths) + batch_size - 1) // batch_size}")
+
+            # Load structures from files
+            batch_data = []
+            valid_indices = []
+
+            for i, structure_path in enumerate(batch_paths):
+                logger.info(f"Loading {structure_path}")
+
+                # Check file extension to determine loading method
+                if structure_path.endswith(".pt"):
+                    # Load .pt file directly
+                    structure_data = torch.load(structure_path, map_location="cpu")
+                    if structure_data is not None:
+                        # Apply StructureBackboneTransform
+                        structure_data = structure_transform(structure_data)
+                        batch_data.append(structure_data)
+                        valid_indices.append(i)
+                    else:
+                        raise ValueError(f"Failed to load structure from {structure_path} - data is None")
+
+                else:
+                    # Load PDB/CIF file using existing method
+                    structure_data = load_pdb(structure_path, add_batch_dim=False)
+                    if structure_data is not None:
+                        # Apply StructureBackboneTransform
+                        structure_data = structure_transform(structure_data)
+                        batch_data.append(structure_data)
+                        valid_indices.append(i)
+                    else:
+                        raise ValueError(f"Failed to load structure from {structure_path}")
+
+            if not batch_data:
+                raise ValueError(f"No valid structures in batch {batch_idx + 1}, skipping")
+
+            # Filter structures by minimum length (30 residues) and make sure sequence tensor does not contain more than 10% 20s
+            filtered_batch_data = []
+            filtered_valid_indices = []
+            for i, data in enumerate(batch_data):
+                if data["coords_res"].shape[0] >= 30:
+                    percent_20s = (data["sequence"] == 20).sum() / data["sequence"].shape[0]
+                    if percent_20s > 0.1:
+                        logger.info(
+                            f"Skipping structure {batch_paths[valid_indices[i]]} - sequence tensor contains more than 10% 20s"
+                        )
+                        continue
+                    filtered_batch_data.append(data)
+                    filtered_valid_indices.append(valid_indices[i])
+                else:
+                    logger.info(
+                        f"Skipping structure {batch_paths[valid_indices[i]]} - too short ({data['coords_res'].shape[0]} residues, minimum 30)"
+                    )
+
+            if not filtered_batch_data:
+                logger.warning(f"No structures with sufficient length in batch {batch_idx + 1}, skipping")
+                continue
+
+            # Prepare batch tensors
+            max_length = max(data["coords_res"].shape[0] for data in filtered_batch_data)
+            B = len(filtered_batch_data)
+
+            # Initialize tensors
+            coords_res = torch.zeros((B, max_length, 3, 3), device=device)
+            mask = torch.zeros((B, max_length), device=device)
+            indices = torch.zeros((B, max_length), device=device, dtype=torch.long)
+
+            # Fill batch tensors
+            for i, data in enumerate(filtered_batch_data):
+                L = data["coords_res"].shape[0]
+                coords_res[i, :L] = data["coords_res"].to(device)
+                mask[i, :L] = data["mask"].to(device)
+                indices[i, :L] = data["indices"].to(device)
+
+            # Handle NaN coordinates
+            nan_indices = torch.isnan(coords_res).any(dim=-1).any(dim=-1)
+            mask[nan_indices] = 0
+            coords_res[nan_indices] = 0
+
+            logger.info(f"Batch {batch_idx + 1}: {B} structures, max length {max_length}")
+
+            # Extract and tokenize sequences from input structures for forward folding
+            input_sequences = []
+            for i, data in enumerate(filtered_batch_data):
+                if "sequence" in data:
+                    seq_tensor = data["sequence"]
+                    if seq_tensor.dim() > 1:
+                        seq_tensor = seq_tensor.squeeze()
+
+                    # Apply tokenizer transform to the sequence
+                    tokenized_data = tokenizer_transform({"sequence": seq_tensor})
+                    tokenized_seq = tokenized_data["sequence"]
+                    input_sequences.append(tokenized_seq)
+                else:
+                    raise ValueError(f"No sequence found for structure: {structure_path}")
+
+            # Pad sequences to same length
+            padded_sequences = torch.zeros((B, max_length), device=device, dtype=torch.long)
+            for i, seq in enumerate(input_sequences):
+                seq_len = min(len(seq), max_length)
+                padded_sequences[i, :seq_len] = seq[:seq_len]
+
+            # Run multiple trials and select best based on TM-score
+            best_trial_results = []
+
+            for trial in range(n_trials):
+                logger.info(f"Trial {trial + 1}/{n_trials} for batch {batch_idx + 1}")
+
+                # Generate new structures (forward folding)
+                generate_sample = model.generate_sample(
+                    length=max_length,
+                    num_samples=B,
+                    nsteps=nsteps,
+                    temperature_seq=gen_cfg.get("temperature_seq", 0.5),
+                    temperature_struc=gen_cfg.get("temperature_struc", 1.0),
+                    stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
+                    stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
+                    forward_folding=True,
+                    input_sequence_tokens=padded_sequences,
+                    input_mask=mask,
+                    input_indices=indices,
                 )
+
+                # Decode structures
+                decoded_x = model.decode_structure(generate_sample, mask)
+
+                # Extract coordinates
+                x_recon_xyz = None
+                for decoder_name in decoded_x:
+                    if "vit_decoder" == decoder_name:
+                        x_recon_xyz = decoded_x[decoder_name]
+                        break
+
+                if x_recon_xyz is None:
+                    raise RuntimeError("No structure decoder found in model output")
+
+                # Extract sequences
+                if generate_sample["sequence_logits"].shape[-1] == 33:
+                    seq = convert_lobster_aa_tokenization_to_standard_aa(
+                        generate_sample["sequence_logits"], device=device
+                    )
+                else:
+                    seq = generate_sample["sequence_logits"].argmax(dim=-1)
+                    seq[seq > 21] = 20
+
+                # Calculate TM-scores for this trial
+                trial_tm_scores = []
+                for i in range(B):
+                    # Get original and generated coordinates
+                    orig_coords = coords_res[i, mask[i] == 1, :, :]  # Original structure
+                    gen_coords = x_recon_xyz[i, mask[i] == 1, :, :]  # Generated structure
+
+                    # Get sequence for TM-align
+                    seq_i = seq[i, mask[i] == 1]
+                    sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
+
+                    # Calculate TM-Score using TM-align
+
+                    tm_out = tm_align(
+                        gen_coords[:, 1, :].cpu().numpy(),  # CA atoms of generated structure
+                        orig_coords[:, 1, :].detach().cpu().numpy(),  # CA atoms of original structure
+                        sequence_str,
+                        sequence_str,
+                    )
+                    trial_tm_scores.append(tm_out.tm_norm_chain1)
+                    logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {tm_out.rmsd:.2f} Å")
+
+                # Store trial results
+                best_trial_results.append(
+                    {
+                        "trial": trial,
+                        "tm_scores": trial_tm_scores,
+                        "avg_tm_score": sum(trial_tm_scores) / len(trial_tm_scores),
+                        "generate_sample": generate_sample,
+                        "x_recon_xyz": x_recon_xyz,
+                        "seq": seq,
+                    }
+                )
+
+            # Select best trial based on average TM-score
+            best_trial = max(best_trial_results, key=lambda x: x["avg_tm_score"])
+            logger.info(
+                f"Selected trial {best_trial['trial'] + 1} with average TM-score: {best_trial['avg_tm_score']:.3f}"
+            )
+
+            # Use best trial results
+            generate_sample = best_trial["generate_sample"]
+            x_recon_xyz = best_trial["x_recon_xyz"]
+            seq = best_trial["seq"]
+
+            # Save generated and original structures
+            logger.info(f"Saving forward folding results for batch {batch_idx + 1}...")
+            for i, valid_idx in enumerate(filtered_valid_indices):
+                original_path = batch_paths[valid_idx]
+                original_name = Path(original_path).stem
+                x_recon_xyz_i_masked = x_recon_xyz[i, mask[i] == 1]
+                seq_i_masked = seq[i, mask[i] == 1]
+
+                # Get original structure coordinates and sequence
+                orig_coords_i_masked = coords_res[i, mask[i] == 1, :, :]
+
+                # Save generated structure
+                generated_filename = output_dir / f"forward_folding_{original_name}_generated.pdb"
+                writepdb(str(generated_filename), x_recon_xyz_i_masked, seq_i_masked)
+                logger.info(f"Saved generated: {generated_filename}")
+
+                # Save original structure
+                original_filename = output_dir / f"forward_folding_{original_name}_original.pdb"
+                writepdb(str(original_filename), orig_coords_i_masked, seq_i_masked)
+                logger.info(f"Saved original: {original_filename}")
+
+            # Calculate TM-Score and RMSD between generated and original structures
+            logger.info(f"Calculating structural metrics for batch {batch_idx + 1}...")
+            batch_tm_scores = []
+            batch_rmsd_scores = []
+
+            for i, valid_idx in enumerate(filtered_valid_indices):
+                # Get original and generated coordinates
+                orig_coords = coords_res[i, mask[i] == 1, :, :]  # Original structure
+                gen_coords = x_recon_xyz[i, mask[i] == 1, :, :]  # Generated structure
+
+                # Get sequence for TM-align
+                seq_i = seq[i, mask[i] == 1]
+                sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
+
+                # Calculate TM-Score and RMSD using TM-align
+
+                tm_out = tm_align(
+                    gen_coords[:, 1, :].cpu().numpy(),  # CA atoms of generated structure
+                    orig_coords[:, 1, :].detach().cpu().numpy(),  # CA atoms of original structure
+                    sequence_str,
+                    sequence_str,
+                )
+                logger.info(f"Sequence: {sequence_str}")
+                logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {tm_out.rmsd:.2f} Å")
+                batch_tm_scores.append(tm_out.tm_norm_chain1)
+                batch_rmsd_scores.append(tm_out.rmsd)
+
+            # Collect metrics for aggregate statistics
+            all_tm_scores.extend(batch_tm_scores)
+            all_rmsd_scores.extend(batch_rmsd_scores)
+
+    # Calculate and report aggregate statistics
+    logger.info("=" * 80)
+    logger.info("FORWARD FOLDING AGGREGATE STATISTICS")
+    logger.info("=" * 80)
+
+    if all_tm_scores:
+        avg_tm_score = sum(all_tm_scores) / len(all_tm_scores)
+        logger.info(f"Average TM-Score: {avg_tm_score:.3f} (n={len(all_tm_scores)})")
+    else:
+        logger.warning("No TM-Score data collected")
+
+    if all_rmsd_scores:
+        # Filter out infinite RMSD values
+        valid_rmsd = [r for r in all_rmsd_scores if r != float("inf")]
+        if valid_rmsd:
+            avg_rmsd = sum(valid_rmsd) / len(valid_rmsd)
+            logger.info(f"Average RMSD: {avg_rmsd:.2f} Å (n={len(valid_rmsd)})")
+        else:
+            logger.warning("No valid RMSD data collected")
+    else:
+        logger.warning("No RMSD data collected")
+
+    logger.info("=" * 80)
 
 
 def _generate_binders(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
@@ -317,7 +955,7 @@ def _validate_with_esmfold(
     original_paths: list[str] | None = None,
     mask: torch.Tensor | None = None,
     max_length: int | None = 512,
-) -> None:
+) -> dict[str, float] | None:
     """Validate generated structures using ESMFold."""
     # Convert sequences to strings
     sequence_str = []
@@ -368,6 +1006,9 @@ def _validate_with_esmfold(
             seq_i_masked = seq[i]
         writepdb(str(filename), pred_coords_i_masked, seq_i_masked)
         logger.info(f"Saved ESMFold structure: {filename}")
+
+    # Return the metrics for aggregate statistics
+    return folded_structure_metrics
 
 
 if __name__ == "__main__":

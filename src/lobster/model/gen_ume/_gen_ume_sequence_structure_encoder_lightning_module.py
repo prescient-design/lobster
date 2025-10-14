@@ -427,7 +427,9 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         temperature_seq: float = 0.5,
         temperature_struc: float = 1.0,
         inverse_folding: bool = False,
+        forward_folding: bool = False,
         input_structure_coords: Tensor = None,
+        input_sequence_tokens: Tensor = None,
         input_mask: Tensor = None,
         input_indices: Tensor = None,
     ):
@@ -463,6 +465,13 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
                 ts_struc = torch.full_like(ts_struc, 0.9950)
             else:
                 raise ValueError("Structure path is required for inverse folding")
+        elif forward_folding:
+            if input_sequence_tokens is not None:
+                xt_seq = input_sequence_tokens
+                xt["sequence_tokens"] = xt_seq
+                ts_seq = torch.full_like(ts_seq, 0.9950)
+            else:
+                raise ValueError("Sequence tokens are required for forward folding")
 
         for dt_seq, dt_struc, t_seq, t_struc in tqdm(
             zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples"
