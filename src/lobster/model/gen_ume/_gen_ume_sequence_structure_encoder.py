@@ -9,7 +9,7 @@ from torch import Tensor
 
 from ..neobert import NeoBERTModule
 from ..ume2 import AuxiliaryRegressionTaskHead
-from ._checkpoint_utils import load_checkpoint_from_s3_uri_or_local_path, map_checkpoint_keys
+from ..ume2._checkpoint_utils import load_checkpoint_from_s3_uri_or_local_path, map_checkpoint_keys
 
 logger = logging.getLogger(__name__)
 

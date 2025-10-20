@@ -1002,6 +1002,7 @@ def _generate_inverse_folding(
                     all_predicted_aligned_errors.append(batch_metrics["_predicted_aligned_error"])
                     all_tm_scores.append(batch_metrics["_tm_score"])
                     all_rmsd_scores.append(batch_metrics["_rmsd"])
+                    avg_percent_identity = sum(batch_percent_identities) / len(batch_percent_identities)
 
                     # Write batch metrics to CSV
                     if csv_writer is not None:
@@ -1009,7 +1010,7 @@ def _generate_inverse_folding(
                         csv_writer.write_batch_metrics(
                             batch_metrics,
                             run_id,
-                            percent_identity=0.0,
+                            percent_identity=avg_percent_identity,
                             sequence_length=max_length,
                             input_file=f"batch_{batch_idx:03d}",
                         )

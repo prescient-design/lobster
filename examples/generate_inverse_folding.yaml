@@ -16,9 +16,9 @@ model:
 # Generation settings
 generation:
   mode: inverse_folding
-  nsteps: 100          # Fewer steps for inverse folding
+  nsteps: 800          # Fewer steps for inverse folding
   batch_size: 1        # Process 1 structures at a time
-  n_trials: 8          # Number of trials for best output selection
+  n_trials: 1          # Number of trials for best output selection
   
   #Generation parameters
   temperature_seq: 0.5317880918477355    
