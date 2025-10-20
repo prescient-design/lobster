@@ -1,6 +1,11 @@
 import logging
 from pathlib import Path
 import glob
+import csv
+from datetime import datetime
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
 
 import hydra
 import torch
@@ -20,6 +25,330 @@ from tmtools import tm_align
 logging.basicConfig(level=logging.INFO)
 # warning emsfolding does not take into account multiple chains
 # todo: add support for multiple chains
+
+
+class MetricsPlotter:
+    """Helper class to create plots from metrics data."""
+
+    def __init__(self, output_dir: Path, mode: str):
+        """Initialize plotter for a specific generation mode.
+
+        Args:
+            output_dir: Directory to save plot files
+            mode: Generation mode (unconditional, inverse_folding, forward_folding)
+        """
+        self.output_dir = output_dir
+        self.mode = mode
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    def create_box_plots_from_csv(self, csv_path: Path):
+        """Create box and whisker plots from CSV metrics data.
+
+        Args:
+            csv_path: Path to the CSV file containing metrics
+        """
+
+        # Read CSV data
+        df = pd.read_csv(csv_path)
+
+        # Define metrics to plot based on mode
+        if self.mode == "unconditional":
+            metrics = ["plddt", "predicted_aligned_error", "tm_score", "rmsd"]
+            length_col = "sequence_length"
+        elif self.mode == "inverse_folding":
+            metrics = ["percent_identity", "plddt", "predicted_aligned_error", "tm_score", "rmsd"]
+            length_col = "sequence_length"
+        elif self.mode == "forward_folding":
+            metrics = ["tm_score", "rmsd"]
+            length_col = "sequence_length"
+        else:
+            logger.warning(f"Unknown mode for plotting: {self.mode}")
+            return
+
+        # Filter out empty values and convert to numeric
+        for metric in metrics:
+            if metric in df.columns:
+                df[metric] = pd.to_numeric(df[metric], errors="coerce")
+
+        # Remove rows with NaN values
+        df = df.dropna(subset=metrics)
+
+        if df.empty:
+            logger.warning("No valid data found for plotting")
+            return
+
+        # Create plots for each metric
+        for metric in metrics:
+            if metric not in df.columns:
+                continue
+
+            self._create_single_box_plot(df, metric, length_col)
+
+        # Create combined plot
+        self._create_combined_box_plot(df, metrics, length_col)
+
+    def _create_single_box_plot(self, df: pd.DataFrame, metric: str, length_col: str):
+        """Create a single box plot for one metric."""
+        plt.figure(figsize=(10, 6))
+
+        # Group data by length
+        lengths = sorted(df[length_col].unique())
+        data_by_length = [df[df[length_col] == length][metric].dropna() for length in lengths]
+
+        # Create box plot
+        box_plot = plt.boxplot(data_by_length, labels=lengths, patch_artist=True)
+
+        # Color the boxes
+        colors = plt.cm.Set3(np.linspace(0, 1, len(lengths)))
+        for patch, color in zip(box_plot["boxes"], colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+
+        plt.title(
+            f"{metric.replace('_', ' ').title()} by Sequence Length\n({self.mode.replace('_', ' ').title()} Generation)"
+        )
+        plt.xlabel("Sequence Length")
+        plt.ylabel(metric.replace("_", " ").title())
+        plt.grid(True, alpha=0.3)
+
+        # Rotate x-axis labels if there are many lengths
+        if len(lengths) > 5:
+            plt.xticks(rotation=45)
+
+        plt.tight_layout()
+
+        # Save plot
+        plot_path = self.output_dir / f"{self.mode}_{metric}_boxplot_{self.timestamp}.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
+        logger.info(f"Saved box plot: {plot_path}")
+
+    def _create_combined_box_plot(self, df: pd.DataFrame, metrics: list, length_col: str):
+        """Create a combined subplot with all metrics."""
+        lengths = sorted(df[length_col].unique())
+
+        # Create subplots
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        axes = axes.flatten()
+
+        for i, metric in enumerate(metrics):
+            if i >= len(axes):
+                break
+
+            ax = axes[i]
+
+            # Group data by length
+            data_by_length = [df[df[length_col] == length][metric].dropna() for length in lengths]
+
+            # Create box plot
+            box_plot = ax.boxplot(data_by_length, labels=lengths, patch_artist=True)
+
+            # Color the boxes
+            colors = plt.cm.Set3(np.linspace(0, 1, len(lengths)))
+            for patch, color in zip(box_plot["boxes"], colors):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.7)
+
+            ax.set_title(f"{metric.replace('_', ' ').title()}")
+            ax.set_xlabel("Sequence Length")
+            ax.set_ylabel(metric.replace("_", " ").title())
+            ax.grid(True, alpha=0.3)
+
+            # Rotate x-axis labels if there are many lengths
+            if len(lengths) > 5:
+                ax.tick_params(axis="x", rotation=45)
+
+        # Hide unused subplots
+        for i in range(len(metrics), len(axes)):
+            axes[i].set_visible(False)
+
+        plt.suptitle(f"Metrics by Sequence Length - {self.mode.replace('_', ' ').title()} Generation", fontsize=16)
+        plt.tight_layout()
+
+        # Save combined plot
+        plot_path = self.output_dir / f"{self.mode}_combined_boxplots_{self.timestamp}.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
+        logger.info(f"Saved combined box plots: {plot_path}")
+
+
+class MetricsCSVWriter:
+    """Helper class to write metrics to CSV files."""
+
+    def __init__(self, output_dir: Path, mode: str):
+        """Initialize CSV writer for a specific generation mode.
+
+        Args:
+            output_dir: Directory to save CSV files
+            mode: Generation mode (unconditional, inverse_folding, forward_folding)
+        """
+        self.output_dir = output_dir
+        self.mode = mode
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Create CSV file path
+        self.csv_path = output_dir / f"{mode}_metrics_{self.timestamp}.csv"
+
+        # Initialize CSV file with headers
+        self._initialize_csv()
+
+    def _initialize_csv(self):
+        """Initialize CSV file with appropriate headers based on mode."""
+        headers = ["run_id", "timestamp", "mode"]
+
+        if self.mode == "unconditional":
+            headers.extend(["plddt", "predicted_aligned_error", "tm_score", "rmsd", "sequence_length", "num_samples"])
+        elif self.mode == "inverse_folding":
+            headers.extend(
+                [
+                    "percent_identity",
+                    "plddt",
+                    "predicted_aligned_error",
+                    "tm_score",
+                    "rmsd",
+                    "sequence_length",
+                    "input_file",
+                ]
+            )
+        elif self.mode == "forward_folding":
+            headers.extend(["tm_score", "rmsd", "sequence_length", "input_file"])
+
+        # Write headers to CSV
+        with open(self.csv_path, "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(headers)
+
+        logger.info(f"Initialized CSV metrics file: {self.csv_path}")
+
+    def write_batch_metrics(self, metrics: dict, run_id: str, **kwargs):
+        """Write batch metrics to CSV.
+
+        Args:
+            metrics: Dictionary containing metric values
+            run_id: Unique identifier for this run
+            **kwargs: Additional data to include (input_file, sequence_length, etc.)
+        """
+
+        def _to_scalar(value):
+            """Convert tensor to scalar value."""
+            if value is None or value == "":
+                return ""
+            if hasattr(value, "item"):
+                return value.item()
+            elif hasattr(value, "cpu"):
+                return value.cpu().item()
+            else:
+                return float(value)
+
+        row = [run_id, datetime.now().isoformat(), self.mode]
+
+        if self.mode == "unconditional":
+            row.extend(
+                [
+                    _to_scalar(metrics.get("_plddt", "")),
+                    _to_scalar(metrics.get("_predicted_aligned_error", "")),
+                    _to_scalar(metrics.get("_tm_score", "")),
+                    _to_scalar(metrics.get("_rmsd", "")),
+                    kwargs.get("sequence_length", ""),
+                    kwargs.get("num_samples", ""),
+                ]
+            )
+        elif self.mode == "inverse_folding":
+            row.extend(
+                [
+                    _to_scalar(kwargs.get("percent_identity", "")),
+                    _to_scalar(metrics.get("_plddt", "")),
+                    _to_scalar(metrics.get("_predicted_aligned_error", "")),
+                    _to_scalar(metrics.get("_tm_score", "")),
+                    _to_scalar(metrics.get("_rmsd", "")),
+                    kwargs.get("sequence_length", ""),
+                    kwargs.get("input_file", ""),
+                ]
+            )
+        elif self.mode == "forward_folding":
+            row.extend(
+                [
+                    _to_scalar(metrics.get("tm_score", "")),
+                    _to_scalar(metrics.get("rmsd", "")),
+                    kwargs.get("sequence_length", ""),
+                    kwargs.get("input_file", ""),
+                ]
+            )
+
+        # Write row to CSV
+        with open(self.csv_path, "a", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(row)
+
+    def write_aggregate_stats(self, aggregate_stats: dict, length: int = None):
+        """Write aggregate statistics to a separate summary CSV.
+
+        Args:
+            aggregate_stats: Dictionary containing aggregate statistics
+            length: Optional length parameter for per-length aggregation
+        """
+        if length is not None:
+            summary_csv_path = self.output_dir / f"{self.mode}_summary_length_{length}_{self.timestamp}.csv"
+        else:
+            summary_csv_path = self.output_dir / f"{self.mode}_summary_{self.timestamp}.csv"
+
+        headers = ["metric", "value", "count", "mode", "timestamp"]
+        if length is not None:
+            headers.insert(-1, "length")
+
+        with open(summary_csv_path, "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(headers)
+
+            for metric_name, (value, count) in aggregate_stats.items():
+                row = [metric_name, value, count, self.mode]
+                if length is not None:
+                    row.append(length)
+                row.append(datetime.now().isoformat())
+                writer.writerow(row)
+
+        logger.info(f"Saved aggregate statistics to: {summary_csv_path}")
+
+
+def _calculate_aggregate_stats(metric_lists: dict) -> dict:
+    """Calculate aggregate statistics from lists of metrics.
+
+    Args:
+        metric_lists: Dictionary mapping metric names to lists of values
+
+    Returns:
+        Dictionary mapping metric names to (average, count) tuples
+    """
+    aggregate_stats = {}
+
+    for metric_name, values in metric_lists.items():
+        if values:
+            # Convert tensors to scalars and filter out invalid values
+            valid_values = []
+            for v in values:
+                # Convert tensor to scalar if needed
+                if hasattr(v, "item"):
+                    scalar_v = v.item()
+                elif hasattr(v, "cpu"):
+                    scalar_v = v.cpu().item()
+                else:
+                    scalar_v = float(v)
+
+                # Filter out invalid values (inf, nan)
+                if scalar_v != float("inf") and not (isinstance(scalar_v, float) and scalar_v != scalar_v):
+                    valid_values.append(scalar_v)
+
+            if valid_values:
+                avg_value = sum(valid_values) / len(valid_values)
+                aggregate_stats[metric_name] = (avg_value, len(valid_values))
+            else:
+                aggregate_stats[metric_name] = (0.0, 0)
+        else:
+            aggregate_stats[metric_name] = (0.0, 0)
+
+    return aggregate_stats
 
 
 def calculate_percent_identity(ground_truth_seq, generated_seq, mask=None):
@@ -107,23 +436,38 @@ def generate(cfg: DictConfig) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output directory: {output_dir}")
 
+    # Initialize CSV logging and plotting if enabled
+    csv_writer = None
+    plotter = None
+    if cfg.generation.get("save_csv_metrics", True):
+        generation_mode = cfg.generation.mode
+        csv_writer = MetricsCSVWriter(output_dir, generation_mode)
+        logger.info(f"CSV metrics logging enabled for {generation_mode} mode")
+
+        # Initialize plotter if plotting is enabled
+        if cfg.generation.get("create_plots", True):
+            plotter = MetricsPlotter(output_dir, generation_mode)
+            logger.info(f"Plotting enabled for {generation_mode} mode")
+
     # Generate structures
     generation_mode = cfg.generation.mode
     logger.info(f"Generation mode: {generation_mode}")
 
     if generation_mode == "unconditional":
-        _generate_unconditional(model, cfg, device, output_dir, plm_fold)
+        _generate_unconditional(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     elif generation_mode == "inverse_folding":
-        _generate_inverse_folding(model, cfg, device, output_dir, plm_fold)
+        _generate_inverse_folding(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     elif generation_mode == "forward_folding":
-        _generate_forward_folding(model, cfg, device, output_dir, plm_fold)
+        _generate_forward_folding(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     else:
         raise ValueError(f"Unknown generation mode: {generation_mode}")
 
     logger.info("Generation completed successfully!")
 
 
-def _generate_unconditional(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
+def _generate_unconditional(
+    model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
+) -> None:
     """Generate structures unconditionally."""
     logger.info("Starting unconditional generation...")
 
@@ -131,66 +475,155 @@ def _generate_unconditional(model, cfg: DictConfig, device: torch.device, output
     length = gen_cfg.length
     num_samples = gen_cfg.num_samples
     nsteps = gen_cfg.get("nsteps", 200)
+    batch_size = gen_cfg.get("batch_size", 1)
 
-    logger.info(f"Generating {num_samples} structures of length {length} with {nsteps} steps")
+    # Handle both single length and list of lengths
+    # Check for ListConfig, list, or tuple
+    if hasattr(length, "__iter__") and not isinstance(length, (str, int, float)):
+        # Convert ListConfig/list/tuple to regular list if needed
+        lengths = list(length)
+        logger.info(f"Generating {num_samples} structures for each length in {lengths}")
+    else:
+        lengths = [int(length)]
+        logger.info(f"Generating {num_samples} structures of length {length}")
 
-    with torch.no_grad():
-        # Generate samples
-        generate_sample = model.generate_sample(
-            length=length,
-            num_samples=num_samples,
-            nsteps=nsteps,
-            temperature_seq=gen_cfg.get("temperature_seq", 0.5),
-            temperature_struc=gen_cfg.get("temperature_struc", 1.0),
-            stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
-            stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
+    # Process each length
+    for current_length in lengths:
+        # Ensure current_length is an integer
+        current_length = int(current_length)
+
+        logger.info("=" * 60)
+        logger.info(f"PROCESSING LENGTH: {current_length}")
+        logger.info("=" * 60)
+
+        n_iterations = num_samples // batch_size
+        logger.info(
+            f"Generating {num_samples} structures of length {current_length} with {nsteps} steps, will run with batch size {batch_size} for {n_iterations} iterations"
         )
 
-        # Create mask for decoding
-        mask = torch.ones((num_samples, length), device=device)
+        # Initialize metrics collection for this length
+        all_metrics = []
 
-        # Decode structures
-        decoded_x = model.decode_structure(generate_sample, mask)
+        for n_iter in range(n_iterations):
+            logger.info(f"Iteration {n_iter + 1}/{n_iterations}")
 
-        # Extract coordinates
-        x_recon_xyz = None
-        for decoder_name in decoded_x:
-            if "vit_decoder" == decoder_name:
-                x_recon_xyz = decoded_x[decoder_name]
-                break
+            with torch.no_grad():
+                # Generate samples
+                generate_sample = model.generate_sample(
+                    length=current_length,
+                    num_samples=batch_size,
+                    nsteps=nsteps,
+                    temperature_seq=gen_cfg.get("temperature_seq", 0.5),
+                    temperature_struc=gen_cfg.get("temperature_struc", 1.0),
+                    stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
+                    stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
+                )
 
-        if x_recon_xyz is None:
-            raise RuntimeError("No structure decoder found in model output")
+                # Create mask for decoding
+                mask = torch.ones((batch_size, current_length), device=device)
 
-        # Extract sequences
-        if generate_sample["sequence_logits"].shape[-1] == 33:
-            seq = convert_lobster_aa_tokenization_to_standard_aa(generate_sample["sequence_logits"], device=device)
-        else:
-            seq = generate_sample["sequence_logits"].argmax(dim=-1)
-            seq[seq > 21] = 20
+                # Decode structures
+                decoded_x = model.decode_structure(generate_sample, mask)
 
-        # Save generated structures
-        logger.info("Saving generated structures...")
-        for i in range(num_samples):
-            filename = output_dir / f"generated_structure_{i:03d}.pdb"
-            writepdb(str(filename), x_recon_xyz[i], seq[i])
-            logger.info(f"Saved: {filename}")
+                # Extract coordinates
+                x_recon_xyz = None
+                for decoder_name in decoded_x:
+                    if "vit_decoder" == decoder_name:
+                        x_recon_xyz = decoded_x[decoder_name]
+                        break
 
-        # Optional ESMFold validation
-        if plm_fold is not None:
-            logger.info("Validating structures with ESMFold...")
-            batch_metrics = _validate_with_esmfold(
-                seq, x_recon_xyz, plm_fold, device, output_dir, "generated", max_length=length
-            )
+                if x_recon_xyz is None:
+                    raise RuntimeError("No structure decoder found in model output")
 
-            # Log metrics for unconditional generation
-            if batch_metrics:
-                logger.info("ESMFold validation metrics for unconditional generation:")
-                for key, value in batch_metrics.items():
-                    logger.info(f"  {key}: {value:.4f}")
+                # Extract sequences
+                if generate_sample["sequence_logits"].shape[-1] == 33:
+                    seq = convert_lobster_aa_tokenization_to_standard_aa(
+                        generate_sample["sequence_logits"], device=device
+                    )
+                else:
+                    seq = generate_sample["sequence_logits"].argmax(dim=-1)
+                    seq[seq > 21] = 20
+
+                # Save generated structures
+                logger.info("Saving generated structures...")
+                for i in range(batch_size):
+                    filename = (
+                        output_dir / f"generated_structure_length_{current_length}_{n_iter * batch_size + i:03d}.pdb"
+                    )
+                    writepdb(str(filename), x_recon_xyz[i], seq[i])
+                    logger.info(f"Saved: {filename}")
+
+                # Optional ESMFold validation
+                if plm_fold is not None:
+                    logger.info("Validating structures with ESMFold...")
+                    batch_metrics = _validate_with_esmfold(
+                        seq,
+                        x_recon_xyz,
+                        plm_fold,
+                        device,
+                        output_dir,
+                        f"generated_structure_length_{current_length}_{n_iter * batch_size + i:03d}",
+                        max_length=current_length,
+                    )
+
+                    # Log metrics for unconditional generation
+                    if batch_metrics:
+                        logger.info("ESMFold validation metrics for unconditional generation:")
+                        for key, value in batch_metrics.items():
+                            logger.info(f"  {key}: {value:.4f}")
+
+                        # Store metrics for CSV logging
+                        if csv_writer is not None:
+                            run_id = f"unconditional_length_{current_length}_iter_{n_iter:03d}"
+                            csv_writer.write_batch_metrics(
+                                batch_metrics, run_id, sequence_length=current_length, num_samples=batch_size
+                            )
+
+                        # Always collect metrics for aggregate statistics
+                        all_metrics.append(batch_metrics)
+
+        # Calculate and log aggregate statistics for this length
+        if all_metrics:
+            logger.info(f"Calculating aggregate statistics for length {current_length}...")
+
+            # Collect all metric values
+            metric_lists = {"_plddt": [], "_predicted_aligned_error": [], "_tm_score": [], "_rmsd": []}
+
+            for metrics in all_metrics:
+                for key in metric_lists:
+                    if key in metrics:
+                        metric_lists[key].append(metrics[key])
+
+            # Calculate aggregate statistics
+            aggregate_stats = _calculate_aggregate_stats(metric_lists)
+
+            # Log aggregate statistics
+            logger.info("=" * 80)
+            logger.info(f"UNCONDITIONAL GENERATION AGGREGATE STATISTICS - LENGTH {current_length}")
+            logger.info("=" * 80)
+
+            for metric_name, (avg_value, count) in aggregate_stats.items():
+                logger.info(f"Average {metric_name}: {avg_value:.4f} (n={count})")
+
+            logger.info("=" * 80)
+
+            # Write aggregate statistics to CSV if writer is available
+            if csv_writer is not None:
+                csv_writer.write_aggregate_stats(aggregate_stats, length=current_length)
+
+    # Create plots from CSV data if plotter is available
+    if plotter is not None and csv_writer is not None:
+        logger.info("Creating box and whisker plots from CSV data...")
+        try:
+            plotter.create_box_plots_from_csv(csv_writer.csv_path)
+            logger.info("✓ Box plots created successfully")
+        except Exception as e:
+            logger.error(f"Error creating plots: {e}")
 
 
-def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
+def _generate_inverse_folding(
+    model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
+) -> None:
     """Generate sequences for given structures (inverse folding)."""
     logger.info("Starting inverse folding generation...")
 
@@ -570,6 +1003,17 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
                     all_tm_scores.append(batch_metrics["_tm_score"])
                     all_rmsd_scores.append(batch_metrics["_rmsd"])
 
+                    # Write batch metrics to CSV
+                    if csv_writer is not None:
+                        run_id = f"inverse_folding_batch_{batch_idx:03d}"
+                        csv_writer.write_batch_metrics(
+                            batch_metrics,
+                            run_id,
+                            percent_identity=0.0,
+                            sequence_length=max_length,
+                            input_file=f"batch_{batch_idx:03d}",
+                        )
+
     # Calculate and report aggregate statistics
     logger.info("=" * 80)
     logger.info("INVERSE FOLDING AGGREGATE STATISTICS")
@@ -607,8 +1051,38 @@ def _generate_inverse_folding(model, cfg: DictConfig, device: torch.device, outp
 
     logger.info("=" * 80)
 
+    # Write aggregate statistics to CSV
+    if csv_writer is not None:
+        logger.info("Writing inverse folding aggregate statistics to CSV...")
 
-def _generate_forward_folding(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
+        # Collect all metric values
+        metric_lists = {
+            "percent_identity": all_percent_identities,
+            "plddt": all_plddt_scores,
+            "predicted_aligned_error": all_predicted_aligned_errors,
+            "tm_score": all_tm_scores,
+            "rmsd": all_rmsd_scores,
+        }
+
+        # Calculate aggregate statistics
+        aggregate_stats = _calculate_aggregate_stats(metric_lists)
+
+        # Write aggregate statistics to CSV
+        csv_writer.write_aggregate_stats(aggregate_stats)
+
+    # Create plots from CSV data if plotter is available
+    if plotter is not None and csv_writer is not None:
+        logger.info("Creating box and whisker plots from CSV data...")
+        try:
+            plotter.create_box_plots_from_csv(csv_writer.csv_path)
+            logger.info("✓ Box plots created successfully")
+        except Exception as e:
+            logger.error(f"Error creating plots: {e}")
+
+
+def _generate_forward_folding(
+    model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
+) -> None:
     """Generate structures from given input structures (forward folding)."""
     logger.info("Starting forward folding generation...")
 
@@ -915,6 +1389,17 @@ def _generate_forward_folding(model, cfg: DictConfig, device: torch.device, outp
             all_tm_scores.extend(batch_tm_scores)
             all_rmsd_scores.extend(batch_rmsd_scores)
 
+            # Write batch metrics to CSV
+            if csv_writer is not None:
+                run_id = f"forward_folding_batch_{batch_idx:03d}"
+                batch_metrics = {
+                    "tm_score": sum(batch_tm_scores) / len(batch_tm_scores) if batch_tm_scores else 0.0,
+                    "rmsd": sum(batch_rmsd_scores) / len(batch_rmsd_scores) if batch_rmsd_scores else 0.0,
+                }
+                csv_writer.write_batch_metrics(
+                    batch_metrics, run_id, sequence_length=max_length, input_file=f"batch_{batch_idx:03d}"
+                )
+
     # Calculate and report aggregate statistics
     logger.info("=" * 80)
     logger.info("FORWARD FOLDING AGGREGATE STATISTICS")
@@ -938,6 +1423,28 @@ def _generate_forward_folding(model, cfg: DictConfig, device: torch.device, outp
         logger.warning("No RMSD data collected")
 
     logger.info("=" * 80)
+
+    # Write aggregate statistics to CSV
+    if csv_writer is not None:
+        logger.info("Writing forward folding aggregate statistics to CSV...")
+
+        # Collect all metric values
+        metric_lists = {"tm_score": all_tm_scores, "rmsd": all_rmsd_scores}
+
+        # Calculate aggregate statistics
+        aggregate_stats = _calculate_aggregate_stats(metric_lists)
+
+        # Write aggregate statistics to CSV
+        csv_writer.write_aggregate_stats(aggregate_stats)
+
+    # Create plots from CSV data if plotter is available
+    if plotter is not None and csv_writer is not None:
+        logger.info("Creating box and whisker plots from CSV data...")
+        try:
+            plotter.create_box_plots_from_csv(csv_writer.csv_path)
+            logger.info("✓ Box plots created successfully")
+        except Exception as e:
+            logger.error(f"Error creating plots: {e}")
 
 
 def _generate_binders(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:

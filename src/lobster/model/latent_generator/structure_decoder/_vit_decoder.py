@@ -8,8 +8,6 @@ from lobster.model.latent_generator.models.vit._vit_utils import (
 
 from ._decoder import BaseDecoder
 
-# TODO replace tensortyping with jaxtyping
-
 
 class ViTDecoder(BaseDecoder):
     """Wrapper for U-ViT module to decode structure coordinates."""

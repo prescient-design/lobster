@@ -17,15 +17,15 @@ model:
 # Generation settings
 generation:
   mode: forward_folding
-  nsteps: 100          # More steps for forward folding
+  nsteps: 800          # More steps for forward folding
   batch_size: 1        # Process 2 structures at a time
   n_trials: 1          # Number of trials for best output selection
   
-  # Structure generation parameters
-  temperature_seq: 0.5    
-  stochasticity_seq: 20   
-  temperature_struc: 1.0
-  stochasticity_struc: 20
+  #Generation parameters
+  temperature_seq: 0.5317880918477355    
+  temperature_struc: 0.16001042166543197  
+  stochasticity_seq: 20 
+  stochasticity_struc: 60
   
   # Input structures - update these paths to your structure files
   # Examples of different input formats:

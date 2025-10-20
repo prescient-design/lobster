@@ -11,20 +11,22 @@ seed: 12345
 # Model configuration
 model:
   _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "/data2/ume/gen_ume/runs//2025-10-09T06-43-20/last.ckpt"
+  ckpt_path: "/data2/ume/gen_ume/runs//2025-10-08T23-54-39/last.ckpt"
 
 # Generation parameters
 generation:
   mode: unconditional
-  length: 300           # Generate 100 residue proteins
-  num_samples: 10       # Generate 10 samples
-  nsteps: 200          # Use 200 generation steps for higher quality
+  length: [100, 200, 300, 400, 500]
+  num_samples: 20       
+  nsteps: 800   
+  save_csv_metrics: true 
+  create_plots: true
   
-  # Fine-tune generation parameters
-  temperature_seq: 0.5    # Slightly higher temperature for more diversity
-  temperature_struc: 1.0  # Higher structure temperature
-  stochasticity_seq: 20 #20
-  stochasticity_struc: 20 #20
+  #Generation parameters
+  temperature_seq: 0.5317880918477355    
+  temperature_struc: 0.16001042166543197  
+  stochasticity_seq: 20 
+  stochasticity_struc: 60 
   
   # Enable ESMFold validation
   use_esmfold: true
