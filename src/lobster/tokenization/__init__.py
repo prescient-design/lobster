@@ -23,4 +23,5 @@ from ._ume_tokenizers import (
     UMENucleotideTokenizerFast,
     UMESMILESTokenizerFast,
     UMETokenizerTransform,
+    get_ume_tokenizer_transforms,
 )

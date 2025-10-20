@@ -48,6 +48,7 @@ class TestSequenceEncoderLightningModule:
             weight_decay=0.0,
             scheduler="constant_with_warmup",
             scheduler_kwargs={"num_warmup_steps": 1000, "num_training_steps": 10000},
+            use_shared_tokenizer=True,
             encoder_kwargs={
                 "max_length": 4,
                 "vocab_size": 1000,

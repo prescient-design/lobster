@@ -1,0 +1,125 @@
+# @package _global_
+
+defaults:
+  - override /data: null
+  - override /callbacks: [base]
+  - override /model: null
+  - override /lr_scheduler: null
+  # - override /hydra/launcher: submitit_slurm
+
+compile: false
+
+data:
+  _target_: lobster.data.UMELightningDataModule
+  datasets:
+    - Atomica
+  root: ${oc.env:LOBSTER_DATA_DIR}
+  max_length: 1024
+  seed: 0
+  batch_size: 16 # debug
+  pin_memory: true
+  num_workers: 8
+  use_shared_tokenizer: false
+  dataset_kwargs:
+    Atomica:
+      restrict_modalities:
+        - amino_acid
+
+model:
+  _target_: lobster.model.ume2.ume_interaction_lightning_module.UMEInteractionLightningModule 
+  lr: 0.0005
+  seed: 0
+  scheduler: cosine
+  scheduler_kwargs:
+    num_warmup_steps: 1000
+    num_training_steps: 50000
+  special_token_mappings:
+    amino_acid:
+      mask_token_id: 32
+      pad_token_id: 1
+      special_token_ids: [0, 1, 2, 3, 32]
+  weight_decay: 0.01
+  mask_probability: 0.3
+  freeze_molecular_encoders: true
+  ckpt_path: null 
+  checkpoints:
+    amino_acid: s3://prescient-lobster/ume/runs/2025-09-22T20-00-55/epoch=3-step=182000-val_loss=0.4492.ckpt
+  cache_dir: /data2/ume/checkpoints
+  supported_modalities:
+    - amino_acid
+    
+
+logger:
+  name: UME-2-interaction-PP-frozen_${paths.timestamp}
+  project: lobster
+  entity: ${oc.env:LOBSTER_USER}
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+  tags:
+  # resume: must
+  # id: wo79994t
+  # allow_val_change: true
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S} 
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 10
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null 
+  max_steps: ${model.scheduler_kwargs.num_training_steps}
+  val_check_interval: 1000
+  limit_val_batches: 50_000
+  precision: 16-mixed
+  accumulate_grad_batches: 2
+  devices: auto
+  # strategy: ddp_find_unused_parameters_true
+
+
+callbacks:
+  model_checkpoint:
+    save_top_k: -1
+    every_n_train_steps: ${trainer.val_check_interval}
+  # batch_size_finder:
+  #   _target_: lightning.pytorch.callbacks.BatchSizeFinder
+  #   mode: power
+  #   steps_per_trial: 3
+  #   init_val: 64
+  #   max_trials: 25
+  #   batch_arg_name: batch_size
+
+
+# hydra:
+#   run:
+#     dir: outputs/${hydra:job.name}
+#   job:
+#     chdir: false
+#   launcher:
+#     timeout_min: 10080  # 7 days (7 * 24 * 60 = 10080 minutes)
+#     cpus_per_task: 8
+#     nodes: ${trainer.num_nodes}
+#     tasks_per_node: 8
+#     gpus_per_node: 8
+#     mem_gb: 256
+#     name: ${hydra.job.name}
+#     partition: b200
+#     qos: preempt
+#     setup:
+#       - "cd $SLURM_SUBMIT_DIR"
+#       - "source .venv/bin/activate"
+#       - "nvidia-smi"
+#       - "export LD_LIBRARY_PATH=/opt/amazon/efa/lib64:/opt/amazon/openmpi/lib64:/opt/amazon/ofi-nccl/lib64"
+#       - "export WANDB_BASE_URL=https://genentech.wandb.io"
+#       - "export WANDB_MODE=online"
+#       - "export WANDB_DIR=$SLURM_SUBMIT_DIR/wandb"
+#       - "export WANDB_INSECURE_DISABLE_SSL=true"
+#       - "export HYDRA_FULL_ERROR=1"
+#       - "export PYTHONUNBUFFERED=1"
+#       - "export NCCL_DEBUG=INFO"
+#       - "export LOBSTER_RUNS_DIR=s3://prescient-lobster/ume/runs"
+#       - "export LOBSTER_DATA_DIR=/data2/ume/.cache2/"
+#       - "export LOBSTER_USER=$(whoami)"
+#       - "export TOKENIZERS_PARALLELISM=true"
+#       - "umask g+w"
