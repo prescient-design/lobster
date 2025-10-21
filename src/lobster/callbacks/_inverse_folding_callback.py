@@ -7,7 +7,7 @@ from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
 )
-from ._folding_structure_utils import get_folded_structure_metrics
+from lobster.metrics import get_folded_structure_metrics
 from lobster.data._coord_structure_datamodule import StructureLightningDataModule
 import tqdm
 

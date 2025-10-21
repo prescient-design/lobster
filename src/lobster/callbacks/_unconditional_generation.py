@@ -8,7 +8,7 @@ from lobster.model.latent_generator.utils.residue_constants import (
     restype_order_with_x_inv,
 )
 from lobster.model import LobsterPLMFold
-from ._folding_structure_utils import get_folded_structure_metrics
+from lobster.metrics import get_folded_structure_metrics
 
 
 class UnconditionalGenerationCallback(lightning.Callback):

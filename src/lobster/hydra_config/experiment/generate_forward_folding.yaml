@@ -12,7 +12,7 @@ seed: 54321
 # Model configuration
 model:
   _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "/data2/ume/gen_ume/runs//2025-10-08T23-54-39/last.ckpt"  # Update this path
+  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt" 
 
 # Generation settings
 generation:
