@@ -6,7 +6,7 @@ This script integrates with wandb sweeps to optimize generation parameters.
 Based on the wandb sweeps walkthrough: https://docs.wandb.ai/guides/sweeps/walkthrough/
 
 Usage:
-    python wandb_generate.py --config_path=../hydra_config --config_name=generate
+    python wandb_generate.py --config_path=src/lobster/hydra_config/experiment --config_name=generate_unconditional
 """
 
 from pathlib import Path
@@ -53,6 +53,9 @@ def objective(config):
 def create_config_from_wandb(config) -> DictConfig:
     """Create genUME config from wandb sweep parameters."""
 
+    # Get generation mode from config
+    mode = config.get("mode", "unconditional")
+
     # Base config structure
     config_dict = {
         "output_dir": f"./wandb_outputs/{wandb.run.id}",
@@ -62,10 +65,10 @@ def create_config_from_wandb(config) -> DictConfig:
             "ckpt_path": "/data2/ume/gen_ume/runs//2025-10-08T23-54-39/last.ckpt",
         },
         "generation": {
-            "mode": "unconditional",
-            "length": config.get("protein_length", 200),
-            "num_samples": config.get("num_generation_samples", 10),
-            "nsteps": config.get("generation_steps", 200),
+            "mode": mode,
+            "length": config.get("length", 200),
+            "num_samples": config.get("num_samples", 10),
+            "nsteps": config.get("nsteps", 200),
             "temperature_seq": config.get("temperature_seq", 0.5),
             "temperature_struc": config.get("temperature_struc", 0.5),
             "stochasticity_seq": config.get("stochasticity_seq", 20),
@@ -74,11 +77,28 @@ def create_config_from_wandb(config) -> DictConfig:
             "max_length": 512,
             "save_csv_metrics": True,
             "create_plots": False,
-            "batch_size": 1,
-            "n_trials": 1,
-            "input_structures": None,
+            "batch_size": config.get("batch_size", 1),
+            "n_trials": config.get("n_trials", 1),
+            "input_structures": config.get("input_structures", None),
         },
     }
+
+    # Mode-specific adjustments
+    if mode == "inverse_folding":
+        # Inverse folding specific settings
+        if config_dict["generation"]["input_structures"] is None:
+            raise ValueError("input_structures must be provided for inverse folding mode")
+        logger.info(f"Using input structures: {config_dict['generation']['input_structures']}")
+
+    elif mode == "forward_folding":
+        # Forward folding specific settings
+        if config_dict["generation"]["input_structures"] is None:
+            raise ValueError("input_structures must be provided for forward folding mode")
+        logger.info(f"Using input structures: {config_dict['generation']['input_structures']}")
+
+    elif mode == "unconditional":
+        # Unconditional generation - no input structures needed
+        config_dict["generation"]["input_structures"] = None
 
     return OmegaConf.create(config_dict)
 
@@ -100,8 +120,17 @@ def collect_metrics_from_output(output_dir: str) -> dict[str, float]:
 
     df = pd.read_csv(latest_csv)
 
-    # Calculate metrics
-    metric_columns = ["plddt", "predicted_aligned_error", "tm_score", "rmsd"]
+    # Define metrics based on generation mode
+    mode = df["mode"].iloc[0] if "mode" in df.columns and len(df) > 0 else "unconditional"
+
+    if mode == "unconditional":
+        metric_columns = ["plddt", "predicted_aligned_error", "tm_score", "rmsd"]
+    elif mode == "inverse_folding":
+        metric_columns = ["percent_identity", "plddt", "predicted_aligned_error", "tm_score", "rmsd"]
+    elif mode == "forward_folding":
+        metric_columns = ["tm_score", "rmsd"]
+    else:
+        metric_columns = ["plddt", "predicted_aligned_error", "tm_score", "rmsd"]
 
     for metric in metric_columns:
         if metric in df.columns:
@@ -121,7 +150,7 @@ def collect_metrics_from_output(output_dir: str) -> dict[str, float]:
             metrics["avg_sequence_length"] = float(lengths.mean())
             metrics["std_sequence_length"] = float(lengths.std())
 
-    logger.info(f"Collected metrics: {metrics}")
+    logger.info(f"Collected metrics for {mode} mode: {metrics}")
 
     return metrics
 
@@ -130,25 +159,63 @@ def calculate_composite_score(metrics: dict[str, float]) -> float:
     """
     Calculate composite score for optimization.
 
-    Higher is better: plddt, tm_score
-    Lower is better: predicted_aligned_error, rmsd
+    Different scoring strategies for different modes:
+    - Unconditional: Focus on plddt, tm_score, minimize PAE and RMSD
+    - Inverse folding: Focus on percent_identity, plddt, tm_score
+    - Forward folding: Focus on tm_score, minimize RMSD
     """
     score = 0.0
 
-    # Higher is better: plddt, tm_score
-    if "avg_plddt" in metrics:
-        score += metrics["avg_plddt"] * 0.3
+    # Determine mode from available metrics
+    mode = "unconditional"  # default
+    if "avg_percent_identity" in metrics:
+        mode = "inverse_folding"
+    elif "avg_tm_score" in metrics and "avg_plddt" not in metrics:
+        mode = "forward_folding"
 
-    if "avg_tm_score" in metrics:
-        score += metrics["avg_tm_score"] * 0.3
+    if mode == "unconditional":
+        # Higher is better: plddt, tm_score
+        if "avg_plddt" in metrics:
+            score += metrics["avg_plddt"] * 0.3
 
-    # Lower is better: predicted_aligned_error, rmsd
-    if "avg_predicted_aligned_error" in metrics:
-        score -= metrics["avg_predicted_aligned_error"] / 100 * 0.2
+        if "avg_tm_score" in metrics:
+            score += metrics["avg_tm_score"] * 0.3
 
-    if "avg_rmsd" in metrics:
-        score -= metrics["avg_rmsd"] / 10 * 0.2
+        # Lower is better: predicted_aligned_error, rmsd
+        if "avg_predicted_aligned_error" in metrics:
+            score -= metrics["avg_predicted_aligned_error"] / 100 * 0.2
 
+        if "avg_rmsd" in metrics:
+            score -= metrics["avg_rmsd"] / 10 * 0.2
+
+    elif mode == "inverse_folding":
+        # Higher is better: percent_identity, plddt, tm_score
+        if "avg_percent_identity" in metrics:
+            score += metrics["avg_percent_identity"] * 0.4  # Most important for inverse folding
+
+        if "avg_plddt" in metrics:
+            score += metrics["avg_plddt"] * 0.2
+
+        if "avg_tm_score" in metrics:
+            score += metrics["avg_tm_score"] * 0.4
+
+        # Lower is better: predicted_aligned_error, rmsd
+        if "avg_predicted_aligned_error" in metrics:
+            score -= metrics["avg_predicted_aligned_error"] / 100 * 0.1
+
+        if "avg_rmsd" in metrics:
+            score -= metrics["avg_rmsd"] / 10 * 0.1
+
+    elif mode == "forward_folding":
+        # Higher is better: tm_score
+        if "avg_tm_score" in metrics:
+            score += metrics["avg_tm_score"] * 0.7  # Most important for forward folding
+
+        # Lower is better: rmsd
+        if "avg_rmsd" in metrics:
+            score -= metrics["avg_rmsd"] / 10 * 0.3
+
+    logger.info(f"Calculated composite score for {mode} mode: {score:.4f}")
     return score
 
 

@@ -27,6 +27,39 @@ logging.basicConfig(level=logging.INFO)
 # todo: add support for multiple chains
 
 
+def add_linker_to_sequence(sequence: str, residue_index_offset: int = 512, chain_linker: str = "G" * 25):
+    """Add a linker to a sequence.
+    Args:
+        sequence: The sequence to encode
+        residue_index_offset: The offset for the residue indices
+        chain_linker: The linker to use for the chain breaks
+    Returns:
+        sequence: The sequence with linker
+        residx: The residue indices accounting for the linker
+        linker_mask: The mask for the linker
+    """
+
+    chains = sequence.split(":")
+    seq = chain_linker.join(chains)
+
+    residx = torch.arange(len(seq))
+
+    if residue_index_offset > 0:
+        start = 0
+        for i, chain in enumerate(chains):
+            residx[start : start + len(chain) + len(chain_linker)] += i * residue_index_offset
+            start += len(chain) + len(chain_linker)
+
+    linker_mask = torch.ones_like(residx, dtype=torch.float32)
+    offset = 0
+    for i, chain in enumerate(chains):
+        offset += len(chain)
+        linker_mask[offset : offset + len(chain_linker)] = 0
+        offset += len(chain_linker)
+
+    return seq, residx, linker_mask
+
+
 class MetricsPlotter:
     """Helper class to create plots from metrics data."""
 
@@ -824,7 +857,20 @@ def _generate_inverse_folding(
 
                     # Get generated sequence
                     seq_i = seq[i, mask[i] == 1]
-                    sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
+
+                    # Get chain information for this structure
+                    chains_i = filtered_batch_data[i]["chains"].to(device)[mask[i] == 1]
+
+                    # Build sequence string with chain breaks
+                    sequence_str = ""
+                    prev_chain = None
+                    for j, (aa_idx, chain_id) in enumerate(zip(seq_i, chains_i)):
+                        if prev_chain is not None and chain_id.item() != prev_chain:
+                            sequence_str += ":"
+                        sequence_str += restype_order_with_x_inv[aa_idx.item()]
+                        prev_chain = chain_id.item()
+
+                    sequence_str, position_ids, linker_mask = add_linker_to_sequence(sequence_str)
 
                     # For inverse folding, we need to fold the generated sequence with ESMFold
                     # and compare with the original structure
@@ -841,7 +887,17 @@ def _generate_inverse_folding(
 
                         # Fold with ESMFold
                         with torch.no_grad():
-                            outputs = plm_fold.model(tokenized_input)
+                            # outputs = plm_fold.model(tokenized_input)
+                            outputs = plm_fold.model(tokenized_input, position_ids=position_ids.unsqueeze(0).to(device))
+                        # remove linker from outputs using linker_mask
+                        outputs["positions"] = outputs["positions"][:, :, linker_mask == 1, :, :]
+                        outputs["plddt"] = outputs["plddt"][:, linker_mask == 1]
+                        outputs["predicted_aligned_error"] = outputs["predicted_aligned_error"][:, linker_mask == 1]
+                        # use linker_mask to remove linker from sequence_str
+                        sequence_list = list(sequence_str)
+                        sequence_str = "".join(
+                            [seq_char for seq_char, mask_val in zip(sequence_list, linker_mask) if mask_val == 1]
+                        )
 
                         # Get folded structure coordinates
                         folded_structure_metrics, pred_coords = get_folded_structure_metrics(
@@ -850,7 +906,7 @@ def _generate_inverse_folding(
 
                         trial_tm_scores.append(folded_structure_metrics["_tm_score"])
                         trial_folded_structure_metrics = folded_structure_metrics  # Store for reuse
-                        print("TM-score: ", folded_structure_metrics["_tm_score"])
+                        logger.info(f"TM-score: {folded_structure_metrics['_tm_score']:.3f}")
 
                     else:
                         # If ESMFold is not available, use generated structure as fallback

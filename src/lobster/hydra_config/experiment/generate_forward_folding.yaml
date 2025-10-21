@@ -1,7 +1,7 @@
 # Example configuration for forward folding (structure generation from input sequences and structures)
 # Forward folding takes input structures and their sequences, then generates new structures
 # Sequences are automatically tokenized using AminoAcidTokenizerTransform
-# Usage: uv run python -m lobster.cmdline.generate --config-path "/homefs/home/lisanzas/scratch/Develop/lobster/examples" --config-name generate_forward_folding
+# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_forward_folding
 
 # Output directory
 output_dir: "./examples/generated_forward_folding"
@@ -17,15 +17,15 @@ model:
 # Generation settings
 generation:
   mode: forward_folding
-  nsteps: 800          # More steps for forward folding
+  nsteps: 100          # More steps for forward folding
   batch_size: 1        # Process 2 structures at a time
   n_trials: 1          # Number of trials for best output selection
   
   #Generation parameters
-  temperature_seq: 0.5317880918477355    
-  temperature_struc: 0.16001042166543197  
-  stochasticity_seq: 20 
-  stochasticity_struc: 60
+  temperature_seq: 0.2967457760634187    
+  temperature_struc: 0.1102551183666233  
+  stochasticity_seq: 10 
+  stochasticity_struc: 30
   
   # Input structures - update these paths to your structure files
   # Examples of different input formats:

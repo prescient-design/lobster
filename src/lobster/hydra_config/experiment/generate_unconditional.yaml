@@ -1,6 +1,5 @@
 # Example configuration for unconditional protein structure generation
-# Usage: uv run python -m lobster.cmdline.generate --config-path examples --config-name generate_unconditional
-#python -m lobster.cmdline.generate --config-path "/homefs/home/lisanzas/scratch/Develop/lobster/examples" --config-name generate_unconditional
+# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_unconditional
 
 # Output directory
 output_dir: "./examples/generated_unconditional"

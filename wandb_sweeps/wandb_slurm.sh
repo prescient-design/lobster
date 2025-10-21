@@ -9,7 +9,7 @@
 #SBATCH -q preempt
 #SBATCH --mem=256G
 #SBATCH --job-name=gen_ume_hyp_param
-#SBATCH -t 2:00:00
+#SBATCH -t 7-00:00:00
 
 nvidia-smi
 
@@ -31,4 +31,4 @@ export WANDB_BASE_URL=https://genentech.wandb.io
 
 export TOKENIZERS_PARALLELISM=true
 
-srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose wandb agent prescient-design/lobster-wandb_sweeps/pnf55d9i
+srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose wandb agent prescient-design/lobster-wandb_sweeps/g8pt847w
