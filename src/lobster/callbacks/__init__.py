@@ -13,7 +13,6 @@ from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
 
 __all__ = [
     "SklearnProbeTaskConfig",
-    "MoleculeACELinearProbeCallback",
     "SklearnProbeTaskConfig",
     "DataLoaderCheckpointCallback",
     "DGEBEvaluationCallback",
