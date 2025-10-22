@@ -17,9 +17,10 @@ from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
 )
-from lobster.metrics import get_folded_structure_metrics
+from lobster.metrics import get_folded_structure_metrics, calculate_percent_identity
 from lobster.transforms._structure_transforms import StructureBackboneTransform, AminoAcidTokenizerTransform
 from tmtools import tm_align
+from lobster.model import LobsterPLMFold
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -384,39 +385,6 @@ def _calculate_aggregate_stats(metric_lists: dict) -> dict:
     return aggregate_stats
 
 
-def calculate_percent_identity(ground_truth_seq, generated_seq, mask=None):
-    """
-    Calculate percent identity between ground truth and generated sequences.
-
-    Args:
-        ground_truth_seq: Ground truth sequence tensor of shape (B, L)
-        generated_seq: Generated sequence tensor of shape (B, L)
-        mask: Optional mask tensor of shape (B, L) to ignore padded positions
-
-    Returns:
-        Tensor of percent identities for each sequence in the batch
-    """
-    # Ensure both sequences have the same shape
-    assert ground_truth_seq.shape == generated_seq.shape, "Sequences must have the same shape"
-
-    # Calculate matches
-    matches = (ground_truth_seq == generated_seq).float()
-
-    if mask is not None:
-        # Only consider positions where mask is 1
-        matches = matches * mask.float()
-        valid_positions = mask.sum(dim=1).float()
-        # Avoid division by zero
-        valid_positions = torch.clamp(valid_positions, min=1.0)
-        percent_identity = (matches.sum(dim=1) / valid_positions) * 100.0
-    else:
-        # Consider all positions
-        sequence_length = ground_truth_seq.shape[1]
-        percent_identity = (matches.sum(dim=1) / sequence_length) * 100.0
-
-    return percent_identity
-
-
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="generate")
 def generate(cfg: DictConfig) -> None:
     """Generate protein structures using genUME model.
@@ -458,7 +426,6 @@ def generate(cfg: DictConfig) -> None:
     plm_fold = None
     if cfg.generation.get("use_esmfold", False):
         logger.info("Loading ESMFold for structure validation...")
-        from lobster.model import LobsterPLMFold
 
         plm_fold = LobsterPLMFold(model_name="esmfold_v1", max_length=cfg.generation.get("max_length", 512))
         plm_fold.to(device)

@@ -7,42 +7,12 @@ from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
 )
-from lobster.metrics import get_folded_structure_metrics
+from lobster.metrics import get_folded_structure_metrics, calculate_percent_identity
 from lobster.data._coord_structure_datamodule import StructureLightningDataModule
 import tqdm
-
-
-def calculate_percent_identity(ground_truth_seq, generated_seq, mask=None):
-    """
-    Calculate percent identity between ground truth and generated sequences.
-
-    Args:
-        ground_truth_seq: Ground truth sequence tensor of shape (B, L)
-        generated_seq: Generated sequence tensor of shape (B, L)
-        mask: Optional mask tensor of shape (B, L) to ignore padded positions
-
-    Returns:
-        Tensor of percent identities for each sequence in the batch
-    """
-    # Ensure both sequences have the same shape
-    assert ground_truth_seq.shape == generated_seq.shape, "Sequences must have the same shape"
-
-    # Calculate matches
-    matches = (ground_truth_seq == generated_seq).float()
-
-    if mask is not None:
-        # Only consider positions where mask is 1
-        matches = matches * mask.float()
-        valid_positions = mask.sum(dim=1).float()
-        # Avoid division by zero
-        valid_positions = torch.clamp(valid_positions, min=1.0)
-        percent_identity = (matches.sum(dim=1) / valid_positions) * 100.0
-    else:
-        # Consider all positions
-        sequence_length = ground_truth_seq.shape[1]
-        percent_identity = (matches.sum(dim=1) / sequence_length) * 100.0
-
-    return percent_identity
+from lobster.model import LobsterPLMFold
+from torch.utils.data import DataLoader
+import pooch
 
 
 class InverseFoldingCallback(lightning.Callback):
@@ -54,6 +24,8 @@ class InverseFoldingCallback(lightning.Callback):
         num_samples: int = 10,
         use_plm_fold: bool = True,
         max_length: int = 512,
+        use_hf_datasets: bool = True,
+        cache_dir: str | None = None,
     ):
         self.structure_path = structure_path
         self.save_every_n = save_every_n
@@ -65,20 +37,64 @@ class InverseFoldingCallback(lightning.Callback):
         self.plm_fold = None
         self.max_length = max_length
         self.eval_datamodule = None
+        self.use_hf_datasets = use_hf_datasets
+        self.cache_dir = cache_dir
 
         if not os.path.exists(f"{self.structure_path}/inverse_folding"):
             os.makedirs(f"{self.structure_path}/inverse_folding", exist_ok=True)
 
+    def _download_cath_datasets(self) -> list[str]:
+        """Download CATH datasets from Hugging Face using pooch.
+
+        Returns
+        -------
+        list[str]
+            List of paths to the downloaded dataset files.
+        """
+        base_url = "https://huggingface.co/datasets/Sidney-Lisanza/cath-v4-3-structures/resolve/main/"
+
+        splits = ["train", "val", "test"]
+        downloaded_paths = []
+
+        cache_path = self.cache_dir or pooch.os_cache("lobster")
+
+        for split in splits:
+            file_path = f"{split}/cath_{split}.pt"
+            url = f"{base_url}{file_path}"
+
+            logger.info(f"Downloading {split} dataset from Hugging Face...")
+            fname = pooch.retrieve(
+                url=url,
+                known_hash=None,  # Can add SHA256 hash for verification if needed
+                path=cache_path,
+                fname=file_path,
+            )
+            downloaded_paths.append(fname)
+            logger.info(f"Downloaded {split} dataset to {fname}")
+
+        return downloaded_paths
+
     def _create_eval_datamodule(self):
         """Create a separate datamodule for evaluation."""
-        # Directly instantiate the datamodule without Hydra
-        self.eval_datamodule = StructureLightningDataModule(
-            path_to_datasets=[
+        if self.use_hf_datasets:
+            # Download from Hugging Face
+            logger.info("Using Hugging Face datasets for CATH data")
+            dataset_paths = self._download_cath_datasets()
+            root_dir = self.cache_dir or pooch.os_cache("lobster")
+        else:
+            # Use local paths
+            logger.info("Using local datasets for CATH data")
+            dataset_paths = [
                 "/data2/lisanzas/CATH_v4_3/processed_structures_pt/train/cath_train.pt",
                 "/data2/lisanzas/CATH_v4_3/processed_structures_pt/val/cath_val.pt",
                 "/data2/lisanzas/CATH_v4_3/processed_structures_pt/test/cath_test.pt",
-            ],
-            root="/data2/lisanzas/CATH_v4_3/temp/",
+            ]
+            root_dir = "/data2/lisanzas/CATH_v4_3/temp/"
+
+        # Directly instantiate the datamodule without Hydra
+        self.eval_datamodule = StructureLightningDataModule(
+            path_to_datasets=dataset_paths,
+            root=root_dir,
             cluster_file=None,
             files_to_keep=None,
             batch_size=10,
@@ -97,8 +113,6 @@ class InverseFoldingCallback(lightning.Callback):
             return
 
         if self.use_plm_fold and self.plm_fold is None:
-            from lobster.model import LobsterPLMFold
-
             self.plm_fold = LobsterPLMFold(model_name="esmfold_v1", max_length=self.max_length)
             logger.info("Loaded ESMFold model for inverse folding evaluation")
 
@@ -108,8 +122,6 @@ class InverseFoldingCallback(lightning.Callback):
         self.val_dataset = self.eval_datamodule._val_dataset
 
         # Create our own dataloader to avoid trainer state issues
-        from torch.utils.data import DataLoader
-
         self.val_dataloader = DataLoader(
             self.val_dataset,
             batch_size=20,
@@ -120,7 +132,7 @@ class InverseFoldingCallback(lightning.Callback):
 
         logger.info(f"Created validation dataloader with {len(self.val_dataset)} examples")
 
-    def on_train_batch_end(self, trainer, gen_ume, outputs, batch, batch_idx):
+    def on_train_batch_end(self, trainer, model, outputs, batch, batch_idx):
         # Only run on rank 0 (CUDA device 0) in multinode/multi-GPU settings
         if trainer.global_rank != 0:
             return
@@ -133,9 +145,9 @@ class InverseFoldingCallback(lightning.Callback):
 
         if batch_idx % self.save_every_n == 0 and self.val_dataloader is not None:
             # Perform inverse folding on validation examples
-            self._perform_inverse_folding(trainer, gen_ume, device, batch_idx, current_step)
+            self._perform_inverse_folding(trainer, model, device, batch_idx, current_step)
 
-    def _perform_inverse_folding(self, trainer, gen_ume, device, batch_idx, current_step):
+    def _perform_inverse_folding(self, trainer, model, device, batch_idx, current_step):
         """Perform inverse folding on validation examples."""
         # Initialize lists to accumulate metrics across all validation batches
         all_percent_identities = []
@@ -154,7 +166,7 @@ class InverseFoldingCallback(lightning.Callback):
             # set the coords_res to 0 for those indices
             coords_res[nan_indices] = 0
 
-            generate_sample = gen_ume.generate_sample(
+            generate_sample = model.generate_sample(
                 length=L,
                 num_samples=B,
                 inverse_folding=True,
@@ -163,7 +175,7 @@ class InverseFoldingCallback(lightning.Callback):
                 input_mask=mask,
                 input_indices=indices,
             )
-            decoded_x = gen_ume.decode_structure(generate_sample, mask)
+            decoded_x = model.decode_structure(generate_sample, mask)
 
             for decoder_name in decoded_x:
                 if "vit_decoder" == decoder_name:
@@ -188,7 +200,6 @@ class InverseFoldingCallback(lightning.Callback):
                 for i in range(seq.shape[0]):
                     seq_i = seq[i, mask_orig[i] == 1]
                     sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq_i]))
-                    # sequence_str.append("".join([restype_order_with_x_inv[j.item()] for j in seq[i]]))
 
                 tokenized_input = self.plm_fold.tokenizer.batch_encode_plus(
                     sequence_str,
@@ -243,7 +254,7 @@ class InverseFoldingCallback(lightning.Callback):
             "sequence_percent_identity": avg_percent_identity,
             **avg_folded_metrics,
         }
-        gen_ume.log_dict(metrics_to_log, batch_size=1)  # Use batch_size=1 since we're logging aggregated metrics
+        model.log_dict(metrics_to_log, batch_size=1)  # Use batch_size=1 since we're logging aggregated metrics
 
         logger.info(f"Validation metrics averaged over {len(all_folded_structure_metrics)} batches:")
         logger.info(f"Average sequence percent identity: {avg_percent_identity:.2f}%")
