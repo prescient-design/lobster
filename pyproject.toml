@@ -65,7 +65,7 @@ lobster_mcp_setup = "lobster.mcp.setup:main"
 lobster_ume_checkpoints = "lobster.cmdline.manage_ume_checkpoints:main"
 
 [project.optional-dependencies]
-lg-cpu = [
+struct-cpu = [
     "biopandas==0.5.0.dev0",
     "torch-geometric",
     "torch-cluster", 
@@ -85,9 +85,11 @@ lg-cpu = [
     "botocore",
     "lightning-utilities",
     "mini3di",
-    "cpdb-protein"
+    "cpdb-protein",
+    "colabdesign",
+    "flax"
 ]
-lg-gpu = [
+struct-gpu = [
     "biopandas==0.5.0.dev0",
     "torch-geometric",
     "torch-cluster", 
@@ -107,7 +109,10 @@ lg-gpu = [
     "botocore",
     "lightning-utilities",
     "mini3di",
-    "cpdb-protein"
+    "cpdb-protein",
+    "colabdesign",
+    "jax[cuda]",
+    "flax"
 ]
 mgm = [
     "selfies>=2.1.2",
@@ -123,9 +128,6 @@ mcp = [
     "python-Levenshtein>=0.20.0",
     "pydantic>=2.0.0",
 ]
-# eval = [
-#      "umap-learn<=0.5.6"
-# ]
 trl = [
     "trl",
     "accelerate",
@@ -191,8 +193,8 @@ no-build-isolation-package = ["flash-attn"]
 allow-insecure-host = ["https://data.pyg.org/whl/torch-2.7.0+cpu.html"]
 conflicts = [
   [
-    { extra = "lg-cpu" },
-    { extra = "lg-gpu" },
+    { extra = "struct-cpu" },
+    { extra = "struct-gpu" },
   ],
 ]
 constraint-dependencies = [
@@ -207,17 +209,18 @@ requires-dist = ["torch", "einops"]
 
 [tool.uv.sources]
 torch-cluster = [
-  { index = "pyg-cpu", extra = "lg-cpu" },
-  { index = "pyg-cu128", extra = "lg-gpu" },
+  { index = "pyg-cpu", extra = "struct-cpu" },
+  { index = "pyg-cu128", extra = "struct-gpu" },
 ]
 torch-scatter = [
-  { index = "pyg-cpu", extra = "lg-cpu" },
-  { index = "pyg-cu128", extra = "lg-gpu" },
+  { index = "pyg-cpu", extra = "struct-cpu" },
+  { index = "pyg-cu128", extra = "struct-gpu" },
 ]
 torch-spline-conv = [
-  { index = "pyg-cpu", extra = "lg-cpu" },
-  { index = "pyg-cu128", extra = "lg-gpu" },
+  { index = "pyg-cpu", extra = "struct-cpu" },
+  { index = "pyg-cu128", extra = "struct-gpu" },
 ]
+colabdesign = { git = "https://github.com/sokrypton/ColabDesign.git", tag = "v1.1.1"}
 
 [dependency-groups]
 dev = [
@@ -253,3 +256,8 @@ explicit = true
 
 [[tool.uv.index]]
 url = "https://pypi.python.org/simple"
+
+[tool.uv.workspace]
+members = [
+    "dev/BindCraft",
+]

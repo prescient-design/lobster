@@ -118,7 +118,7 @@ class StructureLightningDataModule(LightningDataModule):
 
         import lobster
 
-        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        lobster.ensure_package("torch_geometric", group="struct-gpu (or --extra struct-cpu)")
 
         if lengths is None:
             lengths = [0.4, 0.4, 0.2]
