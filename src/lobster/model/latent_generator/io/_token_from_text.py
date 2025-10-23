@@ -2,8 +2,8 @@ import re
 import torch
 
 # Expected representation of LG tokens as text
-LG_START_TOK = "<|LG_START|>"
-LG_END_TOK = "<|LG_END|>"
+LG_START_TOK = "<|LG_start|>"
+LG_END_TOK = "<|LG_end|>"
 LG_TOK_TEMPLATE = "<|LG_%d|>"
 
 # Regex pattern for matching full LG token strings that look like:
