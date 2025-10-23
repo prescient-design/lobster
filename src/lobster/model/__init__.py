@@ -21,4 +21,5 @@ from .lm_base import LMBaseContactPredictionHead, LMBaseForMaskedLM
 from .modern_bert import FlexBERT
 from .neobert import NeoBERTLightningModule, NeoBERTModule
 from .ume2 import UMESequenceEncoderLightningModule, UMESequenceEncoderModule
+from ._sklearn_probe import train_sklearn_probe, predict_with_sklearn_probe
 # from ._utils import model_typer
