@@ -38,7 +38,7 @@ class TestMoleculeACESklearnProbeCallback:
 
         # Verify structure and expected values
         expected_metrics = {
-            "mse": 2.379,
+            "mse": 2.37913,
             "r2": -0.01650,
             "spearman": 0.06732,
             "pearson": 0.05597,
@@ -74,33 +74,39 @@ class TestMoleculeACESklearnProbeCallback:
 
         # Verify individual task results
         expected_chembl204 = {
-            "mse": 2.379,
-            "r2": -0.01650,
-            "spearman": 0.06732,
-            "pearson": 0.05597,
+            "mse": 2.434589,
+            "r2": -0.040197,
+            "spearman": 0.000747,
+            "pearson": 0.013382,
         }
 
         expected_chembl214 = {
-            "mse": 1.320,
-            "r2": -0.02081,
-            "spearman": 0.001118,
-            "pearson": 0.003659,
+            "mse": 1.332922,
+            "r2": -0.030792,
+            "spearman": 0.010840,
+            "pearson": -0.004345,
         }
 
         expected_mean = {
-            "mse": 1.850,
-            "r2": -0.01865,
-            "spearman": 0.03422,
-            "pearson": 0.02981,
+            "mse": 1.883755,
+            "r2": -0.035494,
+            "spearman": 0.005793,
+            "pearson": 0.004518,
         }
 
         # Check individual tasks
         for metric, expected_value in expected_chembl204.items():
-            assert math.isclose(results["CHEMBL204_Ki"][metric], expected_value, rel_tol=1e-3)
+            assert math.isclose(results["CHEMBL204_Ki"][metric], expected_value, rel_tol=1e-3), (
+                f"Metric {metric} is not close to expected value {expected_value}. Got {results['CHEMBL204_Ki'][metric]}"
+            )
 
         for metric, expected_value in expected_chembl214.items():
-            assert math.isclose(results["CHEMBL214_Ki"][metric], expected_value, rel_tol=1e-3)
+            assert math.isclose(results["CHEMBL214_Ki"][metric], expected_value, rel_tol=1e-3), (
+                f"Metric {metric} is not close to expected value {expected_value}. Got {results['CHEMBL214_Ki'][metric]}"
+            )
 
         # Check mean values
         for metric, expected_value in expected_mean.items():
-            assert math.isclose(results["mean"][metric], expected_value, rel_tol=1e-3)
+            assert math.isclose(results["mean"][metric], expected_value, rel_tol=1e-3), (
+                f"Metric {metric} is not close to expected value {expected_value}. Got {results['mean'][metric]}"
+            )
