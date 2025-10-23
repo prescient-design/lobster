@@ -33,7 +33,7 @@ generation:
   # Directory: input_structures: "/path/to/structure/directory/"
   # Glob pattern: input_structures: "/path/to/structures/*.pdb"
   # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
-  input_structures: "/data2/lisanzas/multi_flow_data/test_set_filtered_pt/*.pt"
+  input_structures: "test_data/inv_folding/9jl9.pdb"
   
   # Maximum length for structures
   max_length: 512
