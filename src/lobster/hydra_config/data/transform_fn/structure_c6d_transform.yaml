@@ -1,0 +1,2 @@
+structure_c6d_transform:
+  _target_: lobster.transforms._structure_transforms.StructureC6DTransform

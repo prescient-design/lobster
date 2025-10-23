@@ -1,0 +1,18 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml # Dataloader batch sampler
+  - transform_fn: structure_backbone_transform.yaml # Dataset transforms
+  
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+root: /data/bucket/lisanza/structures/afdb_rep_v4_processed/ # this doesnt do anything
+path_to_datasets: ["/data/bucket/lisanza/structures/afdb_rep_v4_processed/train_shards/", "/data/bucket/lisanza/structures/afdb_rep_v4_processed/val_shards/", "/data/bucket/lisanza/structures/afdb_rep_v4_processed/test_shards/"]
+max_length: 512 # Maximum length of the sequence; not used
+use_shards: true
+buffer_size: 10
+cluster_file: null
+files_to_keep: null
+testing: false
+datasets: afdb
+
+# Dataloader Params
+batch_size: 40 # Batch size for the dataloader
+num_workers: 12 # Number of workers for the dataloader

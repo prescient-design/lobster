@@ -1,0 +1,18 @@
+defaults:
+  - transform_fn: structure_with_3di_transform.yaml # Dataset transforms
+  - ligand_transform_fn: structure_ligand_transform.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+root: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
+path_to_datasets: ["/data/bucket/lisanza/structures/pdb_bind/processed_2/"]
+max_length: 512 # Maximum length of the sequence; not used
+cluster_file: null
+files_to_keep: null
+use_ligand_dataset: true
+testing: false
+datasets: ligand_pdb_bind
+use_shards: false
+
+# Dataloader Params
+batch_size: 40 # Batch size for the dataloader
+num_workers: 12 # Number of workers for the dataloader

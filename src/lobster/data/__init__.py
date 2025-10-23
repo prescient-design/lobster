@@ -16,6 +16,7 @@ from ._m3_20m_datamodule import M320MLightningDataModule
 from ._minhasher import LobsterMinHasher
 from ._mmseqs import MMSeqsRunner
 from ._structure_datamodule import PDBDataModule
+
 from ._ume_datamodule import UMELightningDataModule
 from ._utils import download_from_s3, get_s3_bucket_and_key, load_pickle, upload_to_s3
 

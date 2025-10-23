@@ -12,9 +12,11 @@ from torch import Generator
 from torch.utils.data import DataLoader, Sampler
 
 from lobster.model.latent_generator.datamodules._utils import collate_fn_backbone
-from lobster.model.latent_generator.datasets import LigandDataset, RandomizedMinorityUpsampler, StructureDataset
-from lobster.model.latent_generator.datasets._structure_dataset_iterable import ShardedStructureDataset
-from lobster.model.latent_generator.datasets._transforms import StructureBackboneTransform, StructureLigandTransform
+from lobster.datasets._ligand_dataset import LigandDataset
+from lobster.datasets._sampler import RandomizedMinorityUpsampler
+from lobster.datasets._structure_dataset import StructureDataset
+from lobster.datasets._structure_dataset_iterable import ShardedStructureDataset
+from lobster.transforms._structure_transforms import StructureBackboneTransform, StructureLigandTransform
 
 try:
     from torch_geometric.transforms import Compose
@@ -31,8 +33,9 @@ class StructureLightningDataModule(LightningDataModule):
         self,
         path_to_datasets: str | list[str] = None,
         root: str | Path = None,
+        datasets: Sequence[str] = None,
         *,
-        transforms: Iterable[Callable] = None,
+        transform_fn: Iterable[Callable] = None,
         ligand_transforms: Iterable[Callable] = None,
         lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
         generator: Generator | None = None,
@@ -114,6 +117,7 @@ class StructureLightningDataModule(LightningDataModule):
             and calls a relative representation data loader
 
         """
+        transforms = transform_fn
         super().__init__()
 
         import lobster

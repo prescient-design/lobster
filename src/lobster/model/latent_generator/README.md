@@ -6,6 +6,7 @@ A powerful protein and protein-ligand structure representation learning model fo
 - [Performance](#performance)
   - [Reconstruction Quality on CASP15 Proteins](#reconstruction-quality-on-casp15-proteins)
   - [Reconstruction Quality with Canonical Pose (Mol Frame)](#reconstruction-quality-with-canonical-pose-mol-frame)
+  - [Fold Prediction Accuracy](#fold-prediction-accuracy)
 - [Setup](#setup)
   - [Environment Setup](#environment-setup)
 - [Getting Embeddings and Tokens](#getting-embeddings-and-tokens)
@@ -62,12 +63,31 @@ We also evaluated the models using canonical pose mode, which makes the model in
 | LG 20A 3di Aux | 8.288 | 4.434 | 3.043 | 16.252 |
 
 
-## Table of Contents
-- [Setup](#setup)
-- [Getting Embeddings and Tokens](#getting-embeddings-and-tokens)
-- [Training](#training)
-- [Model Configurations](#model-configurations)
-- [Inference](#inference)
+### Fold Prediction Accuracy
+
+We evaluated the fold prediction accuracy using embeddings from different LatentGenerator models as features for a small MLP trained for protein fold classification:
+
+
+| Model | Val Acc Mean | Val Acc Std | Val Acc Min | Val Acc Max |
+|-------|--------------|-------------|-------------|-------------|
+| LG 20A seq 3di c6d Aux PDB | 0.385 | 0.001 | 0.383 | 0.386 |
+| LG 20A seq 3di c6d Aux PDB Pinder | 0.381 | 0.004 | 0.376 | 0.387 |
+| LG 20A seq 3di c6d Aux PDB Pinder Iterative Refine Module | 0.335 | 0.005 | 0.330 | 0.342 |
+| LG 20A seq 3di c6d Aux | 0.313 | 0.004 | 0.310 | 0.319 |
+| LG 20A seq Aux | 0.298 | 0.010 | 0.287 | 0.311 |
+| LG 20A seq 3di Aux | 0.293 | 0.009 | 0.281 | 0.302 |
+| LG 20A 3di c6d Aux | 0.237 | 0.009 | 0.224 | 0.245 |
+| LG 20A c6d Aux | 0.226 | 0.003 | 0.223 | 0.231 |
+| LG full attention | 0.225 | 0.007 | 0.215 | 0.232 |
+| LG 20A 3di Aux | 0.196 | 0.003 | 0.192 | 0.200 |
+| LG 10A | 0.123 | 0.001 | 0.122 | 0.124 |
+| LG 20A | 0.074 | 0.007 | 0.067 | 0.083 |
+
+**Key Findings:**
+- Models trained on PDB datasets achieve the highest fold prediction accuracy
+- Sequence-aware models (with "seq" in the name) consistently outperform structure-only models
+- All models use standard hyperparameters: learning rate 0.0003, dropout 0.4, label smoothing 0.2, weight decay 0.0001
+
 
 ## Setup
 
@@ -233,79 +253,6 @@ python src/lobster/model/latent_generator/cmdline/inference.py \
 ```
 
 The tokens are discrete representations that can be used for tasks like discrete generation (with LLMs or PLMs) and compact storage of structure information, while embeddings are continuous representations useful for tasks like similarity search, feature extraction, and representation centric tasks.
-
-For more detailed examples and use cases, see `latent_generator/example/tokenize_pdb_example.ipynb`.
-
-## Training
-
-### Protein-only Training
-To train on protein structures only, use the default datamodule config with these recommended settings:
-```bash
-export HYDRA_FULL_ERROR=1
-
-latent_generator_train \
-    datamodule=structure_pinder_3di \
-    datamodule.testing=false \
-    +tokenizer.structure_encoder.spatial_attention_mask=true \
-    tokenizer.optim.lr=1e-4 \
-    +tokenizer.structure_encoder.angstrom_cutoff=20.0 \
-    +tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0 \
-    +tokenizer.structure_encoder.dropout=0.1 \
-    +tokenizer.structure_encoder.attention_dropout=0.1 \
-    tokenizer.structure_encoder.embed_dim=256 \
-    tokenizer.quantizer.embed_dim=256 \
-    tokenizer/decoder_factory=struc_decoder_3di_sequence \
-    tokenizer/loss_factory=structure_losses_3di_sequence \
-    +tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1 \
-    +tokenizer.decoder_factory.decoder_mapping.vit_decoder.attention_dropout=0.1 \
-    +datamodule.use_shards=false \
-    +trainer.log_every_n_steps=50 \
-    +trainer.num_sanity_val_steps=0
-```
-
-Key settings explained:
-- `datamodule=structure_pinder_3di`: Uses the 3Di-aware datamodule
-- `tokenizer.structure_encoder.embed_dim=256`: 256-dimensional embeddings
-- `tokenizer/decoder_factory=struc_decoder_3di_sequence`: Uses 3Di, aa sequence, and structure decoder
-- `tokenizer/loss_factory=structure_losses_3di_sequence`: Uses 3Di, aa sequence, and structure sequence-aware loss
-
-### Protein+Ligand (Complex) Training
-To train on protein-ligand complexes, use the ligand datamodule config with these recommended settings:
-```bash
-export HYDRA_FULL_ERROR=1
-
-latent_generator_train \
-    datamodule=structure_ligand \
-    datamodule.testing=false \
-    datamodule.batch_size=20 \
-    +tokenizer.structure_encoder.spatial_attention_mask=true \
-    tokenizer.optim.lr=1e-4 \
-    +tokenizer.structure_encoder.angstrom_cutoff=20.0 \
-    +tokenizer.structure_encoder.angstrom_cutoff_spatial=20.0 \
-    +tokenizer.structure_encoder.dropout=0.1 \
-    +tokenizer.structure_encoder.attention_dropout=0.1 \
-    tokenizer.structure_encoder.embed_dim=256 \
-    +tokenizer.structure_encoder.encode_ligand=true \
-    tokenizer/quantizer=slq_quantizer_ligand \
-    tokenizer/decoder_factory=struc_decoder_3di_sequence \
-    tokenizer/loss_factory=structure_losses_3di_sequence \
-    +tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true \
-    +tokenizer.decoder_factory.decoder_mapping.vit_decoder.dropout=0.1 \
-    +tokenizer.decoder_factory.decoder_mapping.vit_decoder.attention_dropout=0.1 \
-    +datamodule.use_shards=false \
-    +trainer.log_every_n_steps=50 \
-    +trainer.num_sanity_val_steps=0
-```
-
-Key settings explained:
-- `datamodule=structure_ligand`: Uses the ligand-aware datamodule
-- `tokenizer.structure_encoder.embed_dim=256`: 256-dimensional embeddings
-- `tokenizer.structure_encoder.encode_ligand=true`: Enables ligand encoding
-- `tokenizer/quantizer=slq_quantizer_ligand`: Uses ligand-aware quantizer
-- `tokenizer/decoder_factory=struc_decoder_3di_sequence`: Uses 3Di, aa sequence, and structure decoder
-- `tokenizer/loss_factory=structure_losses_3di_sequence`: Uses 3Di, aa sequence, and structure sequence-aware loss
-
-Make sure your dataset directory contains paired `*_protein.pt` and `*_ligand.pt` files for each complex.
 
 ## Model Configurations
 

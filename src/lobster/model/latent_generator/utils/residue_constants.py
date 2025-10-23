@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from lobster.tokenization._amino_acid import AA_VOCAB
 
 if not importlib.util.find_spec("optree"):
     OPTREE_AVAILABLE = False
@@ -676,12 +677,82 @@ restype_order_with_x = {restype: i for i, restype in enumerate(restypes_with_x)}
 restype_order_with_x_inv = {v: k for k, v in restype_order_with_x.items()}
 
 
+def convert_lobster_aa_tokenization_to_standard_aa(sequence_logits, device=None):
+    """Convert custom 33-token amino acid sequences to standard 23-token representation.
+
+    This function converts amino acid sequences tokenized with the custom 33-token vocabulary
+    (which includes special tokens like <cls>, <pad>, <eos>, <unk>, <null_1>, <mask>)
+    to the standard 23-token representation used by residue_constants borrowed from openfold (20 amino acids + X, ., -).
+
+    Parameters
+    ----------
+    sequence_logits : torch.Tensor
+        Sequence logits tensor of shape (batch_size, seq_len, 33) or
+        pre-computed argmax of shape (batch_size, seq_len)
+    device : torch.device, optional
+        Device to place output tensor on. If None, uses the device of input tensor.
+
+    Returns
+    -------
+    torch.Tensor
+        Standard sequence tensor of shape (batch_size, seq_len) with values in range [0, 22]
+        where 20 represents unknown amino acids (X), 21 represents gaps (.), and 22 represents (-).
+
+    Notes
+    -----
+    The custom tokenization (AA_VOCAB) maps:
+    - Special tokens (0=<cls>, 1=<pad>, 2=<eos>, 3=<unk>, 31=<null_1>, 32=<mask>) → 30 ('-')
+    - Standard amino acids (4-23) → their corresponding single-letter codes
+    - Extended codes (24-30) → X, B, U, Z, O, ., -
+
+    These are then mapped to the standard restype_order_with_x which has:
+    - Indices 0-19: Standard 20 amino acids (A, R, N, D, C, Q, E, G, H, I, L, K, M, F, P, S, T, W, Y, V)
+    - Index 20: X (unknown)
+    - Index 21: . (gap)
+    - Index 22: - (gap)
+    """
+    # ensure 33 token vocab
+    if sequence_logits.shape[-1] != 33:
+        raise ValueError("Sequence logits must have 33 tokens")
+
+    # Get argmax if logits are provided
+    if sequence_logits.dim() == 3:
+        seq_argmax = sequence_logits.argmax(dim=-1)
+    else:
+        seq_argmax = sequence_logits.clone()
+
+    # Map special tokens to gap token (30 which corresponds to '-' in AA_VOCAB)
+    special_tokens = [0, 1, 2, 3, 31, 32]  # <cls>, <pad>, <eos>, <unk>, <null_1>, <mask>
+    for token in special_tokens:
+        seq_argmax[seq_argmax == token] = 30
+
+    # Create inverse vocab mapping
+    AA_VOCAB_INV = {v: k for k, v in AA_VOCAB.items()}
+
+    # Convert to standard sequence tokens
+    standard_seq_tokens = []
+    for i in range(seq_argmax.shape[0]):
+        # Convert token indices to amino acid string
+        aa_string = "".join([AA_VOCAB_INV[j.item()] for j in seq_argmax[i]])
+        # Map to standard residue order (20 is default for unknown)
+        aa_standard = [restype_order_with_x.get(j, 20) for j in aa_string]
+        aa_standard_tensor = torch.tensor(aa_standard, device=device if device else seq_argmax.device)
+        standard_seq_tokens.append(aa_standard_tensor)
+
+    seq = torch.stack(standard_seq_tokens, dim=0)
+    # Clamp values > 21 to 20 (unknown)
+    seq[seq > 20] = 20
+
+    return seq
+
+
 # SABDAB chain IDs. Everything >1 is antigen
 AB_CHAIN_DICT = {"H": 0, "L": 1, "A": 2, "B": 3, "C": 4, "D": 5, "E": 6, "F": 7, "G": 8, "I": 9}
 
 # Element vocabulary for ligand atom types (based on dataset analysis)
 ELEMENT_VOCAB = ["PAD", "B", "Bi", "Br", "C", "Cl", "F", "H", "I", "N", "O", "P", "S", "Si"]
 ELEMENT_TO_IDX = {elem: idx for idx, elem in enumerate(ELEMENT_VOCAB)}
+
 
 # from funcbind
 

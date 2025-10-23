@@ -33,7 +33,8 @@ version = "1.10.1"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "psutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -220,17 +221,51 @@ wheels = [
 
 [[package]]
 name = "beignet"
+version = "0.0.11"
+source = { registry = "https://pypi.python.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.12' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "pooch", marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "torch", marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "tqdm", marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8a/76/dc4509fe76bb08cb7f1552d39fe15479a3408d78806088a5527deda2a78c/beignet-0.0.11.tar.gz", hash = "sha256:00c8cf13cf15877f7f8c74927a9a76ae7a22dbf7381bd42385ee20e7172f07d6", size = 171687, upload-time = "2025-02-03T15:29:42.655Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/5f/6f995cb525f3663141d2e05911546bac7330a8bccaca575e877fd3407ba3/beignet-0.0.11-py3-none-any.whl", hash = "sha256:1df0e04277220fc1fb25b6a1223cf273e34714d2c7e8e4a12fea326db8f2d685", size = 215347, upload-time = "2025-02-03T15:29:40.453Z" },
+]
+
+[package.optional-dependencies]
+datasets = [
+    { name = "biopython", marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "lmdb", marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "pandas", marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "pooch", marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+]
+
+[[package]]
+name = "beignet"
 version = "0.0.13"
 source = { registry = "https://pypi.python.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.12' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and sys_platform == 'linux'",
+]
 dependencies = [
-    { name = "biotite", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "fastpdb", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "optree", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "pooch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "biotite", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "einops", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "fastpdb", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "optree", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "pooch", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "torch", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "tqdm", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/23/ed44366ef8eed08d34b676e45d4c6a4aa3fb0320e40dae0cb1382749f123/beignet-0.0.13.tar.gz", hash = "sha256:776b73bfa705ad7345ebf21c158e99f21389cc7fe96b0430ff63d2b0b24b1c80", size = 401164, upload-time = "2025-06-24T19:01:16.447Z" }
 wheels = [
@@ -239,10 +274,27 @@ wheels = [
 
 [package.optional-dependencies]
 datasets = [
-    { name = "biopython", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "lmdb", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "pooch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "biopython", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "lmdb", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "pandas", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "pooch", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+]
+
+[[package]]
+name = "bionemo-moco"
+version = "0.0.2.2"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "jaxtyping", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pot", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "scikit-learn", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/26/0e933ae66a32ea713fb3d4b1ef8f81eb3102c5599157004438546d8823f5/bionemo_moco-0.0.2.2.tar.gz", hash = "sha256:22c1d0ff652299749998b46a19a22d624273d35e78795c3515ccc0b9cf2d64db", size = 62641, upload-time = "2025-08-21T21:00:00.667Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/2a/36c4c97a75e3ecc890ce71c787a7ebbc4825be6703bed81f792a5941c71d/bionemo_moco-0.0.2.2-py3-none-any.whl", hash = "sha256:c5585803c1cb9aadb96b570491aea5a6dd2135096527ade333c60c6a755b6a2f", size = 104425, upload-time = "2025-08-21T20:59:59.231Z" },
 ]
 
 [[package]]
@@ -252,7 +304,8 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "looseversion", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "mmtf-python", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "setuptools", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
@@ -267,7 +320,8 @@ name = "biopython"
 version = "1.85"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/db/ca/1d5fab0fedaf5c2f376d9746d447cdce04241c433602c3861693361ce54c/biopython-1.85.tar.gz", hash = "sha256:5dafab74059de4e78f49f6b5684eddae6e7ce46f09cfa059c1d1339e8b1ea0a6", size = 19909902, upload-time = "2025-01-15T15:06:51.997Z" }
 wheels = [
@@ -293,7 +347,8 @@ dependencies = [
     { name = "biotraj", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "msgpack", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "networkx", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
@@ -314,7 +369,8 @@ name = "biotraj"
 version = "1.2.2"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/07/21/2287edfd0d2569639eea706e25c39e63b46a384cf1712db8ea05768317b0/biotraj-1.2.2.tar.gz", hash = "sha256:4bcba92101ed50f369cc1487fb5dfcfe1d8402ad47adaa9232b080553271663a", size = 3909030, upload-time = "2024-11-02T11:30:54.974Z" }
@@ -495,7 +551,8 @@ name = "contourpy"
 version = "1.3.3"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/58/01/1253e6698a07380cd31a736d248a3f2a50a7c88779a1813da27503cadc2a/contourpy-1.3.3.tar.gz", hash = "sha256:083e12155b210502d0bca491432bb04d56dc3432f95a979b429f2848c3dbe880", size = 13466174, upload-time = "2025-07-26T12:03:12.549Z" }
 wheels = [
@@ -570,7 +627,7 @@ version = "0.2.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "cython", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/bc/7d/207dd68c474541c4000f61ce823a1c1d2f0a431a63d4f4679b77aab6048f/cpdb-protein-0.2.0.tar.gz", hash = "sha256:2816a074a66ae429615e9bf826694b3324f9a64bbb615e1d102ad1927b7f168a", size = 68559, upload-time = "2023-06-26T17:00:47.185Z" }
@@ -679,7 +736,8 @@ dependencies = [
     { name = "fsspec", extra = ["http"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "multiprocess", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pyarrow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -698,7 +756,8 @@ name = "datasketch"
 version = "1.6.5"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/88/2f/248057ca4d22bd3ffb9bb3e9f4c208240a27e4d0ca9687d6d1d896aeec2a/datasketch-1.6.5.tar.gz", hash = "sha256:ba2848cb74f23d6d3dd444cf24edcbc47b1c34a171b1803231793ed4d74d4fcf", size = 92598, upload-time = "2024-06-04T00:44:21.23Z" }
@@ -739,7 +798,8 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "datasets", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pydantic", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pytrec-eval-terrier", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -900,7 +960,7 @@ name = "fastpdb"
 version = "1.3.3"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "biotite", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "biotite", marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9b/0e/21f7131d90e8b0d20d2a78990d20b4f9e549973e6da10b58f4231aa52f96/fastpdb-1.3.3.tar.gz", hash = "sha256:ddae2c4d49251f7ebc918507d09bc57e8be4ff83d898fcf9e6d521846353cfed", size = 2914295, upload-time = "2025-05-27T15:55:35.22Z" }
 wheels = [
@@ -1283,6 +1343,18 @@ wheels = [
 ]
 
 [[package]]
+name = "jaxtyping"
+version = "0.3.3"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "wadler-lindig", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/1e/827f9e17b26e21c7d4d934fd1a214284ad05663afedd37c21ed105db366b/jaxtyping-0.3.3.tar.gz", hash = "sha256:8003cfd16ba2ad9b47fdda1d982a575299a81ddfc7997ad0e917c87a0897ea86", size = 45484, upload-time = "2025-10-01T13:46:51.933Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b8/97/88264b1af140f66ba7ca6eb2f3a108be233ee278bb3f1d5c750243e7458a/jaxtyping-0.3.3-py3-none-any.whl", hash = "sha256:a1c2f0f4351a8deda84b0e3b5c5a50894a1cdae2b82d841279fce4393aff4a7c", size = 55926, upload-time = "2025-10-01T13:46:50.621Z" },
+]
+
+[[package]]
 name = "jedi"
 version = "0.19.2"
 source = { registry = "https://pypi.python.org/simple" }
@@ -1459,7 +1531,8 @@ wheels = [
 name = "lbster"
 source = { editable = "." }
 dependencies = [
-    { name = "beignet", extra = ["datasets"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "beignet", version = "0.0.11", source = { registry = "https://pypi.python.org/simple" }, extra = ["datasets"], marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "beignet", version = "0.0.13", source = { registry = "https://pypi.python.org/simple" }, extra = ["datasets"], marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "biopandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "biopython", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "datasets", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -1504,6 +1577,7 @@ flash = [
     { name = "rotary-embedding-torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 lg-cpu = [
+    { name = "bionemo-moco", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "biopandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "biotite", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1520,6 +1594,7 @@ lg-cpu = [
     { name = "polars", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "rotary-embedding-torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tensordict", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "tmtools", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch-cluster", version = "1.6.3", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cpu.html" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "torch-cluster", version = "1.6.3+pt27cpu", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cpu.html" }, marker = "(sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "torch-geometric", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1529,6 +1604,7 @@ lg-cpu = [
     { name = "torch-spline-conv", version = "1.2.2+pt27cpu", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cpu.html" }, marker = "(sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 lg-gpu = [
+    { name = "bionemo-moco", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "biopandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "biotite", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1545,6 +1621,7 @@ lg-gpu = [
     { name = "polars", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "rotary-embedding-torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tensordict", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "tmtools", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch-cluster", version = "1.6.3+pt27cu128", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cu128.html" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch-geometric", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch-scatter", version = "2.1.2+pt27cu128", source = { registry = "https://data.pyg.org/whl/torch-2.7.0+cu128.html" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1577,7 +1654,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", marker = "extra == 'trl'" },
-    { name = "beignet", extras = ["datasets"], specifier = ">=0.0.13" },
+    { name = "beignet", extras = ["datasets"] },
+    { name = "bionemo-moco", marker = "extra == 'lg-cpu'" },
+    { name = "bionemo-moco", marker = "extra == 'lg-gpu'" },
     { name = "biopandas" },
     { name = "biopandas", marker = "extra == 'lg-cpu'", specifier = "==0.5.0.dev0" },
     { name = "biopandas", marker = "extra == 'lg-gpu'", specifier = "==0.5.0.dev0" },
@@ -1644,6 +1723,8 @@ requires-dist = [
     { name = "selfies", marker = "extra == 'mgm'", specifier = ">=2.1.2" },
     { name = "tensordict", marker = "extra == 'lg-cpu'" },
     { name = "tensordict", marker = "extra == 'lg-gpu'" },
+    { name = "tmtools", marker = "extra == 'lg-cpu'" },
+    { name = "tmtools", marker = "extra == 'lg-gpu'" },
     { name = "tokenizers" },
     { name = "torch" },
     { name = "torch-cluster", marker = "extra == 'lg-cpu'", index = "https://data.pyg.org/whl/torch-2.7.0+cpu.html", conflict = { package = "lbster", extra = "lg-cpu" } },
@@ -1764,7 +1845,8 @@ dependencies = [
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "filelock", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "obstore", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "tifffile", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -1864,7 +1946,8 @@ dependencies = [
     { name = "cycler", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "fonttools", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "kiwisolver", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pyparsing", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1944,7 +2027,7 @@ name = "mini3di"
 version = "0.2.1"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/e4/a478c514aef8759e5e55fb2bed4fd242f19a82ba7d780cc24dd7952b1d72/mini3di-0.2.1.tar.gz", hash = "sha256:dfc4a63aaba175b05e9cc1f260e1bfcd2832ff3235537146a334b6a2179f8a96", size = 18577, upload-time = "2024-09-15T21:48:23.085Z" }
 wheels = [
@@ -1956,7 +2039,8 @@ name = "ml-dtypes"
 version = "0.5.3"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/78/a7/aad060393123cfb383956dca68402aff3db1e1caffd5764887ed5153f41b/ml_dtypes-0.5.3.tar.gz", hash = "sha256:95ce33057ba4d05df50b1f3cfefab22e351868a843b3b15a46c65836283670c9", size = 692316, upload-time = "2025-07-29T18:39:19.454Z" }
 wheels = [
@@ -2155,8 +2239,44 @@ wheels = [
 
 [[package]]
 name = "numpy"
+version = "1.26.4"
+source = { registry = "https://pypi.python.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.12' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and sys_platform == 'linux'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/65/6e/09db70a523a96d25e115e71cc56a6f9031e7b8cd166c1ac8438307c14058/numpy-1.26.4.tar.gz", hash = "sha256:2a02aba9ed12e4ac4eb3ea9421c420301a0c6460d9830d74a9df87efa4912010", size = 15786129, upload-time = "2024-02-06T00:26:44.495Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/57/baae43d14fe163fa0e4c47f307b6b2511ab8d7d30177c491960504252053/numpy-1.26.4-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:4c66707fabe114439db9068ee468c26bbdf909cac0fb58686a42a24de1760c71", size = 20630554, upload-time = "2024-02-05T23:51:50.149Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/2e/151484f49fd03944c4a3ad9c418ed193cfd02724e138ac8a9505d056c582/numpy-1.26.4-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:edd8b5fe47dab091176d21bb6de568acdd906d1887a4584a15a9a96a1dca06ef", size = 13997127, upload-time = "2024-02-05T23:52:15.314Z" },
+    { url = "https://files.pythonhosted.org/packages/79/ae/7e5b85136806f9dadf4878bf73cf223fe5c2636818ba3ab1c585d0403164/numpy-1.26.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7ab55401287bfec946ced39700c053796e7cc0e3acbef09993a9ad2adba6ca6e", size = 14222994, upload-time = "2024-02-05T23:52:47.569Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/d0/edc009c27b406c4f9cbc79274d6e46d634d139075492ad055e3d68445925/numpy-1.26.4-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:666dbfb6ec68962c033a450943ded891bed2d54e6755e35e5835d63f4f6931d5", size = 18252005, upload-time = "2024-02-05T23:53:15.637Z" },
+    { url = "https://files.pythonhosted.org/packages/09/bf/2b1aaf8f525f2923ff6cfcf134ae5e750e279ac65ebf386c75a0cf6da06a/numpy-1.26.4-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:96ff0b2ad353d8f990b63294c8986f1ec3cb19d749234014f4e7eb0112ceba5a", size = 13885297, upload-time = "2024-02-05T23:53:42.16Z" },
+    { url = "https://files.pythonhosted.org/packages/df/a0/4e0f14d847cfc2a633a1c8621d00724f3206cfeddeb66d35698c4e2cf3d2/numpy-1.26.4-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:60dedbb91afcbfdc9bc0b1f3f402804070deed7392c23eb7a7f07fa857868e8a", size = 18093567, upload-time = "2024-02-05T23:54:11.696Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/b7/a734c733286e10a7f1a8ad1ae8c90f2d33bf604a96548e0a4a3a6739b468/numpy-1.26.4-cp311-cp311-win32.whl", hash = "sha256:1af303d6b2210eb850fcf03064d364652b7120803a0b872f5211f5234b399f20", size = 5968812, upload-time = "2024-02-05T23:54:26.453Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/6b/5610004206cf7f8e7ad91c5a85a8c71b2f2f8051a0c0c4d5916b76d6cbb2/numpy-1.26.4-cp311-cp311-win_amd64.whl", hash = "sha256:cd25bcecc4974d09257ffcd1f098ee778f7834c3ad767fe5db785be9a4aa9cb2", size = 15811913, upload-time = "2024-02-05T23:54:53.933Z" },
+    { url = "https://files.pythonhosted.org/packages/95/12/8f2020a8e8b8383ac0177dc9570aad031a3beb12e38847f7129bacd96228/numpy-1.26.4-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:b3ce300f3644fb06443ee2222c2201dd3a89ea6040541412b8fa189341847218", size = 20335901, upload-time = "2024-02-05T23:55:32.801Z" },
+    { url = "https://files.pythonhosted.org/packages/75/5b/ca6c8bd14007e5ca171c7c03102d17b4f4e0ceb53957e8c44343a9546dcc/numpy-1.26.4-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:03a8c78d01d9781b28a6989f6fa1bb2c4f2d51201cf99d3dd875df6fbd96b23b", size = 13685868, upload-time = "2024-02-05T23:55:56.28Z" },
+    { url = "https://files.pythonhosted.org/packages/79/f8/97f10e6755e2a7d027ca783f63044d5b1bc1ae7acb12afe6a9b4286eac17/numpy-1.26.4-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9fad7dcb1aac3c7f0584a5a8133e3a43eeb2fe127f47e3632d43d677c66c102b", size = 13925109, upload-time = "2024-02-05T23:56:20.368Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/50/de23fde84e45f5c4fda2488c759b69990fd4512387a8632860f3ac9cd225/numpy-1.26.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:675d61ffbfa78604709862923189bad94014bef562cc35cf61d3a07bba02a7ed", size = 17950613, upload-time = "2024-02-05T23:56:56.054Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/0c/9c603826b6465e82591e05ca230dfc13376da512b25ccd0894709b054ed0/numpy-1.26.4-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:ab47dbe5cc8210f55aa58e4805fe224dac469cde56b9f731a4c098b91917159a", size = 13572172, upload-time = "2024-02-05T23:57:21.56Z" },
+    { url = "https://files.pythonhosted.org/packages/76/8c/2ba3902e1a0fc1c74962ea9bb33a534bb05984ad7ff9515bf8d07527cadd/numpy-1.26.4-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:1dda2e7b4ec9dd512f84935c5f126c8bd8b9f2fc001e9f54af255e8c5f16b0e0", size = 17786643, upload-time = "2024-02-05T23:57:56.585Z" },
+    { url = "https://files.pythonhosted.org/packages/28/4a/46d9e65106879492374999e76eb85f87b15328e06bd1550668f79f7b18c6/numpy-1.26.4-cp312-cp312-win32.whl", hash = "sha256:50193e430acfc1346175fcbdaa28ffec49947a06918b7b92130744e81e640110", size = 5677803, upload-time = "2024-02-05T23:58:08.963Z" },
+    { url = "https://files.pythonhosted.org/packages/16/2e/86f24451c2d530c88daf997cb8d6ac622c1d40d19f5a031ed68a4b73a374/numpy-1.26.4-cp312-cp312-win_amd64.whl", hash = "sha256:08beddf13648eb95f8d867350f6a018a4be2e5ad54c8d8caed89ebca558b2818", size = 15517754, upload-time = "2024-02-05T23:58:36.364Z" },
+]
+
+[[package]]
+name = "numpy"
 version = "2.3.3"
 source = { registry = "https://pypi.python.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and sys_platform == 'darwin'",
+    "python_full_version >= '3.12' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and sys_platform == 'linux'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/d0/19/95b3d357407220ed24c139018d2518fab0a61a948e68286a25f1a4d049ff/numpy-2.3.3.tar.gz", hash = "sha256:ddc7c39727ba62b80dfdbedf400d1c10ddfa8eefbd7ec8dcb118be8b56d31029", size = 20576648, upload-time = "2025-09-09T16:54:12.543Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/45/e80d203ef6b267aa29b22714fb558930b27960a0c5ce3c19c999232bb3eb/numpy-2.3.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:0ffc4f5caba7dfcbe944ed674b7eef683c7e94874046454bb79ed7ee0236f59d", size = 21259253, upload-time = "2025-09-09T15:56:02.094Z" },
@@ -2397,7 +2517,8 @@ version = "1.19.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "ml-dtypes", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "protobuf", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
@@ -2423,7 +2544,8 @@ version = "0.1.8"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "ml-dtypes", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "onnx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
@@ -2439,7 +2561,8 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "coloredlogs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "flatbuffers", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "protobuf", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "sympy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -2461,7 +2584,8 @@ version = "0.4.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "ml-dtypes", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "onnx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "onnx-ir", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -2620,7 +2744,8 @@ name = "pandas"
 version = "2.3.2"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytz", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tzdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -2686,7 +2811,8 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "accelerate", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "psutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -2793,6 +2919,32 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c6/77/b3d3e00c696c16cf99af81ef7b1f5fe73bd2a307abca41bd7605429fe6e5/pooch-1.8.2.tar.gz", hash = "sha256:76561f0de68a01da4df6af38e9955c4c9d1a5c90da73f7e40276a5728ec83d10", size = 59353, upload-time = "2024-06-06T16:53:46.224Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/87/77cc11c7a9ea9fd05503def69e3d18605852cd0d4b0d3b8f15bbeb3ef1d1/pooch-1.8.2-py3-none-any.whl", hash = "sha256:3529a57096f7198778a5ceefd5ac3ef0e4d06a6ddaf9fc2d609b806f25302c47", size = 64574, upload-time = "2024-06-06T16:53:44.343Z" },
+]
+
+[[package]]
+name = "pot"
+version = "0.9.6.post1"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/8b/5f939eaf1fbeb7ff914fe540d659486951a056e5537b8f454362045b6c72/pot-0.9.6.post1.tar.gz", hash = "sha256:9b6cc14a8daecfe1268268168cf46548f9130976b22b24a9e8ec62a734be6c43", size = 604243, upload-time = "2025-09-22T12:51:14.894Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f6/fc/3f4014bd6713c5b4c8a329b12c52842443b2284f52213a80e697b76b9f20/pot-0.9.6.post1-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:7fd8482a0262e5c875c05cf52e9c087e7c8bc473ef05d175887ad16e3c0443b7", size = 599499, upload-time = "2025-09-22T12:50:33.796Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/4e/b22b789ee3a81c11c6f39ff08ed6a2e797a2a75a831fae996f4057db4771/pot-0.9.6.post1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:c0bfac9daec0095061279a709f52be740e09363a62fe4c7edc843a4a0f6144c6", size = 466484, upload-time = "2025-09-22T12:50:34.973Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/ae/2b35b96562bd72baf6de9583458878738f4508eef70d6fa9dd5867760d6a/pot-0.9.6.post1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:703853f7ba0ae2afed8203ea3478e87ef5f39d55cd75b1a39bb622867d1d5628", size = 453014, upload-time = "2025-09-22T12:50:36.157Z" },
+    { url = "https://files.pythonhosted.org/packages/44/7e/f49d0593338a3b7f2c88c4cd6f1285c084e8ce05d52d42ac6f89f4f7ec0c/pot-0.9.6.post1-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:68268b4dd926976cf0604d466a57dff2ca44372e8ae9c879ba1f3d2a51e3be3d", size = 1494875, upload-time = "2025-09-22T12:50:37.903Z" },
+    { url = "https://files.pythonhosted.org/packages/15/91/844c8437caaca6d6a71b38623df75c43642a116d399316adb1d0a9280c85/pot-0.9.6.post1-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c7568ddc957d3a16739bd24f9e07ce655166d27ebbc8786aad692cc5ba5d4c59", size = 1514551, upload-time = "2025-09-22T12:50:39.616Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/de/34a50565c37c0b71725a8075ff1ad2de62213d2e119276b546ef20356ac2/pot-0.9.6.post1-cp311-cp311-win32.whl", hash = "sha256:9649b736ea5dddad3a89d55a4a3bb0078610307ba64cac2efebe6bfcf8cfe785", size = 443490, upload-time = "2025-09-22T12:50:41.162Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/fa/453730c1b10094ab4d2ecd0b5fbfcdfe0305419cf01e32a2d31efd333559/pot-0.9.6.post1-cp311-cp311-win_amd64.whl", hash = "sha256:e161e49a22d5a925993baace4679f4e32fc2ade8f45ad73cf8417e13df5bd337", size = 458509, upload-time = "2025-09-22T12:50:43.597Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/28/13622807461f9f6082a8cd6768f9b4a810bc3a8fda474b81572da94b4d23/pot-0.9.6.post1-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:f7c542fc20662e35c24dd82eeff8a737220757434d7f0038664a7322221452f7", size = 599240, upload-time = "2025-09-22T12:50:44.848Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/5c/b4e017560531f53d06798c681b0d0a9488bb8116bc98da9d399a3d096391/pot-0.9.6.post1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:c1755516a7354cbd6110ad2e5f341b98b9968240c2f0f67b0ff5e3ebcb3105bd", size = 464695, upload-time = "2025-09-22T12:50:46.341Z" },
+    { url = "https://files.pythonhosted.org/packages/07/9f/57e49b3f7173359741053c5e2766a45dcf649d767c2e967ef93526c9045f/pot-0.9.6.post1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:f3207362d3e3b5aaa783f452aa85f66e83edbefb5764f34662860af54ac72ee6", size = 454726, upload-time = "2025-09-22T12:50:47.953Z" },
+    { url = "https://files.pythonhosted.org/packages/30/60/fa72dd6094f7dbe6b38e2c6907af8cd0f18c6bd107e0cf4874deddaba883/pot-0.9.6.post1-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:05f6659c5657e6d7e9f98f4a82e0ed64f88e9fce69b2e557416d156343919ba3", size = 1503391, upload-time = "2025-09-22T12:50:49.336Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/3f/cc519c1176116271b6282268a705162fa042c16cc922bc56039445c9d697/pot-0.9.6.post1-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4f1b0148ae17bec0ed12264c6da3a05e13913b716e2a8c9043242b5d8349d8df", size = 1528170, upload-time = "2025-09-22T12:50:50.625Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/01/0132c94404cd0b1b2f21c4a49698db9dcd6107c47c02b22df1ed38206b2a/pot-0.9.6.post1-cp312-cp312-win32.whl", hash = "sha256:571e543cc2b0a462365002203595baf2b89c3d064cce4fce70fd1231e832c21f", size = 440577, upload-time = "2025-09-22T12:50:51.716Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/6d/23229c0e198a4f7fb27750b3ef8497e6ebed23fe531ed64b5194da8b2b02/pot-0.9.6.post1-cp312-cp312-win_amd64.whl", hash = "sha256:b1d8bd9a334c72baa37f9a2b268de5366c23c0f9c9e3d6dc25d150137ec2823c", size = 455404, upload-time = "2025-09-22T12:50:52.956Z" },
 ]
 
 [[package]]
@@ -3143,7 +3295,8 @@ name = "pytrec-eval-terrier"
 version = "0.5.9"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cc/86/85712f99d758dfac64b3013bf98bf4cc121d1b0185ba9ed2d702c58f51e4/pytrec_eval_terrier-0.5.9.tar.gz", hash = "sha256:d9094a63451930a2ff5e92b12c5b28593bd05467c3cb59770619cac0e342400d", size = 18633, upload-time = "2025-09-05T15:57:45.357Z" }
@@ -3286,7 +3439,8 @@ name = "rdkit"
 version = "2025.3.6"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 wheels = [
@@ -3552,10 +3706,11 @@ name = "scikit-learn"
 version = "1.7.2"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "joblib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "threadpoolctl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "joblib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "threadpoolctl", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/98/c2/a7855e41c9d285dfe86dc50b250978105dce513d6e459ea66a6aeb0e1e0c/scikit_learn-1.7.2.tar.gz", hash = "sha256:20e9e49ecd130598f1ca38a1d85090e1a600147b9c02fa6f15d69cb53d968fda", size = 7193136, upload-time = "2025-09-09T08:21:29.075Z" }
 wheels = [
@@ -3576,7 +3731,8 @@ name = "scipy"
 version = "1.16.1"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f5/4a/b927028464795439faec8eaf0b03b011005c487bb2d07409f28bf30879c4/scipy-1.16.1.tar.gz", hash = "sha256:44c76f9e8b6e8e488a586190ab38016e4ed2f8a038af7cd3defa903c0a2238b3", size = 30580861, upload-time = "2025-07-27T16:33:30.834Z" }
 wheels = [
@@ -3606,7 +3762,8 @@ version = "0.13.2"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/59/a451d7420a77ab0b98f7affa3a1d78a313d2f7281a57afb1a34bae8ab412/seaborn-0.13.2.tar.gz", hash = "sha256:93e60a40988f4d65e9f4885df477e2fdaff6b73a9ded434c1ab356dd57eefff7", size = 1457696, upload-time = "2024-01-25T13:21:52.551Z" }
@@ -3752,7 +3909,7 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "cloudpickle", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "importlib-metadata", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "orjson", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pyvers", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -3783,11 +3940,39 @@ name = "tifffile"
 version = "2025.9.9"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/a7/b77bd01f97d72bb70194f036e77f45927978f43017254762c784d7e10f49/tifffile-2025.9.9.tar.gz", hash = "sha256:6cf97ef548970eee9940cf8fc4203e57b4462a72e1e5e7a667ecdeb96113bc5f", size = 369652, upload-time = "2025-09-10T00:02:19.534Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/48/c5/0d57e3547add58285f401afbc421bd3ffeddbbd275a2c0b980b9067fda4a/tifffile-2025.9.9-py3-none-any.whl", hash = "sha256:239247551fa10b5679036ee030cdbeb7762bc1b3f11b1ddaaf50759ef8b4eb26", size = 230668, upload-time = "2025-09-10T00:02:17.839Z" },
+]
+
+[[package]]
+name = "tmtools"
+version = "0.2.0"
+source = { registry = "https://pypi.python.org/simple" }
+dependencies = [
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f6/9f/db455f7fc8383643c1d631b277d58feb58aea28da83590a5e82e699249ce/tmtools-0.2.0.tar.gz", hash = "sha256:e2d6422f5af91ee41753fb2e9776140785eb818ec83d7aef8a8b2f296f05e72c", size = 3142718, upload-time = "2024-07-18T16:20:21.614Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/5c/0b47713bb4e3565faaa7dfc788872a9d5668e9a85c6cce52599aa4f5df81/tmtools-0.2.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:7d1df90c6475a462e12f01beadc2b352ec38dba54f95bdfc5d32528632303f58", size = 3270495, upload-time = "2024-07-18T16:19:29.621Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/24/3ef7307bbe55dfd1ec1e9796afe1f762c9bbb7a6eae3654aad2d4061e379/tmtools-0.2.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:dcc6d177e8a9a266132a0ebc5c5c58a406342a524e0256f79d74cf938e950a6f", size = 3263264, upload-time = "2024-07-18T16:19:31.383Z" },
+    { url = "https://files.pythonhosted.org/packages/37/d8/c2560092d3e96c973fcc3843a9744a86924a7950c91c1dceeac37db52f65/tmtools-0.2.0-cp311-cp311-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:127c3c8f280d8fcae897e111cc757129fac393f634db7e1959051adee9d30d02", size = 3323702, upload-time = "2024-07-18T16:19:33.087Z" },
+    { url = "https://files.pythonhosted.org/packages/47/87/d93b0a672471688202d0d62eb40e21a1231136efe349d5dacaefdc7951bc/tmtools-0.2.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:63c4f5c6a1fc75c907fe8fb27dedc514b35c71f7a696dc150d26b31ba097986f", size = 3315315, upload-time = "2024-07-18T16:19:34.763Z" },
+    { url = "https://files.pythonhosted.org/packages/69/5d/ffee6b11a23a29a47e3bdbd17f5447319ab1677b2971ad27d127220fc031/tmtools-0.2.0-cp311-cp311-musllinux_1_1_i686.whl", hash = "sha256:fbe5f7fdb4bfc4747c84973b83120134769580f86d1e1837cf5bddeadbff4d4e", size = 3883822, upload-time = "2024-07-18T16:19:36.636Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/04/86ebfa49036de878360461f74fe6cf28e6371a75595af4ea13fef18faea2/tmtools-0.2.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:ea8b5c4b3e8ea22216e37e65968d88b74a872688551b2795f6f4a648f8c5e47d", size = 3825828, upload-time = "2024-07-18T16:19:38.018Z" },
+    { url = "https://files.pythonhosted.org/packages/42/3b/77299d049e3cabd91b366455b3f46cfd23425a45d47edd30481b76dd396d/tmtools-0.2.0-cp311-cp311-win32.whl", hash = "sha256:469cf681130d4c0ee971bc7577c5c0e8ed56122f940847c2d3c20c8bf3d453fc", size = 3197668, upload-time = "2024-07-18T16:19:39.403Z" },
+    { url = "https://files.pythonhosted.org/packages/61/08/40316e87925e174cf4072bce16526d61ab7652f141503a29a5f7b2c130ed/tmtools-0.2.0-cp311-cp311-win_amd64.whl", hash = "sha256:d66d71bbb347b89a1dc83cf76921fe5da65d6142fbfa4fc644999755861e2cc3", size = 3208315, upload-time = "2024-07-18T16:19:40.948Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/b8/1e98374e372641f3be588eaaccfa6d88fb8603a3d46aa92202e285691f3f/tmtools-0.2.0-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:0210743c10334f4cd6ca0e69070e39a2f4b540beea57424971eda91fd73b4632", size = 3271336, upload-time = "2024-07-18T16:19:42.672Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/91/ce87f259bfe90155753fa5df30b41611fff3bf02c5b0eb6e8c74f7fa737f/tmtools-0.2.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:d33ade0205557d3840f1603dc5127700f1002b6fad810702588bdc27bfa828e9", size = 3263808, upload-time = "2024-07-18T16:19:44.032Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/77/d5d07ccdfd60f39c82f67236d80a1d526a8f42d2ad9d00f3db9c4c8c9412/tmtools-0.2.0-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:3893d3232109e7c172a5bb3a0a2254f60fd06a65b1fb48c3e8acafa1fcc91a1e", size = 3323988, upload-time = "2024-07-18T16:19:45.622Z" },
+    { url = "https://files.pythonhosted.org/packages/09/93/0355d732a53fc8e9055159e1f09b0a2c96b459286548c17679f6b59617d1/tmtools-0.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a948ea3214a129ed136f1695f6b1eacdfc953ac579b9b864334d7a18589a421b", size = 3315362, upload-time = "2024-07-18T16:19:46.988Z" },
+    { url = "https://files.pythonhosted.org/packages/80/ed/8f40e98b14465b50cfb232a6d8ae1c1eb7904e7bdaccf1c4aa69b9576132/tmtools-0.2.0-cp312-cp312-musllinux_1_1_i686.whl", hash = "sha256:2dfe3b1f83d3ffb1f34030ce68d927eadc78267dae1a2643b13b9c28f68086c7", size = 3883575, upload-time = "2024-07-18T16:19:48.401Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/5f/29e105047e945bd5b61a389fd1010ae28ab7e3ca09c87e1437af8955e083/tmtools-0.2.0-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:852eb77980e737065bb87d3ad5544dabe5b25f66a88845c62d65e34304162aa4", size = 3826307, upload-time = "2024-07-18T16:19:49.889Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/84/b936e88a6c3a5bc2af94fa8b97d76afa83a7fce3a330b02659e90f197c5e/tmtools-0.2.0-cp312-cp312-win32.whl", hash = "sha256:c766b60ca803b7f89de2728a245154ff052569a1aa810aafaf9f866d49a0e9d7", size = 3198050, upload-time = "2024-07-18T16:19:51.245Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/70/acd96fcb601370df4a3cf9be25ae624c351c1ff2eb7037dbe7ec565092ed/tmtools-0.2.0-cp312-cp312-win_amd64.whl", hash = "sha256:9ca78d1cc24dbd2e4be2aabbe88bdf80ce4b9a56bf55ce9fb242c6fe3829c6bb", size = 3208785, upload-time = "2024-07-18T16:19:52.563Z" },
 ]
 
 [[package]]
@@ -3947,7 +4132,7 @@ dependencies = [
     { name = "aiohttp", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "fsspec", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "jinja2", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "psutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pyparsing", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -4070,7 +4255,8 @@ version = "1.8.2"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
@@ -4084,7 +4270,8 @@ name = "torchvision"
 version = "0.23.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
 ]
@@ -4143,7 +4330,8 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "filelock", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-lg-cpu' and extra != 'extra-6-lbster-lg-gpu') or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
     { name = "regex", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-lg-cpu' and extra == 'extra-6-lbster-lg-gpu')" },
@@ -4274,6 +4462,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1c/14/37fcdba2808a6c615681cd216fecae00413c9dab44fb2e57805ecf3eaee3/virtualenv-20.34.0.tar.gz", hash = "sha256:44815b2c9dee7ed86e387b842a84f20b93f7f417f95886ca1996a72a4138eb1a", size = 6003808, upload-time = "2025-08-13T14:24:07.464Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/76/06/04c8e804f813cf972e3262f3f8584c232de64f0cde9f703b46cf53a45090/virtualenv-20.34.0-py3-none-any.whl", hash = "sha256:341f5afa7eee943e4984a9207c025feedd768baff6753cd660c857ceb3e36026", size = 5983279, upload-time = "2025-08-13T14:24:05.111Z" },
+]
+
+[[package]]
+name = "wadler-lindig"
+version = "0.1.7"
+source = { registry = "https://pypi.python.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/67/cbae4bf7683a64755c2c1778c418fea96d00e34395bb91743f08bd951571/wadler_lindig-0.1.7.tar.gz", hash = "sha256:81d14d3fe77d441acf3ebd7f4aefac20c74128bf460e84b512806dccf7b2cd55", size = 15842, upload-time = "2025-06-18T07:00:42.843Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/96/04e7b441807b26b794da5b11e59ed7f83b2cf8af202bd7eba8ad2fa6046e/wadler_lindig-0.1.7-py3-none-any.whl", hash = "sha256:e3ec83835570fd0a9509f969162aeb9c65618f998b1f42918cfc8d45122fe953", size = 20516, upload-time = "2025-06-18T07:00:41.684Z" },
 ]
 
 [[package]]

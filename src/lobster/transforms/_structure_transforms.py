@@ -196,6 +196,261 @@ class ESMEmbeddingTransform(BaseTransform):
         return x
 
 
+class AminoAcidTokenizerTransform(BaseTransform):
+    def __init__(self, max_length=512, truncation=True, **kwargs):
+        import lobster
+        from lobster.tokenization import AminoAcidTokenizerFast
+        from lobster.transforms import TokenizerTransform
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+
+        self.tokenizer_transform = TokenizerTransform(
+            AminoAcidTokenizerFast(),
+            padding="do_not_pad",
+            truncation=True,
+            max_length=max_length,
+        )
+
+    def __call__(self, x: dict) -> dict:
+        """Tokenize the sequence and add it to the input dictionary.
+
+        Args:
+            x (dict): Input dictionary containing at least the following keys:
+                - "sequence": Sequence tensor of shape (seq_length,).
+
+        Returns:
+            dict: Transformed dictionary with added "sequence_tokenized" key.
+
+        """
+        sequence_string = "".join([residue_constants.restype_order_with_x_inv[i.item()] for i in x["sequence"]])
+        tokenized_sequence = self.tokenizer_transform(sequence_string)
+        x["sequence"] = tokenized_sequence["input_ids"][0]
+        # remove eos and cls tokens
+        x["sequence"] = x["sequence"][1:-1]
+        return x
+
+
+class StructureComplexTransform(BaseTransform):
+    def __init__(self, max_length=512, interface_distance=10.0, **kwargs):
+        super().__init__(**kwargs)
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        self.max_length = max_length
+        self.interface_distance = interface_distance
+        logger.info("StructureComplexTransform")
+
+    def get_interface_residues(self, positions, mask, asym_id, interface_threshold):
+        """
+        Get interface residues based on pairwise CA distances across chains.
+
+        Args:
+            positions: CA atom positions [num_res, 3]
+            mask: Mask for valid CA atoms [num_res]
+            asym_id: Chain IDs [num_res]
+            interface_threshold: Distance threshold for interface (e.g., 5.0 Angstroms)
+
+        Returns:
+            interface_residues_idxs: Indices of residues at the interface
+        """
+        # Calculate pairwise distances between CA atoms
+        coord_diff = positions[:, None, :] - positions[None, :, :]  # [num_res, num_res, 3]
+        pairwise_dists = torch.sqrt(torch.sum(coord_diff**2, dim=-1))  # [num_res, num_res]
+
+        # Mask for different chains and valid CA atoms
+        diff_chain_mask = (asym_id[:, None] != asym_id[None, :]).float()  # [num_res, num_res]
+        pair_mask = mask[:, None] * mask[None, :]  # [num_res, num_res]
+        mask = (diff_chain_mask * pair_mask).bool()  # [num_res, num_res]
+
+        # Find minimum distance to any residue in a different chain
+        min_dist_per_res = torch.where(mask, pairwise_dists, torch.inf).min(dim=-1)[0]  # [num_res]
+
+        # Identify interface residues (those with min distance < threshold)
+        interface_residues_idxs = torch.nonzero(min_dist_per_res < interface_threshold, as_tuple=True)[0]
+
+        return interface_residues_idxs
+
+    def get_spatial_crop_indices(
+        self,
+        x: dict,
+        interface_distance: float = 10.0,
+        crop_size: int = 512,
+        just_return_epitope_paratope: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Get the epitope tensor for the input dictionary using interface residue logic.
+
+        Args:
+            x: Dictionary containing structure information with keys:
+                - 'coords_res': Residue coordinates [num_res, num_atoms, 3]
+                - 'chains': Chain IDs [num_res]
+                - 'mask': Atom mask [num_res]
+            interface_distance: Distance threshold for interface (default: 5.0 Angstroms)
+            crop_size: Number of residues to keep in spatial crop (default: 512)
+
+        Returns:
+            tuple: (paratope_mask, epitope_mask, spatial_crop_indices)
+                - paratope_mask: Mask for paratope residues
+                - epitope_mask: Mask for epitope residues
+                - spatial_crop_indices: Indices to spatially crop the structure, sorted by distance
+        """
+        positions = x["coords_res"]  # [num_res, num_atoms, 3]
+        asym_id = x["chains"]  # [num_res]
+        mask = x["mask"]  # [num_res]
+
+        # Extract CA positions (atom index 1)
+        ca_positions = positions[:, 1, :]  # [num_res, 3]
+
+        # Get all interface residues
+        interface_residues_idxs = self.get_interface_residues(ca_positions, mask, asym_id, interface_distance)
+
+        # Pick a random chain to be the paratope
+        chains = torch.unique(asym_id)
+        paratope_chain = chains[torch.randint(0, len(chains), (1,)).item()]
+
+        # Get paratope and epitope masks
+        paratope_mask = asym_id == paratope_chain
+        epitope_mask = asym_id != paratope_chain
+
+        # Filter interface residues by chain type
+        paratope_interface_indices = interface_residues_idxs[paratope_mask[interface_residues_idxs]]
+        epitope_interface_indices = interface_residues_idxs[epitope_mask[interface_residues_idxs]]
+
+        paratope_mask = torch.zeros_like(paratope_mask)
+        epitope_mask = torch.zeros_like(epitope_mask)
+        paratope_mask[paratope_interface_indices] = 1
+        epitope_mask[epitope_interface_indices] = 1
+        # print(paratope_interface_indices, paratope_mask, epitope_interface_indices, epitope_mask)
+
+        if just_return_epitope_paratope:
+            return paratope_mask, epitope_mask
+
+        if len(interface_residues_idxs) == 0:
+            print("No interface residues found")
+            # Return empty masks and all residue indices when no interface residues exist
+            paratope_mask = torch.zeros_like(mask, dtype=torch.bool)
+            epitope_mask = torch.zeros_like(mask, dtype=torch.bool)
+            start_idx = torch.randint(0, len(x["indices"]) - crop_size, (1,)).item()
+            spatial_crop_indices = torch.arange(start_idx, start_idx + crop_size, device=positions.device)
+            return paratope_mask, epitope_mask, spatial_crop_indices
+
+        # Logic for spatial cropping
+        # Randomly select a target residue from interface residues
+        target_res_idx = torch.randint(
+            low=0, high=interface_residues_idxs.shape[-1], size=(1,), device=positions.device
+        ).item()
+
+        target_res = interface_residues_idxs[target_res_idx]
+
+        # Calculate distances from target residue to all other residues (using CA positions already computed)
+        coord_diff = ca_positions[..., None, :] - ca_positions[..., None, :, :]
+        ca_pairwise_dists = torch.sqrt(torch.sum(coord_diff**2, dim=-1))
+        to_target_distances = ca_pairwise_dists[target_res]
+
+        # Break ties by adding small incremental values based on index
+        break_tie = torch.arange(0, to_target_distances.shape[-1], device=positions.device).float() * 1e-3
+        to_target_distances = torch.where(mask.bool(), to_target_distances, torch.inf) + break_tie
+
+        # Get indices of closest residues
+        sorted_indices = torch.argsort(to_target_distances)
+
+        # Apply crop_size (take top crop_size closest residues)
+        spatial_crop_indices = sorted_indices[:crop_size].sort().values
+
+        return paratope_mask, epitope_mask, spatial_crop_indices
+
+    def spatial_crop_transform(self, x: dict, crop_size: int = 512) -> dict:
+        """
+        Get the spatial crop transform for the input dictionary.
+        """
+        paratope_mask, epitope_mask, spatial_crop_indices = self.get_spatial_crop_indices(x, crop_size=crop_size)
+        # crop the structure
+        x["coords_res"] = x["coords_res"][spatial_crop_indices]
+        x["mask"] = x["mask"][spatial_crop_indices]
+        x["chains"] = x["chains"][spatial_crop_indices]
+        x["sequence"] = x["sequence"][spatial_crop_indices]
+        x["epitope_tensor"] = epitope_mask[spatial_crop_indices]
+        x["paratope_tensor"] = paratope_mask[spatial_crop_indices]
+        x["indices"] = x["indices"][spatial_crop_indices]
+        return x
+
+    def contigous_crop_transform(self, x: dict, crop_size: int = 512) -> dict:
+        """
+        Get the contigous crop transform for the input dictionary.
+        """
+        # pick a random start index
+        start_idx = torch.randint(0, len(x["indices"]) - crop_size, (1,)).item()
+        x["coords_res"] = x["coords_res"][start_idx : start_idx + crop_size]
+        x["mask"] = x["mask"][start_idx : start_idx + crop_size]
+        x["chains"] = x["chains"][start_idx : start_idx + crop_size]
+        x["sequence"] = x["sequence"][start_idx : start_idx + crop_size]
+        x["indices"] = x["indices"][start_idx : start_idx + crop_size]
+        x["epitope_tensor"] = torch.zeros_like(x["indices"])
+        x["paratope_tensor"] = torch.zeros_like(x["indices"])
+        return x
+
+    def __call__(self, x: dict) -> dict:
+        """Formats coordinates, indices, mask, chains, and sequence to fit the max_length constraint while maintaining as many interface residues as possible.
+
+        Args:
+            x (dict): Input dictionary containing at least the following keys:
+                - "coords_res": Coordinates tensor of shape (seq_length, num_atoms, 3).
+                - "indices": Residue indices tensor of shape (seq_length,).
+                - "mask": Mask tensor of shape (seq_length,).
+                - "chains": Chains tensor of shape (seq_length,).
+                - "sequence": Sequence tensor of shape (seq_length,).
+        Returns:
+            dict: Transformed dictionary with formatted coordinates, indices, mask, chains, and sequence.
+            Additional keys:
+                - "epitope_tensor": Epitope tensor of shape (seq_length,).
+                - "paratope_tensor": Paratope tensor of shape (seq_length,).
+            Refomatted keys:
+                - "coords_res": Coordinates tensor of shape (seq_length, num_atoms, 3).
+                - "indices": Residue indices tensor of shape (seq_length,).
+                - "mask": Mask tensor of shape (seq_length,).
+                - "chains": Chains tensor of shape (seq_length,).
+                - "sequence": Sequence tensor of shape (seq_length,).
+
+        """
+        # check if mask present
+        if "mask" not in x:
+            x["mask"] = torch.ones_like(x["indices"])
+
+        # Find the nans in coords_res and set the mask to 0 for those indices
+        coords_res = x["coords_res"]
+        mask = x["mask"]
+        nan_indices = torch.isnan(coords_res).any(dim=-1).any(dim=-1)
+        mask[nan_indices] = 0
+        # set the coords_res to 0 for those indices
+        coords_res[nan_indices] = 0
+        x["coords_res"] = coords_res
+        x["mask"] = mask
+
+        if "chains_ids" in x:
+            x["chains"] = x["chains_ids"]
+            del x["chains_ids"]
+            # make sequence long instead of int
+            x["sequence"] = x["sequence"].long()
+
+        # Apply spatial cropping if necessary
+        if len(x["indices"]) > self.max_length:
+            # check that there are multiple chains
+            if len(x["chains"].unique()) > 1:
+                x = self.spatial_crop_transform(x, crop_size=self.max_length)
+            else:
+                x = self.contigous_crop_transform(x, crop_size=self.max_length)
+        else:
+            if len(x["chains"].unique()) > 1:
+                paratope_mask, epitope_mask = self.get_spatial_crop_indices(x, just_return_epitope_paratope=True)
+                x["epitope_tensor"] = epitope_mask
+                x["paratope_tensor"] = paratope_mask
+            else:
+                x["epitope_tensor"] = torch.zeros_like(x["indices"], device=x["indices"].device)
+                x["paratope_tensor"] = torch.zeros_like(x["indices"], device=x["indices"].device)
+
+        return x
+
+
 class StructureBackboneTransform(BaseTransform):
     def __init__(self, max_length=512, **kwargs):
         import lobster
@@ -210,7 +465,13 @@ class StructureBackboneTransform(BaseTransform):
         """Rename keys in the input dictionary to match the expected input of the backbone model and crops.
 
         Args:
-            x (dict): Input dictionary containing the data to be transformed.
+            x (dict): Input dictionary containing at least the following keys:
+                - "coords_res": Coordinates tensor of shape (seq_length, 3).
+                - "indices": Residue indices tensor of shape (seq_length,).
+                - "mask": Mask tensor of shape (seq_length,).
+                - "chains": Chains tensor of shape (seq_length,).
+                - "sequence": Sequence tensor of shape (seq_length,).
+                - "esm_c_embeddings": (optional) ESM-C embeddings tensor of shape (1, seq_length, 960).
 
         Returns:
             dict: Transformed dictionary with renamed keys.
@@ -231,7 +492,6 @@ class StructureBackboneTransform(BaseTransform):
             chain = list(set_chains)[chain]
 
             # get all indices in chain
-            # chain_indices = [i for i in range(len(chains)) if chains[i] == chain]
             chains_array = np.array(chains)
             chain_indices = np.where(chains_array == chain)[0].tolist()
 
@@ -395,6 +655,33 @@ class StructureC6DTransform(BaseTransform):
         return x
 
 
+class AntibodyChainTransform(BaseTransform):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        logger.info("AntibodyChainTransform")
+
+    def __call__(self, x: dict) -> dict:
+        """Transform antibody chains to be one chain e.g H and L to be one chain (H and L become H).
+        Args:
+            x (dict): Input dictionary containing at least the following keys:
+                - "chains": Chains tensor of shape (seq_length,).
+
+        Returns:
+            dict: Transformed dictionary with transformed chains.
+
+        """
+        chain_H_id = ord("H")
+        chain_L_id = ord("L")
+        # check that H and L are present
+        if chain_H_id not in x["chains"] or chain_L_id not in x["chains"]:
+            return x
+        x["chains"][x["chains"] == chain_L_id] = chain_H_id
+        return x
+
+
 class BinderTargetTransform(BaseTransform):
     def __init__(self, translation_scale: float = 1.0, **kwargs):
         """Initialize the BinderTargetTransform.
@@ -509,6 +796,9 @@ class BinderTargetTransform(BaseTransform):
             "cond_binder": (cond_coords_2, cond_seq_mask_2, cond_residue_index_2),
             "sequence": sequence,
         }
+        if "epitope_tensor" in batch:
+            feat_dict["epitope_tensor"] = batch["epitope_tensor"]
+            feat_dict["paratope_tensor"] = batch["paratope_tensor"]
 
         return feat_dict
 

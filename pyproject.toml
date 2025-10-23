@@ -34,7 +34,7 @@ dependencies = [
     "onnxscript",
     "onnxruntime",
     "einops",
-    "beignet[datasets]>=0.0.13",
+    "beignet[datasets]",
     "dotenv>=0.9.9",
     "litdata>=0.2.49",
     "seaborn>=0.13.2",
@@ -85,7 +85,9 @@ lg-cpu = [
     "botocore",
     "lightning-utilities",
     "mini3di",
-    "cpdb-protein"
+    "cpdb-protein",
+    "bionemo-moco",
+    "tmtools"
 ]
 lg-gpu = [
     "biopandas==0.5.0.dev0",
@@ -107,7 +109,9 @@ lg-gpu = [
     "botocore",
     "lightning-utilities",
     "mini3di",
-    "cpdb-protein"
+    "cpdb-protein",
+    "bionemo-moco",
+    "tmtools"
 ]
 mgm = [
     "selfies>=2.1.2",

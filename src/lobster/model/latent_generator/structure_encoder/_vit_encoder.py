@@ -245,7 +245,6 @@ class ViTEncoder(BaseEncoder):
             coords = coords[:, :, : self.n_atoms, :]
         else:
             B, _, _ = ligand_coords.shape
-
         emb = self.net(
             coords,
             seq_mask=seq_mask,
@@ -260,6 +259,7 @@ class ViTEncoder(BaseEncoder):
         )
         if return_embeddings:
             emb, emb_out = emb
+
         assert not torch.isnan(emb).any()
 
         if ligand_coords is not None:

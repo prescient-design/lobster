@@ -48,6 +48,7 @@ class TestLobsterPMLM:
 
         assert outputs[0].device == model.device
 
+    @pytest.mark.skip(reason="This test is currently not working b/c of huggingface issues.")
     def test_sequences_to_latents_esmc(self, esmc):
         inputs = ["ACDAC"]
         outputs = esmc.sequences_to_latents(inputs)

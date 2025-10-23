@@ -14,7 +14,7 @@ import torch
 from tqdm import tqdm
 
 try:
-    from torch_geometric.transforms import Dataset
+    from torch_geometric.data import Dataset
 except ImportError:
     Dataset = None
 
@@ -91,7 +91,7 @@ class StructureDataset(Dataset):
         The root directory of the dataset.
 
     cluster_file : str | os.PathLike, optional
-        Path to the cluster file containing cluster assignments.
+        Path to the cluster file containing cluster assignments per training example.
 
     transform : callable, optional
         Transform to apply to the data.
@@ -136,7 +136,6 @@ class StructureDataset(Dataset):
         import lobster
 
         lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
-        lobster.ensure_package("icream", group="lg-gpu (or --extra lg-cpu)")
 
         self.root = pathlib.Path(root)
         self.processed_dir = self.root
@@ -157,6 +156,7 @@ class StructureDataset(Dataset):
         self.min_len = min_len
         self.testing = testing
         self.use_mmap = use_mmap
+        logger.info(f"Loading data from {self.root}")
         self._load_data()
         logger.info("Loaded data points.")
         # breakpoint()
@@ -287,8 +287,6 @@ class StructureDataset(Dataset):
                     if cluster_id not in cluster_dict:
                         cluster_dict[cluster_id] = []
                     cluster_dict[cluster_id].append(i)
-                # else:
-                #    skip_files.append(p_file["name"])
 
                 if self.testing and len(processed_files) > 500:
                     break
@@ -315,7 +313,7 @@ class StructureDataset(Dataset):
             try:
                 x = torch.load(self.processed_paths[idx])
             except Exception as e:
-                ic(f"Error loading {self.processed_paths[idx]}: {e}")
+                # ic(f"Error loading {self.processed_paths[idx]}: {e}")
                 # load the next file if it exists
                 if idx + 1 < len(self.processed_paths):
                     return self.__getitem__(idx + 1)
