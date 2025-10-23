@@ -1,0 +1,44 @@
+# Example configuration for inpainting (regenerate specific residues of a given structure)
+# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_inpainting
+
+# Output directory
+output_dir: "./generated_inpainting"
+
+# Random seed for reproducibility
+seed: 54321
+
+# Model configuration
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt" 
+
+# Generation settings
+generation:
+  mode: inpainting
+  mask_indices_sequence: "290-302"  # Residues in sequence to regenerate (empty = no masking)
+  mask_indices_structure: ""  # Residues in structure to regenerate (empty = no masking)
+  nsteps: 200          # Number of generation steps
+  batch_size: 1        # Process 1 structure at a time
+  n_trials: 20          # Number of trials for best output selection
+
+  #Generation parameters
+  temperature_seq: 0.16423763902324678
+  temperature_struc: 1.0
+  stochasticity_seq: 20
+  stochasticity_struc: 10
+
+  # Input structures - update these paths to your PDB files
+  # Examples of different input formats:
+  # Single file: input_structures: "/path/to/structure.pdb"
+  # Directory: input_structures: "/path/to/pdb/directory/"
+  # Glob pattern: input_structures: "/path/to/structures/*.pdb"
+  # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
+  input_structures: "/homefs/home/lisanzas/scratch/Develop/lobster/denovo_data/1728_8jyr_HL_A_ref.pdb"
+
+  # Enable ESMFold validation
+  use_esmfold: true
+  max_length: 512
+
+  # Not used for inpainting
+  length: null
+  num_samples: null

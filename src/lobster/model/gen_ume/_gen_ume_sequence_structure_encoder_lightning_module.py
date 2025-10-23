@@ -428,10 +428,13 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         temperature_struc: float = 1.0,
         inverse_folding: bool = False,
         forward_folding: bool = False,
+        inpainting: bool = False,
         input_structure_coords: Tensor = None,
         input_sequence_tokens: Tensor = None,
         input_mask: Tensor = None,
         input_indices: Tensor = None,
+        inpainting_mask_sequence: Tensor = None,
+        inpainting_mask_structure: Tensor = None,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -472,6 +475,38 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
                 ts_seq = torch.full_like(ts_seq, 0.9950)
             else:
                 raise ValueError("Sequence tokens are required for forward folding")
+        elif inpainting:
+            # For inpainting, we need both input structure and sequence, plus masks
+            if input_structure_coords is None:
+                raise ValueError("Structure coordinates are required for inpainting")
+            if input_sequence_tokens is None:
+                raise ValueError("Sequence tokens are required for inpainting")
+
+            # Encode the input structure
+            x_quant, x_quant_emb, mask = self.encode_structure(
+                x_gt=input_structure_coords, mask=input_mask, residue_index=input_indices
+            )
+            xt_struc_input = x_quant.argmax(dim=-1)
+            xt_seq_input = input_sequence_tokens
+
+            # Initialize with input values
+            xt_seq = xt_seq_input.clone()
+            xt_struc = xt_struc_input.clone()
+
+            # Apply masks: keep input where mask=0, randomize where mask=1
+            if inpainting_mask_sequence is not None:
+                # Generate random tokens for masked positions
+                random_seq = self.interpolant_seq.sample_prior((num_samples, length))
+                # Keep original where mask=0, use random where mask=1
+                xt_seq = torch.where(inpainting_mask_sequence.bool(), random_seq, xt_seq_input)
+
+            if inpainting_mask_structure is not None:
+                # Generate random tokens for masked positions
+                random_struc = self.interpolant_struc.sample_prior((num_samples, length))
+                # Keep original where mask=0, use random where mask=1
+                xt_struc = torch.where(inpainting_mask_structure.bool(), random_struc, xt_struc_input)
+
+            xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 
         for dt_seq, dt_struc, t_seq, t_struc in tqdm(
             zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples"
@@ -482,7 +517,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
             unmasked_x = self.forward(xt, mask, residue_index, conditioning_tensor, timesteps=timesteps)
             unmasked_sequence_tokens = unmasked_x["sequence_logits"]
             unmasked_structure_tokens = unmasked_x["structure_logits"]
-            xt_seq = self.interpolant_seq.step(
+            xt_seq_new = self.interpolant_seq.step(
                 unmasked_sequence_tokens,
                 t_seq,
                 xt_seq,
@@ -490,7 +525,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
                 stochasticity=stochasticity_seq,
                 temperature=temperature_seq,
             )
-            xt_struc = self.interpolant_struc.step(
+            xt_struc_new = self.interpolant_struc.step(
                 unmasked_structure_tokens,
                 t_struc,
                 xt_struc,
@@ -498,6 +533,24 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
                 stochasticity=stochasticity_struc,
                 temperature=temperature_struc,
             )
+
+            # For inpainting, keep unmasked positions fixed
+            if inpainting:
+                if inpainting_mask_sequence is not None:
+                    # Only update masked positions, keep unmasked positions from input
+                    xt_seq = torch.where(inpainting_mask_sequence.bool(), xt_seq_new, xt_seq_input)
+                else:
+                    xt_seq = xt_seq_new
+
+                if inpainting_mask_structure is not None:
+                    # Only update masked positions, keep unmasked positions from input
+                    xt_struc = torch.where(inpainting_mask_structure.bool(), xt_struc_new, xt_struc_input)
+                else:
+                    xt_struc = xt_struc_new
+            else:
+                xt_seq = xt_seq_new
+                xt_struc = xt_struc_new
+
             xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 
         return unmasked_x
