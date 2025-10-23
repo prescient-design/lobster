@@ -1,0 +1,36 @@
+# @package _global_
+
+model:
+  _target_: lobster.model.ume2.ume2.UME2
+  ckpt_path:
+    amino_acid: s3://prescient-lobster/ume/runs/2025-09-26T13-51-56/epoch=1-step=98000-val_loss=0.4485.ckpt
+    SMILES: s3://prescient-lobster/ume/runs/2025-09-30T13-02-59/epoch=0-step=98500-val_loss=0.1838.ckpt
+
+model_alias: UME2-linear
+
+notes: 
+  - "medium amino acid"
+  - "small smiles trained on zinc and molpile https://genentech.wandb.io/zadorozk/lobster/runs/9ryd9v8v/workspace?nw=nwuserzadorozk"
+
+output_dir: ${hydra:runtime.cwd}/evaluation_results/${now:%Y%m%d}/${now:%H%M%S}-${model_alias}
+
+datamodule:
+  _target_: lobster.data.UMELightningDataModule
+  datasets: ["Calm", "AMPLIFY", "ZINC", "M320M", "PeptideAtlas"]
+
+
+callbacks:
+  # - _target_: lobster.callbacks.PerturbationScoreCallback
+  #   sequence: QVKLQESGAELARPGASVKLSCKASGYTFTNYWMQWVKQRPGQGLDWIGAIYPGDGNTRYTHKFKGKATLTADKSSSTAYMQLSSLASEDSGVYYCARGEGNYAWFAYWGQGTTVTVSS
+  #   output_dir: ${output_dir}/perturbation_scores/amino_acid
+  #   save_heatmap: true
+
+  - _target_: lobster.callbacks.PEERSklearnProbeCallback
+    probe_type: linear
+    tasks:
+      # - yeastppi
+      # - bindingdb
+      # - pdbbind
+    # probe_type: gradient_boosting
+
+

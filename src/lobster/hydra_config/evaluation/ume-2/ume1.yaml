@@ -1,0 +1,40 @@
+# @package _global_
+
+model:
+  _target_: lobster.model.UME
+  # ckpt_path: "s3://prescient-lobster/ume/runs/2025-06-12T16-47-59/epoch=0-step=39000-val_loss=0.5387.ckpt"
+  
+
+model_alias: UME1-random-medium-grad-boost
+
+output_dir: ${hydra:runtime.cwd}/evaluation_results/${now:%Y%m%d}/${now:%H%M%S}-${model_alias}
+
+datamodule:
+  _target_: lobster.data.UMELightningDataModule
+  datasets: ["Calm", "AMPLIFY", "ZINC", "M320M", "PeptideAtlas"]
+
+
+callbacks:
+  # - _target_: lobster.callbacks.PerturbationScoreCallback
+  #   sequence: QVKLQESGAELARPGASVKLSCKASGYTFTNYWMQWVKQRPGQGLDWIGAIYPGDGNTRYTHKFKGKATLTADKSSSTAYMQLSSLASEDSGVYYCARGEGNYAWFAYWGQGTTVTVSS
+  #   output_dir: ${output_dir}/perturbation_scores/amino_acid
+  #   save_heatmap: true
+
+  - _target_: lobster.callbacks.PEERSklearnProbeCallback
+    probe_type: gradient_boosting
+    # tasks:
+    #   - aav
+    #   - betalactamase
+    #   - fluorescence
+    #   - gb1
+    #   - solubility
+    #   - stability
+    #   - thermostability
+    #   - binarylocalization
+    #   - subcellularlocalization
+    #   - humanppi
+    #   - yeastppi
+    #   - ppiaffinity
+    # probe_type: gradient_boosting
+
+
