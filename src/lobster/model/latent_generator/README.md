@@ -75,10 +75,10 @@ We also evaluated the models using canonical pose mode, which makes the model in
 On
 ```bash
 # With latent generator CPU support
-uv sync --extra lg-cpu
+uv sync --extra struct-cpu
 
 # With latent generator GPU support  
-uv sync --extra lg-gpu
+uv sync --extra struct-gpu
 ```
 
 ## Getting Embeddings and Tokens

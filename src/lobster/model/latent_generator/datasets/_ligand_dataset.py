@@ -31,7 +31,7 @@ class LigandDataset(Dataset):
     ):
         import lobster
 
-        lobster.ensure_package("torch_geometric", group="lg-gpu (or --extra lg-cpu)")
+        lobster.ensure_package("torch_geometric", group="struct-gpu (or --extra struct-cpu)")
 
         self.root = pathlib.Path(root)
         self.transform_protein = transform_protein

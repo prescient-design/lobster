@@ -34,6 +34,10 @@ from ._ume_models import (
     UMEModelVersion,
 )
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
+from ._alphafold2 import (
+    DEFAULT_AF2_PREDICTION_MODELS,
+    DEFAULT_AF2_WEIGHTS_DIR,
+)
 
 __all__ = [
     "BIOPYTHON_FEATURES",
@@ -76,4 +80,6 @@ __all__ = [
     "UME_MODEL_VERSION_TYPES",
     "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     "S3_BUCKET",
+    "DEFAULT_AF2_PREDICTION_MODELS",
+    "DEFAULT_AF2_WEIGHTS_DIR",
 ]
