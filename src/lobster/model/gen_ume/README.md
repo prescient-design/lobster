@@ -1,6 +1,6 @@
 # Gen-UME: Generative Unified Molecular Encoder
 
-Gen-UME is a discrete diffusion-based generative model for protein structure and sequence design. It supports three generation modes: **unconditional generation**, **inverse folding**, and **forward folding**.
+Gen-UME is a generative model for protein structure and sequence design based on discrete flow matching. It supports three generation modes: **unconditional generation**, **inverse folding**, and **forward folding**.
 
 ## Quick Start
 
@@ -39,11 +39,15 @@ uv run python -m lobster.cmdline.generate \
 
 ## Overview
 
-Gen-UME generates protein structures and sequences using a unified diffusion model that operates on both modalities simultaneously. The model can:
+Gen-UME generates protein structures and sequences using discrete flow matching, a unified generative modeling approach that operates on both modalities simultaneously. The model can:
 
 - **Generate novel proteins** from scratch (unconditional)
 - **Design sequences** for given structures (inverse folding)
 - **Predict structures** from sequences (forward folding)
+
+### Technical Approach
+
+Gen-UME employs **discrete flow matching**, which models the generation process as a continuous-time flow on discrete state spaces (sequences) and continuous state spaces (structures). The model uses **tokenized structure representations** to encode protein backbone geometry, enabling efficient joint generation of sequence and structure.
 
 ### Model Checkpoint
 
