@@ -119,6 +119,8 @@ def create_config_from_wandb(config, length: int | None = None) -> DictConfig:
             "temperature_struc": config.get("temperature_struc", 0.5),
             "stochasticity_seq": config.get("stochasticity_seq", 20),
             "stochasticity_struc": config.get("stochasticity_struc", 20),
+            "inference_schedule_seq": config.get("inference_schedule_seq", "LogInferenceSchedule"),
+            "inference_schedule_struc": config.get("inference_schedule_struc", "LinearInferenceSchedule"),
             "use_esmfold": True,
             "max_length": 512,
             "save_csv_metrics": True,

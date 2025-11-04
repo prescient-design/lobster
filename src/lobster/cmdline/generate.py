@@ -29,9 +29,35 @@ from lobster.metrics.cal_foldseek_clusters import calculate_diversity_for_genera
 from lobster.transforms._structure_transforms import StructureBackboneTransform, AminoAcidTokenizerTransform
 from tmtools import tm_align
 from lobster.model import LobsterPLMFold
+from bionemo.moco.schedules.inference_time_schedules import (
+    LinearInferenceSchedule,
+    LogInferenceSchedule,
+    PowerInferenceSchedule,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
+
+
+def _get_inference_schedule_class(schedule_name: str):
+    """Convert schedule name string to schedule class.
+
+    Args:
+        schedule_name: String name of schedule ("LinearInferenceSchedule", "LogInferenceSchedule", "PowerInferenceSchedule")
+
+    Returns:
+        Schedule class (callable)
+    """
+    schedule_map = {
+        "LinearInferenceSchedule": LinearInferenceSchedule,
+        "LogInferenceSchedule": LogInferenceSchedule,
+        "PowerInferenceSchedule": PowerInferenceSchedule,
+    }
+
+    if schedule_name not in schedule_map:
+        raise ValueError(f"Unknown schedule name: {schedule_name}. Available options: {list(schedule_map.keys())}")
+
+    return schedule_map[schedule_name]
 
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="generate")
@@ -275,6 +301,14 @@ def _execute_self_reflection_pipeline(
         forward_params = _get_self_reflection_params(cfg, "forward_folding")
         logger.info(f"  Forward folding parameters: {forward_params}")
 
+        # Get inference schedule classes from config (use same as main generation)
+        inference_schedule_seq = gen_cfg.get("inference_schedule_seq", "LogInferenceSchedule")
+        inference_schedule_struc = gen_cfg.get("inference_schedule_struc", "LinearInferenceSchedule")
+        if isinstance(inference_schedule_seq, str):
+            inference_schedule_seq = _get_inference_schedule_class(inference_schedule_seq)
+        if isinstance(inference_schedule_struc, str):
+            inference_schedule_struc = _get_inference_schedule_class(inference_schedule_struc)
+
         forward_sample = model.generate_sample(
             length=current_length,
             num_samples=batch_size,
@@ -287,6 +321,8 @@ def _execute_self_reflection_pipeline(
             temperature_struc=forward_params["temperature_struc"],
             stochasticity_seq=forward_params["stochasticity_seq"],
             stochasticity_struc=forward_params["stochasticity_struc"],
+            inference_schedule_seq=inference_schedule_seq,
+            inference_schedule_struc=inference_schedule_struc,
             asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
         )
 
@@ -383,6 +419,11 @@ def _execute_self_reflection_pipeline(
         inverse_params = _get_self_reflection_params(cfg, "inverse_folding")
         logger.info(f"  Inverse folding parameters: {inverse_params}")
 
+        # Get inference schedule classes from inverse folding parameters
+        inference_schedule_seq = inverse_params.get("inference_schedule_seq", "LogInferenceSchedule")
+        if isinstance(inference_schedule_seq, str):
+            inference_schedule_seq = _get_inference_schedule_class(inference_schedule_seq)
+
         inverse_sample = model.generate_sample(
             length=current_length,
             num_samples=batch_size,
@@ -393,6 +434,7 @@ def _execute_self_reflection_pipeline(
             nsteps=inverse_params["nsteps"],
             temperature_seq=inverse_params["temperature_seq"],
             stochasticity_seq=inverse_params["stochasticity_seq"],
+            inference_schedule_seq=inference_schedule_seq,
             asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
         )
 
@@ -915,6 +957,16 @@ def _generate_unconditional(
                     total_retries += 1
 
                 with torch.no_grad():
+                    # Get inference schedule classes from config
+                    inference_schedule_seq = gen_cfg.get("inference_schedule_seq", "LogInferenceSchedule")
+                    inference_schedule_struc = gen_cfg.get("inference_schedule_struc", "LinearInferenceSchedule")
+
+                    # Convert string names to classes if needed
+                    if isinstance(inference_schedule_seq, str):
+                        inference_schedule_seq = _get_inference_schedule_class(inference_schedule_seq)
+                    if isinstance(inference_schedule_struc, str):
+                        inference_schedule_struc = _get_inference_schedule_class(inference_schedule_struc)
+
                     # Generate samples
                     generate_sample = model.generate_sample(
                         length=current_length,
@@ -924,6 +976,8 @@ def _generate_unconditional(
                         temperature_struc=gen_cfg.get("temperature_struc", 1.0),
                         stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
                         stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
+                        inference_schedule_seq=inference_schedule_seq,
+                        inference_schedule_struc=inference_schedule_struc,
                         asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
                     )
 
