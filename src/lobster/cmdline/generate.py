@@ -27,7 +27,6 @@ from lobster.metrics import (
 )
 from lobster.metrics.cal_foldseek_clusters import calculate_diversity_for_generation
 from lobster.transforms._structure_transforms import StructureBackboneTransform, AminoAcidTokenizerTransform
-from tmtools import tm_align
 from lobster.model import LobsterPLMFold
 from bionemo.moco.schedules.inference_time_schedules import (
     LinearInferenceSchedule,
@@ -35,7 +34,6 @@ from bionemo.moco.schedules.inference_time_schedules import (
     PowerInferenceSchedule,
 )
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 
 
@@ -69,6 +67,7 @@ def generate(cfg: DictConfig) -> None:
     - Inverse folding: Generate sequences for given protein structures
     - Optional ESMFold validation of generated structures
     """
+
     logger.info("Starting genUME structure generation")
     logger.info("Config:\n %s", OmegaConf.to_yaml(cfg))
 
@@ -228,6 +227,9 @@ def _execute_self_reflection_pipeline(
         Dictionary containing self-reflection metrics or None if pipeline failed
     """
     from lobster.transforms._structure_transforms import AminoAcidTokenizerTransform
+
+    # import inside function because this needs C++ and fails to be pickled with submitit otherwise
+    from tmtools import tm_align
 
     gen_cfg = cfg.generation
 
@@ -1292,6 +1294,9 @@ def _generate_inverse_folding(
     model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
 ) -> None:
     """Generate sequences for given structures (inverse folding)."""
+    # import inside function because this needs C++ and fails to be pickled with submitit otherwise
+    from tmtools import tm_align
+
     logger.info("Starting inverse folding generation...")
 
     # Get input structure paths
@@ -1962,6 +1967,8 @@ def _generate_forward_folding(
 ) -> None:
     """Generate structures from given input structures (forward folding)."""
     logger.info("Starting forward folding generation...")
+    # import inside function because this needs C++ and fails to be pickled with submitit otherwise
+    from tmtools import tm_align
 
     # Get input structure paths
     input_structures = cfg.generation.input_structures
@@ -2374,6 +2381,9 @@ def _generate_inpainting(
 ) -> None:
     """Generate structures using inpainting (mask and regenerate specific positions)."""
     logger.info("Starting inpainting generation...")
+
+    # import inside function because this needs C++ and fails to be pickled with submitit otherwise
+    from tmtools import tm_align
 
     # Get input structure paths
     input_structures = cfg.generation.input_structures

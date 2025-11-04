@@ -1,3 +1,5 @@
+# @package _global_
+
 # Example configuration for inpainting (regenerate specific residues of a given structure)
 # Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_inpainting
 

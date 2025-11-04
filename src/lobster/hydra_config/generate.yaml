@@ -1,0 +1,22 @@
+defaults:
+  - _self_
+  - experiment: null
+
+output_dir: "./examples/generated_unconditional"
+
+seed: 12345
+
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt"
+
+generation:
+  mode: unconditional
+  length: [100, 200, 300, 400, 500]
+  num_samples: 10
+  nsteps: 1000
+  batch_size: 1
+  save_csv_metrics: true
+  create_plots: true
+  asynchronous_sampling: false
+  

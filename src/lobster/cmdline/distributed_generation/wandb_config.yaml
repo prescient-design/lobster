@@ -1,0 +1,40 @@
+program: src/lobster/cmdline/distributed_generate.py
+method: grid
+project: lobster-distributed-generation
+entity: prescient-design
+metric:
+  name: job_completed
+  goal: maximize
+parameters:
+  base_config_path:
+    value: src/lobster/hydra_config/experiment/generate_unconditional.yaml
+  job_id:
+    values:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+  samples_per_job:
+    value: 50
+  total_samples:
+    value: 1000
+command:
+- ${env}
+- python
+- ${program}

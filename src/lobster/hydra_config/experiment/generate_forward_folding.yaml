@@ -1,3 +1,5 @@
+# @package _global_
+
 # Example configuration for forward folding (structure generation from input sequences and structures)
 # Forward folding takes input structures and their sequences, then generates new structures
 # Sequences are automatically tokenized using AminoAcidTokenizerTransform

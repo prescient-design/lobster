@@ -1,3 +1,5 @@
+# @package _global_
+
 # Example configuration for inverse folding (sequence design for given structures)
 # Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_inverse_folding
 
