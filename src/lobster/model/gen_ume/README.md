@@ -2,8 +2,30 @@
 
 Gen-UME is a discrete diffusion-based generative model for protein structure and sequence design. It supports three generation modes: **unconditional generation**, **inverse folding**, and **forward folding**.
 
+## Quick Start
+
+```bash
+# Unconditional: Generate novel proteins from scratch
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_unconditional
+
+# Inverse Folding: Design sequences for structures
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_inverse_folding \
+    generation.input_structures="path/to/structures/*.pdb"
+
+# Forward Folding: Predict structures from sequences
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_forward_folding \
+    generation.input_structures="path/to/structures/*.pdb"
+```
+
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Overview](#overview)
 - [Installation](#installation)
 - [Generation Modes](#generation-modes)
@@ -47,28 +69,19 @@ Generate novel protein structures and sequences from scratch.
 
 #### Basic Usage
 
+Use the provided configuration file:
+
 ```bash
 uv run python -m lobster.cmdline.generate \
     --config-path "../hydra_config/experiment" \
     --config-name generate_unconditional
 ```
 
-#### Configuration
+#### Configuration File
 
-Create a config file (e.g., `my_unconditional.yaml`):
+The example configuration is located at `src/lobster/hydra_config/experiment/generate_unconditional.yaml`:
 
 ```yaml
-# Output directory
-output_dir: "./examples/my_generation"
-
-# Random seed for reproducibility
-seed: 12345
-
-# Model configuration
-model:
-  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt"
-
 # Generation parameters
 generation:
   mode: unconditional
@@ -78,61 +91,73 @@ generation:
   batch_size: 1
   
   # Temperature and stochasticity control
-  temperature_seq: 0.458
-  temperature_struc: 0.358
+  temperature_seq: 0.4579796403264936
+  temperature_struc: 0.35751879409731435
   stochasticity_seq: 30
   stochasticity_struc: 70
   
   # ESMFold validation
   use_esmfold: true
   max_length: 512
-  
-  # Metrics and visualization
-  save_csv_metrics: true
-  create_plots: true
 ```
 
-Then run:
+#### Override Parameters
+
+You can override any parameter from the command line:
 
 ```bash
+# Change output directory
 uv run python -m lobster.cmdline.generate \
-    --config-path "/path/to/config" \
-    --config-name my_unconditional
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_unconditional \
+    output_dir="./my_generation"
+
+# Generate different lengths
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_unconditional \
+    generation.length="[50,100,150]" \
+    generation.num_samples=20
 ```
 
-#### Self-Reflection (Recommended)
+#### Self-Reflection (Enabled by Default)
 
-Enable self-reflection to improve structure-sequence consistency:
+The provided config already has self-reflection enabled to improve structure-sequence consistency. The self-reflection pipeline refines unconditionally generated structures through forward and inverse folding steps:
 
 ```yaml
 generation:
-  enable_self_reflection: true
+  enable_self_reflection: true  # Already enabled in default config
   
   self_reflection:
-    use_esmfold_validation: false  # Enable for detailed metrics
-    
     forward_folding:
       nsteps: 100
-      temperature_seq: 0.297
-      temperature_struc: 0.110
+      temperature_seq: 0.2967457760634187
+      temperature_struc: 0.1102551183666233
       stochasticity_seq: 10
       stochasticity_struc: 30
     
     inverse_folding:
       nsteps: 200
-      temperature_seq: 0.164
+      temperature_seq: 0.16423763902324678
       temperature_struc: 1.0
       stochasticity_seq: 20
       stochasticity_struc: 10
     
     quality_control:
       enable_tm_threshold: true
-      min_tm_score_forward: 0.833
-      enable_min_percent_identity_threshold: true
+      min_tm_score_forward: 0.8334123066155882
       min_percent_identity: 50
-      enable_max_percent_identity_threshold: true
       max_percent_identity: 100
       max_retries: 30
+```
+
+To disable self-reflection:
+
+```bash
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_unconditional \
+    generation.enable_self_reflection=false
 ```
 
 ### 2. Inverse Folding
@@ -141,6 +166,8 @@ Generate sequences for given protein structures (sequence design).
 
 #### Basic Usage
 
+Use the provided configuration file and specify your input structures:
+
 ```bash
 uv run python -m lobster.cmdline.generate \
     --config-path "../hydra_config/experiment" \
@@ -148,22 +175,11 @@ uv run python -m lobster.cmdline.generate \
     generation.input_structures="path/to/structures/*.pdb"
 ```
 
-#### Configuration
+#### Configuration File
 
-Create a config file (e.g., `my_inverse_folding.yaml`):
+The example configuration is located at `src/lobster/hydra_config/experiment/generate_inverse_folding.yaml`:
 
 ```yaml
-# Output directory
-output_dir: "./examples/my_inverse_folding"
-
-# Random seed
-seed: 54321
-
-# Model configuration
-model:
-  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt"
-
 # Generation settings
 generation:
   mode: inverse_folding
@@ -171,43 +187,50 @@ generation:
   batch_size: 1
   n_trials: 3  # Generate multiple designs and select best
   
-  # Temperature parameters for inverse folding
-  temperature_seq: 0.164
+  # Temperature parameters (optimized for inverse folding)
+  temperature_seq: 0.16423763902324678
   temperature_struc: 1.0
   stochasticity_seq: 20
   stochasticity_struc: 10
   
   n_designs_per_structure: 10  # Number of sequences per structure
   
-  # Input structures (multiple formats supported)
-  # Single file:
-  input_structures: "/path/to/structure.pdb"
-  
-  # Or directory:
-  # input_structures: "/path/to/pdb/directory/"
-  
-  # Or glob pattern:
-  # input_structures: "/path/to/structures/*.pdb"
-  
-  # Or list of files:
-  # input_structures: 
-  #   - "/path/to/file1.pdb"
-  #   - "/path/to/file2.pdb"
+  # Input structures - update via command line or edit config
+  input_structures: "test_data/inv_folding/9jl9.pdb"
   
   # ESMFold validation (recommended)
   use_esmfold: true
   max_length: 512
 ```
 
+#### Input Structure Formats
+
+Multiple input formats are supported:
+
+```bash
+# Single file
+generation.input_structures="/path/to/structure.pdb"
+
+# Directory (finds all PDB/CIF files)
+generation.input_structures="/path/to/pdb/directory/"
+
+# Glob pattern
+generation.input_structures="/path/to/structures/*.pdb"
+
+# Multiple files (use quotes)
+generation.input_structures="[/path/to/file1.pdb,/path/to/file2.pdb]"
+```
+
 #### Multi-Chain Support
 
 For multi-chain structures, specify which chains to predict:
 
-```yaml
-generation:
-  esmfold_chain_groups:
-    - [A, B]      # Predict chains A and B together
-    - [C]         # Predict chain C separately
+```bash
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_inverse_folding \
+    generation.input_structures="path/to/complex.pdb" \
+    generation.esmfold_chain_groups="[[A,B],[C]]"
 ```
 
 If not specified, all chains will be predicted together.
@@ -218,6 +241,8 @@ Generate structures from sequences (structure prediction).
 
 #### Basic Usage
 
+Use the provided configuration file and specify your input structures:
+
 ```bash
 uv run python -m lobster.cmdline.generate \
     --config-path "../hydra_config/experiment" \
@@ -227,22 +252,11 @@ uv run python -m lobster.cmdline.generate \
 
 **Note:** Despite the name `input_structures`, forward folding extracts sequences from these structures to generate new structures.
 
-#### Configuration
+#### Configuration File
 
-Create a config file (e.g., `my_forward_folding.yaml`):
+The example configuration is located at `src/lobster/hydra_config/experiment/generate_forward_folding.yaml`:
 
 ```yaml
-# Output directory
-output_dir: "./examples/my_forward_folding"
-
-# Random seed
-seed: 54321
-
-# Model configuration
-model:
-  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt"
-
 # Generation settings
 generation:
   mode: forward_folding
@@ -250,29 +264,47 @@ generation:
   batch_size: 1
   n_trials: 1
   
-  # Temperature parameters for forward folding
-  temperature_seq: 0.297
-  temperature_struc: 0.110
+  # Temperature parameters (optimized for forward folding)
+  temperature_seq: 0.2967457760634187
+  temperature_struc: 0.1102551183666233
   stochasticity_seq: 10
   stochasticity_struc: 30
   
-  # Input structures (sequences extracted from these)
-  input_structures: "/path/to/structures/*.pdb"
+  # Input structures - sequences will be extracted from these
+  input_structures: "test_data/inv_folding/9jl9.pdb"
   
   max_length: 512
 ```
 
+#### Override Examples
+
+```bash
+# Generate multiple trials for better results
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_forward_folding \
+    generation.n_trials=5
+
+# Change number of diffusion steps
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_forward_folding \
+    generation.nsteps=200
+```
+
 ## Benchmark Results
+
+### Unconditional Generation
 
 Results from large-scale unconditional generation with self-reflection (100 samples per length):
 
-| Length | Total Structures | RMSD<2.0 | % Pass | Clusters | Diversity % | Avg TM | Avg RMSD | Avg pLDDT |
-|--------|-----------------|----------|--------|----------|-------------|--------|----------|-----------|
-| 100    | 100             | 85       | 85.0%  | 25       | 25.0%       | 0.8203 | 1.963    | 0.7111    |
-| 200    | 100             | 63       | 63.0%  | 19       | 19.0%       | 0.8043 | 2.467    | 0.6639    |
-| 300    | 100             | 62       | 62.0%  | 23       | 23.0%       | 0.8447 | 2.015    | 0.6851    |
-| 400    | 100             | 56       | 56.0%  | 13       | 13.0%       | 0.8505 | 2.191    | 0.7177    |
-| 500    | 91              | 31       | 34.1%  | 10       | 11.0%       | 0.8344 | 2.730    | 0.7283    |
+| Model | Length | Total Structures | RMSD<2.0 | % Pass | Clusters | Diversity % | Avg TM | Avg RMSD | Avg pLDDT |
+|-------|--------|-----------------|----------|--------|----------|-------------|--------|----------|-----------|
+| genUME 90M | 100    | 100             | 85       | 85.0%  | 25       | 25.0%       | 0.8203 | 1.963    | 0.7111    |
+| genUME 90M | 200    | 100             | 63       | 63.0%  | 19       | 19.0%       | 0.8043 | 2.467    | 0.6639    |
+| genUME 90M | 300    | 100             | 62       | 62.0%  | 23       | 23.0%       | 0.8447 | 2.015    | 0.6851    |
+| genUME 90M | 400    | 100             | 56       | 56.0%  | 13       | 13.0%       | 0.8505 | 2.191    | 0.7177    |
+| genUME 90M | 500    | 91              | 31       | 34.1%  | 10       | 11.0%       | 0.8344 | 2.730    | 0.7283    |
 
 **Metrics Explanation:**
 - **RMSD<2.0**: Number of structures with RMSD < 2.0 Å between gen-UME and ESMFold predictions
@@ -288,6 +320,42 @@ Results from large-scale unconditional generation with self-reflection (100 samp
 - Self-reflection improves structure quality across all lengths
 - Diversity remains high (10-25%) indicating generation of distinct structures
 - High TM-scores (>0.8) indicate good structural quality
+
+### Inverse Folding
+
+Performance on sequence design for given structures:
+
+| Task | Model | AAR | TM-Score |
+|------|-------|-----|----------|
+| Inverse Folding | genUME 90M | 50.67% | 0.83 |
+
+**Metrics Explanation:**
+- **AAR (Amino Acid Recovery)**: Percentage of positions where the designed sequence matches the native sequence
+- **TM-Score**: Structural similarity between input structure and structure predicted from designed sequence
+
+**Key Observations:**
+- AAR of 50.67% demonstrates strong sequence recovery capability
+- TM-score of 0.83 indicates excellent structural preservation
+- Model successfully designs sequences that fold back to target structures
+
+**Dataset:** Benchmarked on the dataset from [Generative Flows on Discrete State-Spaces](https://arxiv.org/abs/2402.04997) (Campbell et al., ICML 2024)
+
+### Forward Folding
+
+Performance on structure prediction from sequences:
+
+| Task | Model | TM-Score |
+|------|-------|----------|
+| Forward Folding | genUME 90M | 0.70 |
+
+**Metrics Explanation:**
+- **TM-Score**: Structural similarity between generated structure and reference structure
+
+**Key Observations:**
+- TM-score of 0.70 indicates good structure prediction capability
+- Model generates plausible structures from sequence inputs
+
+**Dataset:** Benchmarked on the dataset from [Generative Flows on Discrete State-Spaces](https://arxiv.org/abs/2402.04997) (Campbell et al., ICML 2024)
 
 ## Key Parameters
 
@@ -356,24 +424,26 @@ generation:
 ## Tips and Best Practices
 
 ### 1. Start Small
-Begin with small test runs to validate configurations:
-```yaml
-length: [100]
-num_samples: 2
-nsteps: 100  # Reduced for testing
+Begin with small test runs to validate your setup:
+```bash
+uv run python -m lobster.cmdline.generate \
+    --config-path "../hydra_config/experiment" \
+    --config-name generate_unconditional \
+    generation.length="[100]" \
+    generation.num_samples=2 \
+    generation.nsteps=100
 ```
 
 ### 2. Use Self-Reflection for Quality
-For unconditional generation, always enable self-reflection to improve ESMFold metrics:
-```yaml
-enable_self_reflection: true
+Self-reflection is enabled by default in `generate_unconditional.yaml` to improve ESMFold metrics. To disable it:
+```bash
+generation.enable_self_reflection=false
 ```
 
-### 3. Enable ESMFold Validation
-ESMFold provides crucial quality metrics:
-```yaml
-use_esmfold: true
-max_length: 512  # Adjust based on your sequences
+### 3. ESMFold Validation
+ESMFold is enabled by default in the provided configs and provides crucial quality metrics. Adjust `max_length` based on your sequences:
+```bash
+generation.max_length=1024  # For longer sequences
 ```
 
 ### 4. Batch Size Selection
@@ -382,42 +452,35 @@ max_length: 512  # Adjust based on your sequences
 - **Short sequences (<200)**: Can use `batch_size: 2-4`
 
 ### 5. Output Organization
-```yaml
-output_dir: "./examples/generation_YYYYMMDD_description"
+Always use descriptive output directories for tracking experiments:
+```bash
+output_dir="./examples/generation_20251104_my_experiment"
 ```
 
-Always use descriptive output directories with dates for tracking experiments.
-
 ### 6. Reproducibility
-```yaml
-seed: 12345  # Set seed for reproducible results
+Set a seed for reproducible results:
+```bash
+seed=12345
 ```
 
 ### 7. Monitor Progress
-```yaml
-save_csv_metrics: true
-create_plots: true
+CSV metrics and plots are enabled by default in the provided configs. To disable:
+```bash
+generation.save_csv_metrics=false
+generation.create_plots=false
 ```
-
-Enables CSV logging and automatic plotting of metrics.
 
 ### 8. Multi-Chain Design
 For inverse folding of multi-chain complexes:
-```yaml
-esmfold_chain_groups:
-  - [A, B]  # Design interface
-  - [C]     # Design separately
+```bash
+generation.esmfold_chain_groups="[[A,B],[C]]"  # Design chains A+B together, C separately
 ```
 
 ### 9. Quality Control
-Use quality control thresholds to filter poor designs:
-```yaml
-self_reflection:
-  quality_control:
-    min_tm_score_forward: 0.833
-    min_percent_identity: 50
-    max_percent_identity: 100
-    max_retries: 30
+Quality control is enabled by default in unconditional generation with self-reflection. Adjust thresholds if needed:
+```bash
+generation.self_reflection.quality_control.min_tm_score_forward=0.9
+generation.self_reflection.quality_control.max_retries=50
 ```
 
 ### 10. Structure File Formats
@@ -449,6 +512,20 @@ If you use Gen-UME in your research, please cite:
 
 ```
 [Citation to be added]
+```
+
+### Benchmark Dataset
+
+The inverse folding and forward folding benchmarks use the dataset from:
+
+```bibtex
+@inproceedings{campbell2024generative,
+  title={Generative Flows on Discrete State-Spaces: Enabling Multimodal Flows with Applications to Protein Co-Design},
+  author={Campbell, Andrew and Yim, Jason and Barzilay, Regina and Rainforth, Tom and Jaakkola, Tommi},
+  booktitle={International Conference on Machine Learning (ICML)},
+  year={2024},
+  url={https://arxiv.org/abs/2402.04997}
+}
 ```
 
 ## Support
