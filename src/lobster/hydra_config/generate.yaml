@@ -19,4 +19,12 @@ generation:
   save_csv_metrics: true
   create_plots: true
   asynchronous_sampling: false
+
+wandb:
+  enabled: false
+  project: lobster-generation
+  entity: null
+  name: null
+  group: null
+  tags: []
   

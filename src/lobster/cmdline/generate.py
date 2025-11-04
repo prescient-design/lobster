@@ -1,10 +1,13 @@
 import logging
 from pathlib import Path
 import glob
+from datetime import datetime
 
 import hydra
 import torch
+import wandb
 from omegaconf import DictConfig, OmegaConf
+from hydra.core.hydra_config import HydraConfig
 from loguru import logger
 
 from lobster.model.latent_generator.io import writepdb, load_pdb
@@ -70,6 +73,42 @@ def generate(cfg: DictConfig) -> None:
 
     logger.info("Starting genUME structure generation")
     logger.info("Config:\n %s", OmegaConf.to_yaml(cfg))
+
+    # Initialize wandb if enabled
+    wandb_run = None
+    if cfg.get("wandb", {}).get("enabled", False):
+        hydra_cfg = HydraConfig.get()
+
+        # Generate unique batch tag for multirun submissions
+        # Use sweep directory name which is shared across all jobs in a multirun
+        batch_tag = None
+        if hydra_cfg.mode.name == "MULTIRUN":
+            sweep_dir = Path(hydra_cfg.sweep.dir).name
+            batch_tag = f"sweep_{sweep_dir}"
+        else:
+            batch_tag = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # Prepare wandb tags
+        tags = list(cfg.wandb.get("tags", []))
+        if batch_tag:
+            tags.append(batch_tag)
+
+        # Add generation mode as a tag
+        if cfg.generation.get("mode"):
+            tags.append(cfg.generation.mode)
+
+        # Initialize wandb
+        wandb_run = wandb.init(
+            project=cfg.wandb.get("project", "lobster-generation"),
+            entity=cfg.wandb.get("entity"),
+            name=cfg.wandb.get("name"),
+            group=cfg.wandb.get("group", batch_tag),
+            tags=tags,
+            config=OmegaConf.to_container(cfg, resolve=True),
+            dir=cfg.output_dir,
+        )
+        logger.info(f"Wandb initialized with tags: {tags}")
+        logger.info(f"Wandb group: {batch_tag}")
 
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -139,6 +178,11 @@ def generate(cfg: DictConfig) -> None:
         raise ValueError(f"Unknown generation mode: {generation_mode}")
 
     logger.info("Generation completed successfully!")
+
+    # Finish wandb run if initialized
+    if wandb_run is not None:
+        wandb.finish()
+        logger.info("Wandb run finished")
 
 
 def _check_sequence_tokens(
