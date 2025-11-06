@@ -60,14 +60,14 @@ optim:
   lr: 1e-4
   weight_decay: 0.0
 
-num_warmup_steps: 50000
-num_training_steps: 500000
+num_warmup_steps: 5000
+num_training_steps: 50000
 
 lr_scheduler:
   _target_: transformers.get_cosine_schedule_with_warmup
   _partial_: true
-  num_warmup_steps: 50000
-  num_training_steps: 500000
+  num_warmup_steps: 5000
+  num_training_steps: 50000
 
 
 
