@@ -60,13 +60,15 @@ def _get_inference_schedule_class(schedule_name: str):
     return schedule_map[schedule_name]
 
 
-@hydra.main(version_base=None, config_path="../hydra_config", config_name="generate")
+@hydra.main(version_base=None, config_path="../hydra_config/experiment", config_name="generate_unconditional")
 def generate(cfg: DictConfig) -> None:
     """Generate protein structures using genUME model.
 
     This command-line interface supports:
     - Unconditional generation: Generate novel protein structures from scratch
     - Inverse folding: Generate sequences for given protein structures
+    - Forward folding: Generate structures for given sequences
+    - Inpainting: Generate structures for given sequences and structures
     - Optional ESMFold validation of generated structures
     """
     logger.info("Starting genUME structure generation")

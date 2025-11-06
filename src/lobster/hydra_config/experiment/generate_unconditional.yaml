@@ -16,7 +16,7 @@ model:
 # Generation parameters
 generation:
   mode: unconditional
-  length: [100, 200, 300, 400, 500]
+  length: [100, 200]
   num_samples: 10
   nsteps: 1000
   batch_size: 1

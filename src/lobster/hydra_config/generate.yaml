@@ -1,0 +1,46 @@
+# @package _global_
+defaults:
+  - model: gen_ume
+  - generation: unconditional
+  - _self_
+
+# Output directory for generated structures
+output_dir: "./generated_structures"
+
+# Random seed for reproducibility
+seed: 42
+
+# Model configuration
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: null  # Path to model checkpoint
+  mask_token_id: 32
+  pad_token_id: 1
+  vocab_size: 33
+  encoder_kwargs:
+    max_length: 512
+    model_size: mini
+
+# Generation parameters
+generation:
+  mode: unconditional  # "unconditional" or "inverse_folding"
+  length: 100          # Length of sequences to generate
+  num_samples: 10      # Number of samples to generate
+  nsteps: 1000          # Number of generation steps
+  
+  # Temperature parameters
+  temperature_seq: 0.4579796403264936    # Temperature for sequence generation
+  temperature_struc: 0.35751879409731435  # Temperature for structure generation
+  
+  # Stochasticity parameters
+  stochasticity_seq: 30   # Stochasticity for sequence generation
+  stochasticity_struc: 70 # Stochasticity for structure generation
+  
+  # ESMFold validation
+  use_esmfold: false      # Whether to validate with ESMFold
+  max_length: 512         # Max length for ESMFold
+  
+  # Inverse folding specific
+  input_structures: null  # Path to input structures for inverse folding
+
+# Note: Datamodule no longer needed - inverse folding now loads PDB files directly
