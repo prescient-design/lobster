@@ -210,6 +210,142 @@ python src/lobster/model/latent_generator/cmdline/inference.py \
 
 The tokens are discrete representations that can be used for tasks like discrete generation (with LLMs or PLMs) and compact storage of structure information, while embeddings are continuous representations useful for tasks like similarity search, feature extraction, and representation centric tasks.
 
+## Training
+
+LatentGenerator training for protein-only models using the unified Lobster training framework.
+
+### Quick Start
+
+Train a latent_generator model using the provided SLURM script:
+
+```bash
+# Submit training job
+sbatch slurm/scripts/train_latent_generator.sh
+```
+
+Or run locally without SLURM:
+
+```bash
+# Set required environment variables
+export LOBSTER_RUNS_DIR="/path/to/runs"
+export LOBSTER_DATA_DIR="/path/to/data"
+
+# Train with default experiment configuration
+uv run lobster_train experiment=train_latent_generator
+
+# Override specific parameters
+uv run lobster_train experiment=train_latent_generator \
+    data.batch_size=32 \
+    model.quantizer.n_tokens=512 \
+    trainer.devices=4
+```
+
+### Configuration Files
+
+The training uses the unified Lobster configuration system:
+
+- **Experiment config**: `src/lobster/hydra_config/experiment/train_latent_generator.yaml`
+- **Model config**: `src/lobster/hydra_config/model/latent_generator.yaml`
+- **Data config**: `src/lobster/hydra_config/data/structure_pdb.yaml`
+
+### Key Configuration Parameters
+
+Based on the actual model configuration (`src/lobster/hydra_config/model/latent_generator.yaml`):
+
+**Model Architecture:**
+- `quantizer.n_tokens`: Number of discrete tokens in codebook (default: 256)
+- `structure_encoder.embed_dim_hidden`: Hidden embedding dimension (default: 256)
+- `structure_encoder.uvit_n_layers`: Number of encoder layers (default: 6)
+- `structure_encoder.uvit_n_heads`: Number of attention heads (default: 8)
+- `structure_encoder.data_fixed_size`: Maximum sequence length (default: 512)
+- `structure_encoder.n_atoms`: Number of atoms per residue (default: 3 for backbone)
+
+**Training Parameters:**
+- `num_warmup_steps`: Learning rate warmup steps (default: 5000)
+- `num_training_steps`: Total training steps (default: 50000)
+- `optim.lr`: Learning rate (default: 1e-4)
+
+**Decoder Configuration:**
+- `decoder_factory.decoder_mapping.vit_decoder.struc_token_dim`: Decoder token dimension (default: 512)
+- `decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size`: Token codebook size (default: 256)
+
+**Loss Configuration:**
+- `loss_factory.weight_dict.pairwise_l2_loss`: Weight for pairwise L2 loss (default: 1.0)
+- `loss_factory.weight_dict.l2_loss`: Weight for L2 loss (default: 0.01)
+
+### SLURM Training Configuration
+
+The SLURM script (`slurm/scripts/train_latent_generator.sh`) is configured for multi-GPU training:
+
+**Hardware Configuration:**
+- 1 node with 8 GPUs (b200 partition)
+- 16 CPUs per GPU task
+- 256GB RAM
+- 7-day maximum runtime
+
+**Environment Variables:**
+- `LOBSTER_RUNS_DIR`: Directory for saving checkpoints and logs
+- `LOBSTER_DATA_DIR`: Directory for caching data
+- `LOBSTER_USER`: WandB username for logging
+- `WANDB_BASE_URL`: WandB server URL (if using custom instance)
+
+**Training Settings:**
+- DDP strategy with `ddp_find_unused_parameters_true`
+- 8 data workers per GPU
+- BF16 mixed precision
+- Gradient accumulation: 16 batches
+
+Edit the SLURM script to adjust these settings for your cluster.
+
+### Dataset Preparation
+
+The latent_generator expects protein structure datasets with:
+- Backbone atom coordinates (N, CA, C atoms)
+- Residue information  
+- Sequence data
+
+Configure your dataset paths in `src/lobster/hydra_config/data/structure_pdb.yaml`:
+
+```yaml
+path_to_datasets: [
+  "/path/to/train.pt",
+  "/path/to/validation.pt", 
+  "/path/to/test.pt"
+]
+batch_size: 40
+num_workers: 12
+```
+
+Or override on the command line:
+
+```bash
+uv run lobster_train experiment=train_latent_generator \
+    data.path_to_datasets="['/path/to/train.pt','/path/to/val.pt','/path/to/test.pt']"
+```
+
+### Resuming from Checkpoint
+
+Load a checkpoint to resume training or fine-tune:
+
+```bash
+# Resume training from checkpoint
+uv run lobster_train experiment=train_latent_generator \
+    model.ckpt_path=/path/to/checkpoint.ckpt
+
+# Or via SLURM (modify the script to add):
+# model.ckpt_path=/path/to/checkpoint.ckpt
+```
+
+### Monitoring Training
+
+Training progress can be monitored through:
+
+1. **SLURM Output**: Job logs are saved to the path specified in the SLURM script (default: `/data2/ume/latent_generator_/slurm/logs/train/`)
+2. **WandB**: Logs automatically to the `lobster_latent_generator` project
+   - Run name includes: token count, encoder/decoder dimensions, dataset name, and timestamp
+   - Example: `latent_generator-tokens_256-enc_256-dec_512_pdb_2024-01-01T12-00-00`
+3. **Console Output**: Real-time loss and metrics (when running locally)
+
 ## Model Configurations
 
 LatentGenerator provides several pre-configured models optimized for different use cases. These configurations include all necessary settings and overrides, making them easy to use without manual configuration.
