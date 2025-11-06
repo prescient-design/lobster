@@ -155,6 +155,9 @@ def _check_sequence_tokens(
     - Tokens > 20 (mask/special tokens)
     - Negative values
 
+    Also checks for low-complexity sequences:
+    - Sequences where one amino acid accounts for > 50% of the total
+
     Args:
         sequences: Sequence tensor (B, L) with amino acid token indices
         mask: Validity mask (B, L) indicating which positions are valid
@@ -186,6 +189,25 @@ def _check_sequence_tokens(
         num_negative = (seq_i < 0).sum().item()
         if num_negative > 0:
             return False, f"Sample {i} in {stage_name} contains negative token values"
+
+        # Check for low-complexity sequences (one amino acid > 50%)
+        # Only check valid amino acids (0-19)
+        valid_aa_mask = (seq_i >= 0) & (seq_i < 20)
+        valid_aa_seq = seq_i[valid_aa_mask]
+
+        if len(valid_aa_seq) > 0:
+            # Count frequency of each amino acid
+            aa_counts = torch.bincount(valid_aa_seq, minlength=20)
+            max_count = aa_counts.max().item()
+            max_percentage = (max_count / len(valid_aa_seq)) * 100
+
+            if max_percentage > 50.0:
+                max_aa_idx = aa_counts.argmax().item()
+                return False, (
+                    f"Sample {i} in {stage_name} is low-complexity: "
+                    f"amino acid {max_aa_idx} accounts for {max_percentage:.1f}% "
+                    f"({max_count}/{len(valid_aa_seq)}) of the sequence"
+                )
 
     return True, ""
 
@@ -933,14 +955,25 @@ def _generate_unconditional(
         if hasattr(gen_cfg, "self_reflection") and hasattr(gen_cfg.self_reflection, "quality_control"):
             qc_config = gen_cfg.self_reflection.quality_control
 
-        # Enable retries if any QC threshold is enabled
-        qc_enabled = (
+        # Check for independent sequence token check (not tied to self-reflection)
+        enable_sequence_token_check = gen_cfg.get("enable_sequence_token_check", True)
+        sequence_token_check_retries = gen_cfg.get("sequence_token_check_retries", 10)
+
+        # Enable retries if any QC threshold is enabled (from self-reflection)
+        self_reflection_qc_enabled = (
             qc_config.get("enable_tm_threshold", False)
             or qc_config.get("enable_min_percent_identity_threshold", False)
             or qc_config.get("enable_max_percent_identity_threshold", False)
             or qc_config.get("enable_sequence_token_check", True)  # Token check enabled by default
         )
-        max_retries = qc_config.get("max_retries", 3) if qc_enabled else 0
+
+        # Determine max_retries based on what's enabled
+        if self_reflection_qc_enabled:
+            max_retries = qc_config.get("max_retries", 3)
+            if enable_sequence_token_check and not gen_cfg.get("enable_self_reflection", False):
+                max_retries = sequence_token_check_retries
+        else:
+            max_retries = 0
 
         # Track retry statistics
         total_retries = 0
@@ -1028,8 +1061,35 @@ def _generate_unconditional(
                                 max_retries_exceeded += 1
                                 iteration_success = True
                             continue
+                    elif enable_sequence_token_check:
+                        # Extract sequences for validation
+                        if generate_sample["sequence_logits"].shape[-1] == 33:
+                            check_seq = convert_lobster_aa_tokenization_to_standard_aa(
+                                generate_sample["sequence_logits"], device=device
+                            )
+                        else:
+                            check_seq = generate_sample["sequence_logits"].argmax(dim=-1)
+                            check_seq[check_seq > 21] = 20
+
+                        # Run sequence token check
+                        is_valid, error_msg = _check_sequence_tokens(check_seq, mask, "unconditional generation")
+                        if not is_valid:
+                            logger.warning(f"  Sequence token check FAILED: {error_msg}")
+                            logger.warning("  Iteration will be retried (invalid sequence tokens)")
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                logger.error(
+                                    f"  Max retries ({max_retries}) exceeded for iteration {n_iter + 1}. "
+                                    f"Continuing with invalid sequences."
+                                )
+                                max_retries_exceeded += 1
+                                iteration_success = True
+                            continue
+                        else:
+                            logger.info("  Sequence token check PASSED: All sequences contain valid amino acids")
+                            iteration_success = True
                     else:
-                        # Self-reflection disabled, no quality control
+                        # No quality control at all
                         iteration_success = True
 
                     # Only proceed with normal flow if iteration succeeded or max retries exceeded
@@ -1058,15 +1118,24 @@ def _generate_unconditional(
                         seq = generate_sample["sequence_logits"].argmax(dim=-1)
                         seq[seq > 21] = 20
 
+                    # Extract structure tokens (argmax)
+                    structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
                     # Write sequences to CSV
                     # Note: For self-reflection mode, we only store initial unconditional sequences (not forward/inverse intermediates)
                     if csv_writer is not None:
                         # Convert sequences to strings
                         sequence_strs = []
+                        structure_token_strs = []
                         for i in range(batch_size):
                             seq_i = seq[i, mask[i] == 1]
                             sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                             sequence_strs.append(sequence_str)
+
+                            # Convert structure tokens to comma-separated string
+                            tokens_i = structure_tokens[i, mask[i] == 1]
+                            tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                            structure_token_strs.append(tokens_str)
 
                         # Write to sequences CSV
                         csv_writer.write_sequences(
@@ -1074,6 +1143,7 @@ def _generate_unconditional(
                             run_id=f"unconditional_length_{current_length}_iter_{n_iter:03d}",
                             iteration=n_iter,
                             sequence_type="unconditional",
+                            latent_generator_tokens=structure_token_strs,
                         )
 
                     # Save generated structures
@@ -1493,6 +1563,9 @@ def _generate_inverse_folding(
                         seq = generate_sample["sequence_logits"].argmax(dim=-1)
                         seq[seq > 21] = 20
 
+                    # Extract structure tokens (argmax)
+                    structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
                     # Calculate TM-scores for this trial
                     trial_tm_scores = []
                     outputs = None
@@ -1719,10 +1792,16 @@ def _generate_inverse_folding(
                 if csv_writer is not None:
                     # Convert generated sequences to strings
                     generated_sequence_strs = []
+                    structure_token_strs = []
                     for i in range(B):
                         seq_i = seq[i, mask[i] == 1]
                         sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                         generated_sequence_strs.append(sequence_str)
+
+                        # Convert structure tokens to comma-separated string
+                        tokens_i = structure_tokens[i, mask[i] == 1]
+                        tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                        structure_token_strs.append(tokens_str)
 
                     # Convert original sequences to strings
                     original_sequence_strs = []
@@ -1744,6 +1823,7 @@ def _generate_inverse_folding(
                         input_structure=[Path(batch_paths[i]).stem for i in filtered_valid_indices],
                         trial_number=best_trial["trial"] + 1,
                         percent_identities=batch_percent_identities,
+                        latent_generator_tokens=structure_token_strs,
                     )
 
                 # Save results
@@ -2169,6 +2249,9 @@ def _generate_forward_folding(
                     seq = generate_sample["sequence_logits"].argmax(dim=-1)
                     seq[seq > 21] = 20
 
+                # Extract structure tokens (argmax)
+                structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
                 # Calculate TM-scores for this trial
                 trial_tm_scores = []
                 for i in range(B):
@@ -2214,14 +2297,23 @@ def _generate_forward_folding(
             x_recon_xyz = best_trial["x_recon_xyz"]
             seq = best_trial["seq"]
 
+            # Extract structure tokens from best trial (argmax)
+            structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
             # Write sequences to CSV
             if csv_writer is not None:
                 # Convert generated sequences to strings
                 generated_sequence_strs = []
+                structure_token_strs = []
                 for i in range(B):
                     seq_i = seq[i, mask[i] == 1]
                     sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                     generated_sequence_strs.append(sequence_str)
+
+                    # Convert structure tokens to comma-separated string
+                    tokens_i = structure_tokens[i, mask[i] == 1]
+                    tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                    structure_token_strs.append(tokens_str)
 
                 # Convert original sequences to strings (from input structures)
                 original_sequence_strs = []
@@ -2239,6 +2331,7 @@ def _generate_forward_folding(
                     run_id=f"forward_folding_batch_{batch_idx:03d}",
                     input_structure=[Path(batch_paths[i]).stem for i in filtered_valid_indices],
                     trial_number=best_trial["trial"] + 1,
+                    latent_generator_tokens=structure_token_strs,
                 )
 
             # Save generated and original structures
@@ -2683,6 +2776,9 @@ def _generate_inpainting(
                         seq = generate_sample["sequence_logits"].argmax(dim=-1)
                         seq[seq > 21] = 20
 
+                    # Extract structure tokens (argmax)
+                    structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
                     # Calculate TM-scores for this trial
                     trial_tm_scores = []
                     trial_rmsd_inpainted = []
@@ -2948,10 +3044,16 @@ def _generate_inpainting(
                 if csv_writer is not None:
                     # Convert full generated sequences to strings
                     generated_sequence_strs = []
+                    structure_token_strs = []
                     for i in range(B):
                         seq_i = seq[i, mask[i] == 1]
                         sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                         generated_sequence_strs.append(sequence_str)
+
+                        # Convert structure tokens to comma-separated string
+                        tokens_i = structure_tokens[i, mask[i] == 1]
+                        tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                        structure_token_strs.append(tokens_str)
 
                     # Convert full original sequences to strings
                     original_sequence_strs = []
@@ -3042,6 +3144,7 @@ def _generate_inpainting(
                         trial_number=best_trial["trial"] + 1,
                         percent_identities=batch_percent_identities_masked,
                         masked_positions=masked_positions_per_seq,
+                        latent_generator_tokens=structure_token_strs,
                     )
 
                 # Save results

@@ -36,7 +36,7 @@ class StructureLightningDataModule(LightningDataModule):
         datasets: Sequence[str] = None,
         *,
         transform_fn: Iterable[Callable] = None,
-        ligand_transforms: Iterable[Callable] = None,
+        ligand_transform_fn: Iterable[Callable] = None,
         lengths: Sequence[float] | None = (0.9, 0.05, 0.05),
         generator: Generator | None = None,
         seed: int = 0xDEADBEEF,
@@ -183,15 +183,15 @@ class StructureLightningDataModule(LightningDataModule):
             transforms = list(transforms.values())
             self._transform_fn = self.compose_transforms(transforms)
 
-        if ligand_transforms is None:
+        if ligand_transform_fn is None:
             logger.info(
                 "No ligand transform function provided. Using default transform function: StructureLigandTransform"
             )
             self._ligand_transform_fn = StructureLigandTransform(max_length=max_length)
         else:
             logger.info("Using custom ligand transform function.")
-            ligand_transforms = list(ligand_transforms.values())
-            self._ligand_transform_fn = self.compose_transforms(ligand_transforms)
+            ligand_transform_fn = list(ligand_transform_fn.values())
+            self._ligand_transform_fn = self.compose_transforms(ligand_transform_fn)
 
         logger.info(
             f"SequenceLightningDataModule: path_to_datasets={path_to_datasets}, root={root}, lengths={lengths}, seed={seed}, batch_size={batch_size}, max_length={max_length}, shuffle={shuffle}, sampler={sampler}, batch_sampler={batch_sampler}, num_workers={num_workers}, collate_fn={collate_fn}, use_shards={use_shards}"

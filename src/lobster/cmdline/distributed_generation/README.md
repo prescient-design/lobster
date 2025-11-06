@@ -16,10 +16,10 @@ This directory contains scripts for distributed structure generation using wandb
 ```bash
 cd /homefs/home/lisanzas/scratch/Develop/lobster
 
-# Generate config for 1000 samples (50 per job = 20 jobs)
+# Generate config for 100 samples (5 per job = 20 jobs)
 uv run python src/lobster/cmdline/distributed_generation/create_job_config.py \
-    --total_samples 1000 \
-    --samples_per_job 50
+    --total_samples 100 \
+    --samples_per_job 5
 ```
 
 ### 2. Initialize WandB Sweep

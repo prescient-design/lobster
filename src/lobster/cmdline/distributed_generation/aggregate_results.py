@@ -320,35 +320,82 @@ def run_foldseek_clustering(
         length_dir = output_dir / "foldseek_results" / f"length_{length}"
         length_dir.mkdir(parents=True, exist_ok=True)
 
-        # Filter structures by RMSD threshold if metrics available
+        # Filter structures by RMSD threshold using metrics DataFrame
+        # Only include structures that have valid RMSD < threshold in combined_metrics
         filtered_pdbs = []
+
+        # Get metrics for this length with valid RMSD
+        length_metrics = combined_metrics[
+            (combined_metrics["sequence_length"] == length)
+            & (combined_metrics["rmsd"].notna())
+            & (combined_metrics["rmsd"] < rmsd_threshold)
+        ]
+
+        # Determine which column to use for matching filenames
+        id_column = None
+        if "structure_file" in combined_metrics.columns:
+            id_column = "structure_file"
+        elif "run_id" in combined_metrics.columns:
+            id_column = "run_id"
+        else:
+            logger.warning("  No 'structure_file' or 'run_id' column in metrics, cannot filter structures")
+            continue
+
+        # Build mapping from (job_id, sample_idx) pairs that passed RMSD threshold
+        # We need BOTH job_id and sample number to uniquely identify structures
+        # run_id format: unconditional_length_100_iter_000
+        # filename format: job_0_generated_structure_length_100_000_esmfold_000.pdb
+        passing_job_sample_pairs = set()
+
+        for idx, row in length_metrics.iterrows():
+            identifier = row[id_column]
+            job_id = row.get("job_id", None)
+
+            if pd.notna(identifier) and pd.notna(job_id):
+                # Extract sample number from run_id
+                # Pattern: unconditional_length_XXX_iter_YYY -> YYY is the sample number
+                try:
+                    parts = str(identifier).split("_")
+                    if "iter" in parts:
+                        iter_idx = parts.index("iter") + 1
+                        sample_num = int(parts[iter_idx])
+                        passing_job_sample_pairs.add((int(job_id), sample_num))
+                except (ValueError, IndexError):
+                    pass
+
+        logger.info(f"  Found {len(passing_job_sample_pairs)} (job_id, sample) pairs passing RMSD threshold")
+
+        # Filter PDB files to only include those with passing (job_id, sample_num) pairs
         for pdb_path in pdb_files:
-            pdb_name = pdb_path.name
+            pdb_name = pdb_path.stem  # Get filename without extension
 
-            # Try to find this structure in metrics
-            # Match by looking for sample index in filename
+            # Extract job_id and sample number from filename
+            # Pattern: job_0_generated_structure_length_100_000_esmfold_000
             try:
-                # Extract sample info from filename
-                sample_match = None
-                for idx, row in combined_metrics.iterrows():
-                    if pdb_name in str(row.get("structure_file", "")):
-                        sample_match = row
-                        break
+                parts = pdb_name.split("_")
 
-                # Check RMSD threshold
-                if sample_match is not None and "rmsd" in sample_match:
-                    rmsd = float(sample_match["rmsd"])
-                    if rmsd < rmsd_threshold:
+                # Extract job_id (first part after "job")
+                job_id = None
+                if "job" in parts:
+                    job_idx = parts.index("job") + 1
+                    if job_idx < len(parts):
+                        job_id = int(parts[job_idx])
+
+                # Extract sample number (comes after "length_XXX")
+                sample_num = None
+                if "length" in parts:
+                    length_idx = parts.index("length") + 1
+                    # Skip the length value, next number is the sample index
+                    if length_idx + 1 < len(parts):
+                        sample_num = int(parts[length_idx + 1])
+
+                # Check if this (job_id, sample_num) pair passed RMSD threshold
+                if job_id is not None and sample_num is not None:
+                    if (job_id, sample_num) in passing_job_sample_pairs:
                         filtered_pdbs.append(pdb_path)
-                    else:
-                        logger.debug(f"Filtered out {pdb_name}: RMSD={rmsd:.2f} >= {rmsd_threshold}")
-                else:
-                    # No RMSD data, include by default
-                    filtered_pdbs.append(pdb_path)
 
-            except Exception as e:
-                logger.debug(f"Could not check RMSD for {pdb_name}: {e}, including anyway")
-                filtered_pdbs.append(pdb_path)
+            except (ValueError, IndexError) as e:
+                logger.debug(f"Could not parse filename {pdb_name}: {e}")
 
         structures_passing_rmsd = len(filtered_pdbs)
         logger.info(f"  Structures passing RMSD < {rmsd_threshold}: {structures_passing_rmsd}")

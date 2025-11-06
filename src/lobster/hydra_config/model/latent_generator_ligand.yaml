@@ -20,16 +20,23 @@ structure_encoder:
   ligand_atom_embedding: false
 
 quantizer:
-  _target_: lobster.model.latent_generator.quantizer.SimpleLinearQuantizer
+  _target_: lobster.model.latent_generator.quantizer.LigandTokenizer
   n_tokens: 256
   gumbel: true
   tau: 0.5
-  embed_dim: 4
+  embed_dim: 256
+  ligand_n_tokens: 256
+  ligand_embed_dim: 256
+  ligand_softmax: false
+  ligand_emb_noise: 0.0
+  ligand_gumbel: true
+  ligand_use_gumbel_noise: true
+  ligand_tau: 0.5
 
 decoder_factory:
   _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
   decoder2loss_dict:
-    vit_decoder: [l2_loss, pairwise_l2_loss]
+    vit_decoder: [l2_loss, pairwise_l2_loss, ligand_l2_loss, ligand_pairwise_l2_loss]
   decoder_mapping:
     vit_decoder: 
       _target_: lobster.model.latent_generator.structure_decoder.ViTDecoder
@@ -49,11 +56,17 @@ loss_factory:
   weight_dict:
     pairwise_l2_loss: 1.0
     l2_loss: 0.01
+    ligand_pairwise_l2_loss: 1.0
+    ligand_l2_loss: 0.01
   loss_mapping:
     pairwise_l2_loss:
       _target_: lobster.model.latent_generator.tokenizer.PairWiseL2Loss
     l2_loss:
       _target_: lobster.model.latent_generator.tokenizer.L2Loss
+    ligand_pairwise_l2_loss:
+      _target_: lobster.model.latent_generator.tokenizer.LigandPairWiseL2Loss
+    ligand_l2_loss:
+      _target_: lobster.model.latent_generator.tokenizer.LigandL2Loss
 
 optim:
   _target_: torch.optim.Adam
