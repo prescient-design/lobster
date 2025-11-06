@@ -436,8 +436,14 @@ class LatentEncoderDecoder:
             try:
                 s3 = boto3.client("s3")
                 bucket_name, key = checkpoint_path[5:].split("/", 1)  # Extract bucket and key
-                local_checkpoint_path = "/tmp/" + os.path.basename(key)  # Temporary local path
-                s3.download_file(bucket_name, key, local_checkpoint_path)
+                cache_dir = os.path.expanduser("~/.cache/lobster")
+                os.makedirs(cache_dir, exist_ok=True)
+                filename = os.path.basename(key)
+                local_checkpoint_path = os.path.join(cache_dir, filename)
+                if not os.path.exists(local_checkpoint_path):
+                    s3.download_file(bucket_name, key, local_checkpoint_path)
+                else:
+                    py_logger.info(f"Checkpoint already exists at {local_checkpoint_path}")
                 checkpoint_path = local_checkpoint_path  # Update checkpoint_path to the local file
             except NoCredentialsError as e:
                 raise RuntimeError("AWS credentials not found. Ensure they are configured properly.") from e
@@ -452,10 +458,14 @@ class LatentEncoderDecoder:
 
                 # Extract filename from URL
                 filename = os.path.basename(urllib.parse.urlparse(checkpoint_path).path)
-                local_checkpoint_path = "/tmp/" + filename
-
-                py_logger.info(f"Downloading checkpoint from Hugging Face: {checkpoint_path}")
-                urllib.request.urlretrieve(checkpoint_path, local_checkpoint_path)
+                cache_dir = os.path.expanduser("~/.cache/lobster")
+                os.makedirs(cache_dir, exist_ok=True)
+                local_checkpoint_path = os.path.join(cache_dir, filename)
+                if not os.path.exists(local_checkpoint_path):
+                    py_logger.info(f"Downloading checkpoint from Hugging Face: {checkpoint_path}")
+                    urllib.request.urlretrieve(checkpoint_path, local_checkpoint_path)
+                else:
+                    py_logger.info(f"Checkpoint already exists at {local_checkpoint_path}")
                 checkpoint_path = local_checkpoint_path  # Update checkpoint_path to the local file
                 py_logger.info(f"Checkpoint downloaded to: {checkpoint_path}")
             except Exception as e:

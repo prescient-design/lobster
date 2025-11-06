@@ -52,7 +52,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         ckpt_path: str | None = None,
         # LatentGenerator params
         decode_tokens_during_training: bool = True,
-        latent_generator_model_name: str = "LG 20A seq 3di c6d Aux",
+        latent_generator_model_name: str = "LG full attention",
         # generation params
         prior_distribution_seq: Callable[..., DiscreteUniformPrior] = DiscreteUniformPrior,
         prior_distribution_struc: Callable[..., DiscreteUniformPrior] = DiscreteUniformPrior,

@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from lobster.model.latent_generator.datasets import StructureBackboneTransform
+from lobster.transforms._structure_transforms import StructureBackboneTransform
 
 logger = logging.getLogger(__name__)
 
