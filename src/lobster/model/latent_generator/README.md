@@ -30,9 +30,9 @@ We evaluated the reconstruction quality of our models on CASP15 proteins ≤ 512
 
 **Evaluation Set**: CASP15 proteins ≤ 512 residues 
 
-| Model | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
-|-------|------------------|--------------|--------------|--------------|
-| LG full attention | 1.707 | 0.643 | 0.839 | 3.434 |
+| Model | Tokens | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
+|-------|--------|------------------|--------------|--------------|--------------|
+| LG full attention | 256 | 1.707 | 0.643 | 0.839 | 3.434 |
 
 ### Reconstruction Quality with Canonical Pose (Mol Frame)
 
@@ -40,9 +40,9 @@ We also evaluated the models using canonical pose mode, which makes the model in
 
 **Evaluation Set**: CASP15 proteins ≤ 512 residues 
 
-| Model | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
-|-------|------------------|--------------|--------------|--------------|
-| LG full attention | 1.645 | 0.573 | 0.664 | 2.901 |
+| Model | Tokens | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
+|-------|--------|------------------|--------------|--------------|--------------|
+| LG full attention | 256 | 1.645 | 0.573 | 0.664 | 2.901 |
 
 
 ## Setup
