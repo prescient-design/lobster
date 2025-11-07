@@ -14,6 +14,8 @@ A powerful protein and protein-ligand structure representation learning model fo
   - [Ligand Example](#ligand-example)
   - [Protein-Ligand Complex Example](#protein-ligand-complex-example)
   - [Command-line Example](#command-line-example)
+- [Evaluation](#evaluation)
+  - [Evaluating Reconstruction Quality on CASP15](#evaluating-reconstruction-quality-on-casp15)
 - [Training](#training)
   - [Protein-only Training](#protein-only-training)
   - [Protein+Ligand (Complex) Training](#proteinligand-complex-training)
@@ -209,6 +211,50 @@ python src/lobster/model/latent_generator/cmdline/inference.py \
 ```
 
 The tokens are discrete representations that can be used for tasks like discrete generation (with LLMs or PLMs) and compact storage of structure information, while embeddings are continuous representations useful for tasks like similarity search, feature extraction, and representation centric tasks.
+
+## Evaluation
+
+### Evaluating Reconstruction Quality on CASP15
+
+The `evaluate_reconstruction.py` script evaluates the reconstruction quality of LatentGenerator models by computing the aligned RMSD between original and reconstructed structures.
+
+#### Basic Usage
+
+Evaluate a single model on a directory of structures:
+
+```bash
+uv run python src/lobster/metrics/evaluate_reconstruction.py \
+    --models "LG full attention" \
+    --data_dir /path/to/casp15/structures/ \
+    --output_file reconstruction_results.json
+```
+
+#### Using Canonical Pose (Mol Frame)
+
+Evaluate with canonical pose mode for rotation/translation invariance:
+
+```bash
+uv run python src/lobster/metrics/evaluate_reconstruction.py \
+    --models "LG full attention" \
+    --data_dir /path/to/casp15/structures/ \
+    --output_file reconstruction_canonical.json \
+    --use_canonical_pose
+```
+
+#### Input File Formats
+
+The evaluation script supports multiple structure file formats:
+- **PDB files** (`.pdb`): Standard protein structure files
+- **SDF files** (`.sdf`): Ligand structure files
+- **PyTorch files** (`.pt`): Pre-processed structure data
+
+#### Performance Metrics
+
+The evaluation reports:
+- **Average RMSD**: Mean reconstruction error across all structures
+- **Std RMSD**: Standard deviation of RMSD values
+- **Min/Max RMSD**: Best and worst reconstruction quality
+- **Success Rate**: Number of successful vs. failed reconstructions
 
 ## Training
 

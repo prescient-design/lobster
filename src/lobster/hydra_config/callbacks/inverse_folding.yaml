@@ -4,4 +4,4 @@ InverseFoldingCallback:
   save_every_n: 1000
   length: 100
   num_samples: 10
-  use_plm_fold: true
+  use_plm_fold: false

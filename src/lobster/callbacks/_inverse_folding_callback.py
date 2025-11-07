@@ -145,7 +145,9 @@ class InverseFoldingCallback(lightning.Callback):
 
         if batch_idx % self.save_every_n == 0 and self.val_dataloader is not None:
             # Perform inverse folding on validation examples
-            self._perform_inverse_folding(trainer, model, device, batch_idx, current_step)
+            with torch.no_grad():
+                self._perform_inverse_folding(trainer, model, device, batch_idx, current_step)
+            torch.cuda.empty_cache()
 
     def _perform_inverse_folding(self, trainer, model, device, batch_idx, current_step):
         """Perform inverse folding on validation examples."""
