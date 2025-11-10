@@ -46,6 +46,26 @@ class ModelInfo:
 methods = {
     # Ligand Models
     # These models are optimized for ligand structure analysis
+    "LG Ligand": ModelInfo(
+        description="Ligand only model with",
+        features=["256-dim embeddings", "Ligand only decoder", "512 ligand tokens"],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2025-11-09T14-23-55/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=256",
+                "tokenizer.quantizer.embed_dim=256",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=512",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=512",
+                "tokenizer.quantizer.ligand_n_tokens=512",
+                "tokenizer/quantizer=slq_quantizer_ligand",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+            ],
+        ),
+    ),
     "LG Ligand 20A": ModelInfo(
         description="Ligand only model with 20Å spatial attention",
         features=["256-dim embeddings", "20Å spatial attention", "Ligand only decoder", "512 ligand tokens"],
@@ -357,6 +377,30 @@ methods = {
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[],
+        ),
+    ),
+    "LG full attention 2": ModelInfo(
+        description="Full attention model without spatial masking",
+        features=["Standard configuration", "Full attention (no spatial masking)", "256 protein tokens"],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2025-11-06T00-40-11/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[],
+        ),
+    ),
+    "LG full attention 512 PDB Pinder FSQ": ModelInfo(
+        description="Full attention model with 512 protein tokens and FSQ quantization",
+        features=["240 protein tokens", "FSQ quantization"],
+        model_config=ModelConfig(
+            checkpoint="/data2/lisanzas/latent_generator/studies/outputs/train/dev/runs/2025-11-09_22-19-12/checkpoints/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=3",
+                "tokenizer/quantizer=fsq_quantizer",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=240",
+            ],
         ),
     ),
 }

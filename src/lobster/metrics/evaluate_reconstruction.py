@@ -509,20 +509,18 @@ Available Models:
 {chr(10).join([f"  - {name}" for name in methods.keys()])}
 
 Example usage Protein-only model:
-  python evaluate_reconstruction.py \\
-    --models "LG full attention" \\
-    --data_dir /data2/lisanzas/latent_generator_files/casp_recon/CASP15_merged/ \\
-    --output_file reconstruction_results_protein_only.json \\
-    --save_structures \\
+  python src/lobster/metrics/evaluate_reconstruction.py \
+    --models "LG full attention 2" \
+    --data_dir /data2/lisanzas/latent_generator_files/casp_recon/CASP15_merged/ \
+    --output_file reconstruction_results_protein_only.json \
+    --save_structures \
     --structures_output_dir aligned_structures_protein_only
 
 Example usage Ligand-only model:
-  python evaluate_reconstruction.py \\
-    --models "LG Ligand 20A" \\
-    --data_dir /data/bucket/lisanza/structures/GEOM/processed/test/ \\
-    --output_file reconstruction_results_ligand_only.json \\
-    --save_structures \\
-    --structures_output_dir aligned_structures_ligand_only
+  python src/lobster/metrics/evaluate_reconstruction.py \
+    --models "LG Ligand 20A" \
+    --data_dir /data/bucket/lisanza/structures/GEOM/processed/test/ \
+    --output_file reconstruction_results_ligand_only.json
         """,
     )
 

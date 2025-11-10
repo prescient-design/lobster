@@ -46,6 +46,17 @@ We also evaluated the models using canonical pose mode, which makes the model in
 |-------|--------|------------------|--------------|--------------|--------------|
 | LG full attention | 256 | 1.645 | 0.573 | 0.664 | 2.901 |
 
+### Ligand Reconstruction Quality
+
+We evaluated the ligand-only model's reconstruction quality on a large-scale ligand dataset:
+
+**Evaluation Set**: 30,936 ligands
+
+| Model | Tokens | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
+|-------|--------|------------------|--------------|--------------|--------------|
+| LG Ligand 20A | 512 | 0.752 | 0.305 | 0.065 | 4.943 |
+
+The ligand model achieves sub-angstrom average reconstruction error (0.752 ± 0.305 Å) across 30,936 ligand structures, demonstrating that LatentGenerator effectively preserves ligand geometry through discrete tokenization.
 
 ## Setup
 
