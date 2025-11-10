@@ -1,3 +1,4 @@
+from ._calm import CaLM
 from ._cbmlm import LobsterCBMPMLM
 from ._clip import MiniCLIP
 from ._clm import LobsterPCLM
