@@ -211,10 +211,26 @@ def load_pdb_atom14(pdb_file, add_batch_dim: bool = True) -> dict[str, Any]:
         s3.download_file(bucket, key, local_file)
         pdb_file = local_file
 
-    df = cpdb.parse(pdb_file, df=True)
-    df = df[df["record_name"] == "ATOM"]
-    df_coords = df
-    group_chain = df_coords.groupby("chain_id")
+    # Read PDB or CIF file to dataframe
+    if pdb_file.endswith(".cif"):
+        pmmcif = PandasMmcif()
+        df = pmmcif.read_mmcif(pdb_file).df["ATOM"]
+        # rename label_atom_id to atom_name
+        df = df.rename(columns={"label_atom_id": "atom_name"})
+        # rename Cartn_x, Cartn_y, Cartn_z to x_coord, y_coord, z_coord
+        df = df.rename(columns={"Cartn_x": "x_coord", "Cartn_y": "y_coord", "Cartn_z": "z_coord"})
+        # rename auth_comp_id to residue_name
+        df = df.rename(columns={"label_seq_id": "residue_number"})
+        df = df.rename(columns={"auth_comp_id": "residue_name"})
+        # ensure that residue_number is an integer
+        df["residue_number"] = df["residue_number"].astype(int)
+        df_coords = df
+        group_chain = df_coords.groupby("auth_asym_id")
+    else:
+        df = cpdb.parse(pdb_file, df=True)
+        df = df[df["record_name"] == "ATOM"]
+        df_coords = df
+        group_chain = df_coords.groupby("chain_id")
     atom14_coords = []
     atom14_mask = []
     sequence = []
@@ -225,6 +241,12 @@ def load_pdb_atom14(pdb_file, add_batch_dim: bool = True) -> dict[str, Any]:
         group_residue = chain.groupby("residue_number")
         for residue_number, residue in group_residue:
             residue_name = residue["residue_name"].iloc[0]
+            # Skip non-standard residues
+            if residue_name not in residue_constants.restype_name_to_atom_thin_names:
+                logger.warning(
+                    f"Skipping non-standard residue {residue_name} at position {residue_number} in chain {chain_id}"
+                )
+                continue
             atom14_atom_names = residue_constants.restype_name_to_atom_thin_names[residue_name]
             atom14_coords_list = []
             atom14_mask_list = []

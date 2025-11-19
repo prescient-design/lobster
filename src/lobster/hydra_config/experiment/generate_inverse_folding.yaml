@@ -17,7 +17,7 @@ generation:
   mode: inverse_folding
   nsteps: 200          # Fewer steps for inverse folding
   batch_size: 1        # Process 1 structures at a time
-  n_trials: 3          # Number of trials for best output selection
+  n_trials: 1          # Number of trials for best output selection
   
   #Generation parameters
   temperature_seq: 0.16423763902324678    
@@ -25,14 +25,17 @@ generation:
   stochasticity_seq: 20 
   stochasticity_struc: 10
 
-  n_designs_per_structure: 10  # Number of designs to generate per structure
+  enable_sequence_token_check: true
+  sequence_token_check_retries: 500
+
+  n_designs_per_structure: 1  # Number of designs to generate per structure
   # Input structures - update these paths to your PDB files
   # Examples of different input formats:
   # Single file: input_structures: "/path/to/structure.pdb"
   # Directory: input_structures: "/path/to/pdb/directory/"
   # Glob pattern: input_structures: "/path/to/structures/*.pdb"
   # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
-  input_structures: "test_data/inv_folding/9jl9.pdb"
+  input_structures: "/data2/lisanzas/multi_flow_data/test_set_filtered_pt/*.pt"
 
   # Enable ESMFold validation
   use_esmfold: true

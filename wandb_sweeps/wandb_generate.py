@@ -56,7 +56,11 @@ def objective(config):
         logger.info(f"Completed generation for length {length}, output: {gen_config.output_dir}")
 
     # Collect metrics from all length runs
-    metrics = collect_metrics_from_all_lengths(output_dirs, lengths)
+    num_samples = config.get("num_samples", 10)  # Get requested designs from config
+    metrics = collect_metrics_from_all_lengths(output_dirs, lengths, num_samples)
+
+    # Store num_samples in metrics for score calculation
+    metrics["num_samples"] = num_samples
 
     # Extract score weights from config
     score_weights = {
@@ -108,7 +112,7 @@ def create_config_from_wandb(config, length: int | None = None) -> DictConfig:
         "seed": 12345,
         "model": {
             "_target_": "lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule",
-            "ckpt_path": "/data2/ume/gen_ume/runs//2025-10-08T23-54-39/last.ckpt",
+            "ckpt_path": config.get("ckpt_path", "/data2/ume/gen_ume/runs//2025-10-08T23-54-39/last.ckpt"),
         },
         "generation": {
             "mode": mode,
@@ -313,13 +317,16 @@ def collect_metrics_from_output(output_dir: str) -> dict[str, float]:
     return metrics
 
 
-def collect_metrics_from_all_lengths(output_dirs: list[str], lengths: list[int]) -> dict[str, float]:
+def collect_metrics_from_all_lengths(
+    output_dirs: list[str], lengths: list[int], num_samples: int = 10
+) -> dict[str, float]:
     """
     Collect metrics from multiple length-specific output directories.
 
     Args:
         output_dirs: List of output directory paths, one per length
         lengths: List of generation lengths corresponding to output_dirs
+        num_samples: Number of designs requested per length (for diversity normalization)
 
     Returns:
         Dictionary with both per-length metrics and aggregated metrics
@@ -341,19 +348,22 @@ def collect_metrics_from_all_lengths(output_dirs: list[str], lengths: list[int])
 
     # Calculate aggregated metrics across all lengths
     logger.info("Aggregating metrics across all lengths")
-    aggregate_metrics = aggregate_across_lengths(per_length_metrics)
+    aggregate_metrics = aggregate_across_lengths(per_length_metrics, num_samples=num_samples)
     all_metrics.update(aggregate_metrics)
 
     logger.info(f"Total metrics collected: {len(all_metrics)} (per-length + aggregated)")
     return all_metrics
 
 
-def aggregate_across_lengths(per_length_metrics: dict[int, dict[str, float]]) -> dict[str, float]:
+def aggregate_across_lengths(
+    per_length_metrics: dict[int, dict[str, float]], num_samples: int = 10
+) -> dict[str, float]:
     """
     Aggregate metrics across all lengths using simple averaging.
 
     Args:
         per_length_metrics: Dict mapping length → metrics dict
+        num_samples: Number of designs requested per length (for diversity normalization)
 
     Returns:
         Dictionary of aggregated metrics with 'agg_' prefix
@@ -381,32 +391,53 @@ def aggregate_across_lengths(per_length_metrics: dict[int, dict[str, float]]) ->
         if values:
             aggregated[f"agg_{metric_key}"] = sum(values) / len(values)
 
-    # Special handling for diversity: sum total clusters across ALL lengths
-    cluster_keys = [k for k in all_metric_keys if k.startswith("diversity_num_clusters_")]
-    if cluster_keys:
+    # Special handling for diversity: calculate average diversity percentage per length
+    # IMPORTANT: Divide by num_samples (requested), not successful structures
+    # This penalizes failures and gives a more informative signal
+    # Process all lengths, even if some/all have 0 diversity results
+    if per_length_metrics:
         total_clusters = 0
+        total_structures = 0
+        diversity_percentages = []
+
         for length, metrics in per_length_metrics.items():
-            for k in cluster_keys:
-                if k in metrics:
-                    total_clusters += metrics[k]
+            # Find cluster and structure keys for this length
+            cluster_key = f"diversity_num_clusters_length_{length}"
+            structure_key = f"diversity_total_structures_length_{length}"
 
-        aggregated["agg_total_clusters_all_lengths"] = total_clusters
-        logger.info(f"Total clusters across all lengths: {total_clusters}")
+            # Get clusters (default 0 if no diversity results for this length)
+            num_clusters = metrics.get(cluster_key, 0)
+            total_clusters += num_clusters
 
-    # Also calculate total structures across all lengths
-    total_structures = 0
-    for length, metrics in per_length_metrics.items():
-        for k in all_metric_keys:
-            if k.startswith("diversity_total_structures_"):
-                total_structures += metrics.get(k, 0)
+            # Also track successful structures for logging
+            num_structures = metrics.get(structure_key, 0)
+            total_structures += num_structures
 
-    if total_structures > 0:
-        aggregated["agg_total_structures_all_lengths"] = total_structures
-        if total_clusters > 0:
-            aggregated["agg_diversity_percentage_all_lengths"] = (total_clusters / total_structures) * 100
-            logger.info(
-                f"Overall diversity: {total_clusters}/{total_structures} = {aggregated['agg_diversity_percentage_all_lengths']:.1f}%"
+            # Calculate diversity percentage: clusters / REQUESTED designs (not successful)
+            # IMPORTANT: Always include all lengths, even if 0 clusters (penalizes failure)
+            diversity_pct = num_clusters / num_samples
+            diversity_percentages.append(diversity_pct)
+
+            logger.debug(
+                f"Length {length}: {num_clusters} clusters / {num_samples} requested "
+                f"= {diversity_pct:.3f} ({diversity_pct * 100:.1f}%) [{num_structures} succeeded]"
             )
+
+        # Store totals for logging/debugging
+        aggregated["agg_total_clusters_all_lengths"] = total_clusters
+        aggregated["agg_total_structures_all_lengths"] = total_structures
+
+        # NEW: Calculate average diversity percentage across lengths
+        if diversity_percentages:
+            avg_diversity_pct = sum(diversity_percentages) / len(diversity_percentages)
+            aggregated["agg_avg_diversity_percentage"] = avg_diversity_pct
+            logger.info(
+                f"Diversity metrics: {total_clusters} clusters / {num_samples * len(diversity_percentages)} requested "
+                f"across {len(diversity_percentages)} lengths = {avg_diversity_pct:.3f} ({avg_diversity_pct * 100:.1f}% average diversity per length) "
+                f"[{total_structures} structures succeeded]"
+            )
+        else:
+            logger.info(f"Total clusters: {total_clusters}, Total structures: {total_structures}")
 
     return aggregated
 
@@ -452,28 +483,42 @@ def calculate_composite_score(metrics: dict[str, float], score_weights: dict[str
         mode = "forward_folding"
 
     if mode == "unconditional":
-        # MAIN METRIC: Number of foldseek clusters (diversity) across ALL lengths
+        # MAIN METRIC: Average diversity percentage across lengths
+        # (Normalized by REQUESTED designs, not successful)
         # Try to use aggregated metrics first (multi-length mode)
-        if "agg_total_clusters_all_lengths" in metrics:
-            # Multi-length mode: use aggregated total clusters
-            total_clusters = metrics["agg_total_clusters_all_lengths"]
-            diversity_score = total_clusters * score_weights["diversity"]
+        if "agg_avg_diversity_percentage" in metrics:
+            # Multi-length mode: use average diversity percentage
+            avg_diversity_pct = metrics["agg_avg_diversity_percentage"]
+            diversity_score = avg_diversity_pct * score_weights["diversity"]
             score += diversity_score
             logger.info(
-                f"Diversity contribution to score (MAIN METRIC, ALL LENGTHS): {total_clusters} clusters * "
-                f"{score_weights['diversity']:.2f} weight = {diversity_score:.2f} points"
+                f"Diversity contribution to score (MAIN METRIC): {avg_diversity_pct:.3f} ({avg_diversity_pct * 100:.1f}%) avg diversity * "
+                f"{score_weights['diversity']:.2f} weight = {diversity_score:.4f} points"
             )
         else:
-            # Single-length mode (backward compatible): sum clusters from individual length keys
+            # Single-length mode (backward compatible): calculate diversity percentage
+            # Need num_samples from metrics for proper calculation
             cluster_keys = [k for k in metrics.keys() if k.startswith("diversity_num_clusters_")]
             if cluster_keys:
-                total_clusters = sum(metrics[k] for k in cluster_keys)
-                diversity_score = total_clusters * score_weights["diversity"]
-                score += diversity_score
-                logger.info(
-                    f"Diversity contribution to score (MAIN METRIC): {total_clusters} clusters * "
-                    f"{score_weights['diversity']:.2f} weight = {diversity_score:.2f} points"
-                )
+                # Try to get num_samples from metrics, fallback to 10
+                num_samples = metrics.get("num_samples", 10)
+                diversity_percentages = []
+
+                for cluster_key in cluster_keys:
+                    num_clusters = metrics[cluster_key]
+                    # Divide by requested designs, not successful structures
+                    diversity_pct = num_clusters / num_samples
+                    diversity_percentages.append(diversity_pct)
+
+                if diversity_percentages:
+                    avg_diversity_pct = sum(diversity_percentages) / len(diversity_percentages)
+                    diversity_score = avg_diversity_pct * score_weights["diversity"]
+                    score += diversity_score
+                    logger.info(
+                        f"Diversity contribution to score (MAIN METRIC): {avg_diversity_pct:.3f} ({avg_diversity_pct * 100:.1f}%) "
+                        f"avg diversity across {len(diversity_percentages)} lengths * "
+                        f"{score_weights['diversity']:.2f} weight = {diversity_score:.4f} points"
+                    )
 
         # Secondary metrics (configurable weights)
         # Use aggregated metrics if available (multi-length), otherwise use direct metrics (single-length)
@@ -517,13 +562,13 @@ def calculate_composite_score(metrics: dict[str, float], score_weights: dict[str
     elif mode == "inverse_folding":
         # Higher is better: percent_identity, plddt, tm_score
         if "avg_percent_identity" in metrics:
-            score += metrics["avg_percent_identity"] * 0.4  # Most important for inverse folding
+            score += metrics["avg_percent_identity"] * 0.1  # Most important for inverse folding
 
         if "avg_plddt" in metrics:
             score += metrics["avg_plddt"] * 0.2
 
         if "avg_tm_score" in metrics:
-            score += metrics["avg_tm_score"] * 0.4
+            score += metrics["avg_tm_score"] * 1.0
 
         # Lower is better: predicted_aligned_error, rmsd
         if "avg_predicted_aligned_error" in metrics:

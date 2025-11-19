@@ -4,7 +4,7 @@ import glob
 
 import hydra
 import torch
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from loguru import logger
 
 from lobster.model.latent_generator.io import writepdb, load_pdb
@@ -1054,8 +1054,9 @@ def _generate_unconditional(
                             # Quality control failed, will retry
                             retry_count += 1
                             if retry_count > max_retries:
-                                logger.error(
+                                logger.warning(
                                     f"  Max retries ({max_retries}) exceeded for iteration {n_iter + 1}. "
+                                    f"Using current sequences despite quality control failure. "
                                     f"Skipping self-reflection for this iteration."
                                 )
                                 max_retries_exceeded += 1
@@ -1078,9 +1079,9 @@ def _generate_unconditional(
                             logger.warning("  Iteration will be retried (invalid sequence tokens)")
                             retry_count += 1
                             if retry_count > max_retries:
-                                logger.error(
+                                logger.warning(
                                     f"  Max retries ({max_retries}) exceeded for iteration {n_iter + 1}. "
-                                    f"Continuing with invalid sequences."
+                                    f"Using current sequences despite quality control failure."
                                 )
                                 max_retries_exceeded += 1
                                 iteration_success = True
@@ -1390,8 +1391,8 @@ def _generate_inverse_folding(
                 structure_paths.extend(glob.glob(str(path / "*.pt")))
             else:
                 raise ValueError(f"Input path does not exist: {input_structures}")
-    elif isinstance(input_structures, (list, tuple)):
-        # List of paths
+    elif isinstance(input_structures, (list, tuple, ListConfig)):
+        # List of paths (includes OmegaConf ListConfig)
         for path_str in input_structures:
             path = Path(path_str)
             if path.is_file():
@@ -1530,38 +1531,115 @@ def _generate_inverse_folding(
                         f"Trial {trial + 1}/{n_trials} for batch {batch_idx + 1}, design {design_idx + 1}/{n_designs_per_structure}"
                     )
 
-                    # Generate sequences
-                    generate_sample = model.generate_sample(
-                        length=max_length,
-                        num_samples=B,
-                        inverse_folding=True,
-                        nsteps=nsteps,
-                        input_structure_coords=coords_res,
-                        input_mask=mask,
-                        input_indices=indices,
-                        temperature_seq=gen_cfg.get("temperature_seq", 0.5),
-                        stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
-                        asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
-                    )
-
-                    # Decode structures
-                    decoded_x = model.decode_structure(generate_sample, mask)
-
-                    # Extract coordinates
-                    x_recon_xyz = None
-                    for decoder_name in decoded_x:
-                        if "vit_decoder" == decoder_name:
-                            x_recon_xyz = decoded_x[decoder_name]
-                            break
-
-                    # Extract sequences
-                    if generate_sample["sequence_logits"].shape[-1] == 33:
-                        seq = convert_lobster_aa_tokenization_to_standard_aa(
-                            generate_sample["sequence_logits"], device=device
-                        )
+                    # Retry loop for quality control (like unconditional generation)
+                    if gen_cfg.get("enable_sequence_token_check", True):
+                        max_retries = gen_cfg.get("sequence_token_check_retries", 10)
                     else:
-                        seq = generate_sample["sequence_logits"].argmax(dim=-1)
-                        seq[seq > 21] = 20
+                        max_retries = 0
+                    retry_count = 0
+                    valid_sequences_generated = False
+
+                    while retry_count <= max_retries and not valid_sequences_generated:
+                        if retry_count > 0:
+                            logger.info(f"  Retry attempt {retry_count}/{max_retries}")
+
+                        # Generate sequences
+                        generate_sample = model.generate_sample(
+                            length=max_length,
+                            num_samples=B,
+                            inverse_folding=True,
+                            nsteps=nsteps,
+                            input_structure_coords=coords_res,
+                            input_mask=mask,
+                            input_indices=indices,
+                            temperature_seq=gen_cfg.get("temperature_seq", 0.5),
+                            stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
+                            asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
+                        )
+
+                        # Decode structures
+                        decoded_x = model.decode_structure(generate_sample, mask)
+
+                        # Extract coordinates
+                        x_recon_xyz = None
+                        for decoder_name in decoded_x:
+                            if "vit_decoder" == decoder_name:
+                                x_recon_xyz = decoded_x[decoder_name]
+                                break
+
+                        # Extract sequences
+                        if generate_sample["sequence_logits"].shape[-1] == 33:
+                            seq = convert_lobster_aa_tokenization_to_standard_aa(
+                                generate_sample["sequence_logits"], device=device
+                            )
+                        else:
+                            seq = generate_sample["sequence_logits"].argmax(dim=-1)
+                            seq[seq > 21] = 20
+
+                        # Quality control check for invalid tokens
+                        is_valid, error_msg = _check_sequence_tokens(seq, mask, "inverse folding")
+                        if not is_valid:
+                            logger.warning(f"  Quality control FAILED: {error_msg}")
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                logger.warning(
+                                    f"  Max retries ({max_retries}) exceeded for trial {trial + 1}. "
+                                    f"Using argmax without 'X' token as fallback."
+                                )
+
+                                # Store original sequence (with X tokens) for comparison
+                                seq_with_x = seq.clone()
+
+                                # Re-extract sequences with X-masked logits to avoid unknown tokens
+                                if generate_sample["sequence_logits"].shape[-1] == 33:
+                                    # Mask token 24 (X) in 33-token scheme
+                                    masked_logits = generate_sample["sequence_logits"].clone()
+                                    masked_logits[..., 24] = float("-inf")
+                                    seq = convert_lobster_aa_tokenization_to_standard_aa(masked_logits, device=device)
+                                else:
+                                    # Mask token 20 (X) in standard scheme
+                                    masked_logits = generate_sample["sequence_logits"].clone()
+                                    masked_logits[..., 20] = float("-inf")
+                                    seq = masked_logits.argmax(dim=-1)
+                                    seq[seq > 21] = 20
+
+                                # Log sequences for visual inspection
+                                logger.info("  Sequence comparison (original with X vs. X-masked):")
+                                for i in range(seq.shape[0]):
+                                    # Convert token indices to amino acid strings
+                                    valid_positions = mask[i] == 1
+                                    seq_with_x_str = "".join(
+                                        [
+                                            restype_order_with_x_inv.get(int(t), "?")
+                                            for t in seq_with_x[i, valid_positions].cpu().numpy()
+                                        ]
+                                    )
+                                    seq_masked_str = "".join(
+                                        [
+                                            restype_order_with_x_inv.get(int(t), "?")
+                                            for t in seq[i, valid_positions].cpu().numpy()
+                                        ]
+                                    )
+
+                                    # Count X tokens
+                                    num_x_before = seq_with_x_str.count("X")
+                                    num_x_after = seq_masked_str.count("X")
+
+                                    logger.info(f"    Sample {i}:")
+                                    logger.info(
+                                        f"      Before (X count={num_x_before}): {seq_with_x_str[:100]}{'...' if len(seq_with_x_str) > 100 else ''}"
+                                    )
+                                    logger.info(
+                                        f"      After  (X count={num_x_after}): {seq_masked_str[:100]}{'...' if len(seq_masked_str) > 100 else ''}"
+                                    )
+
+                                valid_sequences_generated = True
+                                break
+                            logger.warning(f"  Regenerating sequences (retry {retry_count}/{max_retries})")
+                            continue
+                        else:
+                            logger.info("  Quality control PASSED: All sequences contain valid amino acids")
+                            valid_sequences_generated = True
 
                     # Extract structure tokens (argmax)
                     structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
@@ -2069,8 +2147,8 @@ def _generate_forward_folding(
                 structure_paths.extend(glob.glob(str(path / "*.pt")))
             else:
                 raise ValueError(f"Input path does not exist: {input_structures}")
-    elif isinstance(input_structures, (list, tuple)):
-        # List of paths
+    elif isinstance(input_structures, (list, tuple, ListConfig)):
+        # List of paths (includes OmegaConf ListConfig)
         for path_str in input_structures:
             path = Path(path_str)
             if path.is_file():
@@ -2252,8 +2330,9 @@ def _generate_forward_folding(
                 # Extract structure tokens (argmax)
                 structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
 
-                # Calculate TM-scores for this trial
+                # Calculate TM-scores and RMSDs for this trial
                 trial_tm_scores = []
+                trial_rmsd_scores = []
                 for i in range(B):
                     # Get original and generated coordinates
                     orig_coords = coords_res[i, mask[i] == 1, :, :]  # Original structure
@@ -2264,7 +2343,6 @@ def _generate_forward_folding(
                     sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
 
                     # Calculate TM-Score using TM-align
-
                     tm_out = tm_align(
                         gen_coords[:, 1, :].cpu().numpy(),  # CA atoms of generated structure
                         orig_coords[:, 1, :].detach().cpu().numpy(),  # CA atoms of original structure
@@ -2272,14 +2350,26 @@ def _generate_forward_folding(
                         sequence_str,
                     )
                     trial_tm_scores.append(tm_out.tm_norm_chain1)
-                    logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {tm_out.rmsd:.2f} Å")
+
+                    # Calculate RMSD using Kabsch alignment (all backbone atoms)
+                    rmsd = align_and_compute_rmsd(
+                        coords1=gen_coords,
+                        coords2=orig_coords,
+                        mask=None,  # Use all positions
+                        return_aligned=False,
+                        device=device,
+                    )
+                    trial_rmsd_scores.append(rmsd)
+                    logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {rmsd:.2f} Å")
 
                 # Store trial results
                 best_trial_results.append(
                     {
                         "trial": trial,
                         "tm_scores": trial_tm_scores,
+                        "rmsd_scores": trial_rmsd_scores,
                         "avg_tm_score": sum(trial_tm_scores) / len(trial_tm_scores),
+                        "avg_rmsd": sum(trial_rmsd_scores) / len(trial_rmsd_scores),
                         "generate_sample": generate_sample,
                         "x_recon_xyz": x_recon_xyz,
                         "seq": seq,
@@ -2369,18 +2459,27 @@ def _generate_forward_folding(
                 seq_i = seq[i, mask[i] == 1]
                 sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
 
-                # Calculate TM-Score and RMSD using TM-align
-
+                # Calculate TM-Score using TM-align
                 tm_out = tm_align(
                     gen_coords[:, 1, :].cpu().numpy(),  # CA atoms of generated structure
                     orig_coords[:, 1, :].detach().cpu().numpy(),  # CA atoms of original structure
                     sequence_str,
                     sequence_str,
                 )
-                logger.info(f"Sequence: {sequence_str}")
-                logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {tm_out.rmsd:.2f} Å")
                 batch_tm_scores.append(tm_out.tm_norm_chain1)
-                batch_rmsd_scores.append(tm_out.rmsd)
+
+                # Calculate RMSD using Kabsch alignment (all backbone atoms)
+                rmsd = align_and_compute_rmsd(
+                    coords1=gen_coords,
+                    coords2=orig_coords,
+                    mask=None,  # Use all positions
+                    return_aligned=False,
+                    device=device,
+                )
+                batch_rmsd_scores.append(rmsd)
+
+                logger.info(f"Sequence: {sequence_str}")
+                logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {rmsd:.2f} Å")
 
             # Collect metrics for aggregate statistics
             all_tm_scores.extend(batch_tm_scores)
@@ -2494,8 +2593,8 @@ def _generate_inpainting(
                 structure_paths.extend(glob.glob(str(path / "*.pt")))
             else:
                 raise ValueError(f"Input path does not exist: {input_structures}")
-    elif isinstance(input_structures, (list, tuple)):
-        # List of paths
+    elif isinstance(input_structures, (list, tuple, ListConfig)):
+        # List of paths (includes OmegaConf ListConfig)
         for path_str in input_structures:
             path = Path(path_str)
             if path.is_file():

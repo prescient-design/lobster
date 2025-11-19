@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition b200
-#SBATCH --array=1-16
+#SBATCH --array=1-100
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gpus-per-node 1
@@ -31,4 +31,4 @@ export WANDB_BASE_URL=https://genentech.wandb.io
 
 export TOKENIZERS_PARALLELISM=true
 
-srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose wandb agent prescient-design/lobster-wandb_sweeps/yra8g5es
+srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose wandb agent prescient-design/lobster-wandb_sweeps/esetb9tp

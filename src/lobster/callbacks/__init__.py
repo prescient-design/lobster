@@ -11,6 +11,8 @@ from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
 from ._structure_decode import StructureDecodeCallback
 from ._unconditional_generation import UnconditionalGenerationCallback
 from ._auxiliary_task_loss_weight_scheduler import AuxiliaryTaskWeightScheduler, MultiTaskWeightScheduler
+from ._inverse_folding_callback import InverseFoldingCallback
+from ._forward_folding_callback import ForwardFoldingCallback
 
 __all__ = [
     "MoleculeACELinearProbeCallback",
@@ -27,4 +29,6 @@ __all__ = [
     "UmeGrpoLoggingCallback",
     "AuxiliaryTaskWeightScheduler",
     "MultiTaskWeightScheduler",
+    "InverseFoldingCallback",
+    "ForwardFoldingCallback",
 ]
