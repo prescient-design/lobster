@@ -56,13 +56,35 @@ class L2Loss(TokenizerLoss):
             with torch.autocast(enabled=False, device_type=predicted_ligand.device.type):
                 if predicted_protein is not None:
                     mask_protein_expanded = mask_protein.unsqueeze(-1).repeat(1, 1, 3)
+
+                    # Safety for kabsch: Replace invalid samples with noise to prevent SVD NaN
+                    mask_flat = mask_protein_expanded.reshape(B, -1)
+                    valid_sample = mask_flat.sum(dim=1) > 0
+                    mask_safe = torch.where(valid_sample[:, None], mask_flat, torch.ones_like(mask_flat))
+
+                    gt_flat = ground_truth_protein.reshape(B, -1, 3)
+                    pred_flat = predicted_protein.reshape(B, -1, 3)
+                    noise_gt = torch.randn_like(gt_flat)
+                    noise_pred = torch.randn_like(pred_flat)
+                    gt_safe = torch.where(valid_sample[:, None, None], gt_flat, noise_gt)
+                    pred_safe = torch.where(valid_sample[:, None, None], pred_flat, noise_pred)
+
                     ground_truth_protein = kabsch_torch_batched(
-                        ground_truth_protein.reshape(B, -1, 3),
-                        predicted_protein.reshape(B, -1, 3),
-                        mask_protein_expanded.reshape(B, -1),
+                        gt_safe,
+                        pred_safe,
+                        mask_safe,
                     )
                     ground_truth_protein = ground_truth_protein.reshape(B, L, 3, 3)
-                ground_truth_ligand = kabsch_torch_batched(ground_truth_ligand, predicted_ligand, mask_ligand)
+
+                # Safety for ligand kabsch
+                valid_sample_ligand = mask_ligand.sum(dim=1) > 0
+                mask_ligand_safe = torch.where(valid_sample_ligand[:, None], mask_ligand, torch.ones_like(mask_ligand))
+                noise_gt_ligand = torch.randn_like(ground_truth_ligand)
+                noise_pred_ligand = torch.randn_like(predicted_ligand)
+                gt_ligand_safe = torch.where(valid_sample_ligand[:, None, None], ground_truth_ligand, noise_gt_ligand)
+                pred_ligand_safe = torch.where(valid_sample_ligand[:, None, None], predicted_ligand, noise_pred_ligand)
+
+                ground_truth_ligand = kabsch_torch_batched(gt_ligand_safe, pred_ligand_safe, mask_ligand_safe)
 
         # calculate loss
         if predicted_protein is not None:
@@ -103,9 +125,20 @@ class L2Loss(TokenizerLoss):
         with torch.no_grad():
             with torch.autocast(enabled=False, device_type=predictions.device.type):
                 mask_expanded = mask.unsqueeze(-1).repeat(1, 1, 3)
-                ground_truth = kabsch_torch_batched(
-                    ground_truth.reshape(B, -1, 3), predictions.reshape(B, -1, 3), mask_expanded.reshape(B, -1)
-                )
+
+                # Safety for kabsch
+                mask_flat = mask_expanded.reshape(B, -1)
+                valid_sample = mask_flat.sum(dim=1) > 0
+                mask_safe = torch.where(valid_sample[:, None], mask_flat, torch.ones_like(mask_flat))
+
+                gt_flat = ground_truth.reshape(B, -1, 3)
+                pred_flat = predictions.reshape(B, -1, 3)
+                noise_gt = torch.randn_like(gt_flat)
+                noise_pred = torch.randn_like(pred_flat)
+                gt_safe = torch.where(valid_sample[:, None, None], gt_flat, noise_gt)
+                pred_safe = torch.where(valid_sample[:, None, None], pred_flat, noise_pred)
+
+                ground_truth = kabsch_torch_batched(gt_safe, pred_safe, mask_safe)
                 ground_truth = ground_truth.reshape(B, L, 3, 3)
 
         # use MSE loss
@@ -144,10 +177,23 @@ class L2Loss(TokenizerLoss):
                 # step 2b: realign the permuted chains to the predictions
                 with torch.autocast(enabled=False, device_type=predictions.device.type):
                     mask_expanded = mask.unsqueeze(-1).repeat(1, 1, 3)
+
+                    # Safety for kabsch
+                    mask_flat = mask_expanded.reshape(B, -1)
+                    valid_sample = mask_flat.sum(dim=1) > 0
+                    mask_safe = torch.where(valid_sample[:, None], mask_flat, torch.ones_like(mask_flat))
+
+                    gt_flat = ground_truth_permuted.reshape(B, -1, 3)
+                    pred_flat = predictions.reshape(B, -1, 3)
+                    noise_gt = torch.randn_like(gt_flat)
+                    noise_pred = torch.randn_like(pred_flat)
+                    gt_safe = torch.where(valid_sample[:, None, None], gt_flat, noise_gt)
+                    pred_safe = torch.where(valid_sample[:, None, None], pred_flat, noise_pred)
+
                     ground_truth_permuted = kabsch_torch_batched(
-                        ground_truth_permuted.reshape(B, -1, 3),
-                        predictions.reshape(B, -1, 3),
-                        mask_expanded.reshape(B, -1),
+                        gt_safe,
+                        pred_safe,
+                        mask_safe,
                     )
                     ground_truth_permuted = ground_truth_permuted.reshape(B, L, 3, 3)
 
@@ -185,7 +231,14 @@ class LigandL2Loss(TokenizerLoss):
         # align ground truth to predictions
         with torch.no_grad():
             with torch.autocast(enabled=False, device_type=predicted_ligand.device.type):
-                ground_truth_ligand = kabsch_torch_batched(ground_truth_ligand, predicted_ligand, mask_ligand)
+                valid_sample = mask_ligand.sum(dim=1) > 0
+                mask_safe = torch.where(valid_sample[:, None], mask_ligand, torch.ones_like(mask_ligand))
+                noise_gt = torch.randn_like(ground_truth_ligand)
+                noise_pred = torch.randn_like(predicted_ligand)
+                gt_safe = torch.where(valid_sample[:, None, None], ground_truth_ligand, noise_gt)
+                pred_safe = torch.where(valid_sample[:, None, None], predicted_ligand, noise_pred)
+
+                ground_truth_ligand = kabsch_torch_batched(gt_safe, pred_safe, mask_safe)
 
         loss_ligand = nn.MSELoss(reduction="none")(predicted_ligand, ground_truth_ligand)
         loss_ligand = loss_ligand * mask_ligand[:, :, None]
@@ -204,9 +257,17 @@ class LigandPairWiseL2Loss(TokenizerLoss):
         ground_truth_ligand = self.ligand_weight * ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
 
-        Dpred = torch.cdist(predicted_ligand, predicted_ligand, p=2)
+        # Stabilize masked coordinates with noise
+        mask_ligand_expanded = mask_ligand.unsqueeze(-1)
+        noise_pred = torch.randn_like(predicted_ligand) * 1e-3
+        predicted_ligand_safe = predicted_ligand * mask_ligand_expanded + noise_pred * (1 - mask_ligand_expanded)
+
+        noise_gt = torch.randn_like(ground_truth_ligand) * 1e-3
+        ground_truth_ligand_safe = ground_truth_ligand * mask_ligand_expanded + noise_gt * (1 - mask_ligand_expanded)
+
+        Dpred = torch.cdist(predicted_ligand_safe, predicted_ligand_safe, p=2)
         Dpred = torch.clamp(Dpred, max=20)
-        D = torch.cdist(ground_truth_ligand, ground_truth_ligand, p=2)
+        D = torch.cdist(ground_truth_ligand_safe, ground_truth_ligand_safe, p=2)
         D = torch.clamp(D, max=20)
         E = (Dpred - D) ** 2
         E = torch.clamp(E, max=25)
@@ -340,11 +401,12 @@ class PairWiseL2Loss(TokenizerLoss):
             if predicted_protein is not None:
                 Z_hat = torch.cat([Z_hat_protein, predicted_ligand], dim=1)
                 Z = torch.cat([Z_protein, ground_truth_ligand], dim=1)
-                mask = torch.cat([mask_protein, mask_ligand], dim=1)
+                mask_combined = torch.cat([mask_protein, mask_ligand], dim=1)
+                mask_flat = mask_combined
             else:
                 Z_hat = predicted_ligand
                 Z = ground_truth_ligand
-                mask = mask_ligand
+                mask_flat = mask_ligand.clone()
                 n_atoms = 3
 
         else:
@@ -355,13 +417,31 @@ class PairWiseL2Loss(TokenizerLoss):
             # Step 1: Flatten predictions and ground_truth
             Z_hat = predictions.reshape(predictions.size(0), -1, 3)  # (B, L*n_atoms,3)
             Z = ground_truth.reshape(ground_truth.size(0), -1, 3)  # (B, L*n_atoms,3)
+            mask_flat = mask.unsqueeze(-1).repeat(1, 1, n_atoms).view(B, -1)
+
+        # Step 1.5: Stabilize masked coordinates with noise to prevent NaN gradients in cdist
+        # cdist(0, 0) gradient is NaN. If padding is 0, we get NaNs even if masked later.
+        # We replace masked 0s with small random noise.
+
+        # CRITICAL: Detach mask_flat once at the beginning to prevent version tracking issues
+        # Masks don't need gradients, so this is safe
+        mask_flat_detached = mask_flat.detach()
+
+        # Create expanded mask from detached version
+        mask_flat_expanded = mask_flat_detached.unsqueeze(-1)
+
+        noise_hat = torch.randn_like(Z_hat) * 1e-3
+        Z_hat_safe = Z_hat * mask_flat_expanded + noise_hat * (1 - mask_flat_expanded)
+
+        noise_gt = torch.randn_like(Z) * 1e-3
+        Z_safe = Z * mask_flat_expanded + noise_gt * (1 - mask_flat_expanded)
 
         # Step 2: Compute Dpred
-        Dpred = torch.cdist(Z_hat, Z_hat, p=2)  # (B, L*n_atoms, L*n_atoms)
+        Dpred = torch.cdist(Z_hat_safe, Z_hat_safe, p=2)  # (B, L*n_atoms, L*n_atoms)
         Dpred = torch.clamp(Dpred, max=20)
 
         # Step 3: Compute D
-        D = torch.cdist(Z, Z, p=2)  # (B, L*n_atoms, L*n_atoms)
+        D = torch.cdist(Z_safe, Z_safe, p=2)  # (B, L*n_atoms, L*n_atoms)
 
         # Step 4: Compute E
         E = (Dpred - D) ** 2
@@ -373,14 +453,13 @@ class PairWiseL2Loss(TokenizerLoss):
         if n_atoms > 3:
             raise NotImplementedError("nonbackbone PairWiseL2Loss is not implemented correctly yet")
         else:
-            if not ligand_present:
-                mask = mask.unsqueeze(-1).repeat(1, 1, n_atoms).view(B, -1)
-            mask = mask[:, None, :] * mask[:, :, None]  # (B, L*n_atoms, L*n_atoms)
-            E = E * mask
+            # Use detached mask_flat to avoid version conflicts
+            mask_pairwise = mask_flat_detached[:, None, :] * mask_flat_detached[:, :, None]
+            E = E * mask_pairwise
             if keep_batch_dim:
-                l = E.sum(dim=(1, 2)) / mask.sum(dim=1)
+                l = E.sum(dim=(1, 2)) / mask_pairwise.sum(dim=1)
             else:
-                l = E.sum() / (mask.sum() + eps)
+                l = E.sum() / (mask_pairwise.sum() + eps)
 
         return l
 

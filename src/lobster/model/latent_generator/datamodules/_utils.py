@@ -1,34 +1,215 @@
+import logging
+
 import torch
 import torch.nn.functional as F
 
 from lobster.model.latent_generator.utils import residue_constants
 
+logger = logging.getLogger(__name__)
+
+
+# Padding values - MUST match what's used in collation functions
+PROTEIN_PADDING_VALUES = {
+    "coords_res": 0.0,
+    "mask": 0.0,
+    "indices": -1,
+    "sequence": None,  # Set at runtime to residue_constants.PEPTIDE_ALPHABET.index("-")
+    "chains": -1,
+    "template_coords": 0.0,
+    "template_mask": 0.0,
+    "3di_states": 0.0,
+    "3di_descriptors": 0.0,
+    "c6d": 0.0,
+    "c6d_mask": False,
+    "c6d_binned": 0.0,
+    "plm_embeddings": 0.0,
+    "graph_label": 0.0,
+    "zernlike_descriptors": 0.0,
+    "geometric_features": 0.0,
+}
+
+LIGAND_PADDING_VALUES = {
+    "ligand_coords": 0.0,
+    "ligand_mask": 0.0,
+    "ligand_indices": -1,
+    "ligand_element_indices": 0,
+    "radius_of_gyration": 0.0,
+    "solvent_accessible_surface_area": 0.0,
+}
+
+
+def get_padding_value(key: str, dtype: torch.dtype | None = None):
+    """Get padding value for a field, matching standard collation behavior."""
+    if key in PROTEIN_PADDING_VALUES:
+        val = PROTEIN_PADDING_VALUES[key]
+        if val is None and key == "sequence":
+            return residue_constants.PEPTIDE_ALPHABET.index("-")
+        return val
+    if key in LIGAND_PADDING_VALUES:
+        return LIGAND_PADDING_VALUES[key]
+    # Default fallbacks
+    if "mask" in key:
+        return False if dtype == torch.bool else 0.0
+    elif "indices" in key or "chains" in key:
+        return -1
+    else:
+        return 0.0
+
 
 def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
-    """Collate fn for batching protein backbone data."""
-    if "protein" and "ligand" in batch[0]:
-        ligand_batch = [bb_dict["ligand"] for bb_dict in batch]
-        batch = [bb_dict["protein"] for bb_dict in batch]
-        # make sure batch is not list of None
-        if batch[0] is not None:
-            protein_present = True
-            batch = collate_fn_backbone(batch)
-        else:
-            protein_present = False
-        ligand_batch = collate_fn_ligand(ligand_batch)
-        if protein_present:
-            # combine batch and ligand_batch
-            batch = {**batch, **ligand_batch}
-        else:
-            batch = ligand_batch
-        return batch
+    """Collate function with unified batch dimensions and validity masks.
 
+    BACKWARDS COMPATIBILITY:
+    - Pure protein-only batches: Use original collation (no validity masks)
+    - Pure ligand-only batches: Use original collation (no validity masks)
+    - Pure paired batches: Use original collation (no validity masks)
+    - Mixed batches: Use unified batch with validity masks (NEW)
+
+    Handles:
+    - StructureDataset items: {"coords_res": ..., "mask": ..., ...}
+    - LigandDataset items: {"protein": None or {...}, "ligand": {...}}
+    """
+    batch_size = len(batch)
+
+    # Categorize batch items to determine if homogeneous or heterogeneous
+    has_structure_items = False  # Pure protein items (StructureDataset)
+    has_ligand_only_items = False  # Ligand-only items (protein=None)
+    has_paired_items = False  # Protein-ligand pairs (both present)
+
+    for item in batch:
+        if "protein" in item and "ligand" in item:
+            # LigandDataset format
+            if item["protein"] is not None and item["ligand"] is not None:
+                has_paired_items = True
+            elif item["protein"] is not None:
+                # Shouldn't happen, but count as structure
+                has_structure_items = True
+            else:
+                # Ligand only
+                has_ligand_only_items = True
+        else:
+            # StructureDataset format
+            has_structure_items = True
+
+    # Check if batch is homogeneous (backwards compatible case)
+    num_types = sum([has_structure_items, has_ligand_only_items, has_paired_items])
+
+    if num_types == 1:
+        # HOMOGENEOUS BATCH - use original collation for backwards compatibility
+        if has_structure_items:
+            # Pure protein-only batch - use original collation
+            logger.debug("Homogeneous protein-only batch - using original collation")
+            return _collate_proteins(batch)
+        elif has_ligand_only_items:
+            # Pure ligand-only batch - extract ligands and use original collation
+            logger.debug("Homogeneous ligand-only batch - using original collation")
+            ligand_items = [item["ligand"] for item in batch]
+            return collate_fn_ligand(ligand_items)
+        elif has_paired_items:
+            # Pure paired batch - extract and collate
+            logger.debug("Homogeneous paired batch - using original collation")
+            protein_items = [item["protein"] for item in batch]
+            ligand_items = [item["ligand"] for item in batch]
+
+            protein_collated = _collate_proteins(protein_items)
+            ligand_collated = collate_fn_ligand(ligand_items)
+
+            # Combine without validity masks (backwards compatible)
+            return {**protein_collated, **ligand_collated}
+
+    # HETEROGENEOUS BATCH - use new unified batch approach with validity masks
+    logger.debug(
+        f"Heterogeneous batch detected (size={batch_size}): "
+        f"structure={has_structure_items}, ligand_only={has_ligand_only_items}, paired={has_paired_items}"
+    )
+
+    # Normalize all items to {"protein": ..., "ligand": ...} format
+    normalized_batch = []
+    for item in batch:
+        if "protein" in item and "ligand" in item:
+            # LigandDataset format - already normalized
+            normalized_batch.append(item)
+        else:
+            # StructureDataset format - wrap it
+            normalized_batch.append({"protein": item, "ligand": None})
+
+    # Extract components and build validity masks
+    protein_items = []
+    ligand_items = []
+    protein_valid_mask = []
+    ligand_valid_mask = []
+
+    for item in normalized_batch:
+        protein_items.append(item["protein"])
+        ligand_items.append(item["ligand"])
+        protein_valid_mask.append(item["protein"] is not None)
+        ligand_valid_mask.append(item["ligand"] is not None)
+
+    # Convert to tensors
+    protein_valid_mask = torch.tensor(protein_valid_mask, dtype=torch.bool)
+    ligand_valid_mask = torch.tensor(ligand_valid_mask, dtype=torch.bool)
+
+    logger.debug(
+        f"Validity masks: protein={protein_valid_mask.sum().item()}/{batch_size}, "
+        f"ligand={ligand_valid_mask.sum().item()}/{batch_size}"
+    )
+
+    # Collate and expand
+    result = {}
+
+    # Collate valid proteins
+    if protein_valid_mask.any():
+        valid_protein_items = [p for p in protein_items if p is not None]
+        protein_collated = _collate_proteins(valid_protein_items)
+
+        # Expand to full batch size if needed
+        if protein_valid_mask.all():
+            # All items have protein - no expansion needed
+            result.update(protein_collated)
+        else:
+            # Some items don't have protein - need to expand with padding
+            expanded = _expand_protein_to_full_batch(protein_collated, protein_valid_mask, batch_size)
+            result.update(expanded)
+    else:
+        # No proteins in batch - create minimal placeholders
+        result.update(_create_empty_protein_batch(batch_size))
+
+    # Collate valid ligands
+    if ligand_valid_mask.any():
+        valid_ligand_items = [l for l in ligand_items if l is not None]
+        ligand_collated = collate_fn_ligand(valid_ligand_items)
+
+        # Expand to full batch size if needed
+        if ligand_valid_mask.all():
+            # All items have ligand - no expansion needed
+            result.update(ligand_collated)
+        else:
+            # Some items don't have ligand - need to expand with padding
+            expanded = _expand_ligand_to_full_batch(ligand_collated, ligand_valid_mask, batch_size)
+            result.update(expanded)
+    else:
+        # No ligands in batch - create minimal placeholders
+        result.update(_create_empty_ligand_batch(batch_size))
+
+    # Add validity masks
+    result["protein_valid_mask"] = protein_valid_mask
+    result["ligand_valid_mask"] = ligand_valid_mask
+
+    return result
+
+
+def _collate_proteins(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+    """Collate protein-only items (original collate_fn_backbone logic).
+
+    This is the ORIGINAL implementation extracted for backwards compatibility.
+    """
     max_length = max(bb_dict["coords_res"].shape[0] for bb_dict in batch)
     padded_coords_res = []
     padded_mask = []
     padded_indices = []
     padded_sequence = []
     padded_chains = []
+
     if "3di_states" in batch[0]:
         padded_3di_states = []
         padded_3di_descriptors = []
@@ -50,32 +231,16 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         mask = bb_dict["mask"]
         indices = bb_dict["indices"]
         chains = bb_dict["chains"]
+
         padded_coords_res.append(
             torch.cat(
-                [
-                    coords_res,
-                    torch.zeros(max_length - coords_res.shape[0], *coords_res.shape[1:]),
-                ],
+                [coords_res, torch.zeros(max_length - coords_res.shape[0], *coords_res.shape[1:])],
                 dim=0,
             )
         )
-        padded_mask.append(
-            torch.cat(
-                [
-                    mask,
-                    torch.zeros(max_length - mask.shape[0], *mask.shape[1:]),
-                ],
-                dim=0,
-            )
-        )
+        padded_mask.append(torch.cat([mask, torch.zeros(max_length - mask.shape[0], *mask.shape[1:])], dim=0))
         padded_indices.append(
-            torch.cat(
-                [
-                    indices,
-                    torch.full((max_length - indices.shape[0],), -1, dtype=indices.dtype),
-                ],
-                dim=0,
-            )
+            torch.cat([indices, torch.full((max_length - indices.shape[0],), -1, dtype=indices.dtype)], dim=0)
         )
         padded_sequence.append(
             torch.cat(
@@ -91,21 +256,17 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
             )
         )
         padded_chains.append(
-            torch.cat(
-                [
-                    chains,
-                    torch.full((max_length - chains.shape[0],), -1, dtype=chains.dtype),
-                ],
-                dim=0,
-            )
+            torch.cat([chains, torch.full((max_length - chains.shape[0],), -1, dtype=chains.dtype)], dim=0)
         )
+
         if "template_coords" in batch[0]:
             padded_template_coords.append(
                 torch.cat(
                     [
                         bb_dict["template_coords"],
                         torch.zeros(
-                            max_length - bb_dict["template_coords"].shape[0], *bb_dict["template_coords"].shape[1:]
+                            max_length - bb_dict["template_coords"].shape[0],
+                            *bb_dict["template_coords"].shape[1:],
                         ),
                     ],
                     dim=0,
@@ -176,6 +337,7 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
                     dim=0,
                 )
             )
+
     out = {
         "coords_res": torch.stack(padded_coords_res, dim=0),
         "mask": torch.stack(padded_mask, dim=0),
@@ -183,6 +345,7 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         "sequence": torch.stack(padded_sequence, dim=0),
         "chains": torch.stack(padded_chains, dim=0),
     }
+
     if "3di_states" in batch[0]:
         out["3di_states"] = torch.stack(padded_3di_states, dim=0)
         out["3di_descriptors"] = torch.stack(padded_3di_descriptors, dim=0)
@@ -191,6 +354,7 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         out["c6d"] = torch.stack(padded_c6d, dim=0)
         out["c6d_mask"] = torch.stack(padded_c6d_mask, dim=0)
         out["c6d_binned"] = torch.stack(padded_c6d_binned, dim=0)
+
     if "graph_label" in batch[0]:
         out["graph_label"] = torch.stack([bb_dict["graph_label"] for bb_dict in batch], dim=0)
     if "zernlike_descriptors" in batch[0]:
@@ -204,9 +368,102 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         out["template_mask"] = torch.stack(padded_template_mask, dim=0)
 
     if "name" in batch[0]:
-        out["name"] = [bb_dict["name"] for bb_dict in batch]
+        out["name"] = [bb_dict.get("name", None) for bb_dict in batch]
 
     return out
+
+
+def _expand_protein_to_full_batch(
+    collated: dict[str, torch.Tensor], valid_mask: torch.Tensor, batch_size: int
+) -> dict[str, torch.Tensor]:
+    """Expand collated protein batch to full batch size with padding."""
+    result = {}
+    n_valid = collated["coords_res"].shape[0]
+
+    assert valid_mask.sum() == n_valid, f"valid_mask count {valid_mask.sum()} doesn't match {n_valid}"
+
+    for key, value in collated.items():
+        if key == "name":
+            # Handle name specially (list, not tensor)
+            expanded_names = [None] * batch_size
+            valid_idx = 0
+            for i in range(batch_size):
+                if valid_mask[i]:
+                    expanded_names[i] = value[valid_idx]
+                    valid_idx += 1
+            result[key] = expanded_names
+            continue
+
+        if not isinstance(value, torch.Tensor):
+            result[key] = value
+            continue
+
+        # Get padding value using centralized function
+        pad_value = get_padding_value(key, value.dtype)
+
+        # Create full batch tensor
+        full_shape = (batch_size,) + value.shape[1:]
+        if value.dtype == torch.bool:
+            expanded = torch.zeros(full_shape, dtype=torch.bool, device=value.device)
+        else:
+            expanded = torch.full(full_shape, pad_value, dtype=value.dtype, device=value.device)
+
+        # Fill in valid positions
+        expanded[valid_mask] = value
+        result[key] = expanded
+
+    return result
+
+
+def _expand_ligand_to_full_batch(
+    collated: dict[str, torch.Tensor], valid_mask: torch.Tensor, batch_size: int
+) -> dict[str, torch.Tensor]:
+    """Expand collated ligand batch to full batch size with padding."""
+    result = {}
+    n_valid = collated["ligand_coords"].shape[0]
+
+    assert valid_mask.sum() == n_valid, f"valid_mask count {valid_mask.sum()} doesn't match {n_valid}"
+
+    for key, value in collated.items():
+        if not isinstance(value, torch.Tensor):
+            result[key] = value
+            continue
+
+        # Get padding value using centralized function
+        pad_value = get_padding_value(key, value.dtype)
+
+        # Create full batch tensor
+        full_shape = (batch_size,) + value.shape[1:]
+        if value.dtype == torch.bool:
+            expanded = torch.zeros(full_shape, dtype=torch.bool, device=value.device)
+        else:
+            expanded = torch.full(full_shape, pad_value, dtype=value.dtype, device=value.device)
+
+        # Fill in valid positions
+        expanded[valid_mask] = value
+        result[key] = expanded
+
+    return result
+
+
+def _create_empty_protein_batch(batch_size: int) -> dict[str, torch.Tensor]:
+    """Create minimal empty protein batch as placeholder."""
+    return {
+        "coords_res": torch.zeros(batch_size, 1, 3, 3),
+        "mask": torch.zeros(batch_size, 1, dtype=torch.bool),
+        "indices": torch.full((batch_size, 1), -1, dtype=torch.long),
+        "sequence": torch.full((batch_size, 1), -1, dtype=torch.long),
+        "chains": torch.full((batch_size, 1), -1, dtype=torch.long),
+    }
+
+
+def _create_empty_ligand_batch(batch_size: int) -> dict[str, torch.Tensor]:
+    """Create minimal empty ligand batch as placeholder."""
+    return {
+        "ligand_coords": torch.zeros(batch_size, 1, 3),
+        "ligand_mask": torch.zeros(batch_size, 1, dtype=torch.bool),
+        "ligand_indices": torch.full((batch_size, 1), -1, dtype=torch.long),
+    }
 
 
 def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
@@ -224,28 +481,15 @@ def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.T
 
         padded_ligand_coords.append(
             torch.cat(
-                [
-                    ligand_coords,
-                    torch.zeros(max_length - ligand_coords.shape[0], *ligand_coords.shape[1:]),
-                ],
-                dim=0,
+                [ligand_coords, torch.zeros(max_length - ligand_coords.shape[0], *ligand_coords.shape[1:])], dim=0
             )
         )
         padded_ligand_mask.append(
-            torch.cat(
-                [
-                    ligand_mask,
-                    torch.zeros(max_length - ligand_mask.shape[0], *ligand_mask.shape[1:]),
-                ],
-                dim=0,
-            )
+            torch.cat([ligand_mask, torch.zeros(max_length - ligand_mask.shape[0], *ligand_mask.shape[1:])], dim=0)
         )
         padded_ligand_indices.append(
             torch.cat(
-                [
-                    ligand_indices,
-                    torch.full((max_length - ligand_indices.shape[0],), -1, dtype=ligand_indices.dtype),
-                ],
+                [ligand_indices, torch.full((max_length - ligand_indices.shape[0],), -1, dtype=ligand_indices.dtype)],
                 dim=0,
             )
         )
@@ -255,10 +499,7 @@ def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.T
             element_indices = atom_dict["element_indices"]
             padded_element_indices.append(
                 torch.cat(
-                    [
-                        element_indices,
-                        torch.zeros(max_length - element_indices.shape[0], dtype=element_indices.dtype),
-                    ],
+                    [element_indices, torch.zeros(max_length - element_indices.shape[0], dtype=element_indices.dtype)],
                     dim=0,
                 )
             )

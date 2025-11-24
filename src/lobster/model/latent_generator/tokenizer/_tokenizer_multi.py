@@ -452,6 +452,7 @@ class TokenizerMulti(pl.LightningModule):
                 ligand_mask=x_feat[5],
                 ligand_residue_index=x_feat[6],
                 ligand_atom_types=x_feat[7],
+                batch=batch,
             )
         elif len(x_feat) == 7:
             x_emb = self.encoder(
@@ -462,9 +463,10 @@ class TokenizerMulti(pl.LightningModule):
                 ligand_coords=x_feat[4],
                 ligand_mask=x_feat[5],
                 ligand_residue_index=x_feat[6],
+                batch=batch,
             )
         else:
-            x_emb = self.encoder(*x_feat)  # Keep original unpacking for backward compatibility
+            x_emb = self.encoder(*x_feat, batch=batch)  # Keep original unpacking for backward compatibility
 
         if self.quantizer is not None:
             # check if cls token is used

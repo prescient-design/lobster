@@ -2,8 +2,8 @@
 
 #SBATCH --partition b200
 #SBATCH --nodes 1
-#SBATCH --ntasks-per-node 8
-#SBATCH --gpus-per-node 8
+#SBATCH --ntasks-per-node 7
+#SBATCH --gpus-per-node 7
 #SBATCH --cpus-per-task 16
 #SBATCH -o /data2/ume/latent_generator_/slurm/logs/train/%J_%x.out
 #SBATCH -q preempt
@@ -44,7 +44,6 @@ srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose \
     model.num_training_steps=500000 \
     model.lr_scheduler.num_warmup_steps=10000 \
     model.lr_scheduler.num_training_steps=500000 \
-    data.path_to_datasets=[/data/bucket/lisanza/structures/GEOM/processed/train/,/data/bucket/lisanza/structures/GEOM/processed/val/,/data/bucket/lisanza/structures/GEOM/processed/test/] \
     data.num_workers=8 \
     ++trainer.num_nodes=$SLURM_JOB_NUM_NODES \
     trainer.num_sanity_val_steps=0 \

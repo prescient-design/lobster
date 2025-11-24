@@ -2,3 +2,4 @@ backbone_reconstruction:
   _target_: lobster.model.latent_generator.callbacks.BackboneReconstruction
   structure_path: "${paths.output_dir}/structures/"
   save_every_n: 10000
+  max_total_files: 1000  # Set to a number (e.g., 100) to limit total PDB files saved

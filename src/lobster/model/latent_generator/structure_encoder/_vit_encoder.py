@@ -128,67 +128,120 @@ class ViTEncoder(BaseEncoder):
         apply_stochastic_fa: bool = False,
         backbone_noise: float = None,
     ):
-        if "sequence" in batch:
+        # NEW: Extract validity masks (only present for heterogeneous batches)
+        protein_valid = batch.get("protein_valid_mask", None)  # Shape: (batch_size,)
+        ligand_valid = batch.get("ligand_valid_mask", None)  # Shape: (batch_size,)
+
+        # Determine what data we have
+        has_proteins = protein_valid is None or protein_valid.any()
+        has_ligands = ligand_valid is None or ligand_valid.any()
+
+        # Process protein data
+        if has_proteins and "sequence" in batch:
+            coords = batch["coords_res"].clone()
             seq_mask = batch["mask"].clone()
             residue_index = batch["indices"].clone()
-            coords = batch["coords_res"].clone()
+
+            # NOTE: If protein_valid exists, some batch positions may be all-zero padding
+            # The seq_mask will be False for those positions, so downstream processing
+            # will naturally ignore them via masking
+
             if self.use_sequence_embedding:
                 sequence = batch["sequence"].clone()
             else:
                 sequence = None
         else:
+            coords = None
             seq_mask = None
             residue_index = None
-            coords = None
             sequence = None
 
-        if "ligand_coords" in batch:
-            # need to figure out how to rotate and translate the ligand coords the same way as the protein coords
+        # Process ligand data
+        if has_ligands and "ligand_coords" in batch:
             ligand_coords = batch["ligand_coords"].clone()
             ligand_mask = batch["ligand_mask"].clone()
             ligand_residue_index = batch["ligand_indices"].clone()
             ligand_atomic_numbers = batch["ligand_atomic_numbers"].clone() if "ligand_atomic_numbers" in batch else None
-            # combine protein and ligand coords but note index to splice out the ligand coords after rotation and translation
+
+            # Combine protein and ligand if both present
             if coords is None:
+                # Ligand-only case
                 coords = ligand_coords
                 seq_mask = ligand_mask
                 residue_index = ligand_residue_index
             else:
+                # Both present - concatenate (NOW SAFE with unified batch from Phase 1!)
                 B, L, n_atoms, _ = coords.shape
-                coords = coords.reshape(B, -1, 3)
-                coords = torch.cat([coords, ligand_coords], dim=1)
-                seq_mask = torch.cat([seq_mask, ligand_mask], dim=1)
+                B_ligand = ligand_coords.shape[0]
+
+                # Batch sizes MUST match with unified batch approach from Phase 1
+                assert B == B_ligand, f"Batch size mismatch: protein {B} vs ligand {B_ligand}"
+
+                # Flatten protein coords and concatenate
+                coords = coords.reshape(B, -1, 3)  # [B, L*n_atoms, 3]
+                coords = torch.cat([coords, ligand_coords], dim=1)  # [B, L*n_atoms + L_ligand, 3]
+
+                # Expand seq_mask to match flattened protein coords: [B, L] -> [B, L*n_atoms]
+                seq_mask = torch.cat(
+                    [seq_mask.unsqueeze(-1).expand(-1, -1, n_atoms).reshape(B, -1), ligand_mask], dim=1
+                )  # [B, L*n_atoms + L_ligand]
+                # seq_mask = torch.cat([seq_mask, ligand_mask], dim=1)  # [B, L + L_ligand]
+
+                # NOTE: For batch positions where ligand_valid=False:
+                #   - ligand_coords[i] is all zeros (from collate padding)
+                #   - ligand_mask[i] is all False (from collate padding)
+                # For batch positions where protein_valid=False:
+                #   - coords[i] is all zeros (from collate padding)
+                #   - seq_mask[i] is all False (from collate padding)
+                # The masks handle this naturally!
+        else:
+            ligand_coords = None
+            ligand_mask = None
+            ligand_residue_index = None
+            ligand_atomic_numbers = None
 
         frame_type = self.frame_type if frame_type is None else frame_type
         get_all_frames = self.get_all_frames if get_all_frames is None else get_all_frames
         apply_stochastic_fa = self.apply_stochastic_fa if apply_stochastic_fa is None else apply_stochastic_fa
 
-        if random_se3:
-            if only_rot:
-                logger.info("only rotating")
-                translation_scale = 0.0
-            else:
-                translation_scale = self.translation_scale
-                if only_trans:
-                    logger.info("only translating")
-                    rotation_mode = "none"
-                    coords = apply_random_se3_batched(
-                        coords, translation_scale=translation_scale, rotation_mode=rotation_mode
-                    )
+        # Apply SE(3) transformations - only if we have valid data
+        # Pass atom_mask to ensure we only transform non-masked (valid) regions
+        if random_se3 and coords is not None:
+            # Check if we have any valid coordinates to transform
+            if seq_mask is not None and seq_mask.any():
+                if only_rot:
+                    logger.info("only rotating")
+                    translation_scale = 0.0
                 else:
-                    coords = apply_random_se3_batched(coords, translation_scale=translation_scale)
+                    translation_scale = self.translation_scale
+                    if only_trans:
+                        logger.info("only translating")
+                        rotation_mode = "none"
+                        coords = apply_random_se3_batched(
+                            coords, atom_mask=seq_mask, translation_scale=translation_scale, rotation_mode=rotation_mode
+                        )
+                    else:
+                        coords = apply_random_se3_batched(
+                            coords, atom_mask=seq_mask, translation_scale=translation_scale
+                        )
+            else:
+                logger.debug("Skipping SE(3) transform - no valid coordinates")
         else:
-            logger.info("no se3 applied")
+            if not random_se3:
+                logger.info("no se3 applied")
 
-        if frame_type is not None:
-            # apply global frame
-            coords = apply_global_frame_to_coords(
-                coords,
-                frame_type=frame_type,
-                mask=seq_mask,
-                apply_stochastic_fa=apply_stochastic_fa,
-                get_all_frames=get_all_frames,
-            )
+        if frame_type is not None and coords is not None:
+            # Apply global frame only if we have valid coordinates
+            if seq_mask is not None and seq_mask.any():
+                coords = apply_global_frame_to_coords(
+                    coords,
+                    frame_type=frame_type,
+                    mask=seq_mask,  # Mask handles padded positions
+                    apply_stochastic_fa=apply_stochastic_fa,
+                    get_all_frames=get_all_frames,
+                )
+            else:
+                logger.debug("Skipping frame application - no valid coordinates")
 
         if self.backbone_noise > 0 and backbone_noise is None:
             coords = coords + self.backbone_noise * torch.randn_like(coords)
@@ -204,13 +257,21 @@ class ViTEncoder(BaseEncoder):
             else:
                 coords = coords * mask_structure.unsqueeze(-1).unsqueeze(-1)
 
-        if "ligand_coords" in batch:
-            if "sequence" in batch:
-                # splice out the ligand coords
+        if has_ligands and "ligand_coords" in batch:
+            if has_proteins and "sequence" in batch and coords is not None:
+                # Both present - split them back out
+                # NOTE: With unified batch, both modalities exist for all batch positions
+                # The masks (seq_mask, ligand_mask) handle which are valid
                 ligand_coords = coords[:, L * n_atoms :, :]
                 coords = coords[:, : L * n_atoms, :]
                 coords = coords.reshape(B, L, n_atoms, 3)
-                seq_mask = seq_mask[:, :L]
+                # seq_mask = seq_mask[:, :L]  # Keep only protein mask
+                # keep only protein mask and make it just a residue mask so from [B, L*n_atoms+L_ligand] to [B, L]
+                seq_mask = seq_mask[:, : L * n_atoms].reshape(B, L, n_atoms)
+                seq_mask = seq_mask.sum(dim=-1) > 0
+
+                # ligand_mask = seq_mask[:, L*n_atoms:]
+
                 return (
                     coords,
                     seq_mask,
@@ -222,6 +283,7 @@ class ViTEncoder(BaseEncoder):
                     ligand_atomic_numbers,
                 )
             else:
+                # Ligand-only
                 return None, None, None, None, ligand_coords, ligand_mask, ligand_residue_index, ligand_atomic_numbers
 
         return coords, seq_mask, residue_index, sequence
@@ -245,6 +307,7 @@ class ViTEncoder(BaseEncoder):
             coords = coords[:, :, : self.n_atoms, :]
         else:
             B, _, _ = ligand_coords.shape
+
         emb = self.net(
             coords,
             seq_mask=seq_mask,

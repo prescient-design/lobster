@@ -59,6 +59,7 @@ class StructureLightningDataModule(LightningDataModule):
         files_to_keep_list: list[str] | None = None,
         use_shards: bool = False,
         use_ligand_dataset: bool = False,
+        dataset_types: list[str] | None = None,
         buffer_size: int = 5,
     ) -> None:
         """:param path_to_datasets: path to data set directories
@@ -116,6 +117,14 @@ class StructureLightningDataModule(LightningDataModule):
         :param is_relative_model: If ``True``, assumes training between two sequences
             and calls a relative representation data loader
 
+        :param use_ligand_dataset: If ``True``, use LigandDataset for all datasets
+            (default: ``False``). Deprecated - use dataset_types instead for mixed datasets.
+
+        :param dataset_types: List of dataset types corresponding to each path in
+            path_to_datasets. Valid types: 'structure' (protein-only) or 'ligand'
+            (ligand-only or protein-ligand pairs). If None, uses use_ligand_dataset
+            for backwards compatibility (default: ``None``).
+
         """
         transforms = transform_fn
         super().__init__()
@@ -150,6 +159,7 @@ class StructureLightningDataModule(LightningDataModule):
         self._sampler = sampler
         if self._sampler is not None:
             self._shuffle = False
+
         self._cluster_file = cluster_file
         self._cluster_file_list = cluster_file_list
         self._files_to_keep = files_to_keep
@@ -175,6 +185,25 @@ class StructureLightningDataModule(LightningDataModule):
         self.use_shards = use_shards
         self.buffer_size = buffer_size
         self.use_ligand_dataset = use_ligand_dataset
+
+        # Handle dataset_types with backwards compatibility
+        if dataset_types is not None:
+            if len(dataset_types) != len(self._path_to_datasets):
+                raise ValueError(
+                    f"Length of dataset_types ({len(dataset_types)}) must match "
+                    f"length of path_to_datasets ({len(self._path_to_datasets)})"
+                )
+            self._dataset_types = dataset_types
+            logger.info(f"Using per-dataset types: {self._dataset_types}")
+        else:
+            # Backwards compatibility: use use_ligand_dataset for all datasets
+            if use_ligand_dataset:
+                self._dataset_types = ["ligand"] * len(self._path_to_datasets)
+                logger.info("Using ligand dataset for all paths (backwards compatibility mode)")
+            else:
+                self._dataset_types = ["structure"] * len(self._path_to_datasets)
+                logger.info("Using structure dataset for all paths (backwards compatibility mode)")
+
         if transforms is None:
             logger.info("No transform function provided. Using default transform function: StructureBackboneTransform")
             self._transform_fn = StructureBackboneTransform(max_length=max_length)
@@ -198,14 +227,39 @@ class StructureLightningDataModule(LightningDataModule):
         )
 
     def _create_dataset(
-        self, path: str, is_train: bool = False, cluster_file: str | None = None, files_to_keep: str | None = None
-    ) -> StructureDataset | ShardedStructureDataset:
-        """Create either a regular or sharded dataset based on configuration."""
+        self,
+        path: str,
+        is_train: bool = False,
+        cluster_file: str | None = None,
+        files_to_keep: str | None = None,
+        dataset_type: str | None = None,
+    ) -> StructureDataset | ShardedStructureDataset | LigandDataset:
+        """Create either a regular or sharded dataset based on configuration.
+
+        Args:
+            path: Path to the dataset
+            is_train: Whether this is a training dataset
+            cluster_file: Optional cluster file for deduplication
+            files_to_keep: Optional list of files to keep
+            dataset_type: Type of dataset ('structure' or 'ligand'). If None, uses use_ligand_dataset for backwards compatibility.
+
+        Returns:
+            Dataset instance (StructureDataset, LigandDataset, or ShardedStructureDataset)
+        """
         if cluster_file is None:
             cluster_file = self._cluster_file
         if files_to_keep is None:
             files_to_keep = self._files_to_keep
-        logger.info(f"Creating dataset from {path} with cluster_file {cluster_file} and files_to_keep {files_to_keep}")
+
+        # Backwards compatibility: if dataset_type not provided, use use_ligand_dataset
+        if dataset_type is None:
+            dataset_type = "ligand" if self.use_ligand_dataset else "structure"
+
+        logger.info(
+            f"Creating dataset from {path} with cluster_file {cluster_file}, "
+            f"files_to_keep {files_to_keep}, dataset_type={dataset_type}"
+        )
+
         if self.use_shards:
             logger.info(f"Creating sharded dataset from {path}")
             return ShardedStructureDataset(
@@ -217,14 +271,14 @@ class StructureLightningDataModule(LightningDataModule):
             )
         else:
             logger.info(f"Creating regular dataset from {path}")
-            if self.use_ligand_dataset:
+            if dataset_type == "ligand":
                 logger.info(f"Creating ligand dataset from {path}")
                 return LigandDataset(
                     root=path,
                     transform_protein=self._transform_fn,
                     transform_ligand=self._ligand_transform_fn,
                 )
-            else:
+            elif dataset_type == "structure":
                 logger.info(f"Creating structure dataset from {path}")
                 return StructureDataset(
                     root=path,
@@ -233,6 +287,8 @@ class StructureLightningDataModule(LightningDataModule):
                     cluster_file=cluster_file if is_train else None,
                     files_to_keep=files_to_keep,
                 )
+            else:
+                raise ValueError(f"Unknown dataset_type: {dataset_type}. Must be 'structure' or 'ligand'.")
 
     def setup(self, stage: str = "fit") -> None:
         if stage == "fit":
@@ -268,13 +324,13 @@ class StructureLightningDataModule(LightningDataModule):
                     # For regular datasets, use ConcatDataset
                     if self._cluster_file_list is not None:
                         self._train_dataset = torch.utils.data.ConcatDataset(
-                            # [self._create_dataset(p, is_train=True) for p in self._path_to_datasets if "train" in p]
                             [
                                 self._create_dataset(
                                     self._path_to_datasets[j],
                                     is_train=True,
                                     cluster_file=self._cluster_file_list[j],
                                     files_to_keep=self._files_to_keep_list[j],
+                                    dataset_type=self._dataset_types[j],
                                 )
                                 for j in range(len(self._path_to_datasets))
                                 if "train" in self._path_to_datasets[j]
@@ -282,20 +338,46 @@ class StructureLightningDataModule(LightningDataModule):
                         )
                     else:
                         self._train_dataset = torch.utils.data.ConcatDataset(
-                            [self._create_dataset(p, is_train=True) for p in self._path_to_datasets if "train" in p]
+                            [
+                                self._create_dataset(
+                                    self._path_to_datasets[j],
+                                    is_train=True,
+                                    dataset_type=self._dataset_types[j],
+                                )
+                                for j in range(len(self._path_to_datasets))
+                                if "train" in self._path_to_datasets[j]
+                            ]
                         )
 
                     self._val_dataset = torch.utils.data.ConcatDataset(
-                        [self._create_dataset(p) for p in self._path_to_datasets if "val" in p]
+                        [
+                            self._create_dataset(
+                                self._path_to_datasets[j],
+                                dataset_type=self._dataset_types[j],
+                            )
+                            for j in range(len(self._path_to_datasets))
+                            if "val" in self._path_to_datasets[j]
+                        ]
                     )
                     self._test_dataset = torch.utils.data.ConcatDataset(
-                        [self._create_dataset(p) for p in self._path_to_datasets if "test" in p]
+                        [
+                            self._create_dataset(
+                                self._path_to_datasets[j],
+                                dataset_type=self._dataset_types[j],
+                            )
+                            for j in range(len(self._path_to_datasets))
+                            if "test" in self._path_to_datasets[j]
+                        ]
                     )
             else:  # iid split
                 logger.info("Using iid splits.")
                 if self.use_shards:
                     # For sharded datasets, use the first path
-                    dataset = self._create_dataset(self._path_to_datasets[0], is_train=True)
+                    dataset = self._create_dataset(
+                        self._path_to_datasets[0],
+                        is_train=True,
+                        dataset_type=self._dataset_types[0],
+                    )
                     # Calculate split sizes
                     total_size = len(dataset)
                     train_size = int(total_size * self._lengths[0])
@@ -309,7 +391,14 @@ class StructureLightningDataModule(LightningDataModule):
                     )
                 else:
                     # For regular datasets, use ConcatDataset
-                    datasets = [self._create_dataset(p, is_train=True) for p in self._path_to_datasets]
+                    datasets = [
+                        self._create_dataset(
+                            self._path_to_datasets[j],
+                            is_train=True,
+                            dataset_type=self._dataset_types[j],
+                        )
+                        for j in range(len(self._path_to_datasets))
+                    ]
                     dataset = torch.utils.data.ConcatDataset(datasets)
                     (
                         self._train_dataset,

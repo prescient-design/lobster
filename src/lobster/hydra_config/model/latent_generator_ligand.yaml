@@ -14,7 +14,7 @@ structure_encoder:
   uvit_position_embedding_type: 'rotary'
   embed_dim: 4
   embed_dim_hidden: 256
-  backbone_noise: 0.30
+  backbone_noise: 0.00 #0.30
   concat_sine_pw: true
   encode_ligand: false
   ligand_atom_embedding: false

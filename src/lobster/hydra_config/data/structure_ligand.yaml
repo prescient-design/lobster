@@ -4,13 +4,13 @@ defaults:
 
 _target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
 root: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
-path_to_datasets: ["/data/bucket/lisanza/structures/pdb_bind/processed_2/"]
+path_to_datasets: ["/data/bucket/lisanza/structures/GEOM/processed/train/", "/data/bucket/lisanza/structures/GEOM/processed/val/", "/data/bucket/lisanza/structures/GEOM/processed/test/"]
 max_length: 512 # Maximum length of the sequence; not used
 cluster_file: null
 files_to_keep: null
 use_ligand_dataset: true
 testing: false
-datasets: ligand_pdb_bind
+datasets: ligand_geom
 use_shards: false
 
 # Dataloader Params
