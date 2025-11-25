@@ -1,0 +1,25 @@
+_target_: lobster.model._property_regression.PropertyRegression
+
+# Encoder with projection head for contrastive triplets checkpoints
+# Ensures fair comparison between BEFORE and AFTER training by using
+# identical architecture (encoder + projection) for both
+encoder:
+  _target_: lobster.model._encoder_with_projection.EncoderWithProjection
+  checkpoint_path: ???  # Required: set in experiment config
+  is_contrastive_checkpoint: false  # Override to true for AFTER checkpoints
+  embedding_dim: 256  # Projection head output dimension
+  pooling_type: mean  # mean, cls, or attention
+  map_location: cpu
+
+config:
+  _target_: lobster.model._property_regression.PropertyRegressionConfig
+  task_name: affinity_prediction
+  loss_function: ${training.loss_function}  # e.g., mse, huber, smooth_l1
+  hidden_sizes: [512]
+  dropout: 0.1
+  activation: silu
+  pooling: mean  # Pooling for the regression head (not encoder - encoder pooling is above)
+  lr: ${training.lr}
+  weight_decay: ${training.weight_decay}
+  unfreeze_last_n_layers: 0  # 0 to freeze all layers (we're evaluating pretrained vs contrastive-trained)
+
