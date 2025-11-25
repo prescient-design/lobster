@@ -1,4 +1,5 @@
 from ._infonce_loss import InfoNCELoss
+from ._qwen3_emb_infonce_loss import Qwen3ContrastiveLoss
 from ._symile_loss import SymileLoss
 from ._classification import FocalLoss
 from ._regression import (
@@ -20,6 +21,7 @@ from ._registry import (
 __all__ = [
     # Loss function classes
     "InfoNCELoss",
+    "Qwen3ContrastiveLoss",
     "SymileLoss",
     "FocalLoss",
     "MSELossWithSmoothing",

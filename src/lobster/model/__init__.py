@@ -5,6 +5,7 @@ from ._clm_configuration import PCLM_CONFIG_ARGS
 from ._conditioanalclassifiermlm import LobsterConditionalClassifierPMLM
 from ._conditioanalmlm import LobsterConditionalPMLM
 from ._dyab import DyAbModel
+from ._encoder_with_projection import EncoderWithProjection
 from ._linear_probe import LobsterLinearProbe
 from ._lobster_fold import FoldseekTransform, LobsterPLMFold
 from ._mgm import LobsterMGM
@@ -15,6 +16,7 @@ from ._peft_lightning_module import LobsterPEFT
 from ._ppi_clf import PPIClassifier
 from ._seq2seq import PrescientPT5
 from ._ume import UME
+from ._ume_contrastive_triplets import UMEContrastiveTriplets
 from ._heads import TaskConfig, TaskHead, MultiTaskHead, FlexibleEncoderWithHeads
 from .latent_generator import cmdline
 from .lm_base import LMBaseContactPredictionHead, LMBaseForMaskedLM

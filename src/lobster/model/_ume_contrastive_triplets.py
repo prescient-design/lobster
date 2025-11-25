@@ -234,15 +234,6 @@ class UMEContrastiveTriplets(pl.LightningModule):
         self.log("train/query_neg_sim", query_neg_sim, sync_dist=True, batch_size=batch_size)
         self.log("train/n_negatives", n_negatives, sync_dist=True, batch_size=batch_size)
         
-        # Log positive similarities from data (for monitoring)
-        if 'positive_seq_similarity' in batch:
-            self.log("train/data_pos_seq_sim", batch['positive_seq_similarity'].mean(),
-                    sync_dist=True, batch_size=batch_size)
-            self.log("train/data_pos_hcdr3_sim", batch['positive_hcdr3_similarity'].mean(),
-                    sync_dist=True, batch_size=batch_size)
-            self.log("train/data_pos_lcdr3_sim", batch['positive_lcdr3_similarity'].mean(),
-                    sync_dist=True, batch_size=batch_size)
-        
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -284,15 +275,6 @@ class UMEContrastiveTriplets(pl.LightningModule):
         self.log("val/query_pos_sim", query_pos_sim, sync_dist=True, batch_size=batch_size)
         self.log("val/query_neg_sim", query_neg_sim, sync_dist=True, batch_size=batch_size)
         self.log("val/n_negatives", n_negatives, sync_dist=True, batch_size=batch_size)
-        
-        # Log positive similarities from data
-        if 'positive_seq_similarity' in batch:
-            self.log("val/data_pos_seq_sim", batch['positive_seq_similarity'].mean(),
-                    sync_dist=True, batch_size=batch_size)
-            self.log("val/data_pos_hcdr3_sim", batch['positive_hcdr3_similarity'].mean(),
-                    sync_dist=True, batch_size=batch_size)
-            self.log("val/data_pos_lcdr3_sim", batch['positive_lcdr3_similarity'].mean(),
-                    sync_dist=True, batch_size=batch_size)
         
         return loss
     

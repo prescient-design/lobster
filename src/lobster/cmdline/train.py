@@ -55,7 +55,11 @@ def train(cfg: DictConfig) -> tuple[pl.LightningModule, pl.LightningDataModule, 
         trainer.logger.experiment.config.update({"cfg": log_cfg}, allow_val_change=cfg.logger.get("allow_val_change"))
 
     if not cfg.dryrun:
-        trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.model.ckpt_path)
+        # Use cfg.model.ckpt_path only if it exists and is meant for resuming Lightning training
+        # For models that load their own pretrained weights (like UMEContrastiveTriplets),
+        # we don't pass ckpt_path to trainer.fit()
+        resume_ckpt = cfg.model.get("ckpt_path") if cfg.model.get("_target_") != "lobster.model.UMEContrastiveTriplets" else None
+        trainer.fit(model, datamodule=datamodule, ckpt_path=resume_ckpt)
 
         if cfg.run_test:
             trainer.test(model, datamodule=datamodule, ckpt_path="best")

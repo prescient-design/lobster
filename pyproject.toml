@@ -51,6 +51,7 @@ build-backend = 'setuptools.build_meta'
 
 [project.scripts]
 lobster_train = "lobster.cmdline:train"
+lobster_finetune = "lobster.cmdline:finetune"
 lobster_embed = "lobster.cmdline:embed"
 lobster_predict = "lobster.cmdline:predict"
 lobster_intervene = "lobster.cmdline:intervene"
