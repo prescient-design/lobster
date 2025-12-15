@@ -136,6 +136,9 @@ trl = [
     "trl",
     "accelerate",
 ]
+tabpfn = [
+    "tabpfn>=6.0.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

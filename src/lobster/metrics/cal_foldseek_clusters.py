@@ -1,10 +1,12 @@
 import subprocess
 import os
+import logging
 from pathlib import Path
 from biotite.sequence.io import fasta
 import shutil
 import pandas as pd
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 
 def setup_foldseek_path(foldseek_bin_path):

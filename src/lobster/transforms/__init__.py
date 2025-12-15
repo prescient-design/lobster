@@ -17,6 +17,7 @@ from ._equivalence_transforms import (
     NucleotideToSmilesPairTransform,
     SmilesToSmilesPairTransform,
 )
+from ._esm_tokenizer_transform import ESMTokenizerTransform
 from ._lambda import Lambda
 from ._modality_aware_transform import ComposedModalityAwareTransform, ModalityAwareTransform
 from ._rdkit_descriptors import SmilesToRDKitDescriptorsTransform
@@ -35,6 +36,7 @@ __all__ = [
     "AminoAcidToNucleotidePairTransform",
     "SmilesToSmilesPairTransform",
     "AminoAcidToNucleotideAndSmilesTransform",
+    "ESMTokenizerTransform",
     "Lambda",
     "StructureFeaturizer",
     "TokenizerTransform",

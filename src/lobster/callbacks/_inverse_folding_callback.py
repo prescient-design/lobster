@@ -1,8 +1,8 @@
 import lightning
+import logging
 import os
 import torch
 from lobster.model.latent_generator.io import writepdb
-from loguru import logger
 from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
@@ -13,6 +13,8 @@ import tqdm
 from lobster.model import LobsterPLMFold
 from torch.utils.data import DataLoader
 import pooch
+
+logger = logging.getLogger(__name__)
 
 
 class InverseFoldingCallback(lightning.Callback):

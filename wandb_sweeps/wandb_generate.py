@@ -12,9 +12,9 @@ Usage:
     sbatch wandb_slurm.sh
 """
 
+import logging
 from pathlib import Path
 
-from loguru import logger
 import pandas as pd
 
 import wandb
@@ -22,6 +22,8 @@ from omegaconf import DictConfig, OmegaConf
 
 # Import the original generation function
 from lobster.cmdline.generate import generate as run_generation
+
+logger = logging.getLogger(__name__)
 
 
 def objective(config):

@@ -5,7 +5,6 @@ import glob
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
-from loguru import logger
 
 from lobster.model.latent_generator.io import writepdb, load_pdb
 from lobster.model.latent_generator.utils.residue_constants import (
@@ -32,6 +31,7 @@ from lobster.model import LobsterPLMFold
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="../hydra_config", config_name="generate")
