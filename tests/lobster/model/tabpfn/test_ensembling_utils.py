@@ -7,7 +7,7 @@ from lobster.model.tabpfn._ensembling_utils import (
     create_feature_subsets,
     create_sample_chunks,
 )
-from lobster.model.tabpfn.constants import MAX_FEATURES_PER_MODEL
+from lobster.constants import MAX_FEATURES_PER_MODEL
 
 
 def test_check_pretraining_limits_within():
