@@ -60,8 +60,8 @@ class MockEmbeddingModel(pl.LightningModule):
 @pytest.fixture
 def mock_tabpfn():
     with (
-        patch("lobster.model.tabpfn.tabpfn_protein.TabPFNRegressor", MockTabPFNModel),
-        patch("lobster.model.tabpfn.tabpfn_protein.TabPFNClassifier", MockTabPFNModel),
+        patch("tabpfn.TabPFNRegressor", MockTabPFNModel),
+        patch("tabpfn.TabPFNClassifier", MockTabPFNModel),
     ):
         yield
 
@@ -198,7 +198,6 @@ def test_tabpfn_model_configure_optimizers_frozen(mock_tabpfn, mock_embedding_in
         task="regression",
         num_labels=1,
         embedding_model_name="test_model",
-        freeze_embeddings=True,
     )
 
     optimizer = model.configure_optimizers()
@@ -206,16 +205,14 @@ def test_tabpfn_model_configure_optimizers_frozen(mock_tabpfn, mock_embedding_in
 
 
 def test_tabpfn_model_configure_optimizers_trainable(mock_tabpfn, mock_embedding_init):
-    with patch.object(MockEmbeddingModel, "parameters", return_value=[torch.nn.Parameter(torch.randn(10))]):
-        model = TabPFNProteinModel(
-            task="regression",
-            num_labels=1,
-            embedding_model_name="test_model",
-            freeze_embeddings=False,
-        )
+    model = TabPFNProteinModel(
+        task="regression",
+        num_labels=1,
+        embedding_model_name="test_model",
+    )
 
-        optimizer = model.configure_optimizers()
-        assert optimizer is not None
+    optimizer = model.configure_optimizers()
+    assert optimizer is None
 
 
 def test_tabpfn_model_forward_not_fitted(mock_tabpfn, mock_embedding_init):
