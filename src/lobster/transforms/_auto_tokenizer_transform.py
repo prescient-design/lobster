@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Any, Union
+from typing import Any
 
 from transformers import AutoTokenizer
 from transformers.tokenization_utils_base import (
@@ -12,11 +12,60 @@ from ._transform import Transform
 
 
 class AutoTokenizerTransform(Transform):
+    """Transform using HuggingFace's AutoTokenizer for any pretrained model.
+
+    Uses HuggingFace's AutoTokenizer to automatically load the correct tokenizer
+    for any supported model (ESM, ProtBERT, BERT, GPT, etc.).
+
+    Parameters
+    ----------
+    pretrained_model_name_or_path : str | PathLike
+        Name or path of pretrained model (e.g., 'facebook/esm2_t33_650M_UR50D',
+        'Rostlab/prot_bert', 'bert-base-uncased')
+    padding : bool | str | PaddingStrategy, default=False
+        Padding strategy
+    truncation : bool | str | TruncationStrategy, default=False
+        Truncation strategy
+    max_length : int | None, default=None
+        Maximum sequence length
+    return_token_type_ids : bool | None, default=None
+        Whether to return token type IDs
+    return_attention_mask : bool | None, default=None
+        Whether to return attention mask
+    return_overflowing_tokens : bool, default=False
+        Whether to return overflowing tokens
+    return_special_tokens_mask : bool, default=False
+        Whether to return special tokens mask
+    return_offsets_mapping : bool, default=False
+        Whether to return offsets mapping
+    return_length : bool, default=False
+        Whether to return length
+    verbose : bool, default=True
+        Whether to print verbose output
+
+    Examples
+    --------
+    >>> # ESM2 model
+    >>> transform = AutoTokenizerTransform(
+    ...     pretrained_model_name_or_path="facebook/esm2_t33_650M_UR50D",
+    ...     max_length=512,
+    ...     padding="max_length",
+    ...     truncation=True,
+    ... )
+    >>> result = transform("ACDEFGHIKLMNPQRSTVWY")
+    >>>
+    >>> # ProtBERT model
+    >>> transform = AutoTokenizerTransform(
+    ...     pretrained_model_name_or_path="Rostlab/prot_bert",
+    ...     max_length=512,
+    ... )
+    """
+
     def __init__(
         self,
         pretrained_model_name_or_path: str | PathLike,
-        padding: Union[bool, str, "PaddingStrategy"] = False,
-        truncation: Union[bool, str, "TruncationStrategy"] = False,
+        padding: bool | str | PaddingStrategy = False,
+        truncation: bool | str | TruncationStrategy = False,
         max_length: int | None = None,
         return_token_type_ids: bool | None = None,
         return_attention_mask: bool | None = None,
@@ -28,6 +77,7 @@ class AutoTokenizerTransform(Transform):
     ):
         super().__init__()
 
+        self._pretrained_model_name_or_path = pretrained_model_name_or_path
         self._padding = padding
         self._truncation = truncation
         self._max_length = max_length
@@ -39,20 +89,30 @@ class AutoTokenizerTransform(Transform):
         self._return_length = return_length
         self._verbose = verbose
 
-        self._auto_tokenizer = AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path,
-            do_lower_case=False,
-            use_fast=True,
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self._pretrained_model_name_or_path,
         )
 
-        # self._auto_tokenizer.pad_token = self._auto_tokenizer.eos_token
-
-    def transform(
+    def _transform(
         self,
         text: str | list[str] | list[int],
         parameters: dict[str, Any],
-    ) -> "BatchEncoding":
-        tokenized = self._auto_tokenizer(
+    ) -> BatchEncoding:
+        """Tokenize input text.
+
+        Parameters
+        ----------
+        text : str | list[str] | list[int]
+            Input text or sequence to tokenize
+        parameters : dict[str, Any]
+            Additional parameters (unused)
+
+        Returns
+        -------
+        BatchEncoding
+            Tokenized output with input_ids, attention_mask, etc.
+        """
+        tokenized = self._tokenizer(
             text,
             padding=self._padding,
             truncation=self._truncation,
@@ -67,18 +127,13 @@ class AutoTokenizerTransform(Transform):
             verbose=self._verbose,
         )
 
-        tokenized["labels"] = tokenized["input_ids"].clone()
-
-        tokenized["labels"][:-1] = tokenized["input_ids"][1:]
-        tokenized["labels"][-1] = -100
-
         return tokenized
 
-    def _transform(self, input: Any, parameters: dict[str, Any]) -> Any:
-        return self.transform(input, parameters)
-
-    def validate(self, flat_inputs: list[Any]) -> None:
-        pass
-
     def _check_inputs(self, inputs: list[Any]) -> None:
+        """Check inputs - required by base Transform class."""
         pass
+
+    @property
+    def tokenizer(self):
+        """Get the underlying tokenizer."""
+        return self._tokenizer

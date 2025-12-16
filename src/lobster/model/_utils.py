@@ -4,6 +4,7 @@ from ._conditioanalclassifiermlm import LobsterConditionalClassifierPMLM
 from ._conditioanalmlm import LobsterConditionalPMLM
 from ._mlm import LobsterPMLM
 from ._pooler import LMAttentionPool1D, LMClsPooler, LMMeanPooler, LMWeightedMeanPooler
+from ._ume import UME
 
 model_typer = {
     "LobsterPMLM": LobsterPMLM,
@@ -11,6 +12,7 @@ model_typer = {
     "LobsterConditionalPMLM": LobsterConditionalPMLM,
     "LobsterConditionalClassifierPMLM": LobsterConditionalClassifierPMLM,
     "LobsterCBMPMLM": LobsterCBMPMLM,
+    "UME": UME,
 }
 
 POOLERS = {

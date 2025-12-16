@@ -1,0 +1,9 @@
+_target_: lobster.transforms.AutoTokenizerTransform
+
+pretrained_model_name_or_path: facebook/esm2_t33_650M_UR50D
+padding: max_length
+truncation: true
+max_length: 512
+return_attention_mask: true
+verbose: false
+

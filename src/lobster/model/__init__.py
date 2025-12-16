@@ -14,7 +14,7 @@ from ._mlp import LobsterMLP
 from ._peft_lightning_module import LobsterPEFT
 from ._ppi_clf import PPIClassifier
 from ._seq2seq import PrescientPT5
-from ._tabpfn_protein import TabPFNProteinModel
+from .tabpfn import TabPFNProteinModel
 from ._ume import UME
 from ._heads import TaskConfig, TaskHead, MultiTaskHead, FlexibleEncoderWithHeads
 from .latent_generator import cmdline

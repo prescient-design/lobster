@@ -1,0 +1,5 @@
+_target_: lobster.transforms.BinarizeLabelTransform
+
+# Threshold for binarization: values > threshold become class 1, otherwise class 0
+threshold: 1.0
+

@@ -7,6 +7,7 @@
 # )
 from ._auto_tokenizer_transform import AutoTokenizerTransform
 from ._binarize import BinarizeTransform
+from ._binarize_label import BinarizeLabelTransform
 from ._biopython_features import ProteinToBioPythonFeaturesTransform
 from ._equivalence_transforms import (
     AminoAcidToNucleotideAndSmilesTransform,
@@ -17,7 +18,6 @@ from ._equivalence_transforms import (
     NucleotideToSmilesPairTransform,
     SmilesToSmilesPairTransform,
 )
-from ._esm_tokenizer_transform import ESMTokenizerTransform
 from ._lambda import Lambda
 from ._modality_aware_transform import ComposedModalityAwareTransform, ModalityAwareTransform
 from ._rdkit_descriptors import SmilesToRDKitDescriptorsTransform
@@ -28,6 +28,7 @@ from ._transform import Transform
 __all__ = [
     "AutoTokenizerTransform",
     "BinarizeTransform",
+    "BinarizeLabelTransform",
     "ProteinToBioPythonFeaturesTransform",
     "NucleotideToAminoAcidPairTransform",
     "NucleotideToAminoAcidAndSmilesTransform",
@@ -36,7 +37,7 @@ __all__ = [
     "AminoAcidToNucleotidePairTransform",
     "SmilesToSmilesPairTransform",
     "AminoAcidToNucleotideAndSmilesTransform",
-    "ESMTokenizerTransform",
+    "AutoTokenizerTransform",
     "Lambda",
     "StructureFeaturizer",
     "TokenizerTransform",

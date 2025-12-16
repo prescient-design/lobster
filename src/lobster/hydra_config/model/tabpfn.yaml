@@ -1,0 +1,25 @@
+_target_: lobster.model.TabPFNProteinModel
+
+# Task configuration
+task: regression  # "regression" or "classification"
+num_labels: 1  # 1 for regression, 2 for binary classification, N for multiclass
+
+# Embedding model configuration
+num_chains: 1
+embedding_model_type: LobsterPMLM
+embedding_model_name: esm2_t33_650M_UR50D
+embedding_checkpoint: null
+pooling: mean  # "mean", "max", or "cls"
+max_length: 512
+
+# TabPFN configuration
+tabpfn_n_ensemble: 4
+tabpfn_ignore_pretraining_limits: true
+enable_large_data_ensembling: true
+
+# Metric configuration
+metric_average: weighted
+
+# Additional features (optional)
+additional_features: null
+ckpt_path: null

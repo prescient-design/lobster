@@ -1,0 +1,31 @@
+_target_: lobster.data.ParquetLightningDataModule
+
+train_path: s3://prescient-spark-collaboration-dev/data/pre-processed/cap0270_maturation/filtered/train/
+val_path: s3://prescient-spark-collaboration-dev/data/pre-processed/cap0270_maturation/filtered/val/
+test_path: s3://prescient-spark-collaboration-dev/data/pre-processed/cap0270_maturation/filtered/test/
+
+sequence_column: Peptide
+label_column: AAVLibrary_Log2FC_vs_PlasmidLibrary
+
+transform_fn: 
+  _target_: lobster.transforms.AutoTokenizerTransform
+  pretrained_model_name_or_path: facebook/esm2_t33_650M_UR50D
+  padding: max_length
+  truncation: true
+  max_length: 512
+  return_attention_mask: true
+  verbose: false
+
+batch_size: 32
+num_workers: 4
+shuffle: true
+pin_memory: true
+drop_last: false
+
+# "float32" for regression, "long" for classification
+label_dtype: float32
+
+# Debug mode: sample only 100 sequences from each split
+debug: false
+seed: 42
+
