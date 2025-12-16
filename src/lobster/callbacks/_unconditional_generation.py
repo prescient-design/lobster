@@ -1,14 +1,16 @@
 import lightning
+import logging
 import os
 import torch
 from lobster.model.latent_generator.io import writepdb
-from loguru import logger
 from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
 )
 from lobster.model import LobsterPLMFold
 from lobster.metrics import get_folded_structure_metrics
+
+logger = logging.getLogger(__name__)
 
 
 class UnconditionalGenerationCallback(lightning.Callback):

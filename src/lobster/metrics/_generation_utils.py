@@ -1,7 +1,5 @@
 import torch
-from tmtools import tm_align
 import logging
-from loguru import logger
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -12,7 +10,7 @@ from lobster.model.latent_generator.utils import kabsch_torch_batched
 from lobster.model.latent_generator.utils.residue_constants import restype_order_with_x
 
 
-# Set up logging
+logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
@@ -756,6 +754,13 @@ def get_folded_structure_metrics(outputs, ref_coords, ref_seq, prefix="", mask=N
     torch.Tensor
         The predicted coordinates of the structure. Shape [B, L, 3, 3].
     """
+    try:
+        from tmtools import tm_align
+    except ImportError as e:
+        raise ImportError(
+            "tmtools is required. Install with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`"
+        ) from e
+
     pred_coords = outputs["positions"][-1][:, :, :3, :]  # [B, L, 3, 3]
     plddt_scores = outputs["plddt"].mean(dim=(-1, -2))  # [B]
     predicted_aligned_error = outputs["predicted_aligned_error"].mean(dim=(-1, -2))  # [B]

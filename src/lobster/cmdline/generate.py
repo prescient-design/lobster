@@ -5,7 +5,6 @@ import glob
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
-from loguru import logger
 
 from lobster.model.latent_generator.io import writepdb, load_pdb
 from lobster.model.latent_generator.utils.residue_constants import (
@@ -27,8 +26,9 @@ from lobster.metrics import (
 )
 from lobster.metrics.cal_foldseek_clusters import calculate_diversity_for_generation
 from lobster.transforms._structure_transforms import StructureBackboneTransform, AminoAcidTokenizerTransform
-from tmtools import tm_align
 from lobster.model import LobsterPLMFold
+
+logger = logging.getLogger(__name__)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -202,6 +202,13 @@ def _execute_self_reflection_pipeline(
         Dictionary containing self-reflection metrics or None if pipeline failed
     """
     from lobster.transforms._structure_transforms import AminoAcidTokenizerTransform
+
+    try:
+        from tmtools import tm_align
+    except ImportError as e:
+        raise ImportError(
+            "tmtools is required. Install with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`"
+        ) from e
 
     gen_cfg = cfg.generation
 
@@ -1238,6 +1245,13 @@ def _generate_inverse_folding(
     model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
 ) -> None:
     """Generate sequences for given structures (inverse folding)."""
+    try:
+        from tmtools import tm_align
+    except ImportError as e:
+        raise ImportError(
+            "tmtools is required. Install with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`"
+        ) from e
+
     logger.info("Starting inverse folding generation...")
 
     # Get input structure paths
@@ -1907,6 +1921,12 @@ def _generate_forward_folding(
     model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
 ) -> None:
     """Generate structures from given input structures (forward folding)."""
+    try:
+        from tmtools import tm_align
+    except ImportError as e:
+        raise ImportError(
+            "tmtools is required. Install with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`"
+        ) from e
     logger.info("Starting forward folding generation...")
 
     # Get input structure paths
@@ -2319,6 +2339,12 @@ def _generate_inpainting(
     model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
 ) -> None:
     """Generate structures using inpainting (mask and regenerate specific positions)."""
+    try:
+        from tmtools import tm_align
+    except ImportError as e:
+        raise ImportError(
+            "tmtools is required. Install with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`"
+        ) from e
     logger.info("Starting inpainting generation...")
 
     # Get input structure paths
