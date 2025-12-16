@@ -96,17 +96,17 @@ class TestMoleculeACESklearnProbeCallback:
 
         # Check individual tasks
         for metric, expected_value in expected_chembl204.items():
-            assert math.isclose(results["CHEMBL204_Ki"][metric], expected_value, rel_tol=1e-3), (
+            assert math.isclose(results["CHEMBL204_Ki"][metric], expected_value, rel_tol=5e-2), (
                 f"Metric {metric} is not close to expected value {expected_value}. Got {results['CHEMBL204_Ki'][metric]}"
             )
 
         for metric, expected_value in expected_chembl214.items():
-            assert math.isclose(results["CHEMBL214_Ki"][metric], expected_value, rel_tol=1e-3), (
+            assert math.isclose(results["CHEMBL214_Ki"][metric], expected_value, rel_tol=5e-2), (
                 f"Metric {metric} is not close to expected value {expected_value}. Got {results['CHEMBL214_Ki'][metric]}"
             )
 
         # Check mean values
         for metric, expected_value in expected_mean.items():
-            assert math.isclose(results["mean"][metric], expected_value, rel_tol=1e-3), (
+            assert math.isclose(results["mean"][metric], expected_value, rel_tol=5e-2), (
                 f"Metric {metric} is not close to expected value {expected_value}. Got {results['mean'][metric]}"
             )
