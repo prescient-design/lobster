@@ -1,0 +1,60 @@
+# WandB Sweep Configuration for genUME Parameter Optimization
+# Based on https://docs.wandb.ai/guides/sweeps/walkthrough/
+
+program: wandb_generate.py
+method: bayes  # Bayesian optimization for efficient search
+metric:
+  name: composite_score
+  goal: maximize
+
+parameters:
+  # Generation steps - affects quality vs speed tradeoff
+  generation_steps:
+    values: [500, 600, 700, 800, 900, 1000]
+  
+  # Sequence temperature - controls randomness in sequence generation
+  temperature_seq:
+    distribution: uniform
+    min: 0.1
+    max: 1.5
+  
+  # Structure temperature - controls randomness in structure generation  
+  temperature_struc:
+    distribution: uniform
+    min: 0.1
+    max: 1.5
+  
+  # Sequence stochasticity - affects sampling diversity
+  stochasticity_seq:
+    values: [10, 20, 30, 40, 50, 60]
+  
+  # Structure stochasticity - affects structural diversity
+  stochasticity_struc:
+    values: [10, 20, 30, 40, 50, 60]
+  
+  # Generation length - protein size to optimize for
+  protein_length:
+    values: [500]
+  
+  # Number of samples per run - affects statistical significance
+  num_generation_samples:
+    values: [20]
+
+# Early termination for poor performing runs
+early_terminate:
+  type: hyperband
+  min_iter: 1
+  max_iter: 10
+  s: 2
+  eta: 3
+
+
+# Command line arguments passed to the program
+command:
+  - ${env}
+  - python
+  - ${program}
+  - --config_path=../hydra_config
+  - --config_name=generate
+  - --multirun
+

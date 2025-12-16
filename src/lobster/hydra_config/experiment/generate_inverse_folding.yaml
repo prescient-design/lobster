@@ -1,0 +1,43 @@
+# Example configuration for inverse folding (sequence design for given structures)
+# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_inverse_folding
+
+# Output directory
+output_dir: "./examples/generated_inverse_folding"
+
+# Random seed for reproducibility
+seed: 54321
+
+# Model configuration
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt" 
+
+# Generation settings
+generation:
+  mode: inverse_folding
+  nsteps: 200          # Fewer steps for inverse folding
+  batch_size: 1        # Process 1 structures at a time
+  n_trials: 3          # Number of trials for best output selection
+  
+  #Generation parameters
+  temperature_seq: 0.16423763902324678    
+  temperature_struc: 1.0  
+  stochasticity_seq: 20 
+  stochasticity_struc: 10
+
+  n_designs_per_structure: 10  # Number of designs to generate per structure
+  # Input structures - update these paths to your PDB files
+  # Examples of different input formats:
+  # Single file: input_structures: "/path/to/structure.pdb"
+  # Directory: input_structures: "/path/to/pdb/directory/"
+  # Glob pattern: input_structures: "/path/to/structures/*.pdb"
+  # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
+  input_structures: "test_data/inv_folding/9jl9.pdb"
+
+  # Enable ESMFold validation
+  use_esmfold: true
+  max_length: 512
+  
+  # Not used for inverse folding
+  length: null
+  num_samples: null

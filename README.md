@@ -93,19 +93,19 @@ uv sync --extra <group name 1> --extra <group name 2>
 ```
 
 where <group name i> can be one of
-* `lg-gpu`, `lg-cpu` for Latent Generator dependencies for GPU or CPU respectively
+* `struct-gpu`, `struct-cpu` for Latent Generator dependencies for GPU or CPU respectively
 * `mgm` for UME dependencies 
 * `flash` for flash-attention on GPU
 * `mcp` for MCP servers
 * `trl` for transformer reinforcement learning
 
 Recommended installation of all optional dependencies on a CPU:
-```
-uv sync --extra mgm --extra mcp --extra lg-cpu --extra trl
+```bash
+uv sync --extra mgm --extra mcp --extra struct-cpu --extra trl
 ```
 Recommended installation of all optional dependencies on a GPU:
-```
-uv sync --extra mgm --extra mcp --extra lg-gpu --extra flash --extra trl
+```bash
+uv sync --extra mgm --extra mcp --extra struct-gpu --extra trl
 ```
 
 

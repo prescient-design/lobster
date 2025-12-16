@@ -1,0 +1,6 @@
+UnconditionalGenerationCallback:
+  _target_: lobster.callbacks._unconditional_generation.UnconditionalGenerationCallback
+  save_every_n: 1000
+  length: 100
+  num_samples: 10
+  structure_path: "${paths.output_dir}/structures/"

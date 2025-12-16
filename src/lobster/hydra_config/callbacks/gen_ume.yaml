@@ -1,0 +1,16 @@
+defaults:
+  - model_checkpoint.yaml
+  - lr_monitor.yaml
+  - progress_bar.yaml
+  - structure_decode.yaml
+  - unconditional_generation.yaml
+  - _self_
+
+
+model_checkpoint:
+  dirpath: ${paths.output_dir}
+  filename: "{epoch}-{step}-{val_loss:.4f}"
+  monitor: val_loss
+
+early_stopping:
+  monitor: val_loss

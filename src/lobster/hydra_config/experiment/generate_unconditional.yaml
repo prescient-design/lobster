@@ -1,0 +1,79 @@
+# Example configuration for unconditional generation
+# Purpose: Improve ESMFold validation metrics through structure-sequence consistency
+# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_unconditional
+
+# Output directory
+output_dir: "./examples/generated_unconditional"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt"
+
+# Generation parameters
+generation:
+  mode: unconditional
+  length: [500]
+  num_samples: 10
+  nsteps: 1000
+  batch_size: 1
+  save_csv_metrics: true
+  create_plots: true
+  asynchronous_sampling: false
+  
+  # Unconditional generation parameters
+  temperature_seq: 0.4579796403264936   
+  temperature_struc: 0.35751879409731435  
+  stochasticity_seq: 30 
+  stochasticity_struc: 70
+  
+  # Enable self-reflection refinement (improves ESMFold metrics)
+  enable_self_reflection: true
+  
+  # Self-reflection pipeline parameters
+  # These control the refinement stages to improve structure-sequence consistency
+  self_reflection:
+    # ESMFold validation for measuring improvement (optional, default: false)
+    use_esmfold_validation: false           # Enable ESMFold validation within self-reflection pipeline
+    
+    forward_folding:
+      nsteps: 100
+      temperature_seq: 0.2967457760634187
+      temperature_struc: 0.1102551183666233
+      stochasticity_seq: 10
+      stochasticity_struc: 30
+    
+    inverse_folding:
+      nsteps: 200
+      temperature_seq: 0.16423763902324678
+      temperature_struc: 1.0
+      stochasticity_seq: 20
+      stochasticity_struc: 10
+    
+    # Quality control: Retry iterations if metrics don't meet thresholds
+    quality_control:
+      enable_tm_threshold: true              # Enable TM-score quality control
+      min_tm_score_forward: 0.8334123066155882              # Minimum TM-score between unconditional and forward-folded structures
+      enable_min_percent_identity_threshold: true # Enable minimum percent identity quality control
+      min_percent_identity: 50             # Minimum percent identity between initial and refined sequences (%)
+      enable_max_percent_identity_threshold: true # Enable maximum percent identity quality control
+      max_percent_identity: 100             # Maximum percent identity - if too high, structure is too unique (%)
+      enable_sequence_token_check: true      # Enable check for invalid sequence tokens (mask/unknown amino acids)
+      max_retries: 30                        # Maximum retry attempts per iteration
+  
+  # Enable ESMFold validation (required to measure improvement)
+  use_esmfold: true
+  max_length: 512
+
+  # Foldseek Diversity Analysis (structural clustering)
+  calculate_foldseek_diversity: true  # Enable/disable diversity calculation
+  foldseek_bin_path: "/homefs/home/lisanzas/scratch/Develop/lobster/src/lobster/metrics/foldseek/bin"
+  foldseek_tmscore_threshold: 0.5  # TM-score threshold for Foldseek clustering
+  rmsd_threshold_for_diversity: 2.0  # Only cluster structures with RMSD < this threshold
+  
+  # Not used for unconditional generation
+  input_structures: null
+

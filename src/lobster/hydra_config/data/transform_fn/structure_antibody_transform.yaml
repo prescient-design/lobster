@@ -1,0 +1,5 @@
+defaults:
+  - structure_antibody_chain_transform.yaml
+  - structure_complex_transform.yaml
+  - structure_amino_acid_tokenizer_transform.yaml
+  - _self_

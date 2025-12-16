@@ -1,0 +1,2 @@
+DEFAULT_AF2_PREDICTION_MODELS = [0, 1]
+DEFAULT_AF2_WEIGHTS_DIR = "/data2/alphafold2/weights"

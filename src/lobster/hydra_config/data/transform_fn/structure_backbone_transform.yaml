@@ -1,0 +1,3 @@
+structure_backbone_transform:
+  _target_: lobster.transforms._structure_transforms.StructureBackboneTransform
+  max_length: 512

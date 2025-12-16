@@ -1,0 +1,7 @@
+InverseFoldingCallback:
+  _target_: lobster.callbacks._inverse_folding_callback.InverseFoldingCallback
+  structure_path: ${paths.output_dir}/structures/
+  save_every_n: 1000
+  length: 100
+  num_samples: 10
+  use_plm_fold: true

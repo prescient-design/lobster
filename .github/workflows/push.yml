@@ -39,7 +39,7 @@ jobs:
         with:
           version: latest
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra mgm --extra mcp --extra trl --dev --extra lg-cpu 
+      - run: uv sync --extra mgm --extra mcp --extra trl --dev --extra struct-cpu 
       - run: uv run pytest
       - env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

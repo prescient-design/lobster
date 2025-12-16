@@ -10,6 +10,8 @@ from ._sklearn_probe_callback import SklearnProbeCallback, SklearnProbeTaskConfi
 from ._tokens_per_second_callback import TokensPerSecondCallback, default_batch_length_fn, default_batch_size_fn
 from ._umap_visualization_callback import UmapVisualizationCallback
 from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
+from ._structure_decode import StructureDecodeCallback
+from ._unconditional_generation import UnconditionalGenerationCallback
 
 __all__ = [
     "SklearnProbeTaskConfig",

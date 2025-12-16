@@ -82,7 +82,7 @@ class TestProteinOnlyModels:
     )
     @pytest.mark.skipif(
         not HAS_CPDB,
-        reason="cpdb is not installed. Please install it with `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`",
+        reason="cpdb is not installed. Please install it with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`",
     )
     def test_protein_encoding_decoding(self, model_name, protein_data):
         """Test encoding and decoding of protein structures."""
@@ -141,7 +141,7 @@ class TestProteinLigandModels:
     )
     @pytest.mark.skipif(
         not HAS_CPDB,
-        reason="cpdb is not installed. Please install it with `uv sync --extra lg-gpu` or `uv sync --extra lg-cpu`",
+        reason="cpdb is not installed. Please install it with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`",
     )
     def test_protein_ligand_encoding_decoding(self, model_name, protein_ligand_data):
         """Test encoding and decoding of protein-ligand structures."""

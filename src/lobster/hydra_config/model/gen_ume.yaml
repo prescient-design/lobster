@@ -1,0 +1,16 @@
+_target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule 
+lr: 1e-3
+scheduler: cosine 
+scheduler_kwargs:
+  num_warmup_steps: 5_000
+  num_training_steps: 50_000
+num_warmup_steps: 5_000
+num_training_steps: 50_000
+weight_decay: 0.01
+mask_token_id: 32
+pad_token_id: 1
+vocab_size: 33
+ckpt_path: null
+encoder_kwargs:
+  max_length: ${data.max_length}
+  model_size: mini

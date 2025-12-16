@@ -44,6 +44,10 @@ from ._ume_models import (
 )
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
 from ._sklearn_probe import SklearnProbeTaskType, SklearnProbeType
+from ._alphafold2 import (
+    DEFAULT_AF2_PREDICTION_MODELS,
+    DEFAULT_AF2_WEIGHTS_DIR,
+)
 
 __all__ = [
     "AMINO_ACID_GROUPS",
@@ -91,4 +95,6 @@ __all__ = [
     "S3_BUCKET",
     "SklearnProbeTaskType",
     "SklearnProbeType",
+    "DEFAULT_AF2_PREDICTION_MODELS",
+    "DEFAULT_AF2_WEIGHTS_DIR",
 ]

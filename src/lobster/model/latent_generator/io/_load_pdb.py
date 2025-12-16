@@ -60,7 +60,7 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
     """
     import lobster
 
-    lobster.ensure_package("cpdb", group="lg-gpu (or --extra lg-cpu)")
+    lobster.ensure_package("cpdb", group="struct-gpu (or --extra struct-cpu)")
 
     if filepath.startswith("s3://"):
         # Parse S3 URI

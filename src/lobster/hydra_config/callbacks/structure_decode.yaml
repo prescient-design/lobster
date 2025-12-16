@@ -1,0 +1,4 @@
+structure_decode:
+  _target_: lobster.callbacks._structure_decode.StructureDecodeCallback
+  structure_path: "${paths.output_dir}/structures/"
+  save_every_n: 1000
