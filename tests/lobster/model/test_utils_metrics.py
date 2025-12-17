@@ -1,4 +1,5 @@
-from torchmetrics import AUROC, F1Score, MeanAbsoluteError, R2Score, SpearmanCorrCoef
+from torchmetrics import MeanAbsoluteError, R2Score, SpearmanCorrCoef
+from torchmetrics.classification import BinaryAUROC, BinaryF1Score, MulticlassAUROC, MulticlassF1Score
 
 from lobster.model._utils_metrics import (
     create_regression_metrics,
@@ -32,8 +33,8 @@ def test_create_classification_metrics_binary():
     assert "f1" in metrics
     assert "auroc" in metrics
 
-    assert isinstance(metrics["f1"], F1Score)
-    assert isinstance(metrics["auroc"], AUROC)
+    assert isinstance(metrics["f1"], BinaryF1Score)
+    assert isinstance(metrics["auroc"], BinaryAUROC)
 
 
 def test_create_classification_metrics_multiclass():
@@ -42,8 +43,8 @@ def test_create_classification_metrics_multiclass():
     assert "f1" in metrics
     assert "auroc" in metrics
 
-    assert isinstance(metrics["f1"], F1Score)
-    assert isinstance(metrics["auroc"], AUROC)
+    assert isinstance(metrics["f1"], MulticlassF1Score)
+    assert isinstance(metrics["auroc"], MulticlassAUROC)
 
 
 def test_create_classification_metrics_with_averaging():
@@ -79,7 +80,7 @@ def test_create_all_metrics_classification():
 
 
 def test_create_all_metrics_classification_with_averaging():
-    all_metrics = create_all_metrics("classification", num_labels=4, metric_average="micro")
+    all_metrics = create_all_metrics("classification", num_labels=4, metric_average="macro")
 
     assert len(all_metrics) == 3
     for stage in ["train", "val", "test"]:
