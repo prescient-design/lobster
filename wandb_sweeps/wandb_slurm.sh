@@ -31,4 +31,4 @@ export WANDB_BASE_URL=https://genentech.wandb.io
 
 export TOKENIZERS_PARALLELISM=true
 
-srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose wandb agent prescient-design/lobster-wandb_sweeps/esetb9tp
+srun -u --cpus-per-task $SLURM_CPUS_PER_TASK --cpu-bind=cores,verbose wandb agent prescient-design/lobster-wandb_sweeps/z5bzaqut

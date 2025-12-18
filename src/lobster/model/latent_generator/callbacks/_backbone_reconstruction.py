@@ -87,12 +87,16 @@ class BackboneReconstruction(lightning.Callback):
             logger.info(f"Cleaned up {num_to_delete} old PDB files. Total files: {self.max_total_files}")
 
     def on_train_batch_end(self, trainer, tokenizer, outputs, batch, batch_idx):
-        self._save_reconstruction(trainer, outputs, batch, batch_idx, prefix="")
-        self._cleanup_old_files()
+        # Only save on rank 0 to avoid file I/O contention in distributed training
+        if trainer.is_global_zero:
+            self._save_reconstruction(trainer, outputs, batch, batch_idx, prefix="")
+            self._cleanup_old_files()
 
     def on_validation_batch_end(self, trainer, tokenizer, outputs, batch, batch_idx, dataloader_idx=0):
-        self._save_reconstruction(trainer, outputs, batch, batch_idx, prefix="val_")
-        self._cleanup_old_files()
+        # Only save on rank 0 to avoid file I/O contention in distributed training
+        if trainer.is_global_zero:
+            self._save_reconstruction(trainer, outputs, batch, batch_idx, prefix="val_")
+            self._cleanup_old_files()
 
     def _save_reconstruction(self, trainer, outputs, batch, batch_idx, prefix=""):
         current_step = trainer.global_step

@@ -24,6 +24,12 @@ from ._structure_featurizer import StructureFeaturizer
 from ._tokenizer_transform import TokenizerTransform
 from ._transform import Transform
 
+# Note: _ligand_chemistry and _ligand_inference have lazy imports to avoid
+# circular dependencies with lobster.model.latent_generator.utils.residue_constants.
+# Import them directly from the submodules when needed:
+#   from lobster.transforms._ligand_chemistry import smiles_to_graph
+#   from lobster.transforms._ligand_inference import smiles_to_ligand_input
+
 __all__ = [
     "AutoTokenizerTransform",
     "BinarizeTransform",
@@ -43,3 +49,31 @@ __all__ = [
     "ComposedModalityAwareTransform",
     "SmilesToRDKitDescriptorsTransform",
 ]
+
+
+def __getattr__(name):
+    """Lazy import for ligand chemistry functions to avoid circular imports."""
+    ligand_chemistry_exports = {
+        "smiles_to_graph",
+        "graph_to_smiles",
+        "atom_types_to_indices",
+        "indices_to_atom_types",
+        "mol_to_bond_matrix",
+        "sdf_to_bond_matrix",
+    }
+    ligand_inference_exports = {
+        "smiles_to_ligand_input",
+        "sdf_to_ligand_input",
+        "reconstruct_smiles",
+        "reconstruct_smiles_from_tokens",
+    }
+
+    if name in ligand_chemistry_exports:
+        from . import _ligand_chemistry
+
+        return getattr(_ligand_chemistry, name)
+    elif name in ligand_inference_exports:
+        from . import _ligand_inference
+
+        return getattr(_ligand_inference, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

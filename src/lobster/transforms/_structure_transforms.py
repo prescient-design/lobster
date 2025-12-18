@@ -613,6 +613,9 @@ class StructureLigandTransform(BaseTransform):
             x["atom_names"] = [x["atom_names"][i] for i in random_order_list]
             if "element_indices" in x:
                 x["element_indices"] = x["element_indices"][random_order]
+            # Permute bond_matrix: reindex both rows and columns
+            if "bond_matrix" in x:
+                x["bond_matrix"] = x["bond_matrix"][random_order][:, random_order]
 
         return x
 

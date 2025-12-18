@@ -899,11 +899,15 @@ class TimeCondUViTDecoder(nn.Module):
         ligand_mask=None,
         **kwargs,
     ):
+        # Check if ligand has actual data (not just empty tensor)
+        has_ligand_data = self.encode_ligand and ligand_quant is not None and ligand_quant.shape[1] > 0
+
         if x_quant is not None:
             x_emb = self.embed_struc_tokens(x_quant)
         else:
             x_emb = None
-        if self.encode_ligand and ligand_quant is not None:
+
+        if has_ligand_data:
             ligand_emb = self.embed_ligand_tokens(ligand_quant)
             if x_emb is not None:
                 B, L, D = x_emb.shape
@@ -929,7 +933,7 @@ class TimeCondUViTDecoder(nn.Module):
 
         x = self.ffn(x_out)
 
-        if self.encode_ligand and ligand_quant is not None:
+        if has_ligand_data:
             if x_quant is not None:
                 ligand_x = x[:, L:, :]
                 x = x[:, :L, :]
@@ -942,7 +946,7 @@ class TimeCondUViTDecoder(nn.Module):
             x = self.from_patch(x)
             x = rearrange(x, "b c n a -> b n a c")
 
-        if self.encode_ligand and ligand_quant is not None:
+        if has_ligand_data:
             out = {"protein_coords": x, "ligand_coords": ligand_x}
         else:
             out = x

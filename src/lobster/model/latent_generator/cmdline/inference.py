@@ -179,6 +179,84 @@ methods = {
     ),
     # Protein-Ligand Models
     # These models can handle both protein and ligand structures
+    "LG Protein Ligand": ModelInfo(
+        description="Protein-ligand model with structure-only encoding",
+        features=[
+            "256-dim embeddings",
+            "Ligand encoding support",
+            "512 ligand tokens",
+            "512 protein tokens",
+        ],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2025-12-07T22-38-42/epoch=830-step=88917-val_loss=16.5010.ckpt",  # "/data2/ume/latent_generator_/runs//2025-11-26T15-51-49/last.ckpt", #"/data2/ume/latent_generator_/runs//2025-11-25T14-42-33/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=4",
+                "tokenizer.quantizer.embed_dim=4",
+                "tokenizer.quantizer.ligand_embed_dim=4",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=512",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=512",
+                "tokenizer.quantizer.ligand_n_tokens=512",
+                "tokenizer/quantizer=slq_quantizer_ligand",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 4375": ModelInfo(
+        description="Protein-ligand model with FSQ quantization (4375 tokens)",
+        features=[
+            "5-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "4375 ligand tokens",
+            "4375 protein tokens",
+        ],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2025-12-13T16-34-07/epoch=240-step=25787-val_loss=16.4510.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=5",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[7,5,5,5,5]",
+                "tokenizer.quantizer.ligand_levels=[7,5,5,5,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4375",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=4375",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 1000": ModelInfo(
+        description="Protein-ligand model with FSQ quantization (1000 tokens)",
+        features=[
+            "4-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "1000 ligand tokens",
+            "1000 protein tokens",
+        ],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2025-12-13T14-57-53/epoch=210-step=22577-val_loss=17.2066.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=4",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[8,5,5,5]",
+                "tokenizer.quantizer.ligand_levels=[8,5,5,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=1000",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=1000",
+            ],
+        ),
+    ),
     "LG Ligand 20A seq 3di Aux": ModelInfo(
         description="Protein-ligand model with sequence and 3Di awareness",
         features=[
@@ -717,6 +795,32 @@ LG Ligand 20A continuous
 
 Protein-Ligand Models:
 ---------------------
+LG Protein Ligand
+    Description: Protein-ligand model with structure-only encoding
+    Features:
+    - 256-dim embeddings
+    - Ligand encoding support
+    - 512 ligand tokens
+    - 512 protein tokens
+
+LG Protein Ligand fsq 4375
+    Description: Protein-ligand model with FSQ quantization (4375 tokens)
+    Features:
+    - 5-dim embeddings
+    - FSQ quantization
+    - Ligand encoding support
+    - 4375 ligand tokens
+    - 4375 protein tokens
+
+LG Protein Ligand fsq 1000
+    Description: Protein-ligand model with FSQ quantization (1000 tokens)
+    Features:
+    - 4-dim embeddings
+    - FSQ quantization
+    - Ligand encoding support
+    - 1000 ligand tokens
+    - 1000 protein tokens
+
 LG Ligand 20A seq 3di Aux
     Description: Protein-ligand model with sequence and 3Di awareness
     Features:
@@ -829,13 +933,17 @@ LG full attention
         py_logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
 
     # Load the model with overrides if provided
-    if (
-        args.model_name != "LG Ligand 20A seq 3di Aux"
-        and args.model_name != "LG Ligand 20A"
-        and args.model_name != "LG Ligand 20A continuous"
-    ) and args.ligand_path is not None:
+    ligand_supported_models = [
+        "LG Protein Ligand",
+        "LG Protein Ligand fsq 4375",
+        "LG Protein Ligand fsq 1000",
+        "LG Ligand 20A seq 3di Aux",
+        "LG Ligand 20A",
+        "LG Ligand 20A continuous",
+    ]
+    if args.model_name not in ligand_supported_models and args.ligand_path is not None:
         raise ValueError(
-            "Ligand path is only supported for LG Ligand 20A seq 3di Aux model, LG Ligand 20A model or LG Ligand 20A continuous model"
+            f"Ligand path is only supported for the following models: {', '.join(ligand_supported_models)}"
         )
 
     if args.model_name in methods:

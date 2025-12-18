@@ -207,7 +207,17 @@ class InverseFoldingCallback(lightning.Callback):
             return
 
         current_step = trainer.global_step
-        device = batch["sequence"].device
+
+        # Get device from whatever tensor is available in the batch
+        if "sequence" in batch:
+            device = batch["sequence"].device
+        elif "ligand_coords" in batch:
+            device = batch["ligand_coords"].device
+        elif "coords" in batch:
+            device = batch["coords"].device
+        else:
+            # Fallback to model device
+            device = next(model.parameters()).device
 
         if self.use_plm_fold and self.plm_fold is not None:
             self.plm_fold.to(device)

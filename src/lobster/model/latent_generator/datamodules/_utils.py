@@ -467,42 +467,67 @@ def _create_empty_ligand_batch(batch_size: int) -> dict[str, torch.Tensor]:
 
 
 def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
-    """Collate fn for batching ligand data."""
+    """Collate fn for batching ligand data.
+
+    Handles:
+    - atom_coords: [N_atoms, 3] -> [batch, max_atoms, 3]
+    - mask: [N_atoms] -> [batch, max_atoms]
+    - atom_indices: [N_atoms] -> [batch, max_atoms]
+    - element_indices: [N_atoms] -> [batch, max_atoms] (optional)
+    - bond_matrix: [N_atoms, N_atoms] -> [batch, max_atoms, max_atoms] (optional)
+    - smiles: str (optional, passed through as list)
+    """
     padded_ligand_coords = []
     padded_ligand_mask = []
     padded_ligand_indices = []
     padded_element_indices = []
+    padded_bond_matrices = []
+    smiles_list = []
     max_length = max(atom_dict["atom_coords"].shape[0] for atom_dict in batch)
+
+    has_element_indices = "element_indices" in batch[0]
+    has_bond_matrix = "bond_matrix" in batch[0]
+    has_smiles = "smiles" in batch[0]
 
     for atom_dict in batch:
         ligand_coords = atom_dict["atom_coords"]
         ligand_mask = atom_dict["mask"]
         ligand_indices = atom_dict["atom_indices"]
+        n_atoms = ligand_coords.shape[0]
+        pad_length = max_length - n_atoms
 
         padded_ligand_coords.append(
-            torch.cat(
-                [ligand_coords, torch.zeros(max_length - ligand_coords.shape[0], *ligand_coords.shape[1:])], dim=0
-            )
+            torch.cat([ligand_coords, torch.zeros(pad_length, *ligand_coords.shape[1:])], dim=0)
         )
-        padded_ligand_mask.append(
-            torch.cat([ligand_mask, torch.zeros(max_length - ligand_mask.shape[0], *ligand_mask.shape[1:])], dim=0)
-        )
+        padded_ligand_mask.append(torch.cat([ligand_mask, torch.zeros(pad_length, *ligand_mask.shape[1:])], dim=0))
         padded_ligand_indices.append(
             torch.cat(
-                [ligand_indices, torch.full((max_length - ligand_indices.shape[0],), -1, dtype=ligand_indices.dtype)],
+                [ligand_indices, torch.full((pad_length,), -1, dtype=ligand_indices.dtype)],
                 dim=0,
             )
         )
 
         # Handle element indices if present
-        if "element_indices" in atom_dict:
+        if has_element_indices:
             element_indices = atom_dict["element_indices"]
             padded_element_indices.append(
                 torch.cat(
-                    [element_indices, torch.zeros(max_length - element_indices.shape[0], dtype=element_indices.dtype)],
+                    [element_indices, torch.zeros(pad_length, dtype=element_indices.dtype)],
                     dim=0,
                 )
             )
+
+        # Handle bond matrix if present
+        if has_bond_matrix:
+            bond_matrix = atom_dict["bond_matrix"]
+            # Pad bond_matrix from [n_atoms, n_atoms] to [max_length, max_length]
+            padded_bond = torch.zeros(max_length, max_length, dtype=bond_matrix.dtype)
+            padded_bond[:n_atoms, :n_atoms] = bond_matrix
+            padded_bond_matrices.append(padded_bond)
+
+        # Handle SMILES if present
+        if has_smiles:
+            smiles_list.append(atom_dict["smiles"])
 
     out = {
         "ligand_coords": torch.stack(padded_ligand_coords, dim=0),
@@ -512,6 +537,12 @@ def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.T
 
     if padded_element_indices:
         out["ligand_element_indices"] = torch.stack(padded_element_indices, dim=0)
+
+    if padded_bond_matrices:
+        out["bond_matrix"] = torch.stack(padded_bond_matrices, dim=0)
+
+    if smiles_list:
+        out["smiles"] = smiles_list
 
     # Handle additional properties like radius_of_gyration
     if "radius_of_gyration" in batch[0]:

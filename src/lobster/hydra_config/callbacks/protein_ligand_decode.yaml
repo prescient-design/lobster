@@ -1,0 +1,6 @@
+protein_ligand_decode:
+  _target_: lobster.callbacks._protein_ligand_decode.ProteinLigandDecodeCallback
+  structure_path: "${paths.output_dir}/structures/"
+  save_every_n: 1000
+  save_separate: true
+

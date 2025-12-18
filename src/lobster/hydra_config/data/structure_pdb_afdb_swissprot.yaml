@@ -17,6 +17,5 @@ use_shards: false
 datasets: pdb_afdb_swissprot
 
 # Dataloader Params
-batch_size: 40 # Batch size for the dataloader
+batch_size: 100 # Batch size for the dataloader
 num_workers: 12 # Number of workers for the dataloader
-

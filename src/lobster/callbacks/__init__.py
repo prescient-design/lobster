@@ -13,6 +13,8 @@ from ._unconditional_generation import UnconditionalGenerationCallback
 from ._auxiliary_task_loss_weight_scheduler import AuxiliaryTaskWeightScheduler, MultiTaskWeightScheduler
 from ._inverse_folding_callback import InverseFoldingCallback
 from ._forward_folding_callback import ForwardFoldingCallback
+from ._protein_ligand_decode import ProteinLigandDecodeCallback
+from ._s3_checkpoint_callback import S3CheckpointBackupCallback
 
 __all__ = [
     "MoleculeACELinearProbeCallback",
@@ -31,4 +33,6 @@ __all__ = [
     "MultiTaskWeightScheduler",
     "InverseFoldingCallback",
     "ForwardFoldingCallback",
+    "ProteinLigandDecodeCallback",
+    "S3CheckpointBackupCallback",
 ]

@@ -39,7 +39,7 @@ class L2Loss(TokenizerLoss):
         self.ligand_weight = ligand_weight
 
     def forward_ligand(self, ground_truth, predictions, mask, eps=1e-5, **kwargs):
-        # note that we do not consider relative reconstruction for the ligand and the protein
+        # MODIFIED: Now we align protein+ligand together to preserve relative positioning
         predicted_protein = predictions["protein_coords"]
         if predicted_protein is not None:
             B, L, n_atoms, _ = predicted_protein.shape
@@ -51,40 +51,56 @@ class L2Loss(TokenizerLoss):
         ground_truth_ligand = ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
 
-        # align ground truth to predictions
+        # align ground truth to predictions - JOINT ALIGNMENT for protein+ligand complex
         with torch.no_grad():
             with torch.autocast(enabled=False, device_type=predicted_ligand.device.type):
                 if predicted_protein is not None:
+                    # Concatenate protein and ligand for joint alignment
                     mask_protein_expanded = mask_protein.unsqueeze(-1).repeat(1, 1, 3)
+                    mask_protein_flat = mask_protein_expanded.reshape(B, -1)
+
+                    # Flatten protein coordinates
+                    gt_protein_flat = ground_truth_protein.reshape(B, -1, 3)
+                    pred_protein_flat = predicted_protein.reshape(B, -1, 3)
+
+                    # Concatenate protein + ligand for JOINT alignment
+                    gt_complex = torch.cat([gt_protein_flat, ground_truth_ligand], dim=1)
+                    pred_complex = torch.cat([pred_protein_flat, predicted_ligand], dim=1)
+                    mask_complex = torch.cat([mask_protein_flat, mask_ligand], dim=1)
 
                     # Safety for kabsch: Replace invalid samples with noise to prevent SVD NaN
-                    mask_flat = mask_protein_expanded.reshape(B, -1)
-                    valid_sample = mask_flat.sum(dim=1) > 0
-                    mask_safe = torch.where(valid_sample[:, None], mask_flat, torch.ones_like(mask_flat))
+                    valid_sample = mask_complex.sum(dim=1) > 0
+                    mask_safe = torch.where(valid_sample[:, None], mask_complex, torch.ones_like(mask_complex))
 
-                    gt_flat = ground_truth_protein.reshape(B, -1, 3)
-                    pred_flat = predicted_protein.reshape(B, -1, 3)
-                    noise_gt = torch.randn_like(gt_flat)
-                    noise_pred = torch.randn_like(pred_flat)
-                    gt_safe = torch.where(valid_sample[:, None, None], gt_flat, noise_gt)
-                    pred_safe = torch.where(valid_sample[:, None, None], pred_flat, noise_pred)
+                    noise_gt = torch.randn_like(gt_complex)
+                    noise_pred = torch.randn_like(pred_complex)
+                    gt_safe = torch.where(valid_sample[:, None, None], gt_complex, noise_gt)
+                    pred_safe = torch.where(valid_sample[:, None, None], pred_complex, noise_pred)
 
-                    ground_truth_protein = kabsch_torch_batched(
-                        gt_safe,
-                        pred_safe,
-                        mask_safe,
+                    # Align the ENTIRE complex together
+                    aligned_complex = kabsch_torch_batched(gt_safe, pred_safe, mask_safe)
+
+                    # Split back into protein and ligand
+                    n_protein_atoms = gt_protein_flat.shape[1]
+                    ground_truth_protein = aligned_complex[:, :n_protein_atoms, :].reshape(B, L, 3, 3)
+                    ground_truth_ligand = aligned_complex[:, n_protein_atoms:, :]
+
+                else:
+                    # Ligand-only case: align ligand independently
+                    valid_sample_ligand = mask_ligand.sum(dim=1) > 0
+                    mask_ligand_safe = torch.where(
+                        valid_sample_ligand[:, None], mask_ligand, torch.ones_like(mask_ligand)
                     )
-                    ground_truth_protein = ground_truth_protein.reshape(B, L, 3, 3)
+                    noise_gt_ligand = torch.randn_like(ground_truth_ligand)
+                    noise_pred_ligand = torch.randn_like(predicted_ligand)
+                    gt_ligand_safe = torch.where(
+                        valid_sample_ligand[:, None, None], ground_truth_ligand, noise_gt_ligand
+                    )
+                    pred_ligand_safe = torch.where(
+                        valid_sample_ligand[:, None, None], predicted_ligand, noise_pred_ligand
+                    )
 
-                # Safety for ligand kabsch
-                valid_sample_ligand = mask_ligand.sum(dim=1) > 0
-                mask_ligand_safe = torch.where(valid_sample_ligand[:, None], mask_ligand, torch.ones_like(mask_ligand))
-                noise_gt_ligand = torch.randn_like(ground_truth_ligand)
-                noise_pred_ligand = torch.randn_like(predicted_ligand)
-                gt_ligand_safe = torch.where(valid_sample_ligand[:, None, None], ground_truth_ligand, noise_gt_ligand)
-                pred_ligand_safe = torch.where(valid_sample_ligand[:, None, None], predicted_ligand, noise_pred_ligand)
-
-                ground_truth_ligand = kabsch_torch_batched(gt_ligand_safe, pred_ligand_safe, mask_ligand_safe)
+                    ground_truth_ligand = kabsch_torch_batched(gt_ligand_safe, pred_ligand_safe, mask_ligand_safe)
 
         # calculate loss
         if predicted_protein is not None:

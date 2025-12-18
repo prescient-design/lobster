@@ -61,6 +61,7 @@ class StructureLightningDataModule(LightningDataModule):
         use_ligand_dataset: bool = False,
         dataset_types: list[str] | None = None,
         buffer_size: int = 5,
+        stat_workers: int | None = None,
     ) -> None:
         """:param path_to_datasets: path to data set directories
 
@@ -174,6 +175,7 @@ class StructureLightningDataModule(LightningDataModule):
         self._mlm = mlm
         self.repeat_count = repeat_count
         self.testing = testing
+        self.stat_workers = stat_workers
         if self.testing and not use_shards:
             self._path_to_datasets = [
                 "/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/train_dummy.pt",
@@ -286,6 +288,7 @@ class StructureLightningDataModule(LightningDataModule):
                     testing=self.testing,
                     cluster_file=cluster_file if is_train else None,
                     files_to_keep=files_to_keep,
+                    stat_workers=self.stat_workers,
                 )
             else:
                 raise ValueError(f"Unknown dataset_type: {dataset_type}. Must be 'structure' or 'ligand'.")
