@@ -205,6 +205,34 @@ methods = {
             ],
         ),
     ),
+    "LG Protein Ligand 4096": ModelInfo(
+        description="Protein-ligand model with structure-only encoding",
+        features=[
+            "256-dim embeddings",
+            "Ligand encoding support",
+            "4096 ligand tokens",
+            "4096 protein tokens",
+        ],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-48-02/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=4",
+                "tokenizer.quantizer.embed_dim=4",
+                "tokenizer.quantizer.ligand_embed_dim=4",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=4096",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4096",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=512",
+                "tokenizer.quantizer.ligand_n_tokens=4096",
+                "tokenizer.quantizer.n_tokens=4096",
+                "tokenizer/quantizer=slq_quantizer_ligand",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+            ],
+        ),
+    ),
     "LG Protein Ligand fsq 4375": ModelInfo(
         description="Protein-ligand model with FSQ quantization (4375 tokens)",
         features=[
@@ -215,7 +243,7 @@ methods = {
             "4375 protein tokens",
         ],
         model_config=ModelConfig(
-            checkpoint="/data2/ume/latent_generator_/runs//2025-12-13T16-34-07/epoch=240-step=25787-val_loss=16.4510.ckpt",
+            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-13-19/last.ckpt",  # "/data2/ume/latent_generator_/runs//2025-12-13T16-34-07/epoch=240-step=25787-val_loss=16.4510.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[

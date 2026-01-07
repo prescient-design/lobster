@@ -41,12 +41,17 @@ class L2Loss(TokenizerLoss):
     def forward_ligand(self, ground_truth, predictions, mask, eps=1e-5, **kwargs):
         # MODIFIED: Now we align protein+ligand together to preserve relative positioning
         predicted_protein = predictions["protein_coords"]
-        if predicted_protein is not None:
+        # Check both that protein predictions exist AND that we have protein mask
+        # For ligand-only batches (e.g., GEOM), mask only has "ligand_mask"
+        if predicted_protein is not None and "protein_mask" in mask:
             B, L, n_atoms, _ = predicted_protein.shape
             predicted_protein = predicted_protein[:, :, :3, :]
             ground_truth_protein = ground_truth["coords_res"]
             ground_truth_protein = ground_truth_protein[:, :, :3, :]
             mask_protein = mask["protein_mask"]
+        else:
+            # Force ligand-only path if no protein mask available
+            predicted_protein = None
         predicted_ligand = predictions["ligand_coords"]
         ground_truth_ligand = ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
@@ -136,6 +141,13 @@ class L2Loss(TokenizerLoss):
         if isinstance(predictions, dict):
             predictions = predictions["protein_coords"]
         predictions = predictions[:, :, :3, :]
+
+        # Handle dict mask (from ligand datasets)
+        if isinstance(mask, dict):
+            if "protein_mask" not in mask:
+                # Ligand-only batch - no protein data to compute protein loss
+                return torch.tensor(0.0, device=predictions.device, requires_grad=True)
+            mask = mask["protein_mask"]
 
         # align predictions to ground truth
         with torch.no_grad():
@@ -240,6 +252,15 @@ class LigandL2Loss(TokenizerLoss):
         self.ligand_weight = ligand_weight
 
     def forward(self, ground_truth, predictions, mask, eps=1e-5, **kwargs):
+        # Skip if no ligand data (protein-only batch)
+        if not isinstance(predictions, dict) or "ligand_coords" not in predictions:
+            return torch.tensor(
+                0.0,
+                device=predictions.device
+                if not isinstance(predictions, dict)
+                else predictions["protein_coords"].device,
+            )
+
         predicted_ligand = self.ligand_weight * predictions["ligand_coords"]
         ground_truth_ligand = self.ligand_weight * ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
@@ -269,6 +290,15 @@ class LigandPairWiseL2Loss(TokenizerLoss):
         self.ligand_weight = ligand_weight
 
     def forward(self, ground_truth, predictions, mask, eps=1e-5, **kwargs):
+        # Skip if no ligand data (protein-only batch)
+        if not isinstance(predictions, dict) or "ligand_coords" not in predictions:
+            return torch.tensor(
+                0.0,
+                device=predictions.device
+                if not isinstance(predictions, dict)
+                else predictions["protein_coords"].device,
+            )
+
         predicted_ligand = self.ligand_weight * predictions["ligand_coords"]
         ground_truth_ligand = self.ligand_weight * ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
@@ -400,7 +430,9 @@ class PairWiseL2Loss(TokenizerLoss):
         if ligand_present:
             # get the protein and ligand predictions
             predicted_protein = predictions["protein_coords"]
-            if predicted_protein is not None:
+            # Check both that protein predictions exist AND that we have protein mask
+            # For ligand-only batches (e.g., GEOM), mask only has "ligand_mask"
+            if predicted_protein is not None and "protein_mask" in mask:
                 B, L, n_atoms, _ = predicted_protein.shape
                 predicted_protein = predicted_protein[:, :, :3, :]
                 ground_truth_protein = ground_truth["coords_res"]
@@ -410,6 +442,10 @@ class PairWiseL2Loss(TokenizerLoss):
                 Z_hat_protein = predicted_protein.reshape(B, -1, 3)
                 Z_protein = ground_truth_protein.reshape(B, -1, 3)
                 mask_protein = mask_protein.unsqueeze(-1).repeat(1, 1, n_atoms).view(B, -1)
+            else:
+                # Force ligand-only path if no protein mask available
+                predicted_protein = None
+
             ground_truth_ligand = ground_truth["ligand_coords"]
             predicted_ligand = predictions["ligand_coords"]
             mask_ligand = mask["ligand_mask"]
@@ -429,6 +465,13 @@ class PairWiseL2Loss(TokenizerLoss):
             ground_truth = ground_truth["coords_res"]
             B, L, n_atoms, _ = predictions.shape
             ground_truth = ground_truth[:, :, :n_atoms, :]
+
+            # Handle dict mask (from ligand datasets with protein-only batch)
+            if isinstance(mask, dict):
+                if "protein_mask" not in mask:
+                    # No protein data in this batch - return 0 loss
+                    return torch.tensor(0.0, device=predictions.device, requires_grad=True)
+                mask = mask["protein_mask"]
 
             # Step 1: Flatten predictions and ground_truth
             Z_hat = predictions.reshape(predictions.size(0), -1, 3)  # (B, L*n_atoms,3)

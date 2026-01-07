@@ -14,6 +14,7 @@ from ._auxiliary_task_loss_weight_scheduler import AuxiliaryTaskWeightScheduler,
 from ._inverse_folding_callback import InverseFoldingCallback
 from ._forward_folding_callback import ForwardFoldingCallback
 from ._protein_ligand_decode import ProteinLigandDecodeCallback
+from ._protein_ligand_inverse_folding import ProteinLigandInverseFoldingCallback
 from ._s3_checkpoint_callback import S3CheckpointBackupCallback
 
 __all__ = [
@@ -31,8 +32,11 @@ __all__ = [
     "UmeGrpoLoggingCallback",
     "AuxiliaryTaskWeightScheduler",
     "MultiTaskWeightScheduler",
+    "StructureDecodeCallback",
+    "UnconditionalGenerationCallback",
     "InverseFoldingCallback",
     "ForwardFoldingCallback",
     "ProteinLigandDecodeCallback",
+    "ProteinLigandInverseFoldingCallback",
     "S3CheckpointBackupCallback",
 ]

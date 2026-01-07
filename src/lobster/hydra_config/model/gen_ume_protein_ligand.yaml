@@ -49,5 +49,5 @@ encoder_kwargs:
   # max_length must accommodate protein (up to 512) + ligand (up to 200 atoms)
   # This controls the rotary position embedding precomputation
   max_length: 768
-  model_size: mini  # Options: mini, small, base, large
+  model_size: small  # Options: mini, small, base, large
 

@@ -799,9 +799,17 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         """
         device = next(self.parameters()).device
 
+        # Update interpolant devices (required for proper device handling during inference)
+        self.interpolant_seq.device = device
+        self.interpolant_struc.device = device
+        if hasattr(self, "interpolant_ligand_atom"):
+            self.interpolant_ligand_atom.device = device
+        if hasattr(self, "interpolant_ligand_struc"):
+            self.interpolant_ligand_struc.device = device
+
         # Initialize protein tokens
-        xt_seq = self.interpolant_seq.sample_prior((num_samples, length))
-        xt_struc = self.interpolant_struc.sample_prior((num_samples, length))
+        xt_seq = self.interpolant_seq.sample_prior((num_samples, length)).to(device)
+        xt_struc = self.interpolant_struc.sample_prior((num_samples, length)).to(device)
 
         # Set up schedules
         schedule_seq = inference_schedule_seq(nsteps=nsteps) if inference_schedule_seq else self.inference_schedule
@@ -821,10 +829,11 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         # Handle inverse/forward folding
         if inverse_folding and input_structure_coords is not None:
             x_quant, _, mask = self.encode_structure(input_structure_coords, input_mask, input_indices)
-            xt_struc = x_quant.argmax(dim=-1)
+            xt_struc = x_quant.argmax(dim=-1).to(device)
+            mask = mask.to(device)
             ts_struc = torch.full_like(ts_struc, 0.9950)
         elif forward_folding and input_sequence_tokens is not None:
-            xt_seq = input_sequence_tokens
+            xt_seq = input_sequence_tokens.to(device)
             ts_seq = torch.full_like(ts_seq, 0.9950)
 
         # Initialize ligand tokens if generating
@@ -836,21 +845,27 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         if generate_ligand:
             ligand_mask = torch.ones((num_samples, num_atoms), device=device)
             if input_ligand_atom_tokens is not None:
-                xt_lig_atom = input_ligand_atom_tokens
+                xt_lig_atom = input_ligand_atom_tokens.to(device)
             else:
-                xt_lig_atom = self.interpolant_ligand_atom.sample_prior((num_samples, num_atoms))
+                xt_lig_atom = self.interpolant_ligand_atom.sample_prior((num_samples, num_atoms)).to(device)
 
             if input_ligand_structure_tokens is not None:
-                xt_lig_struc = input_ligand_structure_tokens
+                xt_lig_struc = input_ligand_structure_tokens.to(device)
             else:
-                xt_lig_struc = self.interpolant_ligand_struc.sample_prior((num_samples, num_atoms))
+                xt_lig_struc = self.interpolant_ligand_struc.sample_prior((num_samples, num_atoms)).to(device)
 
-            bond_matrix = input_bond_matrix
+            if input_bond_matrix is not None:
+                bond_matrix = input_bond_matrix.to(device)
+            else:
+                bond_matrix = None
 
         # Generation loop
         for dt_seq, dt_struc, t_seq, t_struc in tqdm(
             zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples"
         ):
+            # Ensure all schedule tensors are on the correct device
+            dt_seq = dt_seq.to(device)
+            dt_struc = dt_struc.to(device)
             t_seq = schedule_seq.pad_time(num_samples, t_seq, device)
             t_struc = schedule_struc.pad_time(num_samples, t_struc, device)
             timesteps = {"sequence_tokens": t_seq, "structure_tokens": t_struc}

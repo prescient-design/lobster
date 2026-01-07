@@ -6,8 +6,11 @@ defaults:
   - lr_monitor.yaml
   - progress_bar.yaml
   - structure_decode.yaml
-  - inverse_folding.yaml
   - protein_ligand_decode.yaml
+  - inverse_folding.yaml
+  - inverse_folding_cameo.yaml
+  - protein_ligand_inverse_folding.yaml
+  - forward_folding.yaml
   - _self_
 
 
@@ -30,22 +33,13 @@ last_checkpoint:
   mode: max
   save_top_k: 3
   verbose: true
-  every_n_train_steps: 1000  # Save every 1000 steps
+  every_n_train_steps: 10000  # Save every 1000 steps
 
 structure_decode:
   structure_path: "${paths.output_dir}/structures/"
-  save_every_n: 1000
-
-InverseFoldingCallback:
-  structure_path: ${paths.output_dir}/structures/
-  save_every_n: 2000
-  dataset_name: cath
-  metric_prefix: inverse_folding_cath
-  length: 100
-  num_samples: 10
-  use_plm_fold: false  # Disable ESMFold for speed during initial training
+  save_every_n: 10000
 
 protein_ligand_decode:
   structure_path: "${paths.output_dir}/structures/"
-  save_every_n: 1000
+  save_every_n: 10000
   save_separate: false
