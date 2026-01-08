@@ -591,14 +591,19 @@ class StructureLigandTransform(BaseTransform):
     def __call__(self, x: dict) -> dict:
         # Convert atom names to element indices using our vocabulary
         if "atom_names" in x:
-            element_indices = torch.tensor(
-                [
-                    residue_constants.ELEMENT_TO_IDX[atom_name]  # Will raise KeyError if element not in vocab
-                    for atom_name in x["atom_names"]
-                ],
-                dtype=torch.long,
-            )
-            x["element_indices"] = element_indices
+            element_indices = []
+            unknown_elements = set()
+            for atom_name in x["atom_names"]:
+                # Use PAD (index 0) as catch-all for unknown elements
+                idx = residue_constants.ELEMENT_TO_IDX.get(atom_name, 0)
+                if idx == 0 and atom_name != "PAD":
+                    unknown_elements.add(atom_name)
+                element_indices.append(idx)
+
+            if unknown_elements:
+                logger.warning(f"Unknown elements mapped to PAD: {unknown_elements}")
+
+            x["element_indices"] = torch.tensor(element_indices, dtype=torch.long)
 
         if self.rand_permute_ligand:
             random_order = torch.randperm(x["atom_coords"].shape[0])
@@ -608,6 +613,9 @@ class StructureLigandTransform(BaseTransform):
             x["atom_names"] = [x["atom_names"][i] for i in random_order_list]
             if "element_indices" in x:
                 x["element_indices"] = x["element_indices"][random_order]
+            # Permute bond_matrix: reindex both rows and columns
+            if "bond_matrix" in x:
+                x["bond_matrix"] = x["bond_matrix"][random_order][:, random_order]
 
         return x
 

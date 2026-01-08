@@ -1,0 +1,11 @@
+InverseFoldingCAMEOCallback:
+  _target_: lobster.callbacks._inverse_folding_callback.InverseFoldingCallback
+  structure_path: ${paths.output_dir}/structures/
+  save_every_n: 1000
+  dataset_name: cameo
+  dataset_path: "/data2/lisanzas/AFDB/valid_cameo_processed/*.pt"
+  metric_prefix: inverse_folding_cameo
+  num_samples: 127
+  use_plm_fold: false
+  max_length: 512
+

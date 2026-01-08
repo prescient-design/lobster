@@ -35,6 +35,10 @@ class SimpleLinearQuantizer(torch.nn.Module):
         if self.gumbel:
             z_tokens = gumbel_softmax(z_emb, temperature=self.tau, hard=False, include_noise=self.use_gumbel_noise)
 
+            # Create default mask if None to ensure consistent behavior
+            if mask is None:
+                mask = torch.ones(z_emb.shape[0], z_emb.shape[1], device=z_emb.device)
+
             return z_tokens, z_emb, mask
 
         elif self.softmax:
@@ -51,5 +55,9 @@ class SimpleLinearQuantizer(torch.nn.Module):
             z_tokens = torch.argmax(z_emb, dim=-1)
 
             z_tokens = torch.nn.functional.one_hot(z_tokens, num_classes=self.n_tokens).float()
+
+            # Create default mask if None to ensure consistent behavior
+            if mask is None:
+                mask = torch.ones(z_emb.shape[0], z_emb.shape[1], device=z_emb.device)
 
             return z_emb + (z_tokens - z_emb).detach(), z_emb, mask

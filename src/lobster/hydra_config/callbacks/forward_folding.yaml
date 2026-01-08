@@ -1,0 +1,14 @@
+ForwardFoldingCallback:
+  _target_: lobster.callbacks._forward_folding_callback.ForwardFoldingCallback
+  structure_path: ${paths.output_dir}/structures/
+  cameo_data_path: "/data2/lisanzas/AFDB/valid_cameo_processed/*.pt"
+  save_every_n: 1000
+  num_samples: 127
+  max_length: 512
+  nsteps: 200
+  temperature_seq: 0.3610371899835548
+  temperature_struc: 0.2195534567490864
+  stochasticity_seq: 1
+  stochasticity_struc: 20
+  cache_dir: null
+

@@ -46,6 +46,27 @@ class ModelInfo:
 methods = {
     # Ligand Models
     # These models are optimized for ligand structure analysis
+    "LG Ligand": ModelInfo(
+        description="Ligand only model with",
+        features=["256-dim embeddings", "Ligand only decoder", "512 ligand tokens"],
+        model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Ligand_2025-11-09.ckpt
+            checkpoint="/data2/ume/latent_generator_/runs//2025-11-09T14-23-55/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=256",
+                "tokenizer.quantizer.embed_dim=256",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=512",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=512",
+                "tokenizer.quantizer.ligand_n_tokens=512",
+                "tokenizer/quantizer=slq_quantizer_ligand",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+            ],
+        ),
+    ),
     "LG Ligand 20A": ModelInfo(
         description="Ligand only model with 20Å spatial attention",
         features=["256-dim embeddings", "20Å spatial attention", "Ligand only decoder", "512 ligand tokens"],
@@ -159,6 +180,143 @@ methods = {
     ),
     # Protein-Ligand Models
     # These models can handle both protein and ligand structures
+    "LG Protein Ligand": ModelInfo(
+        description="Protein-ligand model with structure-only encoding",
+        features=[
+            "256-dim embeddings",
+            "Ligand encoding support",
+            "512 ligand tokens",
+            "512 protein tokens",
+        ],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2025-12-07T22-38-42/epoch=830-step=88917-val_loss=16.5010.ckpt",  # "/data2/ume/latent_generator_/runs//2025-11-26T15-51-49/last.ckpt", #"/data2/ume/latent_generator_/runs//2025-11-25T14-42-33/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=4",
+                "tokenizer.quantizer.embed_dim=4",
+                "tokenizer.quantizer.ligand_embed_dim=4",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=512",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=512",
+                "tokenizer.quantizer.ligand_n_tokens=512",
+                "tokenizer/quantizer=slq_quantizer_ligand",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+            ],
+        ),
+    ),
+    "LG Protein Ligand 4096": ModelInfo(
+        description="Protein-ligand model with structure-only encoding",
+        features=[
+            "256-dim embeddings",
+            "Ligand encoding support",
+            "4096 ligand tokens",
+            "4096 protein tokens",
+        ],
+        model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_4096_2026-01-05.ckpt
+            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-48-02/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=4",
+                "tokenizer.quantizer.embed_dim=4",
+                "tokenizer.quantizer.ligand_embed_dim=4",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=4096",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4096",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_dim=512",
+                "tokenizer.quantizer.ligand_n_tokens=4096",
+                "tokenizer.quantizer.n_tokens=4096",
+                "tokenizer/quantizer=slq_quantizer_ligand",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 4375": ModelInfo(
+        description="Protein-ligand model with FSQ quantization (4375 tokens)",
+        features=[
+            "5-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "4375 ligand tokens",
+            "4375 protein tokens",
+        ],
+        model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt
+            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-13-19/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=5",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[7,5,5,5,5]",
+                "tokenizer.quantizer.ligand_levels=[7,5,5,5,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "tokenizer/loss_factory=structure_losses_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4375",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=4375",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 4375 15360": ModelInfo(
+        description="Protein-ligand model with FSQ quantization (4375 protein tokens, 15360 ligand tokens)",
+        features=[
+            "5-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "15360 ligand tokens",
+            "4375 protein tokens",
+        ],
+        model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_15360_2026-01-07.ckpt
+            checkpoint="/data2/ume/latent_generator_/runs//2026-01-07T02-17-14/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=5",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[7,5,5,5,5]",
+                "tokenizer.quantizer.ligand_levels=[8,8,8,6,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "tokenizer/loss_factory=structure_losses_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4375",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=15360",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 1000": ModelInfo(
+        description="Protein-ligand model with FSQ quantization (1000 tokens)",
+        features=[
+            "4-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "1000 ligand tokens",
+            "1000 protein tokens",
+        ],
+        model_config=ModelConfig(
+            checkpoint="/data2/ume/latent_generator_/runs//2025-12-13T14-57-53/epoch=210-step=22577-val_loss=17.2066.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=4",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[8,5,5,5]",
+                "tokenizer.quantizer.ligand_levels=[8,5,5,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=1000",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=1000",
+            ],
+        ),
+    ),
     "LG Ligand 20A seq 3di Aux": ModelInfo(
         description="Protein-ligand model with sequence and 3Di awareness",
         features=[
@@ -359,6 +517,31 @@ methods = {
             overrides=[],
         ),
     ),
+    "LG full attention 2": ModelInfo(
+        description="Full attention model without spatial masking",
+        features=["Standard configuration", "Full attention (no spatial masking)", "256 protein tokens"],
+        model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_full_attention_2_2025-11-06.ckpt
+            checkpoint="/data2/ume/latent_generator_/runs//2025-11-06T00-40-11/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[],
+        ),
+    ),
+    "LG full attention 512 PDB Pinder FSQ": ModelInfo(
+        description="Full attention model with 512 protein tokens and FSQ quantization",
+        features=["240 protein tokens", "FSQ quantization"],
+        model_config=ModelConfig(
+            checkpoint="/data2/lisanzas/latent_generator/studies/outputs/train/dev/runs/2025-11-09_22-19-12/checkpoints/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=3",
+                "tokenizer/quantizer=fsq_quantizer",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=240",
+            ],
+        ),
+    ),
 }
 
 
@@ -436,8 +619,14 @@ class LatentEncoderDecoder:
             try:
                 s3 = boto3.client("s3")
                 bucket_name, key = checkpoint_path[5:].split("/", 1)  # Extract bucket and key
-                local_checkpoint_path = "/tmp/" + os.path.basename(key)  # Temporary local path
-                s3.download_file(bucket_name, key, local_checkpoint_path)
+                cache_dir = os.path.expanduser("~/.cache/lobster")
+                os.makedirs(cache_dir, exist_ok=True)
+                filename = os.path.basename(key)
+                local_checkpoint_path = os.path.join(cache_dir, filename)
+                if not os.path.exists(local_checkpoint_path):
+                    s3.download_file(bucket_name, key, local_checkpoint_path)
+                else:
+                    py_logger.info(f"Checkpoint already exists at {local_checkpoint_path}")
                 checkpoint_path = local_checkpoint_path  # Update checkpoint_path to the local file
             except NoCredentialsError as e:
                 raise RuntimeError("AWS credentials not found. Ensure they are configured properly.") from e
@@ -452,10 +641,14 @@ class LatentEncoderDecoder:
 
                 # Extract filename from URL
                 filename = os.path.basename(urllib.parse.urlparse(checkpoint_path).path)
-                local_checkpoint_path = "/tmp/" + filename
-
-                py_logger.info(f"Downloading checkpoint from Hugging Face: {checkpoint_path}")
-                urllib.request.urlretrieve(checkpoint_path, local_checkpoint_path)
+                cache_dir = os.path.expanduser("~/.cache/lobster")
+                os.makedirs(cache_dir, exist_ok=True)
+                local_checkpoint_path = os.path.join(cache_dir, filename)
+                if not os.path.exists(local_checkpoint_path):
+                    py_logger.info(f"Downloading checkpoint from Hugging Face: {checkpoint_path}")
+                    urllib.request.urlretrieve(checkpoint_path, local_checkpoint_path)
+                else:
+                    py_logger.info(f"Checkpoint already exists at {local_checkpoint_path}")
                 checkpoint_path = local_checkpoint_path  # Update checkpoint_path to the local file
                 py_logger.info(f"Checkpoint downloaded to: {checkpoint_path}")
             except Exception as e:
@@ -663,6 +856,32 @@ LG Ligand 20A continuous
 
 Protein-Ligand Models:
 ---------------------
+LG Protein Ligand
+    Description: Protein-ligand model with structure-only encoding
+    Features:
+    - 256-dim embeddings
+    - Ligand encoding support
+    - 512 ligand tokens
+    - 512 protein tokens
+
+LG Protein Ligand fsq 4375
+    Description: Protein-ligand model with FSQ quantization (4375 tokens)
+    Features:
+    - 5-dim embeddings
+    - FSQ quantization
+    - Ligand encoding support
+    - 4375 ligand tokens
+    - 4375 protein tokens
+
+LG Protein Ligand fsq 1000
+    Description: Protein-ligand model with FSQ quantization (1000 tokens)
+    Features:
+    - 4-dim embeddings
+    - FSQ quantization
+    - Ligand encoding support
+    - 1000 ligand tokens
+    - 1000 protein tokens
+
 LG Ligand 20A seq 3di Aux
     Description: Protein-ligand model with sequence and 3Di awareness
     Features:
@@ -775,13 +994,17 @@ LG full attention
         py_logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
 
     # Load the model with overrides if provided
-    if (
-        args.model_name != "LG Ligand 20A seq 3di Aux"
-        and args.model_name != "LG Ligand 20A"
-        and args.model_name != "LG Ligand 20A continuous"
-    ) and args.ligand_path is not None:
+    ligand_supported_models = [
+        "LG Protein Ligand",
+        "LG Protein Ligand fsq 4375",
+        "LG Protein Ligand fsq 1000",
+        "LG Ligand 20A seq 3di Aux",
+        "LG Ligand 20A",
+        "LG Ligand 20A continuous",
+    ]
+    if args.model_name not in ligand_supported_models and args.ligand_path is not None:
         raise ValueError(
-            "Ligand path is only supported for LG Ligand 20A seq 3di Aux model, LG Ligand 20A model or LG Ligand 20A continuous model"
+            f"Ligand path is only supported for the following models: {', '.join(ligand_supported_models)}"
         )
 
     if args.model_name in methods:

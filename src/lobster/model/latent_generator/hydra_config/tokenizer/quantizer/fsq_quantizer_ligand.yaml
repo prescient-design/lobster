@@ -1,0 +1,5 @@
+_target_: lobster.model.latent_generator.quantizer.FSQLigandTokenizer
+protein_levels: [8, 6, 5]  # 240 tokens for protein
+ligand_levels: [8, 6, 5]   # 240 tokens for ligand
+return_oh_like: true
+

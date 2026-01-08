@@ -39,30 +39,73 @@ class L2Loss(TokenizerLoss):
         self.ligand_weight = ligand_weight
 
     def forward_ligand(self, ground_truth, predictions, mask, eps=1e-5, **kwargs):
-        # note that we do not consider relative reconstruction for the ligand and the protein
+        # MODIFIED: Now we align protein+ligand together to preserve relative positioning
         predicted_protein = predictions["protein_coords"]
-        if predicted_protein is not None:
+        # Check both that protein predictions exist AND that we have protein mask
+        # For ligand-only batches (e.g., GEOM), mask only has "ligand_mask"
+        if predicted_protein is not None and "protein_mask" in mask:
             B, L, n_atoms, _ = predicted_protein.shape
             predicted_protein = predicted_protein[:, :, :3, :]
             ground_truth_protein = ground_truth["coords_res"]
             ground_truth_protein = ground_truth_protein[:, :, :3, :]
             mask_protein = mask["protein_mask"]
+        else:
+            # Force ligand-only path if no protein mask available
+            predicted_protein = None
         predicted_ligand = predictions["ligand_coords"]
         ground_truth_ligand = ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
 
-        # align ground truth to predictions
+        # align ground truth to predictions - JOINT ALIGNMENT for protein+ligand complex
         with torch.no_grad():
             with torch.autocast(enabled=False, device_type=predicted_ligand.device.type):
                 if predicted_protein is not None:
+                    # Concatenate protein and ligand for joint alignment
                     mask_protein_expanded = mask_protein.unsqueeze(-1).repeat(1, 1, 3)
-                    ground_truth_protein = kabsch_torch_batched(
-                        ground_truth_protein.reshape(B, -1, 3),
-                        predicted_protein.reshape(B, -1, 3),
-                        mask_protein_expanded.reshape(B, -1),
+                    mask_protein_flat = mask_protein_expanded.reshape(B, -1)
+
+                    # Flatten protein coordinates
+                    gt_protein_flat = ground_truth_protein.reshape(B, -1, 3)
+                    pred_protein_flat = predicted_protein.reshape(B, -1, 3)
+
+                    # Concatenate protein + ligand for JOINT alignment
+                    gt_complex = torch.cat([gt_protein_flat, ground_truth_ligand], dim=1)
+                    pred_complex = torch.cat([pred_protein_flat, predicted_ligand], dim=1)
+                    mask_complex = torch.cat([mask_protein_flat, mask_ligand], dim=1)
+
+                    # Safety for kabsch: Replace invalid samples with noise to prevent SVD NaN
+                    valid_sample = mask_complex.sum(dim=1) > 0
+                    mask_safe = torch.where(valid_sample[:, None], mask_complex, torch.ones_like(mask_complex))
+
+                    noise_gt = torch.randn_like(gt_complex)
+                    noise_pred = torch.randn_like(pred_complex)
+                    gt_safe = torch.where(valid_sample[:, None, None], gt_complex, noise_gt)
+                    pred_safe = torch.where(valid_sample[:, None, None], pred_complex, noise_pred)
+
+                    # Align the ENTIRE complex together
+                    aligned_complex = kabsch_torch_batched(gt_safe, pred_safe, mask_safe)
+
+                    # Split back into protein and ligand
+                    n_protein_atoms = gt_protein_flat.shape[1]
+                    ground_truth_protein = aligned_complex[:, :n_protein_atoms, :].reshape(B, L, 3, 3)
+                    ground_truth_ligand = aligned_complex[:, n_protein_atoms:, :]
+
+                else:
+                    # Ligand-only case: align ligand independently
+                    valid_sample_ligand = mask_ligand.sum(dim=1) > 0
+                    mask_ligand_safe = torch.where(
+                        valid_sample_ligand[:, None], mask_ligand, torch.ones_like(mask_ligand)
                     )
-                    ground_truth_protein = ground_truth_protein.reshape(B, L, 3, 3)
-                ground_truth_ligand = kabsch_torch_batched(ground_truth_ligand, predicted_ligand, mask_ligand)
+                    noise_gt_ligand = torch.randn_like(ground_truth_ligand)
+                    noise_pred_ligand = torch.randn_like(predicted_ligand)
+                    gt_ligand_safe = torch.where(
+                        valid_sample_ligand[:, None, None], ground_truth_ligand, noise_gt_ligand
+                    )
+                    pred_ligand_safe = torch.where(
+                        valid_sample_ligand[:, None, None], predicted_ligand, noise_pred_ligand
+                    )
+
+                    ground_truth_ligand = kabsch_torch_batched(gt_ligand_safe, pred_ligand_safe, mask_ligand_safe)
 
         # calculate loss
         if predicted_protein is not None:
@@ -99,13 +142,31 @@ class L2Loss(TokenizerLoss):
             predictions = predictions["protein_coords"]
         predictions = predictions[:, :, :3, :]
 
+        # Handle dict mask (from ligand datasets)
+        if isinstance(mask, dict):
+            if "protein_mask" not in mask:
+                # Ligand-only batch - no protein data to compute protein loss
+                return torch.tensor(0.0, device=predictions.device, requires_grad=True)
+            mask = mask["protein_mask"]
+
         # align predictions to ground truth
         with torch.no_grad():
             with torch.autocast(enabled=False, device_type=predictions.device.type):
                 mask_expanded = mask.unsqueeze(-1).repeat(1, 1, 3)
-                ground_truth = kabsch_torch_batched(
-                    ground_truth.reshape(B, -1, 3), predictions.reshape(B, -1, 3), mask_expanded.reshape(B, -1)
-                )
+
+                # Safety for kabsch
+                mask_flat = mask_expanded.reshape(B, -1)
+                valid_sample = mask_flat.sum(dim=1) > 0
+                mask_safe = torch.where(valid_sample[:, None], mask_flat, torch.ones_like(mask_flat))
+
+                gt_flat = ground_truth.reshape(B, -1, 3)
+                pred_flat = predictions.reshape(B, -1, 3)
+                noise_gt = torch.randn_like(gt_flat)
+                noise_pred = torch.randn_like(pred_flat)
+                gt_safe = torch.where(valid_sample[:, None, None], gt_flat, noise_gt)
+                pred_safe = torch.where(valid_sample[:, None, None], pred_flat, noise_pred)
+
+                ground_truth = kabsch_torch_batched(gt_safe, pred_safe, mask_safe)
                 ground_truth = ground_truth.reshape(B, L, 3, 3)
 
         # use MSE loss
@@ -144,10 +205,23 @@ class L2Loss(TokenizerLoss):
                 # step 2b: realign the permuted chains to the predictions
                 with torch.autocast(enabled=False, device_type=predictions.device.type):
                     mask_expanded = mask.unsqueeze(-1).repeat(1, 1, 3)
+
+                    # Safety for kabsch
+                    mask_flat = mask_expanded.reshape(B, -1)
+                    valid_sample = mask_flat.sum(dim=1) > 0
+                    mask_safe = torch.where(valid_sample[:, None], mask_flat, torch.ones_like(mask_flat))
+
+                    gt_flat = ground_truth_permuted.reshape(B, -1, 3)
+                    pred_flat = predictions.reshape(B, -1, 3)
+                    noise_gt = torch.randn_like(gt_flat)
+                    noise_pred = torch.randn_like(pred_flat)
+                    gt_safe = torch.where(valid_sample[:, None, None], gt_flat, noise_gt)
+                    pred_safe = torch.where(valid_sample[:, None, None], pred_flat, noise_pred)
+
                     ground_truth_permuted = kabsch_torch_batched(
-                        ground_truth_permuted.reshape(B, -1, 3),
-                        predictions.reshape(B, -1, 3),
-                        mask_expanded.reshape(B, -1),
+                        gt_safe,
+                        pred_safe,
+                        mask_safe,
                     )
                     ground_truth_permuted = ground_truth_permuted.reshape(B, L, 3, 3)
 
@@ -178,6 +252,15 @@ class LigandL2Loss(TokenizerLoss):
         self.ligand_weight = ligand_weight
 
     def forward(self, ground_truth, predictions, mask, eps=1e-5, **kwargs):
+        # Skip if no ligand data (protein-only batch)
+        if not isinstance(predictions, dict) or "ligand_coords" not in predictions:
+            return torch.tensor(
+                0.0,
+                device=predictions.device
+                if not isinstance(predictions, dict)
+                else predictions["protein_coords"].device,
+            )
+
         predicted_ligand = self.ligand_weight * predictions["ligand_coords"]
         ground_truth_ligand = self.ligand_weight * ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
@@ -185,7 +268,14 @@ class LigandL2Loss(TokenizerLoss):
         # align ground truth to predictions
         with torch.no_grad():
             with torch.autocast(enabled=False, device_type=predicted_ligand.device.type):
-                ground_truth_ligand = kabsch_torch_batched(ground_truth_ligand, predicted_ligand, mask_ligand)
+                valid_sample = mask_ligand.sum(dim=1) > 0
+                mask_safe = torch.where(valid_sample[:, None], mask_ligand, torch.ones_like(mask_ligand))
+                noise_gt = torch.randn_like(ground_truth_ligand)
+                noise_pred = torch.randn_like(predicted_ligand)
+                gt_safe = torch.where(valid_sample[:, None, None], ground_truth_ligand, noise_gt)
+                pred_safe = torch.where(valid_sample[:, None, None], predicted_ligand, noise_pred)
+
+                ground_truth_ligand = kabsch_torch_batched(gt_safe, pred_safe, mask_safe)
 
         loss_ligand = nn.MSELoss(reduction="none")(predicted_ligand, ground_truth_ligand)
         loss_ligand = loss_ligand * mask_ligand[:, :, None]
@@ -200,13 +290,30 @@ class LigandPairWiseL2Loss(TokenizerLoss):
         self.ligand_weight = ligand_weight
 
     def forward(self, ground_truth, predictions, mask, eps=1e-5, **kwargs):
+        # Skip if no ligand data (protein-only batch)
+        if not isinstance(predictions, dict) or "ligand_coords" not in predictions:
+            return torch.tensor(
+                0.0,
+                device=predictions.device
+                if not isinstance(predictions, dict)
+                else predictions["protein_coords"].device,
+            )
+
         predicted_ligand = self.ligand_weight * predictions["ligand_coords"]
         ground_truth_ligand = self.ligand_weight * ground_truth["ligand_coords"]
         mask_ligand = mask["ligand_mask"]
 
-        Dpred = torch.cdist(predicted_ligand, predicted_ligand, p=2)
+        # Stabilize masked coordinates with noise
+        mask_ligand_expanded = mask_ligand.unsqueeze(-1)
+        noise_pred = torch.randn_like(predicted_ligand) * 1e-3
+        predicted_ligand_safe = predicted_ligand * mask_ligand_expanded + noise_pred * (1 - mask_ligand_expanded)
+
+        noise_gt = torch.randn_like(ground_truth_ligand) * 1e-3
+        ground_truth_ligand_safe = ground_truth_ligand * mask_ligand_expanded + noise_gt * (1 - mask_ligand_expanded)
+
+        Dpred = torch.cdist(predicted_ligand_safe, predicted_ligand_safe, p=2)
         Dpred = torch.clamp(Dpred, max=20)
-        D = torch.cdist(ground_truth_ligand, ground_truth_ligand, p=2)
+        D = torch.cdist(ground_truth_ligand_safe, ground_truth_ligand_safe, p=2)
         D = torch.clamp(D, max=20)
         E = (Dpred - D) ** 2
         E = torch.clamp(E, max=25)
@@ -323,7 +430,9 @@ class PairWiseL2Loss(TokenizerLoss):
         if ligand_present:
             # get the protein and ligand predictions
             predicted_protein = predictions["protein_coords"]
-            if predicted_protein is not None:
+            # Check both that protein predictions exist AND that we have protein mask
+            # For ligand-only batches (e.g., GEOM), mask only has "ligand_mask"
+            if predicted_protein is not None and "protein_mask" in mask:
                 B, L, n_atoms, _ = predicted_protein.shape
                 predicted_protein = predicted_protein[:, :, :3, :]
                 ground_truth_protein = ground_truth["coords_res"]
@@ -333,6 +442,10 @@ class PairWiseL2Loss(TokenizerLoss):
                 Z_hat_protein = predicted_protein.reshape(B, -1, 3)
                 Z_protein = ground_truth_protein.reshape(B, -1, 3)
                 mask_protein = mask_protein.unsqueeze(-1).repeat(1, 1, n_atoms).view(B, -1)
+            else:
+                # Force ligand-only path if no protein mask available
+                predicted_protein = None
+
             ground_truth_ligand = ground_truth["ligand_coords"]
             predicted_ligand = predictions["ligand_coords"]
             mask_ligand = mask["ligand_mask"]
@@ -340,11 +453,12 @@ class PairWiseL2Loss(TokenizerLoss):
             if predicted_protein is not None:
                 Z_hat = torch.cat([Z_hat_protein, predicted_ligand], dim=1)
                 Z = torch.cat([Z_protein, ground_truth_ligand], dim=1)
-                mask = torch.cat([mask_protein, mask_ligand], dim=1)
+                mask_combined = torch.cat([mask_protein, mask_ligand], dim=1)
+                mask_flat = mask_combined
             else:
                 Z_hat = predicted_ligand
                 Z = ground_truth_ligand
-                mask = mask_ligand
+                mask_flat = mask_ligand.clone()
                 n_atoms = 3
 
         else:
@@ -352,16 +466,41 @@ class PairWiseL2Loss(TokenizerLoss):
             B, L, n_atoms, _ = predictions.shape
             ground_truth = ground_truth[:, :, :n_atoms, :]
 
+            # Handle dict mask (from ligand datasets with protein-only batch)
+            if isinstance(mask, dict):
+                if "protein_mask" not in mask:
+                    # No protein data in this batch - return 0 loss
+                    return torch.tensor(0.0, device=predictions.device, requires_grad=True)
+                mask = mask["protein_mask"]
+
             # Step 1: Flatten predictions and ground_truth
             Z_hat = predictions.reshape(predictions.size(0), -1, 3)  # (B, L*n_atoms,3)
             Z = ground_truth.reshape(ground_truth.size(0), -1, 3)  # (B, L*n_atoms,3)
+            mask_flat = mask.unsqueeze(-1).repeat(1, 1, n_atoms).view(B, -1)
+
+        # Step 1.5: Stabilize masked coordinates with noise to prevent NaN gradients in cdist
+        # cdist(0, 0) gradient is NaN. If padding is 0, we get NaNs even if masked later.
+        # We replace masked 0s with small random noise.
+
+        # CRITICAL: Detach mask_flat once at the beginning to prevent version tracking issues
+        # Masks don't need gradients, so this is safe
+        mask_flat_detached = mask_flat.detach()
+
+        # Create expanded mask from detached version
+        mask_flat_expanded = mask_flat_detached.unsqueeze(-1)
+
+        noise_hat = torch.randn_like(Z_hat) * 1e-3
+        Z_hat_safe = Z_hat * mask_flat_expanded + noise_hat * (1 - mask_flat_expanded)
+
+        noise_gt = torch.randn_like(Z) * 1e-3
+        Z_safe = Z * mask_flat_expanded + noise_gt * (1 - mask_flat_expanded)
 
         # Step 2: Compute Dpred
-        Dpred = torch.cdist(Z_hat, Z_hat, p=2)  # (B, L*n_atoms, L*n_atoms)
+        Dpred = torch.cdist(Z_hat_safe, Z_hat_safe, p=2)  # (B, L*n_atoms, L*n_atoms)
         Dpred = torch.clamp(Dpred, max=20)
 
         # Step 3: Compute D
-        D = torch.cdist(Z, Z, p=2)  # (B, L*n_atoms, L*n_atoms)
+        D = torch.cdist(Z_safe, Z_safe, p=2)  # (B, L*n_atoms, L*n_atoms)
 
         # Step 4: Compute E
         E = (Dpred - D) ** 2
@@ -373,14 +512,13 @@ class PairWiseL2Loss(TokenizerLoss):
         if n_atoms > 3:
             raise NotImplementedError("nonbackbone PairWiseL2Loss is not implemented correctly yet")
         else:
-            if not ligand_present:
-                mask = mask.unsqueeze(-1).repeat(1, 1, n_atoms).view(B, -1)
-            mask = mask[:, None, :] * mask[:, :, None]  # (B, L*n_atoms, L*n_atoms)
-            E = E * mask
+            # Use detached mask_flat to avoid version conflicts
+            mask_pairwise = mask_flat_detached[:, None, :] * mask_flat_detached[:, :, None]
+            E = E * mask_pairwise
             if keep_batch_dim:
-                l = E.sum(dim=(1, 2)) / mask.sum(dim=1)
+                l = E.sum(dim=(1, 2)) / mask_pairwise.sum(dim=1)
             else:
-                l = E.sum() / (mask.sum() + eps)
+                l = E.sum() / (mask_pairwise.sum() + eps)
 
         return l
 

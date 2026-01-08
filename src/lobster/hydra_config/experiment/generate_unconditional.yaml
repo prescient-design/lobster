@@ -16,7 +16,7 @@ model:
 # Generation parameters
 generation:
   mode: unconditional
-  length: [500]
+  length: [100, 200, 300, 400, 500]
   num_samples: 10
   nsteps: 1000
   batch_size: 1
@@ -62,7 +62,7 @@ generation:
       enable_max_percent_identity_threshold: true # Enable maximum percent identity quality control
       max_percent_identity: 100             # Maximum percent identity - if too high, structure is too unique (%)
       enable_sequence_token_check: true      # Enable check for invalid sequence tokens (mask/unknown amino acids)
-      max_retries: 30                        # Maximum retry attempts per iteration
+      max_retries: 100                        # Maximum retry attempts per iteration
   
   # Enable ESMFold validation (required to measure improvement)
   use_esmfold: true

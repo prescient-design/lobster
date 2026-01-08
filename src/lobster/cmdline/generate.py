@@ -4,7 +4,7 @@ import glob
 
 import hydra
 import torch
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from loguru import logger
 
 from lobster.model.latent_generator.io import writepdb, load_pdb
@@ -29,18 +29,52 @@ from lobster.metrics.cal_foldseek_clusters import calculate_diversity_for_genera
 from lobster.transforms._structure_transforms import StructureBackboneTransform, AminoAcidTokenizerTransform
 from tmtools import tm_align
 from lobster.model import LobsterPLMFold
+from lobster.model.gen_ume.binder_utils import (
+    get_target_chain_info,
+    initialize_binder_at_origin,
+    get_next_chain_index,
+    create_binder_inpainting_masks,
+)
+from bionemo.moco.schedules.inference_time_schedules import (
+    LinearInferenceSchedule,
+    LogInferenceSchedule,
+    PowerInferenceSchedule,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
 
-@hydra.main(version_base=None, config_path="../hydra_config", config_name="generate")
+def _get_inference_schedule_class(schedule_name: str):
+    """Convert schedule name string to schedule class.
+
+    Args:
+        schedule_name: String name of schedule ("LinearInferenceSchedule", "LogInferenceSchedule", "PowerInferenceSchedule")
+
+    Returns:
+        Schedule class (callable)
+    """
+    schedule_map = {
+        "LinearInferenceSchedule": LinearInferenceSchedule,
+        "LogInferenceSchedule": LogInferenceSchedule,
+        "PowerInferenceSchedule": PowerInferenceSchedule,
+    }
+
+    if schedule_name not in schedule_map:
+        raise ValueError(f"Unknown schedule name: {schedule_name}. Available options: {list(schedule_map.keys())}")
+
+    return schedule_map[schedule_name]
+
+
+@hydra.main(version_base=None, config_path="../hydra_config/experiment", config_name="generate_unconditional")
 def generate(cfg: DictConfig) -> None:
     """Generate protein structures using genUME model.
 
     This command-line interface supports:
     - Unconditional generation: Generate novel protein structures from scratch
     - Inverse folding: Generate sequences for given protein structures
+    - Forward folding: Generate structures for given sequences
+    - Inpainting: Generate structures for given sequences and structures
     - Optional ESMFold validation of generated structures
     """
     logger.info("Starting genUME structure generation")
@@ -110,6 +144,8 @@ def generate(cfg: DictConfig) -> None:
         _generate_forward_folding(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     elif generation_mode == "inpainting":
         _generate_inpainting(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
+    elif generation_mode == "binder_design":
+        _generate_binders(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     else:
         raise ValueError(f"Unknown generation mode: {generation_mode}")
 
@@ -126,6 +162,9 @@ def _check_sequence_tokens(
     - Token 20 (X = unknown amino acid)
     - Tokens > 20 (mask/special tokens)
     - Negative values
+
+    Also checks for low-complexity sequences:
+    - Sequences where one amino acid accounts for > 50% of the total
 
     Args:
         sequences: Sequence tensor (B, L) with amino acid token indices
@@ -158,6 +197,25 @@ def _check_sequence_tokens(
         num_negative = (seq_i < 0).sum().item()
         if num_negative > 0:
             return False, f"Sample {i} in {stage_name} contains negative token values"
+
+        # Check for low-complexity sequences (one amino acid > 50%)
+        # Only check valid amino acids (0-19)
+        valid_aa_mask = (seq_i >= 0) & (seq_i < 20)
+        valid_aa_seq = seq_i[valid_aa_mask]
+
+        if len(valid_aa_seq) > 0:
+            # Count frequency of each amino acid
+            aa_counts = torch.bincount(valid_aa_seq, minlength=20)
+            max_count = aa_counts.max().item()
+            max_percentage = (max_count / len(valid_aa_seq)) * 100
+
+            if max_percentage > 50.0:
+                max_aa_idx = aa_counts.argmax().item()
+                return False, (
+                    f"Sample {i} in {stage_name} is low-complexity: "
+                    f"amino acid {max_aa_idx} accounts for {max_percentage:.1f}% "
+                    f"({max_count}/{len(valid_aa_seq)}) of the sequence"
+                )
 
     return True, ""
 
@@ -275,6 +333,14 @@ def _execute_self_reflection_pipeline(
         forward_params = _get_self_reflection_params(cfg, "forward_folding")
         logger.info(f"  Forward folding parameters: {forward_params}")
 
+        # Get inference schedule classes from config (use same as main generation)
+        inference_schedule_seq = gen_cfg.get("inference_schedule_seq", "LogInferenceSchedule")
+        inference_schedule_struc = gen_cfg.get("inference_schedule_struc", "LinearInferenceSchedule")
+        if isinstance(inference_schedule_seq, str):
+            inference_schedule_seq = _get_inference_schedule_class(inference_schedule_seq)
+        if isinstance(inference_schedule_struc, str):
+            inference_schedule_struc = _get_inference_schedule_class(inference_schedule_struc)
+
         forward_sample = model.generate_sample(
             length=current_length,
             num_samples=batch_size,
@@ -287,6 +353,8 @@ def _execute_self_reflection_pipeline(
             temperature_struc=forward_params["temperature_struc"],
             stochasticity_seq=forward_params["stochasticity_seq"],
             stochasticity_struc=forward_params["stochasticity_struc"],
+            inference_schedule_seq=inference_schedule_seq,
+            inference_schedule_struc=inference_schedule_struc,
             asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
         )
 
@@ -383,6 +451,11 @@ def _execute_self_reflection_pipeline(
         inverse_params = _get_self_reflection_params(cfg, "inverse_folding")
         logger.info(f"  Inverse folding parameters: {inverse_params}")
 
+        # Get inference schedule classes from inverse folding parameters
+        inference_schedule_seq = inverse_params.get("inference_schedule_seq", "LogInferenceSchedule")
+        if isinstance(inference_schedule_seq, str):
+            inference_schedule_seq = _get_inference_schedule_class(inference_schedule_seq)
+
         inverse_sample = model.generate_sample(
             length=current_length,
             num_samples=batch_size,
@@ -393,6 +466,7 @@ def _execute_self_reflection_pipeline(
             nsteps=inverse_params["nsteps"],
             temperature_seq=inverse_params["temperature_seq"],
             stochasticity_seq=inverse_params["stochasticity_seq"],
+            inference_schedule_seq=inference_schedule_seq,
             asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
         )
 
@@ -889,14 +963,25 @@ def _generate_unconditional(
         if hasattr(gen_cfg, "self_reflection") and hasattr(gen_cfg.self_reflection, "quality_control"):
             qc_config = gen_cfg.self_reflection.quality_control
 
-        # Enable retries if any QC threshold is enabled
-        qc_enabled = (
+        # Check for independent sequence token check (not tied to self-reflection)
+        enable_sequence_token_check = gen_cfg.get("enable_sequence_token_check", True)
+        sequence_token_check_retries = gen_cfg.get("sequence_token_check_retries", 10)
+
+        # Enable retries if any QC threshold is enabled (from self-reflection)
+        self_reflection_qc_enabled = (
             qc_config.get("enable_tm_threshold", False)
             or qc_config.get("enable_min_percent_identity_threshold", False)
             or qc_config.get("enable_max_percent_identity_threshold", False)
             or qc_config.get("enable_sequence_token_check", True)  # Token check enabled by default
         )
-        max_retries = qc_config.get("max_retries", 3) if qc_enabled else 0
+
+        # Determine max_retries based on what's enabled
+        if self_reflection_qc_enabled:
+            max_retries = qc_config.get("max_retries", 3)
+            if enable_sequence_token_check and not gen_cfg.get("enable_self_reflection", False):
+                max_retries = sequence_token_check_retries
+        else:
+            max_retries = 0
 
         # Track retry statistics
         total_retries = 0
@@ -915,6 +1000,16 @@ def _generate_unconditional(
                     total_retries += 1
 
                 with torch.no_grad():
+                    # Get inference schedule classes from config
+                    inference_schedule_seq = gen_cfg.get("inference_schedule_seq", "LogInferenceSchedule")
+                    inference_schedule_struc = gen_cfg.get("inference_schedule_struc", "LinearInferenceSchedule")
+
+                    # Convert string names to classes if needed
+                    if isinstance(inference_schedule_seq, str):
+                        inference_schedule_seq = _get_inference_schedule_class(inference_schedule_seq)
+                    if isinstance(inference_schedule_struc, str):
+                        inference_schedule_struc = _get_inference_schedule_class(inference_schedule_struc)
+
                     # Generate samples
                     generate_sample = model.generate_sample(
                         length=current_length,
@@ -924,6 +1019,8 @@ def _generate_unconditional(
                         temperature_struc=gen_cfg.get("temperature_struc", 1.0),
                         stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
                         stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
+                        inference_schedule_seq=inference_schedule_seq,
+                        inference_schedule_struc=inference_schedule_struc,
                         asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
                     )
 
@@ -965,15 +1062,43 @@ def _generate_unconditional(
                             # Quality control failed, will retry
                             retry_count += 1
                             if retry_count > max_retries:
-                                logger.error(
+                                logger.warning(
                                     f"  Max retries ({max_retries}) exceeded for iteration {n_iter + 1}. "
+                                    f"Using current sequences despite quality control failure. "
                                     f"Skipping self-reflection for this iteration."
                                 )
                                 max_retries_exceeded += 1
                                 iteration_success = True
                             continue
+                    elif enable_sequence_token_check:
+                        # Extract sequences for validation
+                        if generate_sample["sequence_logits"].shape[-1] == 33:
+                            check_seq = convert_lobster_aa_tokenization_to_standard_aa(
+                                generate_sample["sequence_logits"], device=device
+                            )
+                        else:
+                            check_seq = generate_sample["sequence_logits"].argmax(dim=-1)
+                            check_seq[check_seq > 21] = 20
+
+                        # Run sequence token check
+                        is_valid, error_msg = _check_sequence_tokens(check_seq, mask, "unconditional generation")
+                        if not is_valid:
+                            logger.warning(f"  Sequence token check FAILED: {error_msg}")
+                            logger.warning("  Iteration will be retried (invalid sequence tokens)")
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                logger.warning(
+                                    f"  Max retries ({max_retries}) exceeded for iteration {n_iter + 1}. "
+                                    f"Using current sequences despite quality control failure."
+                                )
+                                max_retries_exceeded += 1
+                                iteration_success = True
+                            continue
+                        else:
+                            logger.info("  Sequence token check PASSED: All sequences contain valid amino acids")
+                            iteration_success = True
                     else:
-                        # Self-reflection disabled, no quality control
+                        # No quality control at all
                         iteration_success = True
 
                     # Only proceed with normal flow if iteration succeeded or max retries exceeded
@@ -1002,15 +1127,24 @@ def _generate_unconditional(
                         seq = generate_sample["sequence_logits"].argmax(dim=-1)
                         seq[seq > 21] = 20
 
+                    # Extract structure tokens (argmax)
+                    structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
                     # Write sequences to CSV
                     # Note: For self-reflection mode, we only store initial unconditional sequences (not forward/inverse intermediates)
                     if csv_writer is not None:
                         # Convert sequences to strings
                         sequence_strs = []
+                        structure_token_strs = []
                         for i in range(batch_size):
                             seq_i = seq[i, mask[i] == 1]
                             sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                             sequence_strs.append(sequence_str)
+
+                            # Convert structure tokens to comma-separated string
+                            tokens_i = structure_tokens[i, mask[i] == 1]
+                            tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                            structure_token_strs.append(tokens_str)
 
                         # Write to sequences CSV
                         csv_writer.write_sequences(
@@ -1018,6 +1152,7 @@ def _generate_unconditional(
                             run_id=f"unconditional_length_{current_length}_iter_{n_iter:03d}",
                             iteration=n_iter,
                             sequence_type="unconditional",
+                            latent_generator_tokens=structure_token_strs,
                         )
 
                     # Save generated structures
@@ -1264,8 +1399,8 @@ def _generate_inverse_folding(
                 structure_paths.extend(glob.glob(str(path / "*.pt")))
             else:
                 raise ValueError(f"Input path does not exist: {input_structures}")
-    elif isinstance(input_structures, (list, tuple)):
-        # List of paths
+    elif isinstance(input_structures, (list, tuple, ListConfig)):
+        # List of paths (includes OmegaConf ListConfig)
         for path_str in input_structures:
             path = Path(path_str)
             if path.is_file():
@@ -1404,38 +1539,118 @@ def _generate_inverse_folding(
                         f"Trial {trial + 1}/{n_trials} for batch {batch_idx + 1}, design {design_idx + 1}/{n_designs_per_structure}"
                     )
 
-                    # Generate sequences
-                    generate_sample = model.generate_sample(
-                        length=max_length,
-                        num_samples=B,
-                        inverse_folding=True,
-                        nsteps=nsteps,
-                        input_structure_coords=coords_res,
-                        input_mask=mask,
-                        input_indices=indices,
-                        temperature_seq=gen_cfg.get("temperature_seq", 0.5),
-                        stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
-                        asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
-                    )
-
-                    # Decode structures
-                    decoded_x = model.decode_structure(generate_sample, mask)
-
-                    # Extract coordinates
-                    x_recon_xyz = None
-                    for decoder_name in decoded_x:
-                        if "vit_decoder" == decoder_name:
-                            x_recon_xyz = decoded_x[decoder_name]
-                            break
-
-                    # Extract sequences
-                    if generate_sample["sequence_logits"].shape[-1] == 33:
-                        seq = convert_lobster_aa_tokenization_to_standard_aa(
-                            generate_sample["sequence_logits"], device=device
-                        )
+                    # Retry loop for quality control (like unconditional generation)
+                    if gen_cfg.get("enable_sequence_token_check", True):
+                        max_retries = gen_cfg.get("sequence_token_check_retries", 10)
                     else:
-                        seq = generate_sample["sequence_logits"].argmax(dim=-1)
-                        seq[seq > 21] = 20
+                        max_retries = 0
+                    retry_count = 0
+                    valid_sequences_generated = False
+
+                    while retry_count <= max_retries and not valid_sequences_generated:
+                        if retry_count > 0:
+                            logger.info(f"  Retry attempt {retry_count}/{max_retries}")
+
+                        # Generate sequences
+                        generate_sample = model.generate_sample(
+                            length=max_length,
+                            num_samples=B,
+                            inverse_folding=True,
+                            nsteps=nsteps,
+                            input_structure_coords=coords_res,
+                            input_mask=mask,
+                            input_indices=indices,
+                            temperature_seq=gen_cfg.get("temperature_seq", 0.5),
+                            stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
+                            asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
+                        )
+
+                        # Decode structures
+                        decoded_x = model.decode_structure(generate_sample, mask)
+
+                        # Extract coordinates
+                        x_recon_xyz = None
+                        for decoder_name in decoded_x:
+                            if "vit_decoder" == decoder_name:
+                                x_recon_xyz = decoded_x[decoder_name]
+                                break
+
+                        # Extract sequences
+                        if generate_sample["sequence_logits"].shape[-1] == 33:
+                            seq = convert_lobster_aa_tokenization_to_standard_aa(
+                                generate_sample["sequence_logits"], device=device
+                            )
+                        else:
+                            seq = generate_sample["sequence_logits"].argmax(dim=-1)
+                            seq[seq > 21] = 20
+
+                        # Quality control check for invalid tokens
+                        is_valid, error_msg = _check_sequence_tokens(seq, mask, "inverse folding")
+                        if not is_valid:
+                            logger.warning(f"  Quality control FAILED: {error_msg}")
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                logger.warning(
+                                    f"  Max retries ({max_retries}) exceeded for trial {trial + 1}. "
+                                    f"Using argmax without 'X' token as fallback."
+                                )
+
+                                # Store original sequence (with X tokens) for comparison
+                                seq_with_x = seq.clone()
+
+                                # Re-extract sequences with X-masked logits to avoid unknown tokens
+                                if generate_sample["sequence_logits"].shape[-1] == 33:
+                                    # Mask token 24 (X) in 33-token scheme
+                                    masked_logits = generate_sample["sequence_logits"].clone()
+                                    masked_logits[..., 24] = float("-inf")
+                                    seq = convert_lobster_aa_tokenization_to_standard_aa(masked_logits, device=device)
+                                else:
+                                    # Mask token 20 (X) in standard scheme
+                                    masked_logits = generate_sample["sequence_logits"].clone()
+                                    masked_logits[..., 20] = float("-inf")
+                                    seq = masked_logits.argmax(dim=-1)
+                                    seq[seq > 21] = 20
+
+                                # Log sequences for visual inspection
+                                logger.info("  Sequence comparison (original with X vs. X-masked):")
+                                for i in range(seq.shape[0]):
+                                    # Convert token indices to amino acid strings
+                                    valid_positions = mask[i] == 1
+                                    seq_with_x_str = "".join(
+                                        [
+                                            restype_order_with_x_inv.get(int(t), "?")
+                                            for t in seq_with_x[i, valid_positions].cpu().numpy()
+                                        ]
+                                    )
+                                    seq_masked_str = "".join(
+                                        [
+                                            restype_order_with_x_inv.get(int(t), "?")
+                                            for t in seq[i, valid_positions].cpu().numpy()
+                                        ]
+                                    )
+
+                                    # Count X tokens
+                                    num_x_before = seq_with_x_str.count("X")
+                                    num_x_after = seq_masked_str.count("X")
+
+                                    logger.info(f"    Sample {i}:")
+                                    logger.info(
+                                        f"      Before (X count={num_x_before}): {seq_with_x_str[:100]}{'...' if len(seq_with_x_str) > 100 else ''}"
+                                    )
+                                    logger.info(
+                                        f"      After  (X count={num_x_after}): {seq_masked_str[:100]}{'...' if len(seq_masked_str) > 100 else ''}"
+                                    )
+
+                                valid_sequences_generated = True
+                                break
+                            logger.warning(f"  Regenerating sequences (retry {retry_count}/{max_retries})")
+                            continue
+                        else:
+                            logger.info("  Quality control PASSED: All sequences contain valid amino acids")
+                            valid_sequences_generated = True
+
+                    # Extract structure tokens (argmax)
+                    structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
 
                     # Calculate TM-scores for this trial
                     trial_tm_scores = []
@@ -1663,10 +1878,16 @@ def _generate_inverse_folding(
                 if csv_writer is not None:
                     # Convert generated sequences to strings
                     generated_sequence_strs = []
+                    structure_token_strs = []
                     for i in range(B):
                         seq_i = seq[i, mask[i] == 1]
                         sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                         generated_sequence_strs.append(sequence_str)
+
+                        # Convert structure tokens to comma-separated string
+                        tokens_i = structure_tokens[i, mask[i] == 1]
+                        tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                        structure_token_strs.append(tokens_str)
 
                     # Convert original sequences to strings
                     original_sequence_strs = []
@@ -1688,6 +1909,7 @@ def _generate_inverse_folding(
                         input_structure=[Path(batch_paths[i]).stem for i in filtered_valid_indices],
                         trial_number=best_trial["trial"] + 1,
                         percent_identities=batch_percent_identities,
+                        latent_generator_tokens=structure_token_strs,
                     )
 
                 # Save results
@@ -1933,8 +2155,8 @@ def _generate_forward_folding(
                 structure_paths.extend(glob.glob(str(path / "*.pt")))
             else:
                 raise ValueError(f"Input path does not exist: {input_structures}")
-    elif isinstance(input_structures, (list, tuple)):
-        # List of paths
+    elif isinstance(input_structures, (list, tuple, ListConfig)):
+        # List of paths (includes OmegaConf ListConfig)
         for path_str in input_structures:
             path = Path(path_str)
             if path.is_file():
@@ -2113,8 +2335,12 @@ def _generate_forward_folding(
                     seq = generate_sample["sequence_logits"].argmax(dim=-1)
                     seq[seq > 21] = 20
 
-                # Calculate TM-scores for this trial
+                # Extract structure tokens (argmax)
+                structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
+                # Calculate TM-scores and RMSDs for this trial
                 trial_tm_scores = []
+                trial_rmsd_scores = []
                 for i in range(B):
                     # Get original and generated coordinates
                     orig_coords = coords_res[i, mask[i] == 1, :, :]  # Original structure
@@ -2125,7 +2351,6 @@ def _generate_forward_folding(
                     sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
 
                     # Calculate TM-Score using TM-align
-
                     tm_out = tm_align(
                         gen_coords[:, 1, :].cpu().numpy(),  # CA atoms of generated structure
                         orig_coords[:, 1, :].detach().cpu().numpy(),  # CA atoms of original structure
@@ -2133,14 +2358,26 @@ def _generate_forward_folding(
                         sequence_str,
                     )
                     trial_tm_scores.append(tm_out.tm_norm_chain1)
-                    logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {tm_out.rmsd:.2f} Å")
+
+                    # Calculate RMSD using Kabsch alignment (all backbone atoms)
+                    rmsd = align_and_compute_rmsd(
+                        coords1=gen_coords,
+                        coords2=orig_coords,
+                        mask=None,  # Use all positions
+                        return_aligned=False,
+                        device=device,
+                    )
+                    trial_rmsd_scores.append(rmsd)
+                    logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {rmsd:.2f} Å")
 
                 # Store trial results
                 best_trial_results.append(
                     {
                         "trial": trial,
                         "tm_scores": trial_tm_scores,
+                        "rmsd_scores": trial_rmsd_scores,
                         "avg_tm_score": sum(trial_tm_scores) / len(trial_tm_scores),
+                        "avg_rmsd": sum(trial_rmsd_scores) / len(trial_rmsd_scores),
                         "generate_sample": generate_sample,
                         "x_recon_xyz": x_recon_xyz,
                         "seq": seq,
@@ -2158,14 +2395,23 @@ def _generate_forward_folding(
             x_recon_xyz = best_trial["x_recon_xyz"]
             seq = best_trial["seq"]
 
+            # Extract structure tokens from best trial (argmax)
+            structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
             # Write sequences to CSV
             if csv_writer is not None:
                 # Convert generated sequences to strings
                 generated_sequence_strs = []
+                structure_token_strs = []
                 for i in range(B):
                     seq_i = seq[i, mask[i] == 1]
                     sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                     generated_sequence_strs.append(sequence_str)
+
+                    # Convert structure tokens to comma-separated string
+                    tokens_i = structure_tokens[i, mask[i] == 1]
+                    tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                    structure_token_strs.append(tokens_str)
 
                 # Convert original sequences to strings (from input structures)
                 original_sequence_strs = []
@@ -2183,6 +2429,7 @@ def _generate_forward_folding(
                     run_id=f"forward_folding_batch_{batch_idx:03d}",
                     input_structure=[Path(batch_paths[i]).stem for i in filtered_valid_indices],
                     trial_number=best_trial["trial"] + 1,
+                    latent_generator_tokens=structure_token_strs,
                 )
 
             # Save generated and original structures
@@ -2220,18 +2467,27 @@ def _generate_forward_folding(
                 seq_i = seq[i, mask[i] == 1]
                 sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
 
-                # Calculate TM-Score and RMSD using TM-align
-
+                # Calculate TM-Score using TM-align
                 tm_out = tm_align(
                     gen_coords[:, 1, :].cpu().numpy(),  # CA atoms of generated structure
                     orig_coords[:, 1, :].detach().cpu().numpy(),  # CA atoms of original structure
                     sequence_str,
                     sequence_str,
                 )
-                logger.info(f"Sequence: {sequence_str}")
-                logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {tm_out.rmsd:.2f} Å")
                 batch_tm_scores.append(tm_out.tm_norm_chain1)
-                batch_rmsd_scores.append(tm_out.rmsd)
+
+                # Calculate RMSD using Kabsch alignment (all backbone atoms)
+                rmsd = align_and_compute_rmsd(
+                    coords1=gen_coords,
+                    coords2=orig_coords,
+                    mask=None,  # Use all positions
+                    return_aligned=False,
+                    device=device,
+                )
+                batch_rmsd_scores.append(rmsd)
+
+                logger.info(f"Sequence: {sequence_str}")
+                logger.info(f"TM-Score: {tm_out.tm_norm_chain1:.3f}, RMSD: {rmsd:.2f} Å")
 
             # Collect metrics for aggregate statistics
             all_tm_scores.extend(batch_tm_scores)
@@ -2345,8 +2601,8 @@ def _generate_inpainting(
                 structure_paths.extend(glob.glob(str(path / "*.pt")))
             else:
                 raise ValueError(f"Input path does not exist: {input_structures}")
-    elif isinstance(input_structures, (list, tuple)):
-        # List of paths
+    elif isinstance(input_structures, (list, tuple, ListConfig)):
+        # List of paths (includes OmegaConf ListConfig)
         for path_str in input_structures:
             path = Path(path_str)
             if path.is_file():
@@ -2627,6 +2883,9 @@ def _generate_inpainting(
                         seq = generate_sample["sequence_logits"].argmax(dim=-1)
                         seq[seq > 21] = 20
 
+                    # Extract structure tokens (argmax)
+                    structure_tokens = generate_sample["structure_logits"].argmax(dim=-1)  # Shape: [batch_size, length]
+
                     # Calculate TM-scores for this trial
                     trial_tm_scores = []
                     trial_rmsd_inpainted = []
@@ -2892,10 +3151,16 @@ def _generate_inpainting(
                 if csv_writer is not None:
                     # Convert full generated sequences to strings
                     generated_sequence_strs = []
+                    structure_token_strs = []
                     for i in range(B):
                         seq_i = seq[i, mask[i] == 1]
                         sequence_str = "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
                         generated_sequence_strs.append(sequence_str)
+
+                        # Convert structure tokens to comma-separated string
+                        tokens_i = structure_tokens[i, mask[i] == 1]
+                        tokens_str = ",".join([str(t.item()) for t in tokens_i])
+                        structure_token_strs.append(tokens_str)
 
                     # Convert full original sequences to strings
                     original_sequence_strs = []
@@ -2986,6 +3251,7 @@ def _generate_inpainting(
                         trial_number=best_trial["trial"] + 1,
                         percent_identities=batch_percent_identities_masked,
                         masked_positions=masked_positions_per_seq,
+                        latent_generator_tokens=structure_token_strs,
                     )
 
                 # Save results
@@ -3256,9 +3522,369 @@ def _generate_inpainting(
             logger.debug(f"Correlation plots not applicable: {e}")
 
 
-def _generate_binders(model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None) -> None:
-    """Generate binders."""
-    raise NotImplementedError("Binder generation is not implemented")
+def _generate_binders(
+    model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
+) -> None:
+    """Generate binders for target protein structures."""
+    logger.info("Starting binder design generation...")
+
+    # Get input structure paths
+    input_structures = cfg.generation.input_structures
+    if not input_structures:
+        raise ValueError("input_structures must be provided for binder_design mode")
+
+    # Handle different input formats (same as inpainting mode)
+    structure_paths = []
+    if isinstance(input_structures, str):
+        if "*" in input_structures or "?" in input_structures:
+            # Glob pattern
+            structure_paths = glob.glob(input_structures)
+        else:
+            # Single file or directory
+            path = Path(input_structures)
+            if path.is_file():
+                structure_paths = [str(path)]
+            elif path.is_dir():
+                # Find all structure files in directory
+                structure_paths = list(glob.glob(str(path / "*.pdb")))
+                structure_paths.extend(glob.glob(str(path / "*.cif")))
+            else:
+                raise ValueError(f"Input path does not exist: {input_structures}")
+    elif isinstance(input_structures, (list, tuple, ListConfig)):
+        # List of paths
+        for path_str in input_structures:
+            path = Path(path_str)
+            if path.is_file():
+                structure_paths.append(str(path))
+            else:
+                logger.warning(f"Skipping non-existent file: {path_str}")
+    else:
+        raise ValueError(f"Invalid input_structures format: {type(input_structures)}")
+
+    if not structure_paths:
+        raise ValueError("No valid structure files found in input_structures")
+
+    logger.info(f"Found {len(structure_paths)} structure(s) to process")
+
+    # Get configuration parameters
+    gen_cfg = cfg.generation
+    target_chain = gen_cfg.get("target_chain")
+    binder_length = gen_cfg.get("binder_length")
+    epitope_indices = gen_cfg.get("epitope_indices", None)
+    nsteps = gen_cfg.get("nsteps", 200)
+    n_trials = gen_cfg.get("n_trials", 1)
+    n_designs_per_structure = gen_cfg.get("n_designs_per_structure", 1)
+
+    if not target_chain:
+        raise ValueError("target_chain must be specified for binder_design mode")
+    if not binder_length:
+        raise ValueError("binder_length must be specified for binder_design mode")
+
+    logger.info(f"Target chain: {target_chain}")
+    logger.info(f"Binder length: {binder_length}")
+    if epitope_indices:
+        logger.info(f"Epitope indices: {epitope_indices}")
+    logger.info(f"Generation steps: {nsteps}")
+    logger.info(f"Designs per structure: {n_designs_per_structure}")
+
+    # Initialize transforms
+    structure_transform = StructureBackboneTransform(max_length=gen_cfg.get("max_length", 512))
+    tokenizer_transform = AminoAcidTokenizerTransform(max_length=gen_cfg.get("max_length", 512))
+
+    # Process each structure
+    with torch.no_grad():
+        for structure_idx, structure_path in enumerate(structure_paths):
+            logger.info(f"\n{'=' * 70}")
+            logger.info(f"Processing structure {structure_idx + 1}/{len(structure_paths)}")
+            logger.info(f"Input: {structure_path}")
+            logger.info(f"{'=' * 70}")
+
+            # Load target structure
+            logger.info(f"Loading target structure from {structure_path}")
+            target_data = load_pdb(structure_path, add_batch_dim=False)
+
+            if target_data is None:
+                logger.warning(f"Failed to load structure from {structure_path}, skipping")
+                continue
+
+            # Apply transforms
+            target_data = structure_transform(target_data)
+
+            # Check minimum length
+            if target_data["coords_res"].shape[0] < 30:
+                logger.warning(f"Structure too short ({target_data['coords_res'].shape[0]} residues), skipping")
+                continue
+
+            # Identify target chain
+            try:
+                target_chain_idx, target_start, target_end = get_target_chain_info(target_data, target_chain)
+                logger.info(f"Target chain '{target_chain}' found:")
+                logger.info(f"  Chain index: {target_chain_idx}")
+                logger.info(f"  Residue range: {target_start}-{target_end}")
+                logger.info(f"  Length: {target_end - target_start} residues")
+            except ValueError as e:
+                logger.error(str(e))
+                continue
+
+            # Extract only target chain from structure
+            # Note: StructureBackboneTransform renames 'chains_ids' to 'chains'
+            chains_key = "chains" if "chains" in target_data else "chains_ids"
+            target_chain_mask = target_data[chains_key] == target_chain_idx
+            target_data_filtered = {
+                "coords_res": target_data["coords_res"][target_chain_mask],
+                "sequence": target_data["sequence"][target_chain_mask],
+                chains_key: target_data[chains_key][target_chain_mask],
+                "real_chains": target_data["real_chains"][target_chain_mask],
+                "indices": target_data["indices"][target_chain_mask],
+                "mask": target_data["mask"][target_chain_mask],
+            }
+
+            # Initialize binder position
+            if epitope_indices:
+                logger.info(f"Initializing binder with length {binder_length} near epitope")
+                logger.info(f"  Epitope residue indices: {epitope_indices}")
+                logger.info("  Ball center: 5Å from epitope, radius: 12Å, min target distance: 5Å")
+            else:
+                logger.info(f"Initializing binder with length {binder_length} around target center of mass")
+                logger.info("  Ball radius: 12Å, min target distance: 5Å")
+
+            binder_data = initialize_binder_at_origin(
+                binder_length,
+                device="cpu",
+                target_coords=target_data_filtered["coords_res"],
+                epitope_indices=epitope_indices,
+            )
+
+            # Get next chain index for binder
+            binder_chain_idx = get_next_chain_index(target_data_filtered)
+            logger.info(f"Binder will be assigned chain index: {binder_chain_idx}")
+
+            # Create composite structure (target + binder)
+            logger.info("Creating composite structure (target + binder)")
+
+            L_target = target_data_filtered["coords_res"].shape[0]
+            L_binder = binder_data["coords_res"].shape[0]
+            L_total = L_target + L_binder
+
+            # Check max length
+            max_length = gen_cfg.get("max_length", 512)
+            if L_total > max_length:
+                logger.warning(
+                    f"Total length {L_total} (target: {L_target}, binder: {L_binder}) "
+                    f"exceeds max_length {max_length}. Skipping structure."
+                )
+                continue
+
+            # Concatenate all tensors
+            coords_res_combined = torch.cat([target_data_filtered["coords_res"], binder_data["coords_res"]], dim=0)
+
+            sequence_combined = torch.cat([target_data_filtered["sequence"], binder_data["sequence"]], dim=0)
+
+            mask_combined = torch.cat([target_data_filtered["mask"], binder_data["mask"]], dim=0)
+
+            # Create chain IDs for binder
+            binder_chain_ids = torch.full((L_binder,), binder_chain_idx, dtype=target_data_filtered[chains_key].dtype)
+            chains_ids_combined = torch.cat([target_data_filtered[chains_key], binder_chain_ids], dim=0)
+
+            # Create indices for binder
+            binder_indices = torch.arange(
+                binder_chain_idx, binder_chain_idx + L_binder, dtype=target_data_filtered["indices"].dtype
+            )
+            indices_combined = torch.cat([target_data_filtered["indices"], binder_indices], dim=0)
+
+            logger.info("Composite structure created:")
+            logger.info(f"  Total length: {L_total} ({L_target} target + {L_binder} binder)")
+            logger.info(f"  Target chain index: {target_chain_idx}")
+            logger.info(f"  Binder chain index: {binder_chain_idx}")
+
+            # Save initial structure (before generation)
+            structure_name = Path(structure_path).stem
+            initial_structure_path = output_dir / f"{structure_name}_initial_structure.pdb"
+            writepdb(str(initial_structure_path), coords_res_combined, sequence_combined)
+            logger.info(f"Saved initial structure: {initial_structure_path}")
+
+            # Add batch dimension and move to device
+            coords_res = coords_res_combined.unsqueeze(0).to(device)
+            sequence = sequence_combined.unsqueeze(0).to(device)
+            mask = mask_combined.unsqueeze(0).to(device)
+            chains_ids = chains_ids_combined.unsqueeze(0).to(device)
+            indices = indices_combined.unsqueeze(0).to(device)
+
+            # Apply tokenizer to sequence
+            tokenized_data = tokenizer_transform({"sequence": sequence.squeeze(0).cpu()})
+            sequence_tokenized = tokenized_data["sequence"].unsqueeze(0).to(device)
+
+            # Create inpainting masks
+            # Note: First binder residue is kept fixed to preserve chain break token
+            logger.info("Creating inpainting masks (target=fixed, first binder token=fixed, rest of binder=generate)")
+
+            mask_sequence, mask_structure = create_binder_inpainting_masks(
+                chains_ids, target_chain_idx, binder_chain_idx, device
+            )
+
+            # Verify masks
+            num_fixed = (mask_sequence == 0).sum().item()
+            num_generate = (mask_sequence == 1).sum().item()
+            logger.info(f"  Fixed residues: {num_fixed} (target + 1 binder chain-break token)")
+            logger.info(f"  Generate residues: {num_generate} (binder minus first token)")
+
+            # Generate binder designs
+            for design_idx in range(n_designs_per_structure):
+                if n_designs_per_structure > 1:
+                    logger.info(f"\n--- Design {design_idx + 1}/{n_designs_per_structure} ---")
+
+                best_result = None
+
+                for trial in range(n_trials):
+                    if n_trials > 1:
+                        logger.info(f"Trial {trial + 1}/{n_trials}")
+
+                    # Generate with inpainting
+                    generate_sample = model.generate_sample(
+                        length=L_total,
+                        num_samples=1,
+                        nsteps=nsteps,
+                        temperature_seq=gen_cfg.get("temperature_seq", 0.5),
+                        temperature_struc=gen_cfg.get("temperature_struc", 1.0),
+                        stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
+                        stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
+                        inpainting=True,
+                        input_structure_coords=coords_res,
+                        input_sequence_tokens=sequence_tokenized,
+                        input_mask=mask,
+                        input_indices=indices,
+                        inpainting_mask_sequence=mask_sequence,
+                        inpainting_mask_structure=mask_structure,
+                        asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
+                    )
+
+                    # Decode structures
+                    decoded_x = model.decode_structure(generate_sample, mask)
+
+                    # Extract coordinates
+                    x_recon_xyz = None
+                    for decoder_name in decoded_x:
+                        if "vit_decoder" == decoder_name:
+                            x_recon_xyz = decoded_x[decoder_name]
+                            break
+
+                    if x_recon_xyz is None:
+                        logger.error("No vit_decoder output found, skipping this trial")
+                        continue
+
+                    # Extract coordinates (B, L, 3, 3) - N, CA, C atoms
+                    gen_coords = x_recon_xyz[:, :, [0, 1, 2], :]
+
+                    # Extract sequences
+                    if generate_sample["sequence_logits"].shape[-1] == 33:
+                        gen_sequence = convert_lobster_aa_tokenization_to_standard_aa(
+                            generate_sample["sequence_logits"], device=device
+                        )
+                    else:
+                        gen_sequence = generate_sample["sequence_logits"].argmax(dim=-1)
+                        gen_sequence[gen_sequence > 21] = 20
+
+                    # Store result
+                    result = {
+                        "coords": gen_coords,
+                        "sequence": gen_sequence,
+                        "mask": mask,
+                        "chains_ids": chains_ids,
+                        "indices": indices,
+                    }
+
+                    # For now, just keep the first/only trial
+                    best_result = result
+                    if n_trials == 1:
+                        break
+
+                # Save outputs
+                structure_name = Path(structure_path).stem
+                prefix = f"{structure_name}_design{design_idx:03d}"
+
+                gen_coords = best_result["coords"]
+                gen_sequence = best_result["sequence"]
+
+                # Save complete complex
+                complex_path = output_dir / f"{prefix}_complex.pdb"
+                writepdb(str(complex_path), gen_coords[0], gen_sequence[0])
+                logger.info(f"Saved complex: {complex_path}")
+
+                # Save binder alone
+                binder_mask = chains_ids[0] == binder_chain_idx
+                binder_coords = gen_coords[0, binder_mask]
+                binder_sequence = gen_sequence[0, binder_mask]
+                binder_path = output_dir / f"{prefix}_binder.pdb"
+                writepdb(str(binder_path), binder_coords, binder_sequence)
+                logger.info(f"Saved binder: {binder_path}")
+
+                # Save target alone (for reference)
+                target_mask = chains_ids[0] == target_chain_idx
+                target_coords = gen_coords[0, target_mask]
+                target_sequence = gen_sequence[0, target_mask]
+                target_path = output_dir / f"{prefix}_target.pdb"
+                writepdb(str(target_path), target_coords, target_sequence)
+                logger.info(f"Saved target: {target_path}")
+
+                # Validate with ESMFold if enabled
+                if gen_cfg.get("use_esmfold", False) and plm_fold is not None:
+                    logger.info("Validating with ESMFold...")
+
+                    # Validate the complex (target + binder together)
+                    try:
+                        # Get chain groups for validation
+                        esmfold_chain_groups = gen_cfg.get("esmfold_chain_groups", None)
+                        if esmfold_chain_groups is None:
+                            # Default: validate target + binder together
+                            esmfold_chain_groups = [[target_chain_idx, binder_chain_idx]]
+
+                        # Call ESMFold validation
+                        result = predict_structure_with_esmfold(
+                            plm_fold=plm_fold,
+                            seq_i=gen_sequence[0],
+                            chains_i=chains_ids[0],
+                            orig_coords=coords_res[0],  # Original composite structure
+                            gen_coords=gen_coords[0],  # Generated composite structure
+                            mask_i=mask[0],
+                            cfg=cfg,
+                            device=device,
+                            restype_order_inv=restype_order_with_x_inv,
+                            inpainting_mask_seq_i=mask_sequence[0],
+                            inpainting_mask_struc_i=mask_structure[0],
+                            chain_group=esmfold_chain_groups[0] if esmfold_chain_groups else None,
+                        )
+
+                        logger.info("ESMFold validation metrics:")
+                        if "folded_structure_metrics" in result:
+                            for key, value in result["folded_structure_metrics"].items():
+                                if isinstance(value, (int, float)):
+                                    logger.info(f"  {key}: {value:.4f}")
+                                else:
+                                    logger.info(f"  {key}: {value}")
+
+                        # Save ESMFold predicted structure
+                        if "pred_coords" in result and result["pred_coords"] is not None:
+                            pred_coords = result["pred_coords"]
+                            # pred_coords shape is (1, L, 3, 3) or (L, 3, 3)
+                            if pred_coords.dim() == 4:
+                                pred_coords = pred_coords.squeeze(0)  # Remove batch dim
+
+                            # Save ESMFold predicted complex
+                            esmfold_path = output_dir / f"{prefix}_esmfold.pdb"
+                            writepdb(str(esmfold_path), pred_coords, gen_sequence[0])
+                            logger.info(f"Saved ESMFold prediction: {esmfold_path}")
+
+                            # Save ESMFold predicted binder only
+                            if pred_coords.shape[0] == gen_sequence[0].shape[0]:
+                                esmfold_binder_coords = pred_coords[binder_mask]
+                                esmfold_binder_path = output_dir / f"{prefix}_esmfold_binder.pdb"
+                                writepdb(str(esmfold_binder_path), esmfold_binder_coords, binder_sequence)
+                                logger.info(f"Saved ESMFold binder prediction: {esmfold_binder_path}")
+
+                    except Exception as e:
+                        logger.warning(f"ESMFold validation failed: {e}")
+
+    logger.info("\nBinder design generation completed!")
 
 
 def _validate_with_esmfold(

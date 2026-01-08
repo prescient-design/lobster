@@ -1275,6 +1275,7 @@ class MetricsCSVWriter:
             "percent_identity_original",
             "masked_positions",
             "sequence_type",
+            "latent_generator_tokens",
             "timestamp",
         ]
 
@@ -1508,6 +1509,7 @@ class MetricsCSVWriter:
         sequence_type: str | None = None,
         percent_identities: list[float] | None = None,
         masked_positions: list[list[int]] | None = None,
+        latent_generator_tokens: list[str] | None = None,
     ):
         """Write generated sequences to CSV for diversity analysis.
 
@@ -1569,6 +1571,11 @@ class MetricsCSVWriter:
                 if masked_positions and sample_idx < len(masked_positions):
                     masked_pos = ",".join(map(str, masked_positions[sample_idx]))
 
+                # Handle latent_generator_tokens
+                tokens_str = ""
+                if latent_generator_tokens and sample_idx < len(latent_generator_tokens):
+                    tokens_str = latent_generator_tokens[sample_idx]
+
                 writer.writerow(
                     [
                         run_id,
@@ -1587,6 +1594,7 @@ class MetricsCSVWriter:
                         percent_id,
                         masked_pos,
                         sequence_type or "",
+                        tokens_str,
                         timestamp,
                     ]
                 )

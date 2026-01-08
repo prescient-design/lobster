@@ -50,7 +50,9 @@ class UnconditionalGenerationCallback(lightning.Callback):
 
         if batch_idx % self.save_every_n == 0 and self.plm_fold is not None:
             # Perform unconditional generation
-            self._perform_unconditional_generation(trainer, gen_ume, device, batch_idx, current_step)
+            with torch.no_grad():
+                self._perform_unconditional_generation(trainer, gen_ume, device, batch_idx, current_step)
+            torch.cuda.empty_cache()
 
     def _perform_unconditional_generation(self, trainer, gen_ume, device, batch_idx, current_step):
         """Perform unconditional generation and folding."""

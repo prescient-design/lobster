@@ -7,6 +7,7 @@ import os
 from collections.abc import Callable
 from typing import Literal
 
+import hydra
 import lightning.pytorch as pl
 import omegaconf
 import torch
@@ -58,8 +59,38 @@ class TokenizerMulti(pl.LightningModule):
         min_mask_timestep: float = 0.5,
         mask_sequence: bool = False,
         debug: bool = False,
+        num_warmup_steps: int = 50000,
+        num_training_steps: int = 500000,
+        ckpt_path: str = None,
     ):
         super().__init__()
+
+        # Debug: Check what types we received
+        logger.info(f"Received structure_encoder type: {type(structure_encoder)}")
+        logger.info(f"Received quantizer type: {type(quantizer)}")
+        logger.info(f"Received decoder_factory type: {type(decoder_factory)}")
+        logger.info(f"Received loss_factory type: {type(loss_factory)}")
+
+        # Instantiate modules if they're DictConfig objects (Hydra didn't instantiate them)
+        if isinstance(structure_encoder, omegaconf.DictConfig):
+            logger.info("Instantiating structure_encoder from config")
+            structure_encoder = hydra.utils.instantiate(structure_encoder)
+        if isinstance(quantizer, omegaconf.DictConfig):
+            logger.info("Instantiating quantizer from config")
+            quantizer = hydra.utils.instantiate(quantizer)
+        if isinstance(decoder_factory, omegaconf.DictConfig):
+            logger.info("Instantiating decoder_factory from config")
+            decoder_factory = hydra.utils.instantiate(decoder_factory)
+        if isinstance(loss_factory, omegaconf.DictConfig):
+            logger.info("Instantiating loss_factory from config")
+            loss_factory = hydra.utils.instantiate(loss_factory)
+        if isinstance(optim, omegaconf.DictConfig):
+            logger.info("Instantiating optim from config")
+            optim = hydra.utils.instantiate(optim)
+        if isinstance(lr_scheduler, omegaconf.DictConfig):
+            logger.info("Instantiating lr_scheduler from config")
+            lr_scheduler = hydra.utils.instantiate(lr_scheduler)
+
         self.encoder = structure_encoder
         self.quantizer = quantizer
         self.decoder_factory = decoder_factory
@@ -80,11 +111,139 @@ class TokenizerMulti(pl.LightningModule):
         logger.info(f"Using min_mask_timestep: {self.min_mask_timestep}")
         logger.info(f"Using schedule: {self.schedule}")
 
+        self.num_warmup_steps = num_warmup_steps
+        self.num_training_steps = num_training_steps
+        self.ckpt_path = ckpt_path
         self.structure_path = structure_path
         if not os.path.exists(f"{self.structure_path}train/") and self.structure_path is not None:
             os.makedirs(f"{self.structure_path}train/")
 
         self.automatic_optimization = automatic_optimization
+
+        # Debug: Check number of parameters
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        logger.info(f"Total parameters: {total_params:,}")
+        logger.info(f"Trainable parameters: {trainable_params:,}")
+
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: str,
+        map_location=None,
+        hparams_file: str | None = None,
+        strict: bool = True,
+        load_encoder: bool = True,
+        load_encoder_strict: bool = True,
+        load_quantizer: bool = True,
+        load_quantizer_strict: bool = True,
+        load_decoder: bool = True,
+        load_decoder_strict: bool = True,
+        **kwargs,
+    ):
+        """Load model from checkpoint with support for component-specific loading.
+
+        This override allows selective loading of encoder, quantizer, and decoder
+        components with different strictness levels for each component.
+
+        Args:
+            checkpoint_path: Path to the checkpoint file
+            map_location: Device to map tensors to
+            hparams_file: Path to hyperparameters file (unused, for compatibility)
+            strict: If True and all component flags are True, use standard loading.
+                   If False, enables component-specific loading.
+            load_encoder: Whether to load encoder weights
+            load_encoder_strict: Whether to use strict loading for encoder
+            load_quantizer: Whether to load quantizer weights
+            load_quantizer_strict: Whether to use strict loading for quantizer
+            load_decoder: Whether to load decoder weights
+            load_decoder_strict: Whether to use strict loading for decoder
+            **kwargs: Additional arguments passed to model __init__
+
+        Returns:
+            Loaded model instance
+        """
+        # Determine if we need component-specific loading
+        use_component_loading = not strict or any(
+            [
+                not load_encoder,
+                not load_quantizer,
+                not load_decoder,
+                not load_encoder_strict,
+                not load_quantizer_strict,
+                not load_decoder_strict,
+            ]
+        )
+
+        if use_component_loading:
+            logger.info("Using component-specific checkpoint loading")
+            checkpoint = torch.load(checkpoint_path, map_location=map_location)
+            checkpoint_state_dict = checkpoint["state_dict"]
+
+            # Instantiate model with new hyperparameters
+            model = cls(**kwargs)
+
+            # Load encoder weights if requested
+            if load_encoder:
+                logger.info("Loading encoder weights from checkpoint")
+                encoder_state_dict = {
+                    k.replace("encoder.", "", 1): v
+                    for k, v in checkpoint_state_dict.items()
+                    if k.startswith("encoder.")
+                }
+                if encoder_state_dict:
+                    model.encoder.load_state_dict(encoder_state_dict, strict=load_encoder_strict)
+                    logger.info(f"Successfully loaded {len(encoder_state_dict)} encoder parameters")
+                else:
+                    logger.warning("No encoder weights found in checkpoint")
+            else:
+                logger.info("Keeping randomly initialized encoder")
+
+            # Load quantizer weights if requested
+            if load_quantizer and model.quantizer is not None:
+                logger.info("Loading quantizer weights from checkpoint")
+                quantizer_state_dict = {
+                    k.replace("quantizer.", "", 1): v
+                    for k, v in checkpoint_state_dict.items()
+                    if k.startswith("quantizer.")
+                }
+                if quantizer_state_dict:
+                    model.quantizer.load_state_dict(quantizer_state_dict, strict=load_quantizer_strict)
+                    logger.info(f"Successfully loaded {len(quantizer_state_dict)} quantizer parameters")
+                else:
+                    logger.warning("No quantizer weights found in checkpoint")
+            elif model.quantizer is None:
+                logger.info("No quantizer in model, skipping quantizer loading")
+            else:
+                logger.info("Keeping randomly initialized quantizer")
+
+            # Load decoder weights if requested
+            if load_decoder:
+                logger.info("Loading decoder weights from checkpoint")
+                decoder_state_dict = {
+                    k.replace("decoder_factory.", "", 1): v
+                    for k, v in checkpoint_state_dict.items()
+                    if k.startswith("decoder_factory.")
+                }
+                if decoder_state_dict:
+                    model.decoder_factory.load_state_dict(decoder_state_dict, strict=load_decoder_strict)
+                    logger.info(f"Successfully loaded {len(decoder_state_dict)} decoder parameters")
+                else:
+                    logger.warning("No decoder weights found in checkpoint")
+            else:
+                logger.info("Keeping randomly initialized decoder")
+
+            return model
+        else:
+            # Standard Lightning checkpoint loading
+            logger.info("Using standard checkpoint loading")
+            return super().load_from_checkpoint(
+                checkpoint_path=checkpoint_path,
+                map_location=map_location,
+                hparams_file=hparams_file,
+                strict=strict,
+                **kwargs,
+            )
 
     def on_after_backward(self):
         if self.debug:
@@ -293,6 +452,7 @@ class TokenizerMulti(pl.LightningModule):
                 ligand_mask=x_feat[5],
                 ligand_residue_index=x_feat[6],
                 ligand_atom_types=x_feat[7],
+                batch=batch,
             )
         elif len(x_feat) == 7:
             x_emb = self.encoder(
@@ -303,9 +463,10 @@ class TokenizerMulti(pl.LightningModule):
                 ligand_coords=x_feat[4],
                 ligand_mask=x_feat[5],
                 ligand_residue_index=x_feat[6],
+                batch=batch,
             )
         else:
-            x_emb = self.encoder(*x_feat)  # Keep original unpacking for backward compatibility
+            x_emb = self.encoder(*x_feat, batch=batch)  # Keep original unpacking for backward compatibility
 
         if self.quantizer is not None:
             # check if cls token is used
@@ -384,13 +545,29 @@ class TokenizerMulti(pl.LightningModule):
         """Validation step of the model."""
         return self.single_step(batch, batch_idx, split="val")
 
+    # def configure_optimizers(self):
+    #    """Configure the optimizer and learning rate scheduler."""
+    #    optimizer = self.optim_factory(params=self.parameters())
+
+    #    out = {"optimizer": optimizer}
+
+    #    out["lr_scheduler"] = {"scheduler": self.lr_scheduler(optimizer=optimizer), "interval": "step"}
+
+    #    return out
+
     def configure_optimizers(self):
         """Configure the optimizer and learning rate scheduler."""
         optimizer = self.optim_factory(params=self.parameters())
 
         out = {"optimizer": optimizer}
 
-        out["lr_scheduler"] = {"scheduler": self.lr_scheduler(optimizer=optimizer), "interval": "step"}
+        # Pass num_warmup_steps and num_training_steps to the lr_scheduler factory
+        out["lr_scheduler"] = {
+            "scheduler": self.lr_scheduler(
+                optimizer=optimizer, num_warmup_steps=self.num_warmup_steps, num_training_steps=self.num_training_steps
+            ),
+            "interval": "step",
+        }
 
         return out
 

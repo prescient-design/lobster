@@ -4,7 +4,6 @@ defaults:
   - progress_bar.yaml
   - structure_decode.yaml
   - inverse_folding.yaml
-  - unconditional_generation.yaml
   - _self_
 
 

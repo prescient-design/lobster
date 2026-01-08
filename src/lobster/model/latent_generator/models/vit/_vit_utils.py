@@ -702,6 +702,7 @@ class TimeCondUViTEncoder(nn.Module):
         ligand_atom_types=None,
         **kwargs,
     ):
+        # === STAGE 1: Process protein coordinates ===
         if coords is not None:
             B, L, n_atoms = coords.shape[:3]
             coords_gt = coords.clone()
@@ -712,6 +713,7 @@ class TimeCondUViTEncoder(nn.Module):
         else:
             coords_gt = None
 
+        # === STAGE 2: Process ligand coordinates ===
         if self.encode_ligand and ligand_coords is not None:
             ligand_embedding = self.ligand_to_embedding(ligand_coords)
 
@@ -729,6 +731,7 @@ class TimeCondUViTEncoder(nn.Module):
                 seq_mask = ligand_mask
                 residue_index = ligand_residue_index
 
+        # === STAGE 3: Pairwise distance features (if enabled) ===
         if self.concat_sine_pw:
             with torch.no_grad():
                 pw_coords = self.pairwise_distances(coords_gt, ligand_coords=ligand_coords)
@@ -762,6 +765,7 @@ class TimeCondUViTEncoder(nn.Module):
                 spatial_attention_mask_ = torch.cat([padding_col, spatial_attention_mask_], dim=1)
                 spatial_attention_mask_ = torch.cat([padding_row, spatial_attention_mask_], dim=2)
 
+        # === STAGE 4: Transformer ===
         x = self.transformer(
             x,
             time=time_cond,
@@ -772,6 +776,7 @@ class TimeCondUViTEncoder(nn.Module):
             spatial_attention_mask=spatial_attention_mask_,
         )
 
+        # === STAGE 5: Final projection ===
         x_out = self.to_hidden(x)
 
         if return_embeddings:
@@ -894,11 +899,15 @@ class TimeCondUViTDecoder(nn.Module):
         ligand_mask=None,
         **kwargs,
     ):
+        # Check if ligand has actual data (not just empty tensor)
+        has_ligand_data = self.encode_ligand and ligand_quant is not None and ligand_quant.shape[1] > 0
+
         if x_quant is not None:
             x_emb = self.embed_struc_tokens(x_quant)
         else:
             x_emb = None
-        if self.encode_ligand and ligand_quant is not None:
+
+        if has_ligand_data:
             ligand_emb = self.embed_ligand_tokens(ligand_quant)
             if x_emb is not None:
                 B, L, D = x_emb.shape
@@ -924,7 +933,7 @@ class TimeCondUViTDecoder(nn.Module):
 
         x = self.ffn(x_out)
 
-        if self.encode_ligand and ligand_quant is not None:
+        if has_ligand_data:
             if x_quant is not None:
                 ligand_x = x[:, L:, :]
                 x = x[:, :L, :]
@@ -937,7 +946,7 @@ class TimeCondUViTDecoder(nn.Module):
             x = self.from_patch(x)
             x = rearrange(x, "b c n a -> b n a c")
 
-        if self.encode_ligand and ligand_quant is not None:
+        if has_ligand_data:
             out = {"protein_coords": x, "ligand_coords": ligand_x}
         else:
             out = x

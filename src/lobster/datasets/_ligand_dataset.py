@@ -90,20 +90,38 @@ class LigandDataset(Dataset):
     def len(self) -> int:
         return len(self.dataset_filenames)
 
-    def __getitem__(self, idx: int):
-        if isinstance(self.dataset_filenames[idx], tuple):
-            x_ligand = torch.load(self.dataset_filenames[idx][0])
-            x_protein = torch.load(self.dataset_filenames[idx][1])
-            if self.transform_protein:
-                x_protein = self.transform_protein(x_protein)
-        else:
-            x_protein = None
-            x_ligand = torch.load(self.dataset_filenames[idx])
-        # pick a random 'conformer' in 'conformers' list
-        if "conformers" in x_ligand:
-            x_ligand = x_ligand["conformers"][np.random.randint(0, len(x_ligand["conformers"]))]
+    def __getitem__(self, idx: int, _retry_count: int = 0):
+        max_retries = 5
+        try:
+            if isinstance(self.dataset_filenames[idx], tuple):
+                x_ligand = torch.load(self.dataset_filenames[idx][0])
+                x_protein = torch.load(self.dataset_filenames[idx][1])
+                if self.transform_protein:
+                    x_protein = self.transform_protein(x_protein)
+            else:
+                x_protein = None
+                x_ligand = torch.load(self.dataset_filenames[idx])
+            # pick a random 'conformer' in 'conformers' list
+            if "conformers" in x_ligand:
+                x_ligand = x_ligand["conformers"][np.random.randint(0, len(x_ligand["conformers"]))]
 
-        if self.transform_ligand:
-            x_ligand = self.transform_ligand(x_ligand)
+            if self.transform_ligand:
+                x_ligand = self.transform_ligand(x_ligand)
 
-        return {"protein": x_protein, "ligand": x_ligand}
+            return {"protein": x_protein, "ligand": x_ligand}
+        except (EOFError, RuntimeError, Exception) as e:
+            # Handle corrupted files by trying a different random sample
+            filename = (
+                self.dataset_filenames[idx]
+                if not isinstance(self.dataset_filenames[idx], tuple)
+                else self.dataset_filenames[idx][0]
+            )
+            logger.warning(f"Failed to load file {filename}: {e}. Trying another sample.")
+            if _retry_count < max_retries:
+                # Pick a random different index
+                new_idx = np.random.randint(0, len(self.dataset_filenames))
+                while new_idx == idx:
+                    new_idx = np.random.randint(0, len(self.dataset_filenames))
+                return self.__getitem__(new_idx, _retry_count + 1)
+            else:
+                raise RuntimeError(f"Failed to load data after {max_retries} retries. Last error: {e}") from e

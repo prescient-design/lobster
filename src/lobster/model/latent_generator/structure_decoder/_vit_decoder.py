@@ -105,7 +105,10 @@ class ViTDecoder(BaseDecoder):
             **kwargs,
         )
 
-        if ligand_present:
+        # Check if decoder actually returned ligand data (handles protein-only data with ligand-capable model)
+        ligand_output_present = isinstance(emb, dict) and "ligand_coords" in emb
+
+        if ligand_output_present:
             ligand_emb = emb["ligand_coords"]
             emb = emb["protein_coords"]
             assert not torch.isnan(ligand_emb).any()
@@ -121,7 +124,7 @@ class ViTDecoder(BaseDecoder):
             assert not torch.isnan(emb).any()
             emb *= expand(seq_mask, emb)
 
-        if ligand_present:
+        if ligand_output_present:
             out = {"protein_coords": emb, "ligand_coords": ligand_emb}
         elif self.refinement_module:
             out = {"protein_coords": emb, "protein_coords_refinement": emb_refinement}

@@ -184,6 +184,142 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
     return structure_data
 
 
+def load_pdb_atom14(pdb_file, add_batch_dim: bool = True) -> dict[str, Any]:
+    """Convert a PDB file to a PyTorch tensor.
+
+    Args:
+        filepath (str): Path to the PDB file. Can be a local path or an S3 URI.
+
+    Returns:
+        dict: A dictionary containing the following keys:
+            - 'pdb_path': The path to the PDB file.
+            - 'sequence': A tensor of shape (1, N) containing the amino acid sequence as integer indices.
+            - 'sequence_str': A string representing the amino acid sequence in one-letter codes.
+            - 'atom14_coords': A tensor of shape (1, N, 14, 3) containing the coordinates of the atom14 atoms.
+            - 'chains_ids': A tensor of shape (1, N) containing the chain IDs.
+            - 'indices': A tensor of shape (1, N) containing the residue numbers.
+            - 'atom14_mask': A tensor of shape (1, N) containing the mask for the coordinates.
+            - 'real_chains': A tensor of shape (1, N) containing the real chain IDs.
+    """
+    if pdb_file.startswith("s3://"):
+        # Parse S3 URI
+        s3 = boto3.client("s3")
+        bucket, key = pdb_file[5:].split("/", 1)
+
+        # Download the file locally
+        local_file = "/tmp/" + os.path.basename(pdb_file)
+        s3.download_file(bucket, key, local_file)
+        pdb_file = local_file
+
+    # Read PDB or CIF file to dataframe
+    if pdb_file.endswith(".cif"):
+        pmmcif = PandasMmcif()
+        df = pmmcif.read_mmcif(pdb_file).df["ATOM"]
+        # rename label_atom_id to atom_name
+        df = df.rename(columns={"label_atom_id": "atom_name"})
+        # rename Cartn_x, Cartn_y, Cartn_z to x_coord, y_coord, z_coord
+        df = df.rename(columns={"Cartn_x": "x_coord", "Cartn_y": "y_coord", "Cartn_z": "z_coord"})
+        # rename auth_comp_id to residue_name
+        df = df.rename(columns={"label_seq_id": "residue_number"})
+        df = df.rename(columns={"auth_comp_id": "residue_name"})
+        # ensure that residue_number is an integer
+        df["residue_number"] = df["residue_number"].astype(int)
+        df_coords = df
+        group_chain = df_coords.groupby("auth_asym_id")
+    else:
+        df = cpdb.parse(pdb_file, df=True)
+        df = df[df["record_name"] == "ATOM"]
+        df_coords = df
+        group_chain = df_coords.groupby("chain_id")
+    atom14_coords = []
+    atom14_mask = []
+    sequence = []
+    chains = []
+    residue_numbers = []
+
+    for chain_id, chain in group_chain:
+        group_residue = chain.groupby("residue_number")
+        for residue_number, residue in group_residue:
+            residue_name = residue["residue_name"].iloc[0]
+            # Skip non-standard residues
+            if residue_name not in residue_constants.restype_name_to_atom_thin_names:
+                logger.warning(
+                    f"Skipping non-standard residue {residue_name} at position {residue_number} in chain {chain_id}"
+                )
+                continue
+            atom14_atom_names = residue_constants.restype_name_to_atom_thin_names[residue_name]
+            atom14_coords_list = []
+            atom14_mask_list = []
+            atom14_atom_names_list = []
+            for atom_name in atom14_atom_names:
+                if atom_name != "":
+                    if atom_name in residue["atom_name"].values:
+                        coords_x = residue[residue["atom_name"] == atom_name]["x_coord"].values[0]
+                        coords_y = residue[residue["atom_name"] == atom_name]["y_coord"].values[0]
+                        coords_z = residue[residue["atom_name"] == atom_name]["z_coord"].values[0]
+                        atom14_coords_list.append(np.array([coords_x, coords_y, coords_z]))
+                        atom14_mask_list.append(1)
+                        atom14_atom_names_list.append(atom_name)
+                    else:
+                        atom14_coords_list.append(np.array([0.0, 0.0, 0.0]))
+                        atom14_mask_list.append(0)
+                        atom14_atom_names_list.append("")
+                else:
+                    atom14_coords_list.append(np.array([0.0, 0.0, 0.0]))
+                    atom14_mask_list.append(0)
+                    atom14_atom_names_list.append("")
+            atom14_coords.append(np.array(atom14_coords_list))
+            atom14_mask.append(np.array(atom14_mask_list))
+            sequence.append(residue["residue_name"].values[0])
+            chains.append(chain_id)
+            residue_numbers.append(residue_number)
+    atom14_coords = np.array(atom14_coords)
+    atom14_coords = torch.tensor(atom14_coords, dtype=torch.float32)
+    atom14_mask = np.array(atom14_mask)
+    atom14_mask = torch.tensor(atom14_mask, dtype=torch.float32)
+    residue_numbers = np.array(residue_numbers)
+
+    # Convert 3-letter codes to 1-letter codes
+    sequence_1letter = [aa_3to1.get(aa, "X") for aa in sequence]
+
+    # Create the string sequence
+    sequence_str = "".join(sequence_1letter)
+
+    # Convert to tensor indices
+    sequence = [residue_constants.restype_order_with_x[aa] for aa in sequence_1letter]
+    sequence = torch.tensor(sequence, dtype=torch.int32)
+
+    # get ord of chains but make sure chain is a character
+    chains = [ord(chain[0]) for chain in chains]
+    real_chains = torch.tensor(chains, dtype=torch.int32)
+
+    # renumber residue_numbers such that when the chain changes, the residue_numbers are continuous+200
+    residue_numbers = torch.tensor(residue_numbers, dtype=torch.int32)
+    chain_changes = np.diff(chains, prepend=chains[0]) != 0
+    chains = np.cumsum(chain_changes) * 200
+    chains = torch.tensor(chains)
+    residue_numbers = residue_numbers + chains
+
+    structure_data = {
+        "pdb_path": pdb_file,
+        "sequence": sequence,
+        "sequence_str": sequence_str,
+        "atom14_coords": atom14_coords,
+        "chains_ids": chains,
+        "indices": residue_numbers,
+        "atom14_mask": atom14_mask,
+        "real_chains": real_chains,
+    }
+    if add_batch_dim:
+        structure_data["sequence"] = structure_data["sequence"][None]
+        structure_data["atom14_coords"] = structure_data["atom14_coords"][None]
+        structure_data["atom14_mask"] = structure_data["atom14_mask"][None]
+        structure_data["chains_ids"] = structure_data["chains_ids"][None]
+        structure_data["indices"] = structure_data["indices"][None]
+        structure_data["real_chains"] = structure_data["real_chains"][None]
+    return structure_data
+
+
 def reorder_molecule(mol, new_order):
     """
     Create a new molecule with atoms reordered according to new_order.
