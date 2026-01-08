@@ -570,12 +570,14 @@ After implementing backup:
 
 | Item | Status | Notes |
 |------|--------|-------|
+| Gen-UME 90M (PDB) | ✅ S3 Backup | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_90M_PDB.ckpt` (1.1 GiB) |
 | Gen-UME 750M (2025-11-17) | ✅ S3 Backup | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_2025-11-17_*.ckpt` (8.3 GiB) |
 | Gen-UME 450M (2025-11-07) | ✅ S3 Backup | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_450M_2025-11-07_*.ckpt` (5.3 GiB) |
-| Gen-UME ESM Atlas (2025-12-05) | ❌ Missing | Low priority - experimental training |
+| Gen-UME 750M ESM Atlas (2026-01-04) | ✅ S3 Backup | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_ESM_Atlas_2026-01-04_*.ckpt` (8.3 GiB) |
 | Gen-UME Latest Large (2025-12-17) | ❌ Missing | Low priority - experimental training |
 | **LG Protein Ligand 4096** (2026-01-05) | ✅ **NEW S3** | `LG_Protein_Ligand_4096_2026-01-05.ckpt` (292.9 MiB) |
 | **LG Protein Ligand fsq 4375** (2026-01-05) | ✅ **NEW S3** | `LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt` (295.8 MiB) |
+| **LG Protein Ligand fsq 4375/15360** (2026-01-07) | ✅ **NEW S3** | `LG_Protein_Ligand_fsq_4375_15360_2026-01-07.ckpt` (360.2 MiB) |
 | LG Protein Ligand (2025-12-07) | ❌ **LOST** | Original 512-token SLQ model - needs retraining |
 | LG Protein Ligand fsq 1000 (2025-12-13) | ❌ **LOST** | 1000-token FSQ model - needs retraining |
 | LG Ligand (2025-11-09) | ✅ S3 Backup | `LG_Ligand_2025-11-09.ckpt` (250.5 MiB) |
@@ -619,8 +621,10 @@ None - all datasets ready!
 **Gen-UME Models:**
 | Model | Local Path | S3 Path | Size |
 |-------|-----------|---------|------|
-| Gen-UME 750M | `/data2/ume/gen_ume/runs/2025-11-17T20-31-05/` | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_2025-11-17_*.ckpt` | 8.3 GiB |
+| Gen-UME 90M (PDB) | (from old S3 bucket) | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_90M_PDB.ckpt` | 1.1 GiB |
 | Gen-UME 450M | `/data2/ume/gen_ume/runs/2025-11-07T13-19-11/` | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_450M_2025-11-07_*.ckpt` | 5.3 GiB |
+| Gen-UME 750M | `/data2/ume/gen_ume/runs/2025-11-17T20-31-05/` | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_2025-11-17_*.ckpt` | 8.3 GiB |
+| Gen-UME 750M ESM Atlas | `/data2/lisanzas/gen_ume/runs/2026-01-04T19-10-12/` | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_ESM_Atlas_2026-01-04_*.ckpt` | 8.3 GiB |
 
 **Latent Generator Models:**
 | Model | Local Path | S3 Path | Size |
@@ -628,6 +632,7 @@ None - all datasets ready!
 | LG Ligand | `/data2/ume/latent_generator_/runs/2025-11-09T14-23-55/last.ckpt` | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Ligand_2025-11-09.ckpt` | 250.5 MiB |
 | **LG Protein Ligand 4096** | `/data2/ume/latent_generator_/runs/2026-01-05T16-48-02/last.ckpt` | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_4096_2026-01-05.ckpt` | 292.9 MiB |
 | **LG Protein Ligand fsq 4375** | `/data2/ume/latent_generator_/runs/2026-01-05T16-13-19/last.ckpt` | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt` | 295.8 MiB |
+| **LG Protein Ligand fsq 4375/15360** | `/data2/ume/latent_generator_/runs/2026-01-07T02-17-14/last.ckpt` | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_15360_2026-01-07.ckpt` | 360.2 MiB |
 | LG full attention 2 | `/data2/ume/latent_generator_/runs/2025-11-06T00-40-11/last.ckpt` | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_full_attention_2_2025-11-06.ckpt` | 245.3 MiB |
 
 ### ❌ Missing Checkpoints (Lost - need retraining):
@@ -674,5 +679,5 @@ sbatch slurm/scripts/train_latent_generator_protein_ligand_fsq_ligand_1000.sh
 
 ---
 
-*Last updated: January 7, 2026 (new protein-ligand checkpoints backed up to S3)*
+*Last updated: January 8, 2026 (added Gen-UME 90M, 750M ESM Atlas, and LG Protein Ligand fsq 4375/15360 checkpoints to S3)*
 

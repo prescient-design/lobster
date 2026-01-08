@@ -50,6 +50,7 @@ methods = {
         description="Ligand only model with",
         features=["256-dim embeddings", "Ligand only decoder", "512 ligand tokens"],
         model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Ligand_2025-11-09.ckpt
             checkpoint="/data2/ume/latent_generator_/runs//2025-11-09T14-23-55/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
@@ -214,6 +215,7 @@ methods = {
             "4096 protein tokens",
         ],
         model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_4096_2026-01-05.ckpt
             checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-48-02/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
@@ -243,7 +245,8 @@ methods = {
             "4375 protein tokens",
         ],
         model_config=ModelConfig(
-            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-13-19/last.ckpt",  # "/data2/ume/latent_generator_/runs//2025-12-13T16-34-07/epoch=240-step=25787-val_loss=16.4510.ckpt",
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt
+            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-13-19/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[
@@ -253,9 +256,38 @@ methods = {
                 "tokenizer.quantizer.protein_levels=[7,5,5,5,5]",
                 "tokenizer.quantizer.ligand_levels=[7,5,5,5,5]",
                 "tokenizer/decoder_factory=struc_decoder_ligand",
+                "tokenizer/loss_factory=structure_losses_ligand",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
                 "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4375",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=4375",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 4375 15360": ModelInfo(
+        description="Protein-ligand model with FSQ quantization (4375 protein tokens, 15360 ligand tokens)",
+        features=[
+            "5-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "15360 ligand tokens",
+            "4375 protein tokens",
+        ],
+        model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_15360_2026-01-07.ckpt
+            checkpoint="/data2/ume/latent_generator_/runs//2026-01-07T02-17-14/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=5",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[7,5,5,5,5]",
+                "tokenizer.quantizer.ligand_levels=[8,8,8,6,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "tokenizer/loss_factory=structure_losses_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4375",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=15360",
             ],
         ),
     ),
@@ -489,6 +521,7 @@ methods = {
         description="Full attention model without spatial masking",
         features=["Standard configuration", "Full attention (no spatial masking)", "256 protein tokens"],
         model_config=ModelConfig(
+            # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_full_attention_2_2025-11-06.ckpt
             checkpoint="/data2/ume/latent_generator_/runs//2025-11-06T00-40-11/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",

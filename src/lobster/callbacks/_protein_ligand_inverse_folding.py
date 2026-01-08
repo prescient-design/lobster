@@ -75,6 +75,7 @@ class ProteinLigandInverseFoldingCallback(lightning.Callback):
 
         self._evaluator = None
         self._samples = None
+        self._evaluated_steps = set()  # Track steps we've already evaluated
 
         # Create output directory
         if structure_path:
@@ -138,10 +139,16 @@ class ProteinLigandInverseFoldingCallback(lightning.Callback):
         if current_step % self.save_every_n != 0:
             return
 
+        # Skip if we've already evaluated this step (avoid duplicates from multiple callback invocations)
+        if current_step in self._evaluated_steps:
+            return
+
         if not self._samples:
             logger.warning("No protein-ligand samples available for evaluation")
             return
 
+        # Mark this step as evaluated
+        self._evaluated_steps.add(current_step)
         logger.info(f"Running protein-ligand inverse folding evaluation at step {current_step}")
 
         # Run evaluation

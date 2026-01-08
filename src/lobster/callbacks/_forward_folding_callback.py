@@ -137,7 +137,8 @@ class ForwardFoldingCallback(lightning.Callback):
             return
 
         current_step = trainer.global_step
-        device = batch["sequence"].device
+        # Get device from model or from any available tensor in batch
+        device = next(model.parameters()).device
 
         if batch_idx % self.save_every_n == 0 and self.cameo_structures is not None:
             # Perform forward folding on CAMEO validation examples

@@ -103,7 +103,7 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         ckpt_path: str | None = None,
         # LatentGenerator params
         decode_tokens_during_training: bool = True,
-        latent_generator_model_name: str = "LG full attention",
+        latent_generator_model_name: str = "LG Protein Ligand fsq 4375",
         # Generation params
         prior_distribution_seq: Callable[..., DiscreteUniformPrior] = DiscreteUniformPrior,
         prior_distribution_struc: Callable[..., DiscreteUniformPrior] = DiscreteUniformPrior,
@@ -471,12 +471,43 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         x_gt: dict[str, Tensor],
         output: dict[str, Tensor],
         timesteps: dict[str, Tensor],
+        mask: Tensor | None = None,
         ligand_mask: Tensor | None = None,
         bond_matrix_gt: Tensor | None = None,
         protein_valid_mask: Tensor | None = None,
         ligand_valid_mask: Tensor | None = None,
+        decoder_gt: dict[str, Tensor] | None = None,
     ) -> tuple[Tensor, dict[str, Tensor]]:
-        """Compute multi-modal loss."""
+        """Compute multi-modal loss.
+
+        Parameters
+        ----------
+        split : str
+            Split name (train/val).
+        x_gt : dict[str, Tensor]
+            Ground truth tokens.
+        output : dict[str, Tensor]
+            Model output logits.
+        timesteps : dict[str, Tensor]
+            Timesteps for flow matching.
+        mask : Tensor, optional
+            Protein residue mask.
+        ligand_mask : Tensor, optional
+            Ligand atom mask.
+        bond_matrix_gt : Tensor, optional
+            Ground truth bond matrix.
+        protein_valid_mask : Tensor, optional
+            Mask for valid protein samples in mixed batch.
+        ligand_valid_mask : Tensor, optional
+            Mask for valid ligand samples in mixed batch.
+        decoder_gt : dict[str, Tensor], optional
+            Ground truth batch data for decoder loss (should contain coords, ligand_coords, etc.).
+
+        Returns
+        -------
+        tuple[Tensor, dict[str, Tensor]]
+            Total loss and loss dictionary.
+        """
         total_loss = torch.tensor(0.0, device=output["sequence_logits"].device)
         loss_dict = {}
 
@@ -552,6 +583,92 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             loss_dict[f"{split}_loss_lig_atom"] = loss_lig_atom
             loss_dict[f"{split}_loss_lig_struc"] = loss_lig_struc
             loss_dict[f"{split}_loss_bond"] = loss_bond
+
+        # === STRUCTURE DECODER LOSSES (if enabled) ===
+        if self.decode_tokens_during_training and decoder_gt is not None:
+            # Decode protein structure (detach to avoid in-place operation issues during backprop)
+            if mask is not None:
+                with torch.no_grad():
+                    decoded_x = self.decode_structure(output, mask)
+                total_loss, loss_dict = self.apply_structure_decoder_loss(
+                    split, decoder_gt, decoded_x, mask, total_loss, loss_dict, prefix="protein_"
+                )
+
+            # Decode ligand structure (if present)
+            if has_ligand and ligand_mask is not None:
+                with torch.no_grad():
+                    decoded_ligand = self.decode_ligand_structure_to_coords(output, ligand_mask)
+                # Only apply ligand decoder loss if we have a ligand decoder and valid output
+                if decoded_ligand.get("coords") is not None:
+                    # Create a dict with ligand coordinates as ground truth
+                    ligand_decoder_gt = {"coords": decoder_gt.get("ligand_coords")}
+                    ligand_decoded_x = {"vit_decoder": decoded_ligand["coords"]}
+                    total_loss, loss_dict = self.apply_structure_decoder_loss(
+                        split,
+                        ligand_decoder_gt,
+                        ligand_decoded_x,
+                        ligand_mask,
+                        total_loss,
+                        loss_dict,
+                        prefix="ligand_",
+                    )
+
+        return total_loss, loss_dict
+
+    def apply_structure_decoder_loss(
+        self,
+        split: str,
+        decoder_gt: dict[str, Tensor],
+        decoded_x: dict[str, Tensor],
+        mask: Tensor,
+        total_loss: Tensor,
+        loss_dict: dict[str, Tensor],
+        just_loss: bool = False,
+        keep_batch_dim: bool = False,
+        prefix: str = "",
+    ) -> tuple[Tensor, dict[str, Tensor]]:
+        """Apply the structure decoder loss to the model for protein and/or ligand.
+
+        Parameters
+        ----------
+        split : str
+            Split name (train/val).
+        decoder_gt : dict[str, Tensor]
+            Ground truth decoder targets (e.g., coordinates).
+        decoded_x : dict[str, Tensor]
+            Decoded outputs from decoder_factory.
+        mask : Tensor
+            Mask for valid tokens.
+        total_loss : Tensor
+            Current accumulated loss.
+        loss_dict : dict[str, Tensor]
+            Dictionary to store individual losses.
+        just_loss : bool
+            If True, return only the loss without accumulating.
+        keep_batch_dim : bool
+            If True, keep batch dimension in loss computation.
+        prefix : str
+            Prefix for loss names (e.g., "protein_" or "ligand_").
+
+        Returns
+        -------
+        tuple[Tensor, dict[str, Tensor]]
+            Updated total loss and loss dictionary.
+        """
+        decoder_name = "vit_decoder"
+        loss2apply = self.decoder_factory.get_loss(decoder_name)
+
+        for loss2apply_ in loss2apply:
+            loss = self.loss_factory(
+                loss2apply_, decoder_gt, decoded_x[decoder_name], mask, keep_batch_dim=keep_batch_dim
+            )
+            if just_loss:
+                return loss, loss_dict
+            # Apply loss weighting from weight_dict in loss_factory; setting to 0 for now
+            # as we need a different way to set weights for different losses
+            # total_loss += self.loss_factory.weight_dict[loss2apply_] * loss
+            total_loss += 0 * loss
+            loss_dict[f"{split}_{prefix}{loss2apply_}"] = loss
 
         return total_loss, loss_dict
 
@@ -674,15 +791,19 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         )
 
         # === COMPUTE LOSS ===
+        # Only pass decoder_gt every 1000 steps to avoid overhead
+        decoder_gt = batch if (self.decode_tokens_during_training and batch_idx % 1000 == 0) else None
         total_loss, loss_dict = self.compute_loss(
             split,
             x_gt,
             output,
             timesteps,
+            mask=mask,
             ligand_mask=ligand_mask,
             bond_matrix_gt=bond_matrix_gt,
             protein_valid_mask=protein_valid_mask,
             ligand_valid_mask=ligand_valid_mask,
+            decoder_gt=decoder_gt,
         )
 
         # Log metrics
