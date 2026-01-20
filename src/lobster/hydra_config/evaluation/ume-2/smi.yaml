@@ -1,0 +1,33 @@
+# @package _global_
+
+model:
+  _target_: lobster.model.UMESequenceEncoderLightningModule
+  ckpt_path: s3://prescient-lobster/ume/runs/2025-09-30T13-02-59/epoch=0-step=66500-val_loss=0.1936.ckpt
+
+model_alias: UME-smi-zinc-molpile
+wandb_id: https://genentech.wandb.io/zadorozk/lobster/runs/9ryd9v8v/logs
+
+output_dir: ${hydra:runtime.cwd}/evaluation_results/${now:%Y%m%d}/${now:%H%M%S}-${model_alias}
+
+datamodule:
+  _target_: lobster.data.UMELightningDataModule
+  datasets: ["ZINC", "M320M", "MolPILE"]
+
+
+callbacks:
+  - _target_: lobster.callbacks.PerturbationScoreCallback
+    sequence: C1=CC=C(C=C1)C(=O)N(C)C
+    output_dir: ${output_dir}/perturbation_scores/smiles
+    modality: SMILES
+    save_heatmap: true
+
+  - _target_: lobster.callbacks.UmapVisualizationCallback
+    output_dir: ${output_dir}
+    group_by: dataset
+    max_samples: 200
+
+  - _target_: lobster.callbacks.MoleculeACELinearProbeCallback
+    batch_size: 16
+
+
+

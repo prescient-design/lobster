@@ -16,7 +16,7 @@ data:
   root: ${oc.env:LOBSTER_DATA_DIR}
   max_length: 1024
   seed: 0
-  batch_size: 16 # debug
+  batch_size: 16 
   pin_memory: true
   num_workers: 8
   use_shared_tokenizer: false
@@ -24,6 +24,7 @@ data:
     Atomica:
       restrict_modalities:
         - amino_acid
+        - SMILES
 
 model:
   _target_: lobster.model.ume2.ume_interaction_lightning_module.UMEInteractionLightningModule 
@@ -38,19 +39,25 @@ model:
       mask_token_id: 32
       pad_token_id: 1
       special_token_ids: [0, 1, 2, 3, 32]
+    SMILES:
+      mask_token_id: 4
+      pad_token_id: 1
+      special_token_ids: [0, 1, 2, 3, 4, 5]
   weight_decay: 0.01
   mask_probability: 0.3
   freeze_molecular_encoders: true
   ckpt_path: null 
   checkpoints:
     amino_acid: s3://prescient-lobster/ume/runs/2025-09-22T20-00-55/epoch=3-step=182000-val_loss=0.4492.ckpt
+    SMILES: s3://prescient-lobster/ume/runs/2025-09-30T02-16-12/epoch=0-step=24000-val_loss=0.2740.ckpt
   cache_dir: /data2/ume/checkpoints
   supported_modalities:
     - amino_acid
+    - SMILES
     
 
 logger:
-  name: UME-2-interaction-PP-frozen_${paths.timestamp}
+  name: UME-2-interaction-frozen_${paths.timestamp}
   project: lobster
   entity: ${oc.env:LOBSTER_USER}
   save_dir: ${oc.env:LOBSTER_RUNS_DIR}
@@ -65,7 +72,7 @@ paths:
   root_dir: ${oc.env:LOBSTER_RUNS_DIR}
 
 trainer:
-  num_nodes: 10
+  num_nodes: 1
   max_epochs: -1
   gradient_clip_val: 0.5
   max_time: null 

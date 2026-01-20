@@ -1,3 +1,4 @@
+from ._amino_acids import AMINO_ACID_GROUPS
 from ._architecture_analyzer import GPUType, ModelType
 from ._biopython_features import (
     BIOPYTHON_FEATURE_AGGREGATION_METHODS,
@@ -6,7 +7,15 @@ from ._biopython_features import (
     BIOPYTHON_PROTEIN_SCALER_PARAMS,
     PEPTIDE_WARNING_THRESHOLD,
 )
-from ._calm_tasks import CALM_TASK_SPECIES, CALM_TASKS, MAX_SEQUENCE_LENGTH, CALMSpecies, CALMTask
+from ._calm_tasks import (
+    CALM_TASK_SPECIES,
+    CALM_TASKS,
+    MAX_SEQUENCE_LENGTH,
+    CALMSpecies,
+    CALMTask,
+    CALM_DEFAULT_SPECIES,
+    CALM_SPECIES_SPECIFIC_TASKS,
+)
 from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
 from ._hf import HF_UME_MODEL_DIRPATH, HF_UME_REPO_ID
 from ._modality import Modality, ModalityType, to_modality
@@ -34,6 +43,7 @@ from ._ume_models import (
     UMEModelVersion,
 )
 from ._weighted_concat_sampler_chunk_size import WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE
+from ._sklearn_probe import SklearnProbeTaskType, SklearnProbeType
 from ._alphafold2 import (
     DEFAULT_AF2_PREDICTION_MODELS,
     DEFAULT_AF2_WEIGHTS_DIR,
@@ -41,6 +51,7 @@ from ._alphafold2 import (
 from ._tabpfn import MAX_FEATURES_PER_MODEL, MAX_SAMPLES_PER_MODEL
 
 __all__ = [
+    "AMINO_ACID_GROUPS",
     "BIOPYTHON_FEATURES",
     "BIOPYTHON_FEATURE_AGGREGATION_METHODS",
     "BIOPYTHON_PEPTIDE_SCALER_PARAMS",
@@ -56,6 +67,8 @@ __all__ = [
     "MOLECULEACE_TASKS",
     "CALM_TASKS",
     "CALM_TASK_SPECIES",
+    "CALM_DEFAULT_SPECIES",
+    "CALM_SPECIES_SPECIFIC_TASKS",
     "CALMSpecies",
     "CALMTask",
     "MAX_SEQUENCE_LENGTH",
@@ -81,6 +94,8 @@ __all__ = [
     "UME_MODEL_VERSION_TYPES",
     "RDKIT_DESCRIPTOR_DISTRIBUTIONS",
     "S3_BUCKET",
+    "SklearnProbeTaskType",
+    "SklearnProbeType",
     "DEFAULT_AF2_PREDICTION_MODELS",
     "DEFAULT_AF2_WEIGHTS_DIR",
     "MAX_FEATURES_PER_MODEL",

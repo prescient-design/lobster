@@ -1720,7 +1720,6 @@ struct-cpu = [
     { name = "flax", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "icecream", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "loguru", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "mini3di", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "mpmath", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1750,7 +1749,6 @@ struct-gpu = [
     { name = "icecream", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "jax", extra = ["cuda"], marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "loguru", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "mini3di", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "mpmath", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1823,8 +1821,6 @@ requires-dist = [
     { name = "lightning-utilities", marker = "extra == 'struct-cpu'" },
     { name = "lightning-utilities", marker = "extra == 'struct-gpu'" },
     { name = "litdata", specifier = ">=0.2.49" },
-    { name = "loguru", marker = "extra == 'struct-cpu'" },
-    { name = "loguru", marker = "extra == 'struct-gpu'" },
     { name = "matplotlib", marker = "extra == 'struct-cpu'" },
     { name = "matplotlib", marker = "extra == 'struct-gpu'" },
     { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.0.0" },
@@ -2000,15 +1996,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/d7/e30633a116b8e3a887883e2ad7aea4231e67d47d9b1a6827a9a0d7d5aa45/lmdb-1.7.3-cp312-cp312-win_amd64.whl", hash = "sha256:a2cef8c30b6d5138ef2f7ed1fff661c497f988c5c7e38699295502bfd148a9ce", size = 99325, upload-time = "2025-07-26T01:11:07.881Z" },
     { url = "https://files.pythonhosted.org/packages/10/5c/d417ac692eca2dcd5b2a8460389fa8883b5d7aafbccc0e48a206c6606365/lmdb-1.7.3-cp312-cp312-win_arm64.whl", hash = "sha256:4aa31d12b16fa0d4ab5d49a347a352eb65f8887ae52e9bfe1811b5daff83a064", size = 94184, upload-time = "2025-07-26T01:11:09.254Z" },
     { url = "https://files.pythonhosted.org/packages/b9/ab/e6c2ba79107d20c7a45eae2d69e395691635e761b1e57f5a29c5f2fc42ff/lmdb-1.7.3-py3-none-any.whl", hash = "sha256:4cd7fb79b2c69dcf564d4eec36237e0efc303559176b60ff36fb47ccd3b8b5bb", size = 148538, upload-time = "2025-07-26T01:11:42.118Z" },
-]
-
-[[package]]
-name = "loguru"
-version = "0.7.3"
-source = { registry = "https://pypi.python.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl", hash = "sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c", size = 61595, upload-time = "2024-12-06T11:20:54.538Z" },
 ]
 
 [[package]]

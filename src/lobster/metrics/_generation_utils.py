@@ -757,9 +757,10 @@ def get_folded_structure_metrics(outputs, ref_coords, ref_seq, prefix="", mask=N
     """
     try:
         from tmtools import tm_align
-    except ImportError:
-        logger.warning("tmtools is not installed. Please install it with: uv sync --extra struct-gpu or struct-cpu")
-        tm_align = None
+    except ImportError as e:
+        raise ImportError(
+            "tmtools is required. Install with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`"
+        ) from e
 
     pred_coords = outputs["positions"][-1][:, :, :3, :]  # [B, L, 3, 3]
     plddt_scores = outputs["plddt"].mean(dim=(-1, -2))  # [B]

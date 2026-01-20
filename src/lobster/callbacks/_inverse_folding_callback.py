@@ -2,6 +2,9 @@ import lightning
 import logging
 import os
 import torch
+import tqdm
+import pooch
+from torch.utils.data import DataLoader
 from lobster.model.latent_generator.io import writepdb
 from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
@@ -9,10 +12,9 @@ from lobster.model.latent_generator.utils.residue_constants import (
 )
 from lobster.metrics import get_folded_structure_metrics, calculate_percent_identity
 from lobster.data._coord_structure_datamodule import StructureLightningDataModule
-import tqdm
 from lobster.model import LobsterPLMFold
-from torch.utils.data import DataLoader
-import pooch
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 

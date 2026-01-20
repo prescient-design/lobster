@@ -22,6 +22,7 @@ class MoleculeACEDataset(Dataset):
         target_transform_fn: Callable | Transform | None = None,
         train: bool = True,
         known_hash: str | None = None,
+        include_protein_sequences: bool = False,
     ) -> None:
         """
         Molecule Activity Cliff Estimation (MoleculeACE) from Tilborg et al. (2024)
@@ -47,6 +48,11 @@ class MoleculeACEDataset(Dataset):
         self.target_column = "y [pEC50/pKi]"
         self.task = task
         self.train = train
+
+        if include_protein_sequences:
+            self.protein_sequence_column = "protein_sequence"
+        else:
+            self.protein_sequence_column = None
 
         if self.task not in MOLECULEACE_TASKS:
             raise ValueError(f"`task` must be one of {MOLECULEACE_TASKS}, got {self.task}")
@@ -76,7 +82,13 @@ class MoleculeACEDataset(Dataset):
     def __getitem__(self, index: int) -> tuple[str | Tensor, Tensor]:
         item = self.data.iloc[index]
 
-        x = item[self.column]
+        if self.protein_sequence_column is not None:
+            x = item[[self.column, self.protein_sequence_column]]
+        else:
+            x = item[self.column]
+
+        if self.protein_sequence_column is not None:
+            x = item[self.protein_sequence_column]
 
         if self.transform_fn is not None:
             x = self.transform_fn(x)
