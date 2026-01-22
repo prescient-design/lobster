@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'darwin'",
@@ -101,13 +101,13 @@ name = "aiohttp"
 version = "3.12.15"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "aiohappyeyeballs", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "aiosignal", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "attrs", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "frozenlist", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "multidict", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "propcache", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "yarl", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "aiohappyeyeballs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "aiosignal", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "attrs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "frozenlist", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "multidict", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "propcache", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "yarl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9b/e7/d92a237d8802ca88483906c388f7c201bbe96cd80a165ffd0ac2f6a8d59f/aiohttp-3.12.15.tar.gz", hash = "sha256:4fc61385e9c98d72fcdf47e6dd81833f47b2f77c114c29cd64a361be57a763a2", size = 7823716, upload-time = "2025-07-29T05:52:32.215Z" }
 wheels = [
@@ -161,8 +161,8 @@ name = "aiosignal"
 version = "1.4.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "frozenlist", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "frozenlist", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
@@ -320,12 +320,12 @@ name = "biopandas"
 version = "0.5.0.dev0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "looseversion", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "mmtf-python", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "looseversion", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "mmtf-python", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
-    { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "setuptools", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "setuptools", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9a/c2/8db303e82e7c7de1980c64a20607d0d947aff5cdc957658bd0023ad7058c/biopandas-0.5.0.dev0.tar.gz", hash = "sha256:e5ca32f0e1a5971d664bac931436cf3c3205746bdf6693fe661a6b55a234811d", size = 990273, upload-time = "2023-04-03T17:02:34.223Z" }
 wheels = [
@@ -362,13 +362,13 @@ name = "biotite"
 version = "1.4.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "biotraj", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "msgpack", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "networkx", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "biotraj", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "msgpack", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "networkx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ff/64/3526f99fe09add35decea977bd3049672fc0be689d7e0557b0564a55600e/biotite-1.4.0.tar.gz", hash = "sha256:0428427fff47e046a36ecdda1cbb38fc61e652e8df4339bf0a0b7a248a051a8b", size = 37035933, upload-time = "2025-07-07T12:08:53.956Z" }
 wheels = [
@@ -389,7 +389,7 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
-    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/07/21/2287edfd0d2569639eea706e25c39e63b46a384cf1712db8ea05768317b0/biotraj-1.2.2.tar.gz", hash = "sha256:4bcba92101ed50f369cc1487fb5dfcfe1d8402ad47adaa9232b080553271663a", size = 3909030, upload-time = "2024-11-02T11:30:54.974Z" }
 wheels = [
@@ -408,9 +408,9 @@ name = "boto3"
 version = "1.40.18"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "botocore", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "jmespath", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "s3transfer", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "botocore", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "jmespath", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "s3transfer", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/36/35/a30dc21ca6582358e0ce963f38e85d42ea619f12e7be4101a834c21d749d/boto3-1.40.18.tar.gz", hash = "sha256:64301d39adecc154e3e595eaf0d4f28998ef0a5551f1d033aeac51a9e1a688e5", size = 111994, upload-time = "2025-08-26T19:21:38.61Z" }
 wheels = [
@@ -422,9 +422,9 @@ name = "botocore"
 version = "1.40.18"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "jmespath", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "urllib3", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "jmespath", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "urllib3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6a/91/2e745382793fa7d30810a7d5ca3e05f6817b6db07601ca5aaab12720caf9/botocore-1.40.18.tar.gz", hash = "sha256:afd69bdadd8c55cc89d69de0799829e555193a352d87867f746e19020271cc0f", size = 14375007, upload-time = "2025-08-26T19:21:24.996Z" }
 wheels = [
@@ -1614,7 +1614,7 @@ name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "markupsafe", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "markupsafe", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
@@ -2093,9 +2093,9 @@ name = "lightning-utilities"
 version = "0.15.2"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "setuptools", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "setuptools", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b8/39/6fc58ca81492db047149b4b8fd385aa1bfb8c28cd7cacb0c7eb0c44d842f/lightning_utilities-0.15.2.tar.gz", hash = "sha256:cdf12f530214a63dacefd713f180d1ecf5d165338101617b4742e8f22c032e24", size = 31090, upload-time = "2025-08-06T13:57:39.242Z" }
 wheels = [
@@ -2167,7 +2167,7 @@ name = "markdown-it-py"
 version = "4.0.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "mdurl", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "mdurl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5b/f5/4ec618ed16cc4f8fb3b701563655a69816155e79e24a17b651541804721d/markdown_it_py-4.0.0.tar.gz", hash = "sha256:cb0a2b4aa34f932c007117b194e945bd74e0ec24133ceb5bac59009cda1cb9f3", size = 73070, upload-time = "2025-08-11T12:57:52.854Z" }
 wheels = [
@@ -2207,16 +2207,16 @@ name = "matplotlib"
 version = "3.10.6"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "contourpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "cycler", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "fonttools", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "kiwisolver", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "contourpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "cycler", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "fonttools", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "kiwisolver", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "pyparsing", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "pyparsing", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a0/59/c3e6453a9676ffba145309a73c462bb407f4400de7de3f2b41af70720a3c/matplotlib-3.10.6.tar.gz", hash = "sha256:ec01b645840dd1996df21ee37f208cd8ba57644779fa20464010638013d3203c", size = 34804264, upload-time = "2025-08-30T00:14:25.137Z" }
 wheels = [
@@ -2339,7 +2339,7 @@ name = "mmtf-python"
 version = "1.1.3"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "msgpack", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "msgpack", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d8/0f/f3c132dc9aac9a3f32a0eba7a80f07d14e7624e96f9245eeac5fe48f42cd/mmtf-python-1.1.3.tar.gz", hash = "sha256:12a02fe1b7131f0a2b8ce45b46f1e0cdd28b9818fe4499554c26884987ea0c32", size = 46032, upload-time = "2022-07-06T03:06:25.993Z" }
 wheels = [
@@ -2643,7 +2643,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
@@ -2656,7 +2656,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.3.83"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/bc/7771846d3a0272026c416fbb7e5f4c1f146d6d80704534d0b187dd6f4800/nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:848ef7224d6305cdb2a4df928759dca7b1201874787083b6e7550dd6765ce69a", size = 193109211, upload-time = "2025-03-07T01:44:56.873Z" },
@@ -2688,9 +2688,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.3.90"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux'" },
-    { name = "nvidia-cusparse-cu12", marker = "sys_platform == 'linux'" },
-    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cusparse-cu12", marker = "sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/32/f7cd6ce8a7690544d084ea21c26e910a97e077c9b7f07bf5de623ee19981/nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:db9ed69dbef9715071232caa9b69c52ac7de3a95773c2db65bdba85916e4e5c0", size = 267229841, upload-time = "2025-03-07T01:46:54.356Z" },
@@ -2703,7 +2703,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.8.93"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/f7/cd777c4109681367721b00a106f491e0d0d15cfa1fd59672ce580ce42a97/nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9b6c161cb130be1a07a27ea6923df8141f3c295852f4b260c65f18f3e0a091dc", size = 288117129, upload-time = "2025-03-07T01:47:40.407Z" },
@@ -2800,8 +2800,8 @@ name = "omegaconf"
 version = "2.3.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "antlr4-python3-runtime", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "antlr4-python3-runtime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/09/48/6388f1bb9da707110532cb70ec4d2822858ddfb44f1cdf1233c20a80ea4b/omegaconf-2.3.0.tar.gz", hash = "sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7", size = 3298120, upload-time = "2022-12-08T20:59:22.753Z" }
 wheels = [
@@ -2984,7 +2984,7 @@ name = "optree"
 version = "0.17.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/56/c7/0853e0c59b135dff770615d2713b547b6b3b5cde7c10995b4a5825244612/optree-0.17.0.tar.gz", hash = "sha256:5335a5ec44479920620d72324c66563bd705ab2a698605dd4b6ee67dbcad7ecd", size = 163111, upload-time = "2025-07-25T11:26:11.586Z" }
 wheels = [
@@ -3093,9 +3093,9 @@ source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
-    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "pytz", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "tzdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "pytz", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "tzdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/79/8e/0e90233ac205ad182bd6b422532695d2b9414944a280488105d598c70023/pandas-2.3.2.tar.gz", hash = "sha256:ab7b58f8f82706890924ccdfb5f48002b83d2b5a3845976a9fb705d36c34dcdb", size = 4488684, upload-time = "2025-08-21T10:28:29.257Z" }
 wheels = [
@@ -3590,7 +3590,7 @@ name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "six", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "six", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
@@ -3867,10 +3867,10 @@ name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "certifi", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "charset-normalizer", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "idna", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "urllib3", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "certifi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "charset-normalizer", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "idna", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "urllib3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c9/74/b3ff8e6c8446842c3f5c837e9c3dfcfe2018ea6ecef224c710c85ef728f4/requests-2.32.5.tar.gz", hash = "sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf", size = 134517, upload-time = "2025-08-18T20:46:02.573Z" }
 wheels = [
@@ -3894,8 +3894,8 @@ name = "rich"
 version = "14.1.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "markdown-it-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "pygments", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "markdown-it-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "pygments", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fe/75/af448d8e52bf1d8fa6a9d089ca6c07ff4453d86c65c145d0a300bb073b9b/rich-14.1.0.tar.gz", hash = "sha256:e497a48b844b0320d45007cdebfeaeed8db2a4f4bcf49f15e455cfc4af11eaa8", size = 224441, upload-time = "2025-07-25T07:32:58.125Z" }
 wheels = [
@@ -3920,8 +3920,8 @@ name = "rotary-embedding-torch"
 version = "0.8.9"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/71/38/74783585b1f0282fddd3faf1abd6dd20977255c27e31737eced2d7ec05f1/rotary_embedding_torch-0.8.9.tar.gz", hash = "sha256:b213f153cad1d108064d930544fb3af678d56515893d3f869a7a146f87997e3f", size = 7497, upload-time = "2025-07-27T01:26:14.675Z" }
 wheels = [
@@ -4028,7 +4028,7 @@ name = "s3transfer"
 version = "0.13.1"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "botocore", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "botocore", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6d/05/d52bf1e65044b4e5e27d4e63e8d1579dbdec54fce685908ae09bc3720030/s3transfer-0.13.1.tar.gz", hash = "sha256:c3fdba22ba1bd367922f27ec8032d6a1cf5f10c934fb5d68cf60fd5a23d936cf", size = 150589, upload-time = "2025-07-18T19:22:42.31Z" }
 wheels = [
@@ -4062,11 +4062,11 @@ name = "scikit-learn"
 version = "1.7.2"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "joblib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "joblib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
-    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "threadpoolctl", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "threadpoolctl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/98/c2/a7855e41c9d285dfe86dc50b250978105dce513d6e459ea66a6aeb0e1e0c/scikit_learn-1.7.2.tar.gz", hash = "sha256:20e9e49ecd130598f1ca38a1d85090e1a600147b9c02fa6f15d69cb53d968fda", size = 7193136, upload-time = "2025-09-09T08:21:29.075Z" }
 wheels = [
@@ -4286,7 +4286,7 @@ name = "sympy"
 version = "1.14.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "mpmath", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "mpmath", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
@@ -4465,28 +4465,28 @@ name = "torch"
 version = "2.8.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "fsspec", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "jinja2", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "networkx", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "nvidia-cublas-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-cupti-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-nvrtc-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cudnn-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cufft-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cufile-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-curand-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusolver-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusparse-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusparselt-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nccl-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nvtx-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "setuptools", marker = "(python_full_version >= '3.12' and sys_platform == 'darwin') or (python_full_version >= '3.12' and sys_platform == 'linux')" },
-    { name = "sympy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "triton", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "filelock", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "fsspec", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "jinja2", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "networkx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cufile-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "setuptools", marker = "(python_full_version >= '3.12' and sys_platform == 'darwin') or (python_full_version >= '3.12' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "sympy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform != 'linux' and extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/c4/3e7a3887eba14e815e614db70b3b529112d1513d9dae6f4d43e373360b7f/torch-2.8.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:220a06fd7af8b653c35d359dfe1aaf32f65aa85befa342629f716acb134b9710", size = 102073391, upload-time = "2025-08-06T14:53:20.937Z" },
@@ -4793,7 +4793,7 @@ name = "triton"
 version = "3.4.0"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "setuptools", marker = "sys_platform == 'linux'" },
+    { name = "setuptools", marker = "sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7d/39/43325b3b651d50187e591eefa22e236b2981afcebaefd4f2fc0ea99df191/triton-3.4.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7b70f5e6a41e52e48cfc087436c8a28c17ff98db369447bcaff3b887a3ab4467", size = 155531138, upload-time = "2025-07-30T19:58:29.908Z" },
@@ -5038,9 +5038,9 @@ name = "yarl"
 version = "1.20.1"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "idna", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "multidict", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "propcache", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "idna", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "multidict", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "propcache", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3c/fb/efaa23fa4e45537b827620f04cf8f3cd658b76642205162e072703a5b963/yarl-1.20.1.tar.gz", hash = "sha256:d017a4997ee50c91fd5466cef416231bb82177b93b029906cefc542ce14c35ac", size = 186428, upload-time = "2025-06-10T00:46:09.923Z" }
 wheels = [

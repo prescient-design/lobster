@@ -132,19 +132,32 @@ class ForwardFoldingCallback(lightning.Callback):
 
     def on_train_batch_end(self, trainer, model, outputs, batch, batch_idx):
         """Called at the end of each training batch."""
-        # Only run on rank 0 (CUDA device 0) in multinode/multi-GPU settings
-        if trainer.global_rank != 0:
-            return
-
         current_step = trainer.global_step
-        # Get device from model or from any available tensor in batch
-        device = next(model.parameters()).device
 
-        if batch_idx % self.save_every_n == 0 and self.cameo_structures is not None:
+        # Check if this is a step where forward folding should run
+        # Note: cameo_structures is only loaded on rank 0, so we use batch_idx check for all ranks
+        is_forward_folding_step = batch_idx % self.save_every_n == 0
+
+        # All ranks must synchronize BEFORE rank 0 does forward folding
+        # This prevents NCCL timeouts from internal collectives in generate_sample
+        if is_forward_folding_step and trainer.world_size > 1:
+            torch.distributed.barrier()
+
+        # Only rank 0 actually runs the callback (it has the loaded structures)
+        if is_forward_folding_step and trainer.global_rank == 0 and self.cameo_structures is not None:
+            # Get device from model or from any available tensor in batch
+            device = next(model.parameters()).device
+
             # Perform forward folding on CAMEO validation examples
+            # Use model.module to avoid DDP wrapper during inference
             with torch.no_grad():
-                self._perform_forward_folding(trainer, model, device, batch_idx, current_step)
+                unwrapped_model = model.module if hasattr(model, "module") else model
+                self._perform_forward_folding(trainer, unwrapped_model, device, batch_idx, current_step)
             torch.cuda.empty_cache()
+
+        # Final barrier to ensure all ranks are synced before continuing training
+        if is_forward_folding_step and trainer.world_size > 1:
+            torch.distributed.barrier()
 
     def _perform_forward_folding(self, trainer, model, device, batch_idx, current_step):
         """Perform forward folding on CAMEO validation examples.
@@ -233,7 +246,12 @@ class ForwardFoldingCallback(lightning.Callback):
             x_recon_xyz = None
             for decoder_name in decoded_x:
                 if "vit_decoder" == decoder_name:
-                    x_recon_xyz = decoded_x[decoder_name]
+                    vit_output = decoded_x[decoder_name]
+                    # Handle both tensor output (protein-only) and dict output (protein-ligand)
+                    if isinstance(vit_output, dict):
+                        x_recon_xyz = vit_output.get("protein_coords")
+                    else:
+                        x_recon_xyz = vit_output
                     break
 
             if x_recon_xyz is None:

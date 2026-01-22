@@ -589,19 +589,21 @@ class StructureLigandTransform(BaseTransform):
         self.periodic_table = Chem.GetPeriodicTable()
 
     def __call__(self, x: dict) -> dict:
-        # Convert atom names to element indices using our vocabulary
+        # Convert atom names to element indices using the extended vocabulary (25 elements)
         if "atom_names" in x:
             element_indices = []
             unknown_elements = set()
+            # UNK token index for unknown elements (better than PAD)
+            unk_idx = residue_constants.ELEMENT_VOCAB_EXTENDED_TO_IDX.get("UNK", 2)
             for atom_name in x["atom_names"]:
-                # Use PAD (index 0) as catch-all for unknown elements
-                idx = residue_constants.ELEMENT_TO_IDX.get(atom_name, 0)
-                if idx == 0 and atom_name != "PAD":
+                # Use ELEMENT_VOCAB_EXTENDED_TO_IDX which includes Se, Fe, Cu, Zn, etc.
+                idx = residue_constants.ELEMENT_VOCAB_EXTENDED_TO_IDX.get(atom_name, unk_idx)
+                if idx == unk_idx and atom_name not in ("UNK", "PAD"):
                     unknown_elements.add(atom_name)
                 element_indices.append(idx)
 
             if unknown_elements:
-                logger.warning(f"Unknown elements mapped to PAD: {unknown_elements}")
+                logger.warning(f"Unknown elements mapped to UNK: {unknown_elements}")
 
             x["element_indices"] = torch.tensor(element_indices, dtype=torch.long)
 

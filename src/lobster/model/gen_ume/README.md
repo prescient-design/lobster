@@ -27,6 +27,7 @@ uv run python -m lobster.cmdline.generate \
 
 - [Quick Start](#quick-start)
 - [Overview](#overview)
+- [Model Checkpoints](#model-checkpoints)
 - [Installation](#installation)
 - [Generation Modes](#generation-modes)
   - [Unconditional Generation](#1-unconditional-generation)
@@ -49,12 +50,42 @@ Gen-UME generates protein structures and sequences using discrete flow matching,
 
 Gen-UME employs **discrete flow matching**, which models the generation process as a continuous-time flow on discrete state spaces (sequences) and continuous state spaces (structures). The model uses **tokenized structure representations** to encode protein backbone geometry, enabling efficient joint generation of sequence and structure.
 
-### Model Checkpoint
+## Model Checkpoints
 
-The default checkpoint is hosted on S3:
+For a complete list of all available checkpoints with detailed descriptions, see **[CHECKPOINTS.md](./CHECKPOINTS.md)**.
+
+### Quick Reference
+
+| Model | Size | S3 Path | Description |
+|-------|------|---------|-------------|
+| **Gen-UME 90M** | 1.1 GiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_90M_PDB.ckpt` | Smallest model, good for testing |
+| **Gen-UME 450M** | 5.3 GiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_450M_2025-11-07_*.ckpt` | Medium model, balanced performance |
+| **Gen-UME 750M** | 8.3 GiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_2025-11-17_*.ckpt` | **Primary production model** |
+| **Gen-UME 750M ESM Atlas** | 8.3 GiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_ESM_Atlas_2026-01-04_*.ckpt` | Extended training data |
+
+### Download Checkpoints
+
+```bash
+# Download Gen-UME 750M (recommended)
+aws s3 cp s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/gen_ume_750M_2025-11-17_last.ckpt ./
+
+# Download all Gen-UME checkpoints
+aws s3 sync s3://prescient-pcluster-data/gen_ume/checkpoints/gen_ume/ ./checkpoints/
 ```
-s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt
-```
+
+### Latent Generator Checkpoints
+
+The Latent Generator provides the structure tokenization backbone:
+
+| Model | Codebook | Size | S3 Path |
+|-------|----------|------|---------|
+| **LG PL FSQ 4375** | 4375 tokens (FSQ) | 295.8 MiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt` |
+| **LG PL FSQ 4375/15360** | 4375/15360 tokens (asymmetric FSQ) | 360.2 MiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_15360_2026-01-07.ckpt` |
+| **LG PL 4096** | 4096 tokens (SLQ) | 292.9 MiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_4096_2026-01-05.ckpt` |
+| **LG Ligand** | 512 tokens (SLQ) | 250.5 MiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Ligand_2025-11-09.ckpt` |
+| **LG Full Attention 2** | 256 tokens (SLQ) | 245.3 MiB | `s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_full_attention_2_2025-11-06.ckpt` |
+
+**Additional checkpoints on HuggingFace:** LG Ligand 20A, LG 20A seq Aux, LG 20A seq 3di c6d Aux, LG 20A seq 3di c6d Aux PDB Pinder, and more. See [CHECKPOINTS.md](./CHECKPOINTS.md) for the complete list.
 
 ## Installation
 
@@ -541,5 +572,5 @@ For issues and questions:
 
 ---
 
-**Last Updated**: November 2025
+**Last Updated**: January 2026
 

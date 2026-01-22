@@ -4,8 +4,8 @@ defaults:
   - collate_fn: collate_fn_backbone_binder_target.yaml # Collate function for the dataloader
 
 _target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
-root: /data2/ume/simplefold_dataset/train_processed/ # Root directory (not used when path_to_datasets is specified)
-path_to_datasets: ["/data2/ume/simplefold_dataset/train_processed","/data2/lisanzas/AFDB/valid_cameo_processed", "/data2/lisanzas/AFDB/test_multiflow_processed"]
+root: /cv/data/ai4dd/data2/ume/simplefold_dataset/train_processed/ # Root directory (not used when path_to_datasets is specified)
+path_to_datasets: ["/cv/data/ai4dd/data2/ume/simplefold_dataset/train_processed","/cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed", "/cv/data/ai4dd/data2/lisanzas/AFDB/test_multiflow_processed"]
 max_length: 512 # Maximum length of the sequence
 cluster_file_list: [null, null, null] # Optional: path to cluster file for deduplication
 files_to_keep_list: [null, null, null] # Optional: path to file containing list of files to keep

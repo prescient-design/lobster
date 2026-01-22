@@ -62,7 +62,12 @@ class UnconditionalGenerationCallback(lightning.Callback):
 
         for decoder_name in decoded_x:
             if "vit_decoder" == decoder_name:
-                x_recon_xyz = decoded_x[decoder_name]
+                vit_output = decoded_x[decoder_name]
+                # Handle both tensor output (protein-only) and dict output (protein-ligand)
+                if isinstance(vit_output, dict):
+                    x_recon_xyz = vit_output.get("protein_coords")
+                else:
+                    x_recon_xyz = vit_output
         if generate_sample["sequence_logits"].shape[-1] == 33:
             seq = convert_lobster_aa_tokenization_to_standard_aa(generate_sample["sequence_logits"], device=device)
         else:

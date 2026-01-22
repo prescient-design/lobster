@@ -19,7 +19,7 @@
 
 protein_ligand_inverse_folding:
   _target_: lobster.callbacks.ProteinLigandInverseFoldingCallback
-  data_dir: /data2/lisanzas/pdb_bind_12_15_25/test/
+  data_dir: /cv/data/ai4dd/data2/lisanzas/pdb_bind_12_15_25/test/
   structure_path: ${paths.output_dir}/protein_ligand_eval/
   save_every_n: 1000
   num_samples: 100  # Use subset for speed during training

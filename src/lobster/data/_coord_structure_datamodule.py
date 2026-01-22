@@ -277,6 +277,7 @@ class StructureLightningDataModule(LightningDataModule):
                 logger.info(f"Creating ligand dataset from {path}")
                 return LigandDataset(
                     root=path,
+                    cluster_file=cluster_file if is_train else None,
                     transform_protein=self._transform_fn,
                     transform_ligand=self._ligand_transform_fn,
                 )
@@ -458,25 +459,13 @@ class StructureLightningDataModule(LightningDataModule):
         )
 
     def val_dataloader(self) -> DataLoader:
-        # Only log if we're actually in a validation step
-        if hasattr(self, "trainer") and self.trainer.state.stage == "validate":
-            if not self.use_shards and isinstance(self._sampler, (functools.partial, RandomizedMinorityUpsampler)):
-                group_indices = []
-                for dataset in self._val_dataset.datasets:
-                    group_indices.extend(dataset.get_cluster_dict)
-                if isinstance(self._sampler, functools.partial):
-                    self._sampler = self._sampler(group_indices)
-                else:
-                    self._sampler = RandomizedMinorityUpsampler(group_indices)
-                logger.info(f"Val dataloader using RandomizedMinorityUpsampler with {len(group_indices)} clusters")
-            else:
-                logger.info("Using standard sampling strategy")
-
+        # Validation uses standard sequential sampling (no custom sampler)
+        # to ensure reproducible evaluation and compatibility with DDP
         return DataLoader(
             self._val_dataset,
             batch_size=self._batch_size,
             shuffle=False,
-            sampler=self._sampler if not self.use_shards else None,
+            sampler=None,
             num_workers=self._num_workers,
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
@@ -484,11 +473,13 @@ class StructureLightningDataModule(LightningDataModule):
         )
 
     def test_dataloader(self) -> DataLoader:
+        # Test uses standard sequential sampling (no custom sampler)
+        # to ensure reproducible evaluation and compatibility with DDP
         return DataLoader(
             self._test_dataset,
             batch_size=self._batch_size,
             shuffle=False,
-            sampler=self._sampler if not self.use_shards else None,
+            sampler=None,
             num_workers=self._num_workers,
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,
@@ -496,11 +487,12 @@ class StructureLightningDataModule(LightningDataModule):
         )
 
     def predict_dataloader(self) -> DataLoader:
+        # Predict uses standard sequential sampling (no custom sampler)
         return DataLoader(
             self._predict_dataset,
             batch_size=self._batch_size,
             shuffle=False,
-            sampler=self._sampler if not self.use_shards else None,
+            sampler=None,
             num_workers=self._num_workers,
             collate_fn=self._collate_fn,
             pin_memory=self._pin_memory,

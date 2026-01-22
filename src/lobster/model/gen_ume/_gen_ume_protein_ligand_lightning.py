@@ -235,6 +235,16 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         """Encode protein structure to tokens using LatentGenerator.
 
         Handles both FSQLigandTokenizer (returns dicts) and standard quantizers.
+
+        Returns
+        -------
+        x_quant : Tensor
+            Soft token distribution with shape [B, L, n_tokens] for FSQLigandTokenizer,
+            or quantized logits for standard quantizers.
+        x_quant_emb : Tensor
+            Embeddings from encoder.
+        out_mask : Tensor
+            Mask for valid positions.
         """
         x_emb = self.structure_encoder(x_gt, mask, residue_index=residue_index)
 
@@ -242,8 +252,11 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         result = self.quantizer.quantize(x_emb, mask=mask)
         if isinstance(result[0], dict):
             # FSQLigandTokenizer returns (tokens_dict, logits_dict, masks_dict)
+            # tokens_dict contains soft token distributions [B, L, n_tokens]
+            # logits_dict contains raw FSQ logits [B, L, 5] (FSQ levels)
             tokens_dict, logits_dict, masks_dict = result
-            x_quant = logits_dict.get("protein_logits", logits_dict.get("ligand_logits"))
+            # Use tokens (vocabulary size) not logits (FSQ levels) for proper token extraction
+            x_quant = tokens_dict.get("protein_tokens", tokens_dict.get("ligand_tokens"))
             x_quant_emb = x_emb  # Use embeddings as-is
             out_mask = masks_dict.get("protein_mask", masks_dict.get("ligand_mask"))
         else:
@@ -258,6 +271,13 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         """Encode ligand structure to tokens using LatentGenerator.
 
         Note: The ViT encoder accepts ligand_coords as a separate argument with shape [B, N_atoms, 3].
+
+        Returns
+        -------
+        x_quant_argmax : Tensor
+            Structure token indices with shape [B, N_atoms].
+        out_mask : Tensor
+            Mask for valid positions.
         """
         # Ligand coords: [B, N_atoms, 3] - passed directly to encoder
         # The encoder handles ligands separately via ligand_coords argument
@@ -273,8 +293,11 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         result = self.quantizer.quantize(x_emb, mask=None, ligand_mask=ligand_mask)
         if isinstance(result[0], dict):
             # FSQLigandTokenizer returns (tokens_dict, logits_dict, masks_dict)
+            # tokens_dict contains soft token distributions [B, L, n_tokens]
+            # logits_dict contains raw FSQ logits [B, L, 5] (FSQ levels)
             tokens_dict, logits_dict, masks_dict = result
-            x_quant = logits_dict.get("ligand_logits")
+            # Use tokens (vocabulary size) not logits (FSQ levels) for proper token extraction
+            x_quant = tokens_dict.get("ligand_tokens")
             out_mask = masks_dict.get("ligand_mask")
         else:
             # Standard quantizer
@@ -285,28 +308,39 @@ class ProteinLigandEncoderLightningModule(LightningModule):
 
         return x_quant_argmax, out_mask
 
-    def decode_structure(self, generated_output: dict[str, Tensor], mask: Tensor) -> dict[str, Tensor]:
-        """Decode protein structure tokens back to 3D coordinates.
+    def decode_structure(
+        self,
+        generated_output: dict[str, Tensor],
+        mask: Tensor,
+        ligand_mask: Tensor | None = None,
+    ) -> dict[str, Tensor]:
+        """Decode protein and ligand structure tokens back to 3D coordinates.
 
-        This method is required for StructureDecodeCallback and InverseFoldingCallback.
+        This method handles both protein-only and protein-ligand decoding.
+        When ligand data is present, it passes both to the vit_decoder which
+        returns a dict with "protein_coords" and "ligand_coords".
 
         Parameters
         ----------
         generated_output : dict
             Output from forward pass or generate_sample, containing structure_logits
+            and optionally ligand_structure_logits
         mask : Tensor
-            [B, L] mask for valid positions
+            [B, L] mask for valid protein positions
+        ligand_mask : Tensor, optional
+            [B, N_atoms] mask for valid ligand positions
 
         Returns
         -------
         dict
-            Dictionary with decoder name as key and decoded XYZ coords as value.
-            e.g., {"vit_decoder": Tensor[B, L, 3, 3]}
+            Dictionary with decoder name as key and decoded coords as value.
+            When ligand is present, value is a dict with "protein_coords" and "ligand_coords".
+            e.g., {"vit_decoder": {"protein_coords": Tensor[B, L, 3, 3], "ligand_coords": Tensor[B, N, 3]}}
         """
         decoder_name = "vit_decoder"
         decoded_x = {}
 
-        # Get structure logits
+        # Get protein structure logits
         if "structure_logits" in generated_output:
             struc_logits = generated_output["structure_logits"]
         else:
@@ -319,63 +353,69 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         temp = 0.1
         struc_tokens_ = torch.softmax(struc_tokens / temp, dim=-1)
 
-        # Decode through vit_decoder
-        decoded_x[decoder_name] = self.decoder_factory.decoders[decoder_name](struc_tokens_, mask)
+        # Check if ligand data is present
+        has_ligand = "ligand_structure_logits" in generated_output and ligand_mask is not None and ligand_mask.sum() > 0
+
+        if has_ligand:
+            # Get ligand structure logits
+            lig_struc_logits = generated_output["ligand_structure_logits"]
+            lig_struc_tokens = lig_struc_logits[..., : self.quantizer.n_tokens]
+            lig_struc_tokens_ = torch.softmax(lig_struc_tokens / temp, dim=-1)
+
+            # Prepare dict input for vit_decoder (matching TokenizerMulti.decode pattern)
+            x_quant = {
+                "protein_tokens": struc_tokens_,
+                "ligand_tokens": lig_struc_tokens_,
+            }
+            mask_dict = {
+                "protein_mask": mask,
+                "ligand_mask": ligand_mask,
+            }
+
+            # Decode through vit_decoder - returns {"protein_coords": ..., "ligand_coords": ...}
+            decoded_x[decoder_name] = self.decoder_factory.decoders[decoder_name](x_quant, mask_dict)
+        else:
+            # Protein-only decoding
+            decoded_x[decoder_name] = self.decoder_factory.decoders[decoder_name](struc_tokens_, mask)
 
         return decoded_x
 
-    def decode_ligand_structure_to_coords(
-        self, generated_output: dict[str, Tensor], ligand_mask: Tensor
-    ) -> dict[str, Tensor]:
-        """Decode ligand structure tokens back to 3D coordinates.
+    def extract_ligand_predictions(self, generated_output: dict[str, Tensor], ligand_mask: Tensor) -> dict[str, Tensor]:
+        """Extract ligand atom type and bond predictions from model output.
+
+        Note: Coordinate decoding is done by decode_structure() which handles
+        both protein and ligand together using vit_decoder. This method extracts
+        the discrete predictions (atom types, bonds) from the flow matching output.
 
         Parameters
         ----------
         generated_output : dict
-            Output containing ligand_structure_logits
+            Output containing ligand_atom_logits and bond_logits
         ligand_mask : Tensor
             [B, N_atoms] mask for valid ligand atoms
 
         Returns
         -------
         dict
-            Dictionary with decoded ligand coordinates and atom types.
-            - "coords": Tensor[B, N_atoms, 3]
+            Dictionary with ligand predictions:
+            - "coords": None (populated later from decode_structure output)
             - "atom_types": Tensor[B, N_atoms] (argmax of atom logits)
             - "bond_matrix": Tensor[B, N_atoms, N_atoms] (argmax of bond logits)
         """
-        decoded_ligand = {}
+        ligand_predictions = {}
 
-        # Get ligand structure logits
-        if "ligand_structure_logits" not in generated_output:
-            return decoded_ligand
-
-        lig_struc_logits = generated_output["ligand_structure_logits"]
-
-        # Slice to valid token indices
-        lig_struc_tokens = lig_struc_logits[..., : self.quantizer.n_tokens]
-
-        # Apply softmax with temperature
-        temp = 0.1
-        lig_struc_tokens_ = torch.softmax(lig_struc_tokens / temp, dim=-1)
-
-        # Decode ligand coordinates using ligand decoder if available
-        if hasattr(self.decoder_factory, "decoders") and "ligand_decoder" in self.decoder_factory.decoders:
-            decoded_ligand["coords"] = self.decoder_factory.decoders["ligand_decoder"](lig_struc_tokens_, ligand_mask)
-        else:
-            # Fallback: use vit_decoder for ligands too (treating atoms as single-atom residues)
-            # This is a placeholder - may need ligand-specific decoder
-            decoded_ligand["coords"] = None
+        # Coordinates are decoded by decode_structure() - placeholder for caller to fill
+        ligand_predictions["coords"] = None
 
         # Get atom types from atom logits
         if "ligand_atom_logits" in generated_output:
-            decoded_ligand["atom_types"] = generated_output["ligand_atom_logits"].argmax(dim=-1)
+            ligand_predictions["atom_types"] = generated_output["ligand_atom_logits"].argmax(dim=-1)
 
         # Get bond matrix from bond logits
         if "bond_logits" in generated_output:
-            decoded_ligand["bond_matrix"] = generated_output["bond_logits"].argmax(dim=-1)
+            ligand_predictions["bond_matrix"] = generated_output["bond_logits"].argmax(dim=-1)
 
-        return decoded_ligand
+        return ligand_predictions
 
     def get_timesteps(self, batch_size: int, has_ligand: bool = False) -> dict[str, Tensor]:
         """Sample timesteps for all modalities."""
@@ -586,32 +626,53 @@ class ProteinLigandEncoderLightningModule(LightningModule):
 
         # === STRUCTURE DECODER LOSSES (if enabled) ===
         if self.decode_tokens_during_training and decoder_gt is not None:
-            # Decode protein structure (detach to avoid in-place operation issues during backprop)
             if mask is not None:
                 with torch.no_grad():
-                    decoded_x = self.decode_structure(output, mask)
-                total_loss, loss_dict = self.apply_structure_decoder_loss(
-                    split, decoder_gt, decoded_x, mask, total_loss, loss_dict, prefix="protein_"
-                )
+                    # Decode both protein and ligand together using vit_decoder
+                    decoded_x = self.decode_structure(output, mask, ligand_mask=ligand_mask if has_ligand else None)
 
-            # Decode ligand structure (if present)
-            if has_ligand and ligand_mask is not None:
-                with torch.no_grad():
-                    decoded_ligand = self.decode_ligand_structure_to_coords(output, ligand_mask)
-                # Only apply ligand decoder loss if we have a ligand decoder and valid output
-                if decoded_ligand.get("coords") is not None:
-                    # Create a dict with ligand coordinates as ground truth
-                    ligand_decoder_gt = {"coords": decoder_gt.get("ligand_coords")}
-                    ligand_decoded_x = {"vit_decoder": decoded_ligand["coords"]}
-                    total_loss, loss_dict = self.apply_structure_decoder_loss(
-                        split,
-                        ligand_decoder_gt,
-                        ligand_decoded_x,
-                        ligand_mask,
-                        total_loss,
-                        loss_dict,
-                        prefix="ligand_",
-                    )
+                # Get the vit_decoder output
+                vit_output = decoded_x.get("vit_decoder")
+
+                # Check if output is a dict (protein + ligand) or tensor (protein only)
+                if isinstance(vit_output, dict):
+                    # Unified protein + ligand decode output
+                    protein_coords = vit_output.get("protein_coords")
+                    ligand_coords = vit_output.get("ligand_coords")
+
+                    # Apply protein decoder loss (only if we have protein ground truth)
+                    if protein_coords is not None and decoder_gt.get("coords_res") is not None:
+                        protein_decoded_x = {"vit_decoder": protein_coords}
+                        total_loss, loss_dict = self.apply_structure_decoder_loss(
+                            split, decoder_gt, protein_decoded_x, mask, total_loss, loss_dict, prefix="protein_"
+                        )
+
+                    # Apply ligand decoder loss
+                    if has_ligand and ligand_coords is not None and ligand_mask is not None:
+                        ligand_decoder_gt = {
+                            "ligand_coords": decoder_gt.get("ligand_coords"),
+                            "coords_res": decoder_gt.get("coords_res"),  # For joint alignment in loss
+                        }
+                        ligand_decoded_x = {
+                            "vit_decoder": {"ligand_coords": ligand_coords, "protein_coords": protein_coords}
+                        }
+                        # Create mask dict for ligand loss computation
+                        mask_dict = {"protein_mask": mask, "ligand_mask": ligand_mask}
+                        total_loss, loss_dict = self.apply_structure_decoder_loss(
+                            split,
+                            ligand_decoder_gt,
+                            ligand_decoded_x,
+                            mask_dict,
+                            total_loss,
+                            loss_dict,
+                            prefix="ligand_",
+                        )
+                else:
+                    # Protein-only output (backward compatible, only if we have protein ground truth)
+                    if decoder_gt.get("coords_res") is not None:
+                        total_loss, loss_dict = self.apply_structure_decoder_loss(
+                            split, decoder_gt, decoded_x, mask, total_loss, loss_dict, prefix="protein_"
+                        )
 
         return total_loss, loss_dict
 
@@ -657,6 +718,14 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         """
         decoder_name = "vit_decoder"
         loss2apply = self.decoder_factory.get_loss(decoder_name)
+
+        # Filter losses based on data type to avoid misleading metrics
+        # Protein losses: l2_loss, pairwise_l2_loss
+        # Ligand losses: ligand_l2_loss, ligand_pairwise_l2_loss
+        if prefix == "protein_":
+            loss2apply = [l for l in loss2apply if not l.startswith("ligand_")]
+        elif prefix == "ligand_":
+            loss2apply = [l for l in loss2apply if l.startswith("ligand_")]
 
         for loss2apply_ in loss2apply:
             loss = self.loss_factory(
@@ -842,12 +911,17 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         # Decode structure (only during training, not every batch)
         if self.decode_tokens_during_training and batch_idx % 1000 == 0:
             with torch.no_grad():
-                decoded_x = self.decode_structure(output, mask)
+                # Unified decode for both protein and ligand
+                decoded_x = self.decode_structure(output, mask, ligand_mask=ligand_mask if has_ligand else None)
                 outputs["decoded_x"] = decoded_x
 
-                # Decode ligand structure if present
+                # Extract ligand info (atom types, bond matrix) for callbacks
                 if has_ligand:
-                    decoded_ligand = self.decode_ligand_structure_to_coords(output, ligand_mask)
+                    decoded_ligand = self.extract_ligand_predictions(output, ligand_mask)
+                    # Add ligand coords from unified decode output
+                    vit_output = decoded_x.get("vit_decoder")
+                    if isinstance(vit_output, dict) and "ligand_coords" in vit_output:
+                        decoded_ligand["coords"] = vit_output["ligand_coords"]
                     outputs["decoded_ligand_x"] = decoded_ligand
 
         return outputs
@@ -875,12 +949,17 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             eps=self.eps,
             weight_decay=self.weight_decay,
         )
+        # Use .get() instead of .pop() to avoid mutating scheduler_kwargs
+        # This ensures configure_optimizers works correctly on checkpoint resumption
+        scheduler_kwargs_copy = {
+            k: v for k, v in self.scheduler_kwargs.items() if k not in ("num_training_steps", "num_warmup_steps")
+        }
         scheduler = transformers.get_scheduler(
             self.scheduler,
             optimizer,
-            num_training_steps=self.scheduler_kwargs.pop("num_training_steps", None),
-            num_warmup_steps=self.scheduler_kwargs.pop("num_warmup_steps", None),
-            scheduler_specific_kwargs=self.scheduler_kwargs,
+            num_training_steps=self.scheduler_kwargs.get("num_training_steps", None),
+            num_warmup_steps=self.scheduler_kwargs.get("num_warmup_steps", None),
+            scheduler_specific_kwargs=scheduler_kwargs_copy,
         )
 
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
@@ -943,6 +1022,7 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         dts_seq = schedule_seq.discretize(device=device)
         dts_struc = schedule_struc.discretize(device=device)
 
+        # Initialize defaults (same as original Gen-UME)
         mask = torch.ones((num_samples, length), device=device)
         residue_index = torch.arange(length, device=device)
         conditioning_tensor = torch.zeros((num_samples, length, 1), device=device)
@@ -951,7 +1031,6 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         if inverse_folding and input_structure_coords is not None:
             x_quant, _, mask = self.encode_structure(input_structure_coords, input_mask, input_indices)
             xt_struc = x_quant.argmax(dim=-1).to(device)
-            mask = mask.to(device)
             ts_struc = torch.full_like(ts_struc, 0.9950)
         elif forward_folding and input_sequence_tokens is not None:
             xt_seq = input_sequence_tokens.to(device)

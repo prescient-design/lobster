@@ -36,7 +36,12 @@ class StructureDecodeCallback(lightning.Callback):
 
             for decoder_name in x_recon:
                 if "vit_decoder" == decoder_name:
-                    x_recon_xyz = x_recon[decoder_name]
+                    vit_output = x_recon[decoder_name]
+                    # Handle both old format (tensor) and new format (dict with protein_coords/ligand_coords)
+                    if isinstance(vit_output, dict):
+                        x_recon_xyz = vit_output.get("protein_coords")
+                    else:
+                        x_recon_xyz = vit_output
 
             # save the pdb file
             if x_recon_xyz is not None:

@@ -3,7 +3,7 @@
 # Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_unconditional
 
 # Output directory
-output_dir: "./examples/generated_unconditional"
+output_dir: "./examples/generated_unconditional_test"
 
 # Random seed for reproducibility
 seed: 12345
@@ -70,7 +70,7 @@ generation:
 
   # Foldseek Diversity Analysis (structural clustering)
   calculate_foldseek_diversity: true  # Enable/disable diversity calculation
-  foldseek_bin_path: "/homefs/home/lisanzas/scratch/Develop/lobster/src/lobster/metrics/foldseek/bin"
+  foldseek_bin_path: "/cv/home/lisanzas/from_pcluster/scratch/Develop/lobster/src/lobster/metrics/foldseek/bin"
   foldseek_tmscore_threshold: 0.5  # TM-score threshold for Foldseek clustering
   rmsd_threshold_for_diversity: 2.0  # Only cluster structures with RMSD < this threshold
   

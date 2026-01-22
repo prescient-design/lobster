@@ -51,7 +51,7 @@ methods = {
         features=["256-dim embeddings", "Ligand only decoder", "512 ligand tokens"],
         model_config=ModelConfig(
             # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Ligand_2025-11-09.ckpt
-            checkpoint="/data2/ume/latent_generator_/runs//2025-11-09T14-23-55/last.ckpt",
+            checkpoint="/cv/data/ai4dd/data2/ume/latent_generator_/runs//2025-11-09T14-23-55/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[
@@ -189,7 +189,7 @@ methods = {
             "512 protein tokens",
         ],
         model_config=ModelConfig(
-            checkpoint="/data2/ume/latent_generator_/runs//2025-12-07T22-38-42/epoch=830-step=88917-val_loss=16.5010.ckpt",  # "/data2/ume/latent_generator_/runs//2025-11-26T15-51-49/last.ckpt", #"/data2/ume/latent_generator_/runs//2025-11-25T14-42-33/last.ckpt",
+            checkpoint="/cv/data/ai4dd/data2/ume/latent_generator_/runs//2025-12-07T22-38-42/epoch=830-step=88917-val_loss=16.5010.ckpt",  # "/cv/data/ai4dd/data2/ume/latent_generator_/runs//2025-11-26T15-51-49/last.ckpt", #"/cv/data/ai4dd/data2/ume/latent_generator_/runs//2025-11-25T14-42-33/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[
@@ -216,7 +216,7 @@ methods = {
         ],
         model_config=ModelConfig(
             # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_4096_2026-01-05.ckpt
-            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-48-02/last.ckpt",
+            checkpoint="/cv/data/ai4dd/data2/ume/latent_generator_/runs//2026-01-05T16-48-02/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[
@@ -246,7 +246,8 @@ methods = {
         ],
         model_config=ModelConfig(
             # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt
-            checkpoint="/data2/ume/latent_generator_/runs//2026-01-05T16-13-19/last.ckpt",
+            # data2: /cv/data/ai4dd/data2/ume/latent_generator_/runs//2026-01-05T16-13-19/last.ckpt
+            checkpoint="s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[
@@ -274,7 +275,7 @@ methods = {
         ],
         model_config=ModelConfig(
             # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_Protein_Ligand_fsq_4375_15360_2026-01-07.ckpt
-            checkpoint="/data2/ume/latent_generator_/runs//2026-01-07T02-17-14/last.ckpt",
+            checkpoint="/cv/data/ai4dd/data2/ume/latent_generator_/runs//2026-01-07T02-17-14/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[
@@ -301,7 +302,7 @@ methods = {
             "1000 protein tokens",
         ],
         model_config=ModelConfig(
-            checkpoint="/data2/ume/latent_generator_/runs//2025-12-13T14-57-53/epoch=210-step=22577-val_loss=17.2066.ckpt",
+            checkpoint="/cv/data/ai4dd/data2/ume/latent_generator_/runs//2025-12-13T14-57-53/epoch=210-step=22577-val_loss=17.2066.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[
@@ -522,7 +523,7 @@ methods = {
         features=["Standard configuration", "Full attention (no spatial masking)", "256 protein tokens"],
         model_config=ModelConfig(
             # S3 backup: s3://prescient-pcluster-data/gen_ume/checkpoints/latent_generator/LG_full_attention_2_2025-11-06.ckpt
-            checkpoint="/data2/ume/latent_generator_/runs//2025-11-06T00-40-11/last.ckpt",
+            checkpoint="/cv/data/ai4dd/data2/ume/latent_generator_/runs//2025-11-06T00-40-11/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[],
@@ -532,7 +533,7 @@ methods = {
         description="Full attention model with 512 protein tokens and FSQ quantization",
         features=["240 protein tokens", "FSQ quantization"],
         model_config=ModelConfig(
-            checkpoint="/data2/lisanzas/latent_generator/studies/outputs/train/dev/runs/2025-11-09_22-19-12/checkpoints/last.ckpt",
+            checkpoint="/cv/data/ai4dd/data2/lisanzas/latent_generator/studies/outputs/train/dev/runs/2025-11-09_22-19-12/checkpoints/last.ckpt",
             config_path="../../latent_generator/hydra_config/",
             config_name="train_multi",
             overrides=[

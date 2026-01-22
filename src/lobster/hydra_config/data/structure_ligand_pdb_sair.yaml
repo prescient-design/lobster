@@ -3,8 +3,8 @@ defaults:
   - ligand_transform_fn: structure_ligand_transform.yaml
 
 _target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
-root: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
-path_to_datasets: ["/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt", "/data/bucket/lisanza/structures/GEOM/processed/train/", "/data2/lisanzas/pdb_bind/train/","/data2/lisanzas/sair_protein_ligand/train/", "/data2/lisanzas/pdb_bind/val/", "/data2/lisanzas/pdb_bind/test/"]
+root: /cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
+path_to_datasets: ["/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt", "/cv/data/ai4dd/data/bucket/lisanza/structures/GEOM/processed/train/", "/cv/data/ai4dd/data2/lisanzas/pdb_bind/train/","/cv/data/ai4dd/data2/lisanzas/sair_protein_ligand/train/", "/cv/data/ai4dd/data2/lisanzas/pdb_bind/val/", "/cv/data/ai4dd/data2/lisanzas/pdb_bind/test/"]
 max_length: 512 # Maximum length of the sequence; not used
 
 # Per-dataset type specification
@@ -12,7 +12,7 @@ max_length: 512 # Maximum length of the sequence; not used
 # 'ligand' = ligand-only or protein-ligand pairs (uses LigandDataset)
 dataset_types: ["structure", "ligand", "ligand", "ligand", "ligand", "ligand"]  # PDB, GEOM, PDBBind train/val/test
 
-cluster_file_list: ["/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt", null, null, null, null, null]
+cluster_file_list: ["/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt", null, null, null, null, null]
 files_to_keep: null # this doesnt do anything
 files_to_keep_list: [null, null, null, null, null, null] # No filtering for any dataset
 use_ligand_dataset: true  # Kept for backwards compatibility

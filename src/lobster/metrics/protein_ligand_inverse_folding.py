@@ -16,6 +16,10 @@ from loguru import logger
 from torch import Tensor
 from tqdm import tqdm
 
+from lobster.model.latent_generator.utils.residue_constants import (
+    convert_lobster_aa_tokenization_to_standard_aa,
+)
+
 if TYPE_CHECKING:
     from lightning import LightningModule
 
@@ -374,7 +378,15 @@ class ProteinLigandInverseFoldingEvaluator:
 
         # Get predicted sequence
         sequence_logits = result["sequence_logits"]  # [1, L, vocab_size]
-        predicted_sequence = sequence_logits.argmax(dim=-1).squeeze(0)  # [L]
+
+        # Handle both 33-token and 21-token vocab formats
+        if sequence_logits.shape[-1] == 33:
+            predicted_sequence = convert_lobster_aa_tokenization_to_standard_aa(
+                sequence_logits, device=sequence_logits.device
+            ).squeeze(0)  # [L]
+        else:
+            predicted_sequence = sequence_logits.argmax(dim=-1).squeeze(0)  # [L]
+            predicted_sequence[predicted_sequence > 21] = 20
 
         return {
             "predicted_sequence": predicted_sequence,

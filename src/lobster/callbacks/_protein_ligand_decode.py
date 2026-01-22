@@ -67,24 +67,35 @@ class ProteinLigandDecodeCallback(lightning.Callback):
         if "decoded_x" not in outputs and "decoded_ligand_x" not in outputs:
             return
 
-        # Get decoded protein structure (if present)
+        # Get decoded structures from vit_decoder (handles both protein and ligand)
         x_recon_xyz = None
+        ligand_coords_from_decoder = None
         seq = None
-        if has_protein and "decoded_x" in outputs:
+
+        if "decoded_x" in outputs:
             x_recon = outputs["decoded_x"]
             for decoder_name in x_recon:
                 if "vit_decoder" == decoder_name:
-                    x_recon_xyz = x_recon[decoder_name]
+                    vit_output = x_recon[decoder_name]
+                    # Handle both old format (tensor) and new format (dict with protein_coords/ligand_coords)
+                    if isinstance(vit_output, dict):
+                        x_recon_xyz = vit_output.get("protein_coords")
+                        ligand_coords_from_decoder = vit_output.get("ligand_coords")
+                    else:
+                        x_recon_xyz = vit_output
 
-            # Get protein sequence
-            if x_recon_xyz is not None:
-                if outputs["unmasked_x"]["sequence_logits"].shape[-1] == 33:
-                    seq = convert_lobster_aa_tokenization_to_standard_aa(
-                        outputs["unmasked_x"]["sequence_logits"], device=self.device
-                    )
-                else:
-                    seq = outputs["unmasked_x"]["sequence_logits"].argmax(dim=-1)
-                    seq[seq > 21] = 20
+        # Get protein sequence (if protein present)
+        # Check if model uses 33-token vocab (from AminoAcidTokenizerTransform)
+        uses_33_token_vocab = False
+        if has_protein and x_recon_xyz is not None:
+            if outputs["unmasked_x"]["sequence_logits"].shape[-1] == 33:
+                uses_33_token_vocab = True
+                seq = convert_lobster_aa_tokenization_to_standard_aa(
+                    outputs["unmasked_x"]["sequence_logits"], device=self.device
+                )
+            else:
+                seq = outputs["unmasked_x"]["sequence_logits"].argmax(dim=-1)
+                seq[seq > 21] = 20
 
         # Get timesteps for filename (use ligand timesteps for ligand-only)
         if has_protein:
@@ -103,12 +114,13 @@ class ProteinLigandDecodeCallback(lightning.Callback):
             decoded_ligand = outputs["decoded_ligand_x"]
             ligand_mask = outputs.get("ligand_mask")
 
-            # Get ligand coordinates
-            if decoded_ligand.get("coords") is not None:
-                ligand_coords = decoded_ligand["coords"][0]  # First sample
-            elif "ligand_coords" in batch:
-                # Use ground truth coords if decoded not available
-                ligand_coords = batch["ligand_coords"][0]
+            # Get ligand coordinates from unified vit_decoder
+            if ligand_coords_from_decoder is not None:
+                ligand_coords = ligand_coords_from_decoder[0]  # First sample (decoded)
+            else:
+                logger.warning(
+                    "No decoded ligand coordinates available - vit_decoder may not be returning ligand_coords"
+                )
 
             # Get ligand atom types
             if "atom_types" in decoded_ligand:
@@ -150,7 +162,14 @@ class ProteinLigandDecodeCallback(lightning.Callback):
 
                     try:
                         gt_seq = batch["sequence"][0]
-                        gt_seq[gt_seq > 21] = 20
+                        # Handle both 33-token (from AminoAcidTokenizerTransform) and 21-token formats
+                        if uses_33_token_vocab:
+                            gt_seq = convert_lobster_aa_tokenization_to_standard_aa(
+                                gt_seq.unsqueeze(0), device=self.device
+                            )[0]
+                        else:
+                            gt_seq = gt_seq.clone()
+                            gt_seq[gt_seq > 21] = 20
                         writepdb_ligand_complex(
                             filename=gt_filename,
                             protein_atoms=batch["coords_res"][0],
