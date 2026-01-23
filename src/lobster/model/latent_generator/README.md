@@ -4,9 +4,9 @@ A powerful protein and protein-ligand structure representation learning model fo
 
 ## Table of Contents
 - [Performance](#performance)
-  - [Reconstruction Quality on CASP15 Proteins](#reconstruction-quality-on-casp15-proteins)
-  - [Reconstruction Quality with Canonical Pose (Mol Frame)](#reconstruction-quality-with-canonical-pose-mol-frame)
-  - [Fold Prediction Accuracy](#fold-prediction-accuracy)
+  - [Structure Reconstruction Quality on CASP15 Proteins](#structure-reconstruction-quality-on-casp15-proteins)
+  - [Ligand Reconstruction Quality](#ligand-reconstruction-quality)
+  - [Protein-Ligand Complex Reconstruction Quality](#protein-ligand-complex-reconstruction-quality)
 - [Setup](#setup)
   - [Environment Setup](#environment-setup)
 - [Getting Embeddings and Tokens](#getting-embeddings-and-tokens)
@@ -16,47 +16,64 @@ A powerful protein and protein-ligand structure representation learning model fo
   - [Command-line Example](#command-line-example)
 - [Evaluation](#evaluation)
   - [Evaluating Reconstruction Quality on CASP15](#evaluating-reconstruction-quality-on-casp15)
-- [Training](#training)
-  - [Protein-only Training](#protein-only-training)
-  - [Protein+Ligand (Complex) Training](#proteinligand-complex-training)
 - [Model Configurations](#model-configurations)
-  - [Ligand Models](#ligand-models)
   - [Protein-Ligand Models](#protein-ligand-models)
   - [Protein-Only Models](#protein-only-models)
 
 ## Performance
 
-### Reconstruction Quality on CASP15 Proteins
+### Structure Reconstruction Quality on CASP15 Proteins
 
-We evaluated the reconstruction quality of our models on CASP15 proteins ≤ 512 residues. The table below shows the average RMSD between original and reconstructed structures:
+We evaluated the reconstruction quality of our models on CASP15 proteins (≤ 512 residues). The continuous baseline establishes an upper bound for the ViT architecture.
 
-**Evaluation Set**: CASP15 proteins ≤ 512 residues 
+**Evaluation Set**: CASP15 proteins ≤ 512 residues
 
-| Model | Tokens | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
-|-------|--------|------------------|--------------|--------------|--------------|
-| LG full attention | 256 | 1.707 | 0.643 | 0.839 | 3.434 |
-
-### Reconstruction Quality with Canonical Pose (Mol Frame)
-
-We also evaluated the models using canonical pose mode, which makes the model invariant to rotations and translations:
-
-**Evaluation Set**: CASP15 proteins ≤ 512 residues 
-
-| Model | Tokens | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
-|-------|--------|------------------|--------------|--------------|--------------|
-| LG full attention | 256 | 1.645 | 0.573 | 0.664 | 2.901 |
+| Model | Quantizer | Size | RMSD (Å) | Std | Min | Max |
+|-------|-----------|------|----------|-----|-----|-----|
+| LG Protein (cont.) | None | - | 0.462 | 0.322 | 0.200 | 1.271 |
+| LG Protein SLQ | SLQ | 256 | 1.647 | 0.535 | 0.979 | 3.189 |
+| LG Prot-Lig SLQ | SLQ | 256 | 1.873 | 1.054 | 0.798 | 5.143 |
+| LG Prot-Lig SLQ | SLQ | 4096 | 3.097 | 2.009 | 1.242 | 8.474 |
+| LG Protein FSQ | FSQ | 240 | 1.848 | 1.194 | 0.483 | 5.419 |
+| LG Prot-Lig FSQ | FSQ | 4375 | 1.260 | 0.632 | 0.651 | 3.117 |
+| LG Prot-Lig FSQ | FSQ | 4375/15360 | 1.418 | 0.810 | 0.748 | 3.396 |
 
 ### Ligand Reconstruction Quality
 
-We evaluated the ligand-only model's reconstruction quality on a large-scale ligand dataset:
+We evaluated ligand reconstruction quality on 30,936 ligand structures from the GEOM dataset. The unified protein-ligand model achieves comparable performance to the specialist ligand-only model, demonstrating the architecture's capacity to handle multimodal distributions within a shared parameter set.
 
-**Evaluation Set**: 30,936 ligands
+**Evaluation Set**: 30,936 ligands from GEOM dataset
 
-| Model | Tokens | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
-|-------|--------|------------------|--------------|--------------|--------------|
-| LG Ligand 20A | 512 | 0.752 | 0.305 | 0.065 | 4.943 |
+| Model | Size | Avg RMSD (Å) | Std | Min | Max |
+|-------|------|--------------|-----|-----|-----|
+| LG Ligand SLQ | 512 | 0.752 | 0.305 | 0.065 | 4.943 |
+| LG Prot-Lig SLQ | 512 | 0.920 | 0.236 | 0.152 | 3.704 |
+| LG Prot-Lig SLQ | 4096 | 1.239 | 0.335 | 0.196 | 4.101 |
+| LG Prot-Lig FSQ | 4375 | 0.395 | 0.059 | 0.179 | 1.784 |
+| LG Prot-Lig FSQ | 15360 | 0.295 | 0.052 | 0.120 | 1.792 |
 
-The ligand model achieves sub-angstrom average reconstruction error (0.752 ± 0.305 Å) across 30,936 ligand structures, demonstrating that LatentGenerator effectively preserves ligand geometry through discrete tokenization.
+### Protein-Ligand Complex Reconstruction Quality
+
+Comparison of FSQ and SLQ variants on PDBbind complexes. Token counts represent the specific codebook size for protein and ligand components respectively.
+
+**Evaluation Set**: PDBbind complexes
+
+| Model | Metric | Prot Tokens | Lig Tokens | Alignment | Avg RMSD (Å) | Std | Min | Max |
+|-------|--------|-------------|------------|-----------|--------------|-----|-----|-----|
+| LG Prot-Lig SLQ | Ligand | 256 | 512 | Individual | 1.411 | 0.593 | 0.365 | 4.519 |
+| LG Prot-Lig SLQ | Ligand | 4096 | 4096 | Individual | 1.620 | 0.711 | 0.533 | 6.756 |
+| LG Prot-Lig FSQ | Ligand | 4375 | 4375 | Individual | 0.705 | 0.139 | 0.345 | 1.935 |
+| LG Prot-Lig FSQ | Ligand | 4375 | 15360 | Individual | 0.657 | 0.146 | 0.315 | 2.407 |
+| | | | | | | | | |
+| LG Prot-Lig SLQ | Complex | 256 | 512 | Joint | 1.567 | 0.343 | 0.939 | 5.579 |
+| LG Prot-Lig SLQ | Complex | 4096 | 4096 | Joint | 4.680 | 2.962 | 1.415 | 19.173 |
+| LG Prot-Lig FSQ | Complex | 4375 | 4375 | Joint | 1.011 | 0.127 | 0.723 | 2.387 |
+| LG Prot-Lig FSQ | Complex | 4375 | 15360 | Joint | 1.009 | 0.138 | 0.739 | 3.578 |
+| | | | | | | | | |
+| LG Prot-Lig SLQ | Ligand | 256 | 512 | Joint (c) | 2.306 | 0.758 | 0.711 | 5.927 |
+| LG Prot-Lig SLQ | Ligand | 4096 | 4096 | Joint (c) | 3.589 | - | - | - |
+| LG Prot-Lig FSQ | Ligand | 4375 | 4375 | Joint (c) | 1.011 | 0.271 | 0.507 | 3.729 |
+| LG Prot-Lig FSQ | Ligand | 4375 | 15360 | Joint (c) | 0.998 | - | - | - |
 
 ## Setup
 
@@ -112,7 +129,7 @@ from lobster.model.latent_generator.cmdline import load_model, encode, decode, m
 from lobster.model.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
-model_name = 'LG Ligand 20A'
+model_name = 'LG Protein Ligand fsq 4375'
 
 # Load model with ligand support using the ModelInfo dataclass structure
 load_model(
@@ -122,7 +139,7 @@ load_model(
     overrides=methods[model_name].model_config.overrides
 )
 
-# Load protein-ligand complex
+# Load ligand only (no protein)
 pdb_data = {"protein_coords": None, "protein_mask": None, "protein_seq": None} 
 ligand_data = load_ligand("src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf")
 pdb_data["ligand_coords"] = ligand_data["atom_coords"]
@@ -130,10 +147,11 @@ pdb_data["ligand_mask"] = ligand_data["mask"]
 pdb_data["ligand_residue_index"] = ligand_data["atom_indices"]
 pdb_data["ligand_atom_names"] = ligand_data["atom_names"]
 pdb_data["ligand_indices"] = ligand_data["atom_indices"]
-# Get tokens for the complex
+
+# Get tokens for the ligand
 tokens, embeddings = encode(pdb_data, return_embeddings=True)
 print(tokens["ligand_tokens"].shape)  # (batch, length_ligand, n_tokens)
-print(embeddings.shape) # (batch, length_protein+length_ligand, embedding_dim) 
+print(embeddings.shape) # (batch, length_ligand, embedding_dim) 
 
 # Decode tokens back to structure
 decoded_outputs = decode(tokens, x_emb=embeddings)
@@ -148,14 +166,17 @@ writepdb_ligand_complex(
 
 ```
 
+### Protein-Ligand Complex Example
 
-### Protein-Ligand Complex Example (warning ligand recon not good yet)
 ```python
 from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
 from lobster.model.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
-model_name = 'LG Ligand 20A seq 3di Aux'
+# Choose one of the protein-ligand models:
+# - 'LG Protein Ligand fsq 4375' (4375 tokens for both protein and ligand)
+# - 'LG Protein Ligand fsq 4375 15360' (4375 protein tokens, 15360 ligand tokens)
+model_name = 'LG Protein Ligand fsq 4375'
 
 # Load model with ligand support using the ModelInfo dataclass structure
 load_model(
@@ -173,6 +194,7 @@ pdb_data["ligand_mask"] = ligand_data["mask"]
 pdb_data["ligand_residue_index"] = ligand_data["atom_indices"]
 pdb_data["ligand_atom_names"] = ligand_data["atom_names"]
 pdb_data["ligand_indices"] = ligand_data["atom_indices"]
+
 # Get tokens for the complex
 tokens, embeddings = encode(pdb_data, return_embeddings=True)
 print(tokens["protein_tokens"].shape)  # (batch, length_protein, n_tokens)
@@ -200,22 +222,29 @@ writepdb_ligand_complex(
 ### Command-line Example
 ```bash
 # Get tokens and decode to structure for protein only
-python src/lobster/model/latent_generator/cmdline/inference.py \
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
     --model_name 'LG full attention' \
     --pdb_path src/lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb \
     --decode
 
-# Get tokens and decode to structure for ligand
-python src/lobster/model/latent_generator/cmdline/inference.py \
-    --model_name 'LG Ligand 20A' \
-    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf  \
+# Get tokens and decode to structure for ligand only
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
     --decode
-    
-# Get tokens and decode to structure for protein-ligand
-python src/lobster/model/latent_generator/cmdline/inference.py \
-    --model_name 'LG Ligand 20A seq 3di Aux' \
+
+# Get tokens and decode to structure for protein-ligand complex using LG Protein Ligand fsq 4375
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
     --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
-    --ligand_path latent_generator/example/example_pdbs/4erk_ligand.sdf  \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
+    --decode
+
+# Get tokens and decode using LG Protein Ligand fsq 4375 15360 (higher ligand resolution)
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375 15360' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
     --decode
 
 # Get embeddings (requires Python API)
@@ -267,199 +296,33 @@ The evaluation reports:
 - **Min/Max RMSD**: Best and worst reconstruction quality
 - **Success Rate**: Number of successful vs. failed reconstructions
 
-## Training
-
-LatentGenerator training for protein-only models using the unified Lobster training framework.
-
-### Quick Start
-
-Train a latent_generator model using the provided SLURM script:
-
-```bash
-# Submit training job
-sbatch slurm/scripts/train_latent_generator.sh
-```
-
-Or run locally without SLURM:
-
-```bash
-# Set required environment variables
-export LOBSTER_RUNS_DIR="/path/to/runs"
-export LOBSTER_DATA_DIR="/path/to/data"
-
-# Train with default experiment configuration
-uv run lobster_train experiment=train_latent_generator
-
-# Override specific parameters
-uv run lobster_train experiment=train_latent_generator \
-    data.batch_size=32 \
-    model.quantizer.n_tokens=512 \
-    trainer.devices=4
-```
-
-### Configuration Files
-
-The training uses the unified Lobster configuration system:
-
-- **Experiment config**: `src/lobster/hydra_config/experiment/train_latent_generator.yaml`
-- **Model config**: `src/lobster/hydra_config/model/latent_generator.yaml`
-- **Data config**: `src/lobster/hydra_config/data/structure_pdb.yaml`
-
-### Key Configuration Parameters
-
-Based on the actual model configuration (`src/lobster/hydra_config/model/latent_generator.yaml`):
-
-**Model Architecture:**
-- `quantizer.n_tokens`: Number of discrete tokens in codebook (default: 256)
-- `structure_encoder.embed_dim_hidden`: Hidden embedding dimension (default: 256)
-- `structure_encoder.uvit_n_layers`: Number of encoder layers (default: 6)
-- `structure_encoder.uvit_n_heads`: Number of attention heads (default: 8)
-- `structure_encoder.data_fixed_size`: Maximum sequence length (default: 512)
-- `structure_encoder.n_atoms`: Number of atoms per residue (default: 3 for backbone)
-
-**Training Parameters:**
-- `num_warmup_steps`: Learning rate warmup steps (default: 5000)
-- `num_training_steps`: Total training steps (default: 50000)
-- `optim.lr`: Learning rate (default: 1e-4)
-
-**Decoder Configuration:**
-- `decoder_factory.decoder_mapping.vit_decoder.struc_token_dim`: Decoder token dimension (default: 512)
-- `decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size`: Token codebook size (default: 256)
-
-**Loss Configuration:**
-- `loss_factory.weight_dict.pairwise_l2_loss`: Weight for pairwise L2 loss (default: 1.0)
-- `loss_factory.weight_dict.l2_loss`: Weight for L2 loss (default: 0.01)
-
-### SLURM Training Configuration
-
-The SLURM script (`slurm/scripts/train_latent_generator.sh`) is configured for multi-GPU training:
-
-**Hardware Configuration:**
-- 1 node with 8 GPUs (b200 partition)
-- 16 CPUs per GPU task
-- 256GB RAM
-- 7-day maximum runtime
-
-**Environment Variables:**
-- `LOBSTER_RUNS_DIR`: Directory for saving checkpoints and logs
-- `LOBSTER_DATA_DIR`: Directory for caching data
-- `LOBSTER_USER`: WandB username for logging
-- `WANDB_BASE_URL`: WandB server URL (if using custom instance)
-
-**Training Settings:**
-- DDP strategy with `ddp_find_unused_parameters_true`
-- 8 data workers per GPU
-- BF16 mixed precision
-- Gradient accumulation: 16 batches
-
-Edit the SLURM script to adjust these settings for your cluster.
-
-### Dataset Preparation
-
-The latent_generator expects protein structure datasets with:
-- Backbone atom coordinates (N, CA, C atoms)
-- Residue information  
-- Sequence data
-
-Configure your dataset paths in `src/lobster/hydra_config/data/structure_pdb.yaml`:
-
-```yaml
-path_to_datasets: [
-  "/path/to/train.pt",
-  "/path/to/validation.pt", 
-  "/path/to/test.pt"
-]
-batch_size: 40
-num_workers: 12
-```
-
-Or override on the command line:
-
-```bash
-uv run lobster_train experiment=train_latent_generator \
-    data.path_to_datasets="['/path/to/train.pt','/path/to/val.pt','/path/to/test.pt']"
-```
-
-### Resuming from Checkpoint
-
-Load a checkpoint to resume training or fine-tune:
-
-```bash
-# Resume training from checkpoint
-uv run lobster_train experiment=train_latent_generator \
-    model.ckpt_path=/path/to/checkpoint.ckpt
-
-# Or via SLURM (modify the script to add):
-# model.ckpt_path=/path/to/checkpoint.ckpt
-```
-
-### Monitoring Training
-
-Training progress can be monitored through:
-
-1. **SLURM Output**: Job logs are saved to the path specified in the SLURM script (default: `/data2/ume/latent_generator_/slurm/logs/train/`)
-2. **WandB**: Logs automatically to the `lobster_latent_generator` project
-   - Run name includes: token count, encoder/decoder dimensions, dataset name, and timestamp
-   - Example: `latent_generator-tokens_256-enc_256-dec_512_pdb_2024-01-01T12-00-00`
-3. **Console Output**: Real-time loss and metrics (when running locally)
-
 ## Model Configurations
 
-LatentGenerator provides several pre-configured models optimized for different use cases. These configurations include all necessary settings and overrides, making them easy to use without manual configuration.
-
-### Ligand Models
-
-#### LG Ligand 20A
-- **Description**: Ligand only model with 20Å spatial attention
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder
-  - 512 ligand tokens
-- **Use Case**: Ligand analysis and generation
-
-#### LG Ligand 20A 512 1024
-- **Description**: Ligand only model with 20Å spatial attention
-- **Features**:
-  - 512-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder
-  - 1024 ligand tokens
-- **Use Case**: High-dimensional ligand analysis and generation
-
-#### LG Ligand 20A 512 1024 element
-- **Description**: Ligand only model with 20Å spatial attention and element awareness
-- **Features**:
-  - 512-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder with element awareness
-  - 1024 ligand tokens
-- **Use Case**: Element-aware ligand analysis and generation
-
-#### LG Ligand 20A continuous
-- **Description**: Ligand only model with 20Å spatial attention and continuous encoding
-- **Features**:
-  - 512-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder
-  - Continuous ligand encoding (no quantization)
-- **Use Case**: Continuous ligand representation learning
+LatentGenerator provides pre-configured models optimized for different use cases. These configurations include all necessary settings and overrides, making them easy to use without manual configuration.
 
 ### Protein-Ligand Models
 
-#### LG Ligand 20A seq 3di Aux
-- **Description**: Protein-ligand model with sequence and 3Di awareness
+#### LG Protein Ligand fsq 4375
+- **Description**: Protein-ligand model with FSQ quantization (4375 tokens)
 - **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence and 3Di decoder
+  - 5-dim embeddings
+  - FSQ quantization
   - Ligand encoding support
-  - 512 ligand tokens
-  - 512 protein tokens
-- **Use Case**: Protein-ligand complex analysis and generation with sequence awareness
+  - 4375 ligand tokens
+  - 4375 protein tokens
+- **Use Case**: Protein-ligand complex analysis and generation with balanced token resolution
+
+#### LG Protein Ligand fsq 4375 15360
+- **Description**: Protein-ligand model with FSQ quantization (4375 protein tokens, 15360 ligand tokens)
+- **Features**:
+  - 5-dim embeddings
+  - FSQ quantization
+  - Ligand encoding support
+  - 15360 ligand tokens (higher resolution for ligands)
+  - 4375 protein tokens
+- **Use Case**: Protein-ligand complex analysis and generation with higher ligand resolution
 
 ### Protein-Only Models
-
 
 #### LG full attention
 - **Description**: Full attention model without spatial masking
@@ -507,10 +370,10 @@ load_model(
 Or via command line:
 ```bash
 # Using pre-configured model
-python latent_generator/cmdline/inference.py --model_name 'LG full attention' --pdb_path your_protein.pdb
+uv run python latent_generator/cmdline/inference.py --model_name 'LG full attention' --pdb_path your_protein.pdb
 
 # Using custom checkpoint
-python latent_generator/cmdline/inference.py \
+uv run python latent_generator/cmdline/inference.py \
     --ckpt_path path/to/your/checkpoint.ckpt \
     --cfg_path path/to/config/ \
     --cfg_name config_name \

@@ -997,7 +997,9 @@ LG full attention
     # Load the model with overrides if provided
     ligand_supported_models = [
         "LG Protein Ligand",
+        "LG Protein Ligand 4096",
         "LG Protein Ligand fsq 4375",
+        "LG Protein Ligand fsq 4375 15360",
         "LG Protein Ligand fsq 1000",
         "LG Ligand 20A seq 3di Aux",
         "LG Ligand 20A",
