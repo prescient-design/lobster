@@ -14,7 +14,6 @@ Usage:
 
 import logging
 from pathlib import Path
-import logging
 
 import pandas as pd
 
