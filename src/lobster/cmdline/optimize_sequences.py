@@ -1,30 +1,44 @@
-"""CLI script to optimize OAS antibody sequence CSV files for LitData streaming.
+"""CLI script to optimize OAS antibody sequence files for LitData streaming.
 
-Reads CSV files from an S3 (or local) directory in the Observed Antibody Space
-(OAS) format:
+Supports two input formats:
 
-- **Line 0**: JSON metadata dict describing the file (species, chain, isotype, etc.)
+**CSV format** (``--input_format csv``, default):
+
+- **Line 0**: JSON metadata dict describing the file
 - **Line 1**: CSV header row
 - **Lines 2+**: CSV data rows
+- Files may be plain ``.csv`` or gzip-compressed ``.csv.gz``
+- Metadata filters are applied per-file based on the JSON header
 
-Each file can be included or excluded based on metadata filters (e.g. only
-human heavy-chain sequences).  Sequences are read from the
-``sequence_alignment_aa`` column and written to an optimized LitData chunked
-dataset suitable for streaming with
-``StreamingSequenceLightningDataModule``.
+**Parquet format** (``--input_format parquet``):
+
+- Hive-partitioned or flat directory of ``.parquet`` files
+- Metadata columns (Species, Chain, Isotype, etc.) live alongside sequences
+- Filters are applied per-row on DataFrame columns
+
+Sequences are read from the ``sequence_alignment_aa`` column (configurable)
+and written to an optimized LitData chunked dataset suitable for streaming
+with ``StreamingSequenceLightningDataModule``.
 
 Usage
 -----
 .. code-block:: bash
 
+    # CSV mode (OAS bulk download format)
     lobster_optimize_sequences \\
-        --input_dir s3://my-bucket/oas/raw/ \\
+        --input_dir s3://my-bucket/oas/csv_raw/ \\
         --output_dir s3://my-bucket/oas/optimized/ \\
+        --input_format csv \\
         --val_fraction 0.05 \\
-        --species human \\
-        --chain Heavy \\
-        --chunk_bytes 64MB \\
-        --num_workers 8
+        --species human --chain Heavy
+
+    # Parquet mode (OAS deduplicated parquet format)
+    lobster_optimize_sequences \\
+        --input_dir s3://my-bucket/oas/OAS_aa_deduplicated/ \\
+        --output_dir s3://my-bucket/oas/optimized/ \\
+        --input_format parquet \\
+        --val_fraction 0.05 \\
+        --species human --chain Heavy
 """
 
 from __future__ import annotations
@@ -335,6 +349,205 @@ def optimize_sequences(
         logger.info(f"Total: {len(ds)} sequences")
 
 
+# ---------------------------------------------------------------------------
+# Parquet format support
+# ---------------------------------------------------------------------------
+
+
+def _convert_oas_parquet(
+    filepath: str,
+    sequence_column: str = "sequence_alignment_aa",
+    filters: dict[str, list[str]] | None = None,
+):
+    """Generator that yields sequence dicts from a single OAS parquet file.
+
+    Metadata columns (Species, Chain, Isotype, …) are expected to be
+    regular columns in the parquet file.  Row-level filtering is applied
+    before yielding sequences.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to an OAS parquet file (S3 URI or local).
+    sequence_column : str
+        Name of the column containing amino-acid sequences.
+    filters : dict[str, list[str]] or None
+        Optional row-level metadata filters.  Keys are column names;
+        values are lists of permissible values.  Only rows matching
+        *all* filters are yielded.
+
+    Yields
+    ------
+    dict[str, str]
+        Dictionary with a ``"sequence"`` key for each qualifying row.
+    """
+    import pandas as pd
+
+    try:
+        df = pd.read_parquet(filepath)
+    except Exception:
+        logger.warning(f"Could not read parquet file {filepath}, skipping.")
+        return
+
+    if sequence_column not in df.columns:
+        logger.warning(
+            f"Column '{sequence_column}' not found in {filepath} "
+            f"(columns: {list(df.columns)}). Skipping file."
+        )
+        return
+
+    # Apply row-level filters
+    if filters:
+        for column, allowed_values in filters.items():
+            if column in df.columns:
+                df = df[df[column].isin(allowed_values)]
+            else:
+                logger.info(
+                    f"Filter column '{column}' not found in {filepath}, "
+                    f"skipping this filter for this file."
+                )
+
+    for seq in df[sequence_column].dropna():
+        seq = str(seq).strip()
+        if seq:
+            yield {"sequence": seq}
+
+
+class _OASParquetConverter:
+    """Picklable callable for ``litdata.optimize`` workers (parquet mode).
+
+    Parameters
+    ----------
+    sequence_column : str
+        Name of the parquet column containing sequences.
+    filters : dict[str, list[str]] or None
+        Row-level metadata filters.
+    """
+
+    def __init__(self, sequence_column: str, filters: dict[str, list[str]] | None):
+        self.sequence_column = sequence_column
+        self.filters = filters
+
+    def __call__(self, filepath: str):
+        yield from _convert_oas_parquet(
+            filepath,
+            sequence_column=self.sequence_column,
+            filters=self.filters,
+        )
+
+
+def optimize_parquet_sequences(
+    input_dir: str,
+    output_dir: str,
+    val_fraction: float = 0.0,
+    chunk_bytes: str = "64MB",
+    num_workers: int | None = None,
+    seed: int = 42,
+    sequence_column: str = "sequence_alignment_aa",
+    filters: dict[str, list[str]] | None = None,
+) -> None:
+    """Optimize a directory of OAS parquet files into LitData streaming format.
+
+    Parameters
+    ----------
+    input_dir : str
+        Path to directory containing parquet files (possibly Hive-partitioned).
+        Can be an S3 URI (``s3://bucket/path``) or a local directory.
+    output_dir : str
+        Path to write the optimized LitData dataset.  Can be an S3 URI or
+        local path.  If ``val_fraction > 0``, ``train/`` and ``val/``
+        subdirectories will be created.
+    val_fraction : float, optional
+        Fraction of *files* to hold out for validation.  If 0, all files
+        go to a single output directory with no subdirectories.
+        Default is 0.0.
+    chunk_bytes : str, optional
+        Target size for each output chunk.  Default is ``"64MB"``.
+    num_workers : int or None, optional
+        Number of parallel workers for optimization.
+        Defaults to ``min(os.cpu_count(), num_files)``.
+    seed : int, optional
+        Random seed for train/val file splitting.  Default is 42.
+    sequence_column : str, optional
+        Name of the parquet column containing amino-acid sequences.
+        Default is ``"sequence_alignment_aa"``.
+    filters : dict[str, list[str]] or None, optional
+        Row-level metadata column filters.  Keys are column names (e.g.
+        ``"Species"``, ``"Chain"``); values are lists of permissible
+        values.  Only rows matching all filters are included.
+        Default is ``None`` (no filtering).
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``input_dir`` contains no ``.parquet`` files.
+    ValueError
+        If ``val_fraction`` is not in ``[0, 1)``.
+    """
+    if not (0.0 <= val_fraction < 1.0):
+        raise ValueError(f"val_fraction must be in [0, 1), got {val_fraction}")
+
+    input_path = UPath(input_dir)
+    files = sorted(str(f) for f in input_path.rglob("*.parquet"))
+
+    if not files:
+        raise FileNotFoundError(f"No .parquet files found in {input_dir}")
+
+    logger.info(f"Found {len(files)} parquet files in {input_dir}")
+    if filters:
+        logger.info(f"Row-level filters: {filters}")
+
+    if num_workers is None:
+        num_workers = min(os.cpu_count() or 1, len(files))
+
+    convert_fn = _OASParquetConverter(sequence_column, filters)
+
+    if val_fraction > 0.0:
+        rng = random.Random(seed)
+        shuffled = list(files)
+        rng.shuffle(shuffled)
+        n_val = max(1, int(len(shuffled) * val_fraction))
+        val_files = shuffled[:n_val]
+        train_files = shuffled[n_val:]
+
+        logger.info(f"Splitting: {len(train_files)} train files, {len(val_files)} val files")
+
+        for split_name, split_files in [("train", train_files), ("val", val_files)]:
+            split_output = str(UPath(output_dir) / split_name)
+            logger.info(f"Optimizing {split_name} split → {split_output} ({len(split_files)} files)")
+
+            optimize(
+                convert_fn,
+                split_files,
+                split_output,
+                num_workers=min(num_workers, len(split_files)),
+                chunk_bytes=chunk_bytes,
+                mode="overwrite",
+            )
+
+            ds = StreamingDataset(split_output)
+            logger.info(f"{split_name} split: {len(ds)} sequences")
+    else:
+        logger.info(f"Optimizing all files → {output_dir}")
+
+        optimize(
+            convert_fn,
+            files,
+            output_dir,
+            num_workers=num_workers,
+            chunk_bytes=chunk_bytes,
+            mode="overwrite",
+        )
+
+        ds = StreamingDataset(output_dir)
+        logger.info(f"Total: {len(ds)} sequences")
+
+
+# ---------------------------------------------------------------------------
+# Shared CLI helpers
+# ---------------------------------------------------------------------------
+
+
 def _parse_filter_arg(value: str) -> list[str]:
     """Parse a comma-separated filter argument into a list of values.
 
@@ -351,29 +564,61 @@ def _parse_filter_arg(value: str) -> list[str]:
     return [v.strip() for v in value.split(",") if v.strip()]
 
 
+def _build_filters(args: argparse.Namespace) -> dict[str, list[str]] | None:
+    """Build metadata filter dict from parsed CLI arguments.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments with species, vaccine, disease, chain, isotype.
+
+    Returns
+    -------
+    dict[str, list[str]] or None
+        Filter dict, or ``None`` if no filters were specified.
+    """
+    filters: dict[str, list[str]] = {}
+    filter_args = {
+        "Species": args.species,
+        "Vaccine": args.vaccine,
+        "Disease": args.disease,
+        "Chain": args.chain,
+        "Isotype": args.isotype,
+    }
+    for column, value in filter_args.items():
+        if value is not None:
+            filters[column] = _parse_filter_arg(value)
+    return filters if filters else None
+
+
 def main():
     """Entry point for the ``lobster_optimize_sequences`` CLI command."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     parser = argparse.ArgumentParser(
         description=(
-            "Optimize OAS antibody sequence CSV files into LitData streaming format. "
-            "Each CSV has a JSON metadata line (line 0), a header row (line 1), and "
-            "data rows (lines 2+).  Sequences are read from the specified column and "
-            "files can be filtered by metadata columns."
+            "Optimize OAS antibody sequence files into LitData streaming format. "
+            "Supports CSV (with JSON metadata header) and Parquet input formats."
         ),
     )
     parser.add_argument(
         "--input_dir",
         type=str,
         required=True,
-        help="Path to directory containing OAS CSV files (S3 or local).",
+        help="Path to directory containing input files (S3 or local).",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
         required=True,
         help="Path for the optimized LitData output (S3 or local).",
+    )
+    parser.add_argument(
+        "--input_format",
+        type=str,
+        choices=["csv", "parquet"],
+        default="csv",
+        help="Input file format: 'csv' (OAS CSV with JSON header) or 'parquet' (default: 'csv').",
     )
     parser.add_argument(
         "--val_fraction",
@@ -403,17 +648,20 @@ def main():
         "--file_glob",
         type=str,
         nargs="+",
-        default=["*.csv", "*.csv.gz"],
-        help="Glob pattern(s) for input files (default: '*.csv' '*.csv.gz').",
+        default=None,
+        help=(
+            "Glob pattern(s) for input files. "
+            "Defaults to '*.csv *.csv.gz' for csv format (ignored for parquet)."
+        ),
     )
     parser.add_argument(
         "--sequence_column",
         type=str,
         default="sequence_alignment_aa",
-        help="Name of the CSV column containing sequences (default: 'sequence_alignment_aa').",
+        help="Name of the column containing sequences (default: 'sequence_alignment_aa').",
     )
 
-    # Metadata filter arguments
+    # Metadata filter arguments (used by both csv and parquet modes)
     parser.add_argument(
         "--species",
         type=str,
@@ -446,31 +694,32 @@ def main():
     )
 
     args = parser.parse_args()
+    filters = _build_filters(args)
 
-    # Build filters dict from CLI arguments
-    filters: dict[str, list[str]] = {}
-    filter_args = {
-        "Species": args.species,
-        "Vaccine": args.vaccine,
-        "Disease": args.disease,
-        "Chain": args.chain,
-        "Isotype": args.isotype,
-    }
-    for column, value in filter_args.items():
-        if value is not None:
-            filters[column] = _parse_filter_arg(value)
-
-    optimize_sequences(
-        input_dir=args.input_dir,
-        output_dir=args.output_dir,
-        val_fraction=args.val_fraction,
-        chunk_bytes=args.chunk_bytes,
-        num_workers=args.num_workers,
-        seed=args.seed,
-        file_glob=args.file_glob,
-        sequence_column=args.sequence_column,
-        filters=filters if filters else None,
-    )
+    if args.input_format == "parquet":
+        optimize_parquet_sequences(
+            input_dir=args.input_dir,
+            output_dir=args.output_dir,
+            val_fraction=args.val_fraction,
+            chunk_bytes=args.chunk_bytes,
+            num_workers=args.num_workers,
+            seed=args.seed,
+            sequence_column=args.sequence_column,
+            filters=filters,
+        )
+    else:
+        file_glob = args.file_glob or ["*.csv", "*.csv.gz"]
+        optimize_sequences(
+            input_dir=args.input_dir,
+            output_dir=args.output_dir,
+            val_fraction=args.val_fraction,
+            chunk_bytes=args.chunk_bytes,
+            num_workers=args.num_workers,
+            seed=args.seed,
+            file_glob=file_glob,
+            sequence_column=args.sequence_column,
+            filters=filters,
+        )
 
 
 if __name__ == "__main__":

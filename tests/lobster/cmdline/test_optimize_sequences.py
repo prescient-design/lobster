@@ -10,9 +10,11 @@ import pytest
 
 from lobster.cmdline.optimize_sequences import (
     _convert_oas_csv,
+    _convert_oas_parquet,
     _file_passes_filters,
     _parse_oas_metadata,
     _read_oas_file,
+    optimize_parquet_sequences,
     optimize_sequences,
 )
 
@@ -311,6 +313,245 @@ class TestOptimizeSequences:
     def test_no_files_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError, match="No files matching"):
             optimize_sequences(
+                input_dir=str(tmp_path),
+                output_dir=str(tmp_path / "out"),
+            )
+
+
+# ---------------------------------------------------------------------------
+# Parquet helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_oas_parquet(
+    tmp_path: Path,
+    filename: str = "data.parquet",
+    sequences: list[str] | None = None,
+    species: str = "human",
+    chain: str = "Heavy",
+    isotype: str = "IGHG",
+) -> str:
+    """Write a minimal OAS-style parquet file and return its path."""
+    import pandas as pd
+
+    if sequences is None:
+        sequences = ["EVQLVESGG", "QVQLVQSGA", "DIVMTQSPL"]
+
+    df = pd.DataFrame({
+        "sequence_alignment_aa": sequences,
+        "Species": [species] * len(sequences),
+        "Chain": [chain] * len(sequences),
+        "Isotype": [isotype] * len(sequences),
+    })
+    filepath = tmp_path / filename
+    df.to_parquet(filepath, index=False)
+    return str(filepath)
+
+
+# ---------------------------------------------------------------------------
+# _convert_oas_parquet
+# ---------------------------------------------------------------------------
+
+
+class TestConvertOasParquet:
+    """Tests for _convert_oas_parquet."""
+
+    def test_yields_sequences(self, tmp_path):
+        filepath = _make_oas_parquet(tmp_path, sequences=["AAA", "BBB", "CCC"])
+        results = list(_convert_oas_parquet(filepath))
+        assert len(results) == 3
+        assert results[0] == {"sequence": "AAA"}
+        assert results[2] == {"sequence": "CCC"}
+
+    def test_filters_include_matching_rows(self, tmp_path):
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "sequence_alignment_aa": ["AAA", "BBB", "CCC"],
+            "Species": ["human", "mouse", "human"],
+            "Chain": ["Heavy", "Heavy", "Light"],
+        })
+        filepath = tmp_path / "mixed.parquet"
+        df.to_parquet(filepath, index=False)
+
+        results = list(_convert_oas_parquet(str(filepath), filters={"Species": ["human"]}))
+        assert len(results) == 2
+        seqs = [r["sequence"] for r in results]
+        assert "AAA" in seqs
+        assert "CCC" in seqs
+
+    def test_filters_multiple_columns(self, tmp_path):
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "sequence_alignment_aa": ["AAA", "BBB", "CCC"],
+            "Species": ["human", "human", "human"],
+            "Chain": ["Heavy", "Light", "Heavy"],
+        })
+        filepath = tmp_path / "multi.parquet"
+        df.to_parquet(filepath, index=False)
+
+        results = list(_convert_oas_parquet(
+            str(filepath), filters={"Species": ["human"], "Chain": ["Heavy"]}
+        ))
+        assert len(results) == 2
+        seqs = [r["sequence"] for r in results]
+        assert "AAA" in seqs
+        assert "CCC" in seqs
+
+    def test_filters_exclude_all_rows(self, tmp_path):
+        filepath = _make_oas_parquet(tmp_path, species="camel", sequences=["ZZZ"])
+        results = list(_convert_oas_parquet(filepath, filters={"Species": ["human"]}))
+        assert len(results) == 0
+
+    def test_missing_sequence_column(self, tmp_path):
+        import pandas as pd
+
+        df = pd.DataFrame({"wrong_col": ["AAA"]})
+        filepath = tmp_path / "bad.parquet"
+        df.to_parquet(filepath, index=False)
+
+        results = list(_convert_oas_parquet(str(filepath)))
+        assert len(results) == 0
+
+    def test_skips_nan_sequences(self, tmp_path):
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "sequence_alignment_aa": ["AAA", None, "CCC"],
+            "Species": ["human"] * 3,
+        })
+        filepath = tmp_path / "nans.parquet"
+        df.to_parquet(filepath, index=False)
+
+        results = list(_convert_oas_parquet(str(filepath)))
+        assert len(results) == 2
+
+    def test_filter_column_not_in_file(self, tmp_path):
+        """If a filter column doesn't exist in the parquet, it's skipped gracefully."""
+        filepath = _make_oas_parquet(tmp_path, sequences=["AAA", "BBB"])
+        # "Vaccine" is not a column in _make_oas_parquet output
+        results = list(_convert_oas_parquet(filepath, filters={"Vaccine": ["None"]}))
+        # Should still yield all sequences (filter on missing column is skipped)
+        assert len(results) == 2
+
+    def test_custom_sequence_column(self, tmp_path):
+        import pandas as pd
+
+        df = pd.DataFrame({"my_seq": ["GGG", "HHH"], "Species": ["human"] * 2})
+        filepath = tmp_path / "custom.parquet"
+        df.to_parquet(filepath, index=False)
+
+        results = list(_convert_oas_parquet(str(filepath), sequence_column="my_seq"))
+        assert len(results) == 2
+        assert results[0] == {"sequence": "GGG"}
+
+
+# ---------------------------------------------------------------------------
+# optimize_parquet_sequences (integration)
+# ---------------------------------------------------------------------------
+
+
+class TestOptimizeParquetSequences:
+    """Integration tests for optimize_parquet_sequences using local filesystem."""
+
+    def test_optimize_no_split(self, tmp_path):
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+
+        _make_oas_parquet(input_dir, "a.parquet", sequences=["EVQL", "QVQL"])
+        _make_oas_parquet(input_dir, "b.parquet", sequences=["DIVM", "DVQL"])
+
+        optimize_parquet_sequences(
+            input_dir=str(input_dir),
+            output_dir=str(output_dir),
+            num_workers=1,
+        )
+
+        assert (output_dir / "index.json").exists()
+
+        from litdata import StreamingDataset
+        ds = StreamingDataset(str(output_dir))
+        assert len(ds) == 4
+
+    def test_optimize_with_val_split(self, tmp_path):
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+
+        for i in range(10):
+            _make_oas_parquet(input_dir, f"file_{i}.parquet", sequences=[f"SEQ{i}"])
+
+        optimize_parquet_sequences(
+            input_dir=str(input_dir),
+            output_dir=str(output_dir),
+            val_fraction=0.3,
+            num_workers=1,
+        )
+
+        assert (output_dir / "train" / "index.json").exists()
+        assert (output_dir / "val" / "index.json").exists()
+
+    def test_optimize_with_row_filters(self, tmp_path):
+        import pandas as pd
+
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+
+        df = pd.DataFrame({
+            "sequence_alignment_aa": ["HUMAN1", "MOUSE1", "HUMAN2"],
+            "Species": ["human", "mouse", "human"],
+            "Chain": ["Heavy", "Heavy", "Light"],
+        })
+        (input_dir / "mixed.parquet").parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(input_dir / "mixed.parquet", index=False)
+
+        optimize_parquet_sequences(
+            input_dir=str(input_dir),
+            output_dir=str(output_dir),
+            filters={"Species": ["human"]},
+            num_workers=1,
+        )
+
+        from litdata import StreamingDataset
+        ds = StreamingDataset(str(output_dir))
+        assert len(ds) == 2
+
+    def test_optimize_hive_partitioned(self, tmp_path):
+        """Finds .parquet files inside Hive-style partition directories."""
+        input_dir = tmp_path / "input"
+        part1 = input_dir / "file_id=SRR001_Heavy_IGHG"
+        part2 = input_dir / "file_id=SRR002_Light_IGKC"
+        part1.mkdir(parents=True)
+        part2.mkdir(parents=True)
+        output_dir = tmp_path / "output"
+
+        _make_oas_parquet(part1, "part-0.parquet", sequences=["EVQL"])
+        _make_oas_parquet(part2, "part-0.parquet", sequences=["DIVM", "QVQL"])
+
+        optimize_parquet_sequences(
+            input_dir=str(input_dir),
+            output_dir=str(output_dir),
+            num_workers=1,
+        )
+
+        from litdata import StreamingDataset
+        ds = StreamingDataset(str(output_dir))
+        assert len(ds) == 3
+
+    def test_val_fraction_invalid(self, tmp_path):
+        with pytest.raises(ValueError, match="val_fraction must be in"):
+            optimize_parquet_sequences(
+                input_dir=str(tmp_path),
+                output_dir=str(tmp_path / "out"),
+                val_fraction=1.5,
+            )
+
+    def test_no_files_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="No .parquet files found"):
+            optimize_parquet_sequences(
                 input_dir=str(tmp_path),
                 output_dir=str(tmp_path / "out"),
             )
