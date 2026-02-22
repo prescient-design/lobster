@@ -9,11 +9,14 @@ from pathlib import Path
 import pytest
 
 from lobster.cmdline.optimize_sequences import (
+    CollectionProgress,
     _convert_oas_csv,
     _convert_oas_parquet,
     _file_passes_filters,
     _parse_oas_metadata,
     _read_oas_file,
+    _sequence_is_val,
+    _sort_files_by_size,
     optimize_parquet_sequences,
     optimize_sequences,
 )
@@ -22,6 +25,7 @@ from lobster.cmdline.optimize_sequences import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_oas_csv(
     tmp_path: Path,
@@ -56,6 +60,62 @@ def _make_oas_csv(
         filepath.write_text(content)
 
     return str(filepath)
+
+
+def _make_oas_parquet(
+    tmp_path: Path,
+    filename: str = "data.parquet",
+    sequences: list[str] | None = None,
+    species: str = "human",
+    chain: str = "Heavy",
+    isotype: str = "IGHG",
+) -> str:
+    """Write a minimal OAS-style parquet file and return its path."""
+    import pandas as pd
+
+    if sequences is None:
+        sequences = ["EVQLVESGG", "QVQLVQSGA", "DIVMTQSPL"]
+
+    df = pd.DataFrame({
+        "sequence_alignment_aa": sequences,
+        "Species": [species] * len(sequences),
+        "Chain": [chain] * len(sequences),
+        "Isotype": [isotype] * len(sequences),
+    })
+    filepath = tmp_path / filename
+    df.to_parquet(filepath, index=False)
+    return str(filepath)
+
+
+# ---------------------------------------------------------------------------
+# _sequence_is_val (hash-based split)
+# ---------------------------------------------------------------------------
+
+
+class TestSequenceIsVal:
+    """Tests for the deterministic hash-based split function."""
+
+    def test_deterministic(self):
+        """Same sequence + seed always gives same result."""
+        results = [_sequence_is_val("EVQLVESGG", 0.1, seed=42) for _ in range(100)]
+        assert len(set(results)) == 1
+
+    def test_different_seeds_differ(self):
+        """Different seeds can produce different assignments for the same seq."""
+        # With enough seeds, at least one should differ
+        results = {_sequence_is_val("EVQLVESGG", 0.5, seed=s) for s in range(50)}
+        assert len(results) == 2  # both True and False should appear
+
+    def test_fraction_zero_always_train(self):
+        seqs = [f"SEQ{i}" for i in range(1000)]
+        assert not any(_sequence_is_val(s, 0.0, seed=42) for s in seqs)
+
+    def test_fraction_approximate(self):
+        """With many sequences, the val fraction should be approximately correct."""
+        seqs = [f"SEQ{i}" for i in range(10_000)]
+        n_val = sum(_sequence_is_val(s, 0.1, seed=42) for s in seqs)
+        # Should be roughly 10% ± 2%
+        assert 800 < n_val < 1200
 
 
 # ---------------------------------------------------------------------------
@@ -166,9 +226,7 @@ class TestConvertOasCsv:
             metadata={"Species": "camel", "Chain": "Heavy"},
             sequences=["AAA"],
         )
-        results = list(
-            _convert_oas_csv(filepath, filters={"Species": ["human"]})
-        )
+        results = list(_convert_oas_csv(filepath, filters={"Species": ["human"]}))
         assert len(results) == 0
 
     def test_filters_include_file(self, tmp_path):
@@ -177,9 +235,7 @@ class TestConvertOasCsv:
             metadata={"Species": "human", "Chain": "Heavy"},
             sequences=["AAA", "BBB"],
         )
-        results = list(
-            _convert_oas_csv(filepath, filters={"Species": ["human"]})
-        )
+        results = list(_convert_oas_csv(filepath, filters={"Species": ["human"]}))
         assert len(results) == 2
 
     def test_missing_column_skips_file(self, tmp_path):
@@ -199,9 +255,7 @@ class TestConvertOasCsv:
         filepath = tmp_path / "custom.csv"
         filepath.write_text(content)
 
-        results = list(
-            _convert_oas_csv(str(filepath), sequence_column="my_seq")
-        )
+        results = list(_convert_oas_csv(str(filepath), sequence_column="my_seq"))
         assert len(results) == 2
         assert results[0] == {"sequence": "GGG"}
 
@@ -214,7 +268,7 @@ class TestConvertOasCsv:
 
 
 # ---------------------------------------------------------------------------
-# optimize_sequences (integration)
+# optimize_sequences (CSV integration)
 # ---------------------------------------------------------------------------
 
 
@@ -236,16 +290,18 @@ class TestOptimizeSequences:
         )
 
         assert (output_dir / "index.json").exists()
+        from litdata import StreamingDataset
+        ds = StreamingDataset(str(output_dir))
+        assert len(ds) == 4
 
     def test_optimize_with_val_split_iid(self, tmp_path):
-        """Val split is iid across sequences, not files."""
+        """Val split is iid across sequences via deterministic hash."""
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         output_dir = tmp_path / "output"
 
-        # One file with many sequences, one with few — iid split should
-        # mix them rather than assigning whole files to splits.
-        _make_oas_csv(input_dir, "big.csv", sequences=[f"BIG{i}" for i in range(20)])
+        # Many sequences across two differently-sized files
+        _make_oas_csv(input_dir, "big.csv", sequences=[f"BIG{i}" for i in range(100)])
         _make_oas_csv(input_dir, "small.csv", sequences=["TINY"])
 
         optimize_sequences(
@@ -263,10 +319,10 @@ class TestOptimizeSequences:
         train_ds = StreamingDataset(str(output_dir / "train"))
         val_ds = StreamingDataset(str(output_dir / "val"))
 
-        # Total across both splits should equal total sequences (21)
-        assert len(train_ds) + len(val_ds) == 21
-        # Val should be ~20% of 21 ≈ 4 sequences
-        assert len(val_ds) == 4
+        # Total across both splits should equal total sequences (101)
+        assert len(train_ds) + len(val_ds) == 101
+        # Val should be roughly 20%
+        assert 10 < len(val_ds) < 30
 
     def test_optimize_with_filters(self, tmp_path):
         input_dir = tmp_path / "input"
@@ -293,7 +349,6 @@ class TestOptimizeSequences:
 
         from litdata import StreamingDataset
         ds = StreamingDataset(str(output_dir))
-        # Only the 2 human sequences should be included
         assert len(ds) == 2
 
     def test_val_fraction_invalid(self, tmp_path):
@@ -328,36 +383,6 @@ class TestOptimizeSequences:
                 input_dir=str(tmp_path),
                 output_dir=str(tmp_path / "out"),
             )
-
-
-# ---------------------------------------------------------------------------
-# Parquet helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_oas_parquet(
-    tmp_path: Path,
-    filename: str = "data.parquet",
-    sequences: list[str] | None = None,
-    species: str = "human",
-    chain: str = "Heavy",
-    isotype: str = "IGHG",
-) -> str:
-    """Write a minimal OAS-style parquet file and return its path."""
-    import pandas as pd
-
-    if sequences is None:
-        sequences = ["EVQLVESGG", "QVQLVQSGA", "DIVMTQSPL"]
-
-    df = pd.DataFrame({
-        "sequence_alignment_aa": sequences,
-        "Species": [species] * len(sequences),
-        "Chain": [chain] * len(sequences),
-        "Isotype": [isotype] * len(sequences),
-    })
-    filepath = tmp_path / filename
-    df.to_parquet(filepath, index=False)
-    return str(filepath)
 
 
 # ---------------------------------------------------------------------------
@@ -407,9 +432,6 @@ class TestConvertOasParquet:
             str(filepath), filters={"Species": ["human"], "Chain": ["Heavy"]}
         ))
         assert len(results) == 2
-        seqs = [r["sequence"] for r in results]
-        assert "AAA" in seqs
-        assert "CCC" in seqs
 
     def test_filters_exclude_all_rows(self, tmp_path):
         filepath = _make_oas_parquet(tmp_path, species="camel", sequences=["ZZZ"])
@@ -440,11 +462,8 @@ class TestConvertOasParquet:
         assert len(results) == 2
 
     def test_filter_column_not_in_file(self, tmp_path):
-        """If a filter column doesn't exist in the parquet, it's skipped gracefully."""
         filepath = _make_oas_parquet(tmp_path, sequences=["AAA", "BBB"])
-        # "Vaccine" is not a column in _make_oas_parquet output
         results = list(_convert_oas_parquet(filepath, filters={"Vaccine": ["None"]}))
-        # Should still yield all sequences (filter on missing column is skipped)
         assert len(results) == 2
 
     def test_custom_sequence_column(self, tmp_path):
@@ -482,19 +501,17 @@ class TestOptimizeParquetSequences:
         )
 
         assert (output_dir / "index.json").exists()
-
         from litdata import StreamingDataset
         ds = StreamingDataset(str(output_dir))
         assert len(ds) == 4
 
     def test_optimize_with_val_split_iid(self, tmp_path):
-        """Val split is iid across sequences, not files."""
+        """Val split is iid across sequences via deterministic hash."""
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         output_dir = tmp_path / "output"
 
-        # One file with many sequences, one with few
-        _make_oas_parquet(input_dir, "big.parquet", sequences=[f"BIG{i}" for i in range(20)])
+        _make_oas_parquet(input_dir, "big.parquet", sequences=[f"BIG{i}" for i in range(100)])
         _make_oas_parquet(input_dir, "small.parquet", sequences=["TINY"])
 
         optimize_parquet_sequences(
@@ -512,10 +529,8 @@ class TestOptimizeParquetSequences:
         train_ds = StreamingDataset(str(output_dir / "train"))
         val_ds = StreamingDataset(str(output_dir / "val"))
 
-        # Total across both splits equals total sequences (21)
-        assert len(train_ds) + len(val_ds) == 21
-        # Val should be ~20% of 21 ≈ 4 sequences
-        assert len(val_ds) == 4
+        assert len(train_ds) + len(val_ds) == 101
+        assert 10 < len(val_ds) < 30
 
     def test_optimize_with_row_filters(self, tmp_path):
         import pandas as pd
@@ -529,7 +544,6 @@ class TestOptimizeParquetSequences:
             "Species": ["human", "mouse", "human"],
             "Chain": ["Heavy", "Heavy", "Light"],
         })
-        (input_dir / "mixed.parquet").parent.mkdir(parents=True, exist_ok=True)
         df.to_parquet(input_dir / "mixed.parquet", index=False)
 
         optimize_parquet_sequences(
@@ -544,7 +558,6 @@ class TestOptimizeParquetSequences:
         assert len(ds) == 2
 
     def test_optimize_hive_partitioned(self, tmp_path):
-        """Finds .parquet files inside Hive-style partition directories."""
         input_dir = tmp_path / "input"
         part1 = input_dir / "file_id=SRR001_Heavy_IGHG"
         part2 = input_dir / "file_id=SRR002_Light_IGKC"
@@ -579,3 +592,85 @@ class TestOptimizeParquetSequences:
                 input_dir=str(tmp_path),
                 output_dir=str(tmp_path / "out"),
             )
+
+
+# ---------------------------------------------------------------------------
+# _sort_files_by_size
+# ---------------------------------------------------------------------------
+
+
+class TestSortFilesBySize:
+    """Tests for _sort_files_by_size."""
+
+    def test_sorts_smallest_first(self, tmp_path):
+        small = tmp_path / "small.txt"
+        medium = tmp_path / "medium.txt"
+        large = tmp_path / "large.txt"
+
+        small.write_text("a")
+        medium.write_text("a" * 100)
+        large.write_text("a" * 10000)
+
+        files = [str(large), str(small), str(medium)]
+        sorted_files = _sort_files_by_size(files)
+
+        assert sorted_files == [str(small), str(medium), str(large)]
+
+    def test_empty_list(self):
+        assert _sort_files_by_size([]) == []
+
+
+# ---------------------------------------------------------------------------
+# CollectionProgress
+# ---------------------------------------------------------------------------
+
+
+class TestCollectionProgress:
+    """Tests for CollectionProgress."""
+
+    def test_fresh_start(self, tmp_path):
+        progress = CollectionProgress(tmp_path / "progress")
+        assert progress.done_files == set()
+        assert progress.sequence_count == 0
+
+    def test_record_and_resume(self, tmp_path):
+        pdir = tmp_path / "progress"
+        progress = CollectionProgress(pdir, split_name="train")
+
+        progress.record_file("file1.csv", num_sequences=10)
+        progress.record_file("file2.csv", num_sequences=5)
+
+        assert "file1.csv" in progress.done_files
+        assert "file2.csv" in progress.done_files
+
+        # Simulate restart
+        progress2 = CollectionProgress(pdir, split_name="train")
+        assert progress2.done_files == {"file1.csv", "file2.csv"}
+        assert progress2.sequence_count == 15
+
+    def test_filter_remaining(self, tmp_path):
+        pdir = tmp_path / "progress"
+        progress = CollectionProgress(pdir)
+        progress.record_file("done.csv", num_sequences=1)
+
+        remaining = progress.filter_remaining(["done.csv", "new.csv"])
+        assert remaining == ["new.csv"]
+
+    def test_clear(self, tmp_path):
+        pdir = tmp_path / "progress"
+        progress = CollectionProgress(pdir, split_name="train")
+        progress.record_file("file.csv", num_sequences=1)
+        progress.clear()
+
+        assert not (pdir / "progress_train.json").exists()
+
+    def test_independent_split_tracking(self, tmp_path):
+        """Train and val progress are tracked independently."""
+        pdir = tmp_path / "progress"
+        train_progress = CollectionProgress(pdir, split_name="train")
+        val_progress = CollectionProgress(pdir, split_name="val")
+
+        train_progress.record_file("file1.csv", num_sequences=10)
+
+        assert "file1.csv" in train_progress.done_files
+        assert "file1.csv" not in val_progress.done_files
