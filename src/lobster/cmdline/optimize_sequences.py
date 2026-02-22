@@ -16,6 +16,10 @@ Supports two input formats:
 - Metadata columns (Species, Chain, Isotype, etc.) live alongside sequences
 - Filters are applied per-row on DataFrame columns
 
+When a validation fraction is specified, the split is performed **iid across
+individual sequences** (not across files), ensuring a representative sample
+regardless of per-file size variation.
+
 Sequences are read from the ``sequence_alignment_aa`` column (configurable)
 and written to an optimized LitData chunked dataset suitable for streaming
 with ``StreamingSequenceLightningDataModule``.
@@ -59,6 +63,98 @@ logger = logging.getLogger(__name__)
 
 # Metadata columns that can be used for filtering OAS files.
 FILTERABLE_METADATA_COLUMNS = ("Species", "Vaccine", "Disease", "Chain", "Isotype")
+
+
+# ---------------------------------------------------------------------------
+# Shared optimisation helpers
+# ---------------------------------------------------------------------------
+
+
+class _SequencePassthrough:
+    """Picklable callable for ``litdata.optimize`` that wraps a raw sequence string.
+
+    Used after all sequences have been collected and split; each "input" to
+    ``litdata.optimize`` is already a single sequence string.
+    """
+
+    def __call__(self, sequence: str):
+        yield {"sequence": sequence}
+
+
+def _split_and_optimize(
+    sequences: list[str],
+    output_dir: str,
+    val_fraction: float,
+    seed: int,
+    chunk_bytes: str,
+    num_workers: int,
+) -> None:
+    """Shuffle sequences iid, split into train/val, and optimize each split.
+
+    Parameters
+    ----------
+    sequences : list[str]
+        All collected sequences (already filtered).
+    output_dir : str
+        Root output directory.  If ``val_fraction > 0``, ``train/`` and
+        ``val/`` subdirectories are created.
+    val_fraction : float
+        Fraction of *sequences* to hold out for validation (0 means no split).
+    seed : int
+        Random seed for reproducible shuffling.
+    chunk_bytes : str
+        Target chunk size for LitData output.
+    num_workers : int
+        Number of parallel workers for optimization.
+    """
+    convert_fn = _SequencePassthrough()
+
+    if val_fraction > 0.0:
+        rng = random.Random(seed)
+        rng.shuffle(sequences)
+        n_val = max(1, int(len(sequences) * val_fraction))
+        val_seqs = sequences[:n_val]
+        train_seqs = sequences[n_val:]
+
+        logger.info(
+            f"iid split: {len(train_seqs)} train sequences, "
+            f"{len(val_seqs)} val sequences"
+        )
+
+        for split_name, split_seqs in [("train", train_seqs), ("val", val_seqs)]:
+            split_output = str(UPath(output_dir) / split_name)
+            logger.info(f"Optimizing {split_name} split → {split_output}")
+
+            optimize(
+                convert_fn,
+                split_seqs,
+                split_output,
+                num_workers=min(num_workers, len(split_seqs)),
+                chunk_bytes=chunk_bytes,
+                mode="overwrite",
+            )
+
+            ds = StreamingDataset(split_output)
+            logger.info(f"{split_name} split: {len(ds)} sequences")
+    else:
+        logger.info(f"Optimizing {len(sequences)} sequences → {output_dir}")
+
+        optimize(
+            convert_fn,
+            sequences,
+            output_dir,
+            num_workers=min(num_workers, len(sequences)),
+            chunk_bytes=chunk_bytes,
+            mode="overwrite",
+        )
+
+        ds = StreamingDataset(output_dir)
+        logger.info(f"Total: {len(ds)} sequences")
+
+
+# ---------------------------------------------------------------------------
+# CSV format support
+# ---------------------------------------------------------------------------
 
 
 def _parse_oas_metadata(line: str) -> dict[str, str]:
@@ -204,31 +300,33 @@ def _convert_oas_csv(
             yield {"sequence": seq}
 
 
-class _OASConverter:
-    """Picklable callable for ``litdata.optimize`` workers.
-
-    ``litdata.optimize`` serialises the worker function via pickle, so a
-    plain closure won't work.  This class stores the filter config and
-    sequence column name as instance attributes.
+def _collect_csv_sequences(
+    files: list[str],
+    sequence_column: str,
+    filters: dict[str, list[str]] | None,
+) -> list[str]:
+    """Read all sequences from a list of OAS CSV files.
 
     Parameters
     ----------
+    files : list[str]
+        Paths to OAS CSV/CSV.GZ files.
     sequence_column : str
         Name of the CSV column containing sequences.
     filters : dict[str, list[str]] or None
-        Metadata filters.
+        Per-file metadata filters.
+
+    Returns
+    -------
+    list[str]
+        Flat list of all qualifying sequence strings.
     """
-
-    def __init__(self, sequence_column: str, filters: dict[str, list[str]] | None):
-        self.sequence_column = sequence_column
-        self.filters = filters
-
-    def __call__(self, filepath: str):
-        yield from _convert_oas_csv(
-            filepath,
-            sequence_column=self.sequence_column,
-            filters=self.filters,
-        )
+    sequences: list[str] = []
+    for filepath in files:
+        for item in _convert_oas_csv(filepath, sequence_column=sequence_column, filters=filters):
+            sequences.append(item["sequence"])
+    logger.info(f"Collected {len(sequences)} sequences from {len(files)} CSV files")
+    return sequences
 
 
 def optimize_sequences(
@@ -244,6 +342,9 @@ def optimize_sequences(
 ) -> None:
     """Optimize a directory of OAS CSV files into LitData streaming format.
 
+    All qualifying sequences are collected, shuffled iid, and optionally
+    split into train/val before being written as optimized LitData chunks.
+
     Parameters
     ----------
     input_dir : str
@@ -254,16 +355,15 @@ def optimize_sequences(
         local path.  If ``val_fraction > 0``, ``train/`` and ``val/``
         subdirectories will be created.
     val_fraction : float, optional
-        Fraction of *files* to hold out for validation.  If 0, all files
-        go to a single output directory with no subdirectories.
-        Default is 0.0.
+        Fraction of *sequences* to hold out for validation (iid).  If 0,
+        all sequences go to a single output directory.  Default is 0.0.
     chunk_bytes : str, optional
         Target size for each output chunk.  Default is ``"64MB"``.
     num_workers : int or None, optional
         Number of parallel workers for optimization.
-        Defaults to ``min(os.cpu_count(), num_files)``.
+        Defaults to ``os.cpu_count()``.
     seed : int, optional
-        Random seed for train/val file splitting.  Default is 42.
+        Random seed for iid train/val splitting.  Default is 42.
     file_glob : str or list[str], optional
         Glob pattern(s) to match input files.  Default is
         ``("*.csv", "*.csv.gz")``.
@@ -304,49 +404,15 @@ def optimize_sequences(
         logger.info(f"Metadata filters: {filters}")
 
     if num_workers is None:
-        num_workers = min(os.cpu_count() or 1, len(files))
+        num_workers = os.cpu_count() or 1
 
-    convert_fn = _OASConverter(sequence_column, filters)
+    sequences = _collect_csv_sequences(files, sequence_column, filters)
 
-    if val_fraction > 0.0:
-        rng = random.Random(seed)
-        shuffled = list(files)
-        rng.shuffle(shuffled)
-        n_val = max(1, int(len(shuffled) * val_fraction))
-        val_files = shuffled[:n_val]
-        train_files = shuffled[n_val:]
+    if not sequences:
+        logger.warning("No sequences found after filtering. Nothing to optimize.")
+        return
 
-        logger.info(f"Splitting: {len(train_files)} train files, {len(val_files)} val files")
-
-        for split_name, split_files in [("train", train_files), ("val", val_files)]:
-            split_output = str(UPath(output_dir) / split_name)
-            logger.info(f"Optimizing {split_name} split → {split_output} ({len(split_files)} files)")
-
-            optimize(
-                convert_fn,
-                split_files,
-                split_output,
-                num_workers=min(num_workers, len(split_files)),
-                chunk_bytes=chunk_bytes,
-                mode="overwrite",
-            )
-
-            ds = StreamingDataset(split_output)
-            logger.info(f"{split_name} split: {len(ds)} sequences")
-    else:
-        logger.info(f"Optimizing all files → {output_dir}")
-
-        optimize(
-            convert_fn,
-            files,
-            output_dir,
-            num_workers=num_workers,
-            chunk_bytes=chunk_bytes,
-            mode="overwrite",
-        )
-
-        ds = StreamingDataset(output_dir)
-        logger.info(f"Total: {len(ds)} sequences")
+    _split_and_optimize(sequences, output_dir, val_fraction, seed, chunk_bytes, num_workers)
 
 
 # ---------------------------------------------------------------------------
@@ -413,27 +479,33 @@ def _convert_oas_parquet(
             yield {"sequence": seq}
 
 
-class _OASParquetConverter:
-    """Picklable callable for ``litdata.optimize`` workers (parquet mode).
+def _collect_parquet_sequences(
+    files: list[str],
+    sequence_column: str,
+    filters: dict[str, list[str]] | None,
+) -> list[str]:
+    """Read all sequences from a list of OAS parquet files.
 
     Parameters
     ----------
+    files : list[str]
+        Paths to OAS parquet files.
     sequence_column : str
         Name of the parquet column containing sequences.
     filters : dict[str, list[str]] or None
         Row-level metadata filters.
+
+    Returns
+    -------
+    list[str]
+        Flat list of all qualifying sequence strings.
     """
-
-    def __init__(self, sequence_column: str, filters: dict[str, list[str]] | None):
-        self.sequence_column = sequence_column
-        self.filters = filters
-
-    def __call__(self, filepath: str):
-        yield from _convert_oas_parquet(
-            filepath,
-            sequence_column=self.sequence_column,
-            filters=self.filters,
-        )
+    sequences: list[str] = []
+    for filepath in files:
+        for item in _convert_oas_parquet(filepath, sequence_column=sequence_column, filters=filters):
+            sequences.append(item["sequence"])
+    logger.info(f"Collected {len(sequences)} sequences from {len(files)} parquet files")
+    return sequences
 
 
 def optimize_parquet_sequences(
@@ -448,6 +520,9 @@ def optimize_parquet_sequences(
 ) -> None:
     """Optimize a directory of OAS parquet files into LitData streaming format.
 
+    All qualifying sequences are collected, shuffled iid, and optionally
+    split into train/val before being written as optimized LitData chunks.
+
     Parameters
     ----------
     input_dir : str
@@ -458,16 +533,15 @@ def optimize_parquet_sequences(
         local path.  If ``val_fraction > 0``, ``train/`` and ``val/``
         subdirectories will be created.
     val_fraction : float, optional
-        Fraction of *files* to hold out for validation.  If 0, all files
-        go to a single output directory with no subdirectories.
-        Default is 0.0.
+        Fraction of *sequences* to hold out for validation (iid).  If 0,
+        all sequences go to a single output directory.  Default is 0.0.
     chunk_bytes : str, optional
         Target size for each output chunk.  Default is ``"64MB"``.
     num_workers : int or None, optional
         Number of parallel workers for optimization.
-        Defaults to ``min(os.cpu_count(), num_files)``.
+        Defaults to ``os.cpu_count()``.
     seed : int, optional
-        Random seed for train/val file splitting.  Default is 42.
+        Random seed for iid train/val splitting.  Default is 42.
     sequence_column : str, optional
         Name of the parquet column containing amino-acid sequences.
         Default is ``"sequence_alignment_aa"``.
@@ -498,49 +572,15 @@ def optimize_parquet_sequences(
         logger.info(f"Row-level filters: {filters}")
 
     if num_workers is None:
-        num_workers = min(os.cpu_count() or 1, len(files))
+        num_workers = os.cpu_count() or 1
 
-    convert_fn = _OASParquetConverter(sequence_column, filters)
+    sequences = _collect_parquet_sequences(files, sequence_column, filters)
 
-    if val_fraction > 0.0:
-        rng = random.Random(seed)
-        shuffled = list(files)
-        rng.shuffle(shuffled)
-        n_val = max(1, int(len(shuffled) * val_fraction))
-        val_files = shuffled[:n_val]
-        train_files = shuffled[n_val:]
+    if not sequences:
+        logger.warning("No sequences found after filtering. Nothing to optimize.")
+        return
 
-        logger.info(f"Splitting: {len(train_files)} train files, {len(val_files)} val files")
-
-        for split_name, split_files in [("train", train_files), ("val", val_files)]:
-            split_output = str(UPath(output_dir) / split_name)
-            logger.info(f"Optimizing {split_name} split → {split_output} ({len(split_files)} files)")
-
-            optimize(
-                convert_fn,
-                split_files,
-                split_output,
-                num_workers=min(num_workers, len(split_files)),
-                chunk_bytes=chunk_bytes,
-                mode="overwrite",
-            )
-
-            ds = StreamingDataset(split_output)
-            logger.info(f"{split_name} split: {len(ds)} sequences")
-    else:
-        logger.info(f"Optimizing all files → {output_dir}")
-
-        optimize(
-            convert_fn,
-            files,
-            output_dir,
-            num_workers=num_workers,
-            chunk_bytes=chunk_bytes,
-            mode="overwrite",
-        )
-
-        ds = StreamingDataset(output_dir)
-        logger.info(f"Total: {len(ds)} sequences")
+    _split_and_optimize(sequences, output_dir, val_fraction, seed, chunk_bytes, num_workers)
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +638,8 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Optimize OAS antibody sequence files into LitData streaming format. "
-            "Supports CSV (with JSON metadata header) and Parquet input formats."
+            "Supports CSV (with JSON metadata header) and Parquet input formats. "
+            "Train/val splits are performed iid across individual sequences."
         ),
     )
     parser.add_argument(
@@ -624,7 +665,7 @@ def main():
         "--val_fraction",
         type=float,
         default=0.0,
-        help="Fraction of files to hold out for validation (default: 0.0).",
+        help="Fraction of sequences to hold out for validation, iid (default: 0.0).",
     )
     parser.add_argument(
         "--chunk_bytes",
@@ -636,13 +677,13 @@ def main():
         "--num_workers",
         type=int,
         default=None,
-        help="Number of parallel workers (default: min(cpu_count, num_files)).",
+        help="Number of parallel workers (default: cpu_count).",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=42,
-        help="Random seed for train/val splitting (default: 42).",
+        help="Random seed for iid train/val splitting (default: 42).",
     )
     parser.add_argument(
         "--file_glob",

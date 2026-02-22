@@ -237,24 +237,36 @@ class TestOptimizeSequences:
 
         assert (output_dir / "index.json").exists()
 
-    def test_optimize_with_val_split(self, tmp_path):
+    def test_optimize_with_val_split_iid(self, tmp_path):
+        """Val split is iid across sequences, not files."""
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         output_dir = tmp_path / "output"
 
-        # Need enough files for a meaningful split
-        for i in range(10):
-            _make_oas_csv(input_dir, f"file_{i}.csv", sequences=[f"SEQ{i}"])
+        # One file with many sequences, one with few — iid split should
+        # mix them rather than assigning whole files to splits.
+        _make_oas_csv(input_dir, "big.csv", sequences=[f"BIG{i}" for i in range(20)])
+        _make_oas_csv(input_dir, "small.csv", sequences=["TINY"])
 
         optimize_sequences(
             input_dir=str(input_dir),
             output_dir=str(output_dir),
-            val_fraction=0.3,
+            val_fraction=0.2,
             num_workers=1,
+            seed=42,
         )
 
         assert (output_dir / "train" / "index.json").exists()
         assert (output_dir / "val" / "index.json").exists()
+
+        from litdata import StreamingDataset
+        train_ds = StreamingDataset(str(output_dir / "train"))
+        val_ds = StreamingDataset(str(output_dir / "val"))
+
+        # Total across both splits should equal total sequences (21)
+        assert len(train_ds) + len(val_ds) == 21
+        # Val should be ~20% of 21 ≈ 4 sequences
+        assert len(val_ds) == 4
 
     def test_optimize_with_filters(self, tmp_path):
         input_dir = tmp_path / "input"
@@ -475,23 +487,35 @@ class TestOptimizeParquetSequences:
         ds = StreamingDataset(str(output_dir))
         assert len(ds) == 4
 
-    def test_optimize_with_val_split(self, tmp_path):
+    def test_optimize_with_val_split_iid(self, tmp_path):
+        """Val split is iid across sequences, not files."""
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         output_dir = tmp_path / "output"
 
-        for i in range(10):
-            _make_oas_parquet(input_dir, f"file_{i}.parquet", sequences=[f"SEQ{i}"])
+        # One file with many sequences, one with few
+        _make_oas_parquet(input_dir, "big.parquet", sequences=[f"BIG{i}" for i in range(20)])
+        _make_oas_parquet(input_dir, "small.parquet", sequences=["TINY"])
 
         optimize_parquet_sequences(
             input_dir=str(input_dir),
             output_dir=str(output_dir),
-            val_fraction=0.3,
+            val_fraction=0.2,
             num_workers=1,
+            seed=42,
         )
 
         assert (output_dir / "train" / "index.json").exists()
         assert (output_dir / "val" / "index.json").exists()
+
+        from litdata import StreamingDataset
+        train_ds = StreamingDataset(str(output_dir / "train"))
+        val_ds = StreamingDataset(str(output_dir / "val"))
+
+        # Total across both splits equals total sequences (21)
+        assert len(train_ds) + len(val_ds) == 21
+        # Val should be ~20% of 21 ≈ 4 sequences
+        assert len(val_ds) == 4
 
     def test_optimize_with_row_filters(self, tmp_path):
         import pandas as pd
