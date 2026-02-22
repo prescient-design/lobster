@@ -55,8 +55,10 @@ import json
 import logging
 import os
 import random
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from litdata import StreamingDataset, optimize
+from tqdm import tqdm
 from upath import UPath
 
 logger = logging.getLogger(__name__)
@@ -300,12 +302,31 @@ def _convert_oas_csv(
             yield {"sequence": seq}
 
 
+class _CSVFileCollector:
+    """Picklable callable that extracts sequences from a single OAS CSV file.
+
+    Used by ``ProcessPoolExecutor`` in ``_collect_csv_sequences`` to
+    parallelise file reading.
+    """
+
+    def __init__(self, sequence_column: str, filters: dict[str, list[str]] | None):
+        self.sequence_column = sequence_column
+        self.filters = filters
+
+    def __call__(self, filepath: str) -> list[str]:
+        return [
+            item["sequence"]
+            for item in _convert_oas_csv(filepath, sequence_column=self.sequence_column, filters=self.filters)
+        ]
+
+
 def _collect_csv_sequences(
     files: list[str],
     sequence_column: str,
     filters: dict[str, list[str]] | None,
+    num_workers: int = 1,
 ) -> list[str]:
-    """Read all sequences from a list of OAS CSV files.
+    """Read all sequences from a list of OAS CSV files in parallel.
 
     Parameters
     ----------
@@ -315,17 +336,32 @@ def _collect_csv_sequences(
         Name of the CSV column containing sequences.
     filters : dict[str, list[str]] or None
         Per-file metadata filters.
+    num_workers : int, optional
+        Number of parallel workers.  Default is 1 (sequential).
 
     Returns
     -------
     list[str]
         Flat list of all qualifying sequence strings.
     """
+    collector = _CSVFileCollector(sequence_column, filters)
     sequences: list[str] = []
-    for filepath in files:
-        for item in _convert_oas_csv(filepath, sequence_column=sequence_column, filters=filters):
-            sequences.append(item["sequence"])
-    logger.info(f"Collected {len(sequences)} sequences from {len(files)} CSV files")
+
+    if num_workers <= 1:
+        for filepath in tqdm(files, desc="Collecting sequences (CSV)", unit="file"):
+            sequences.extend(collector(filepath))
+    else:
+        with ProcessPoolExecutor(max_workers=num_workers) as pool:
+            futures = {pool.submit(collector, fp): fp for fp in files}
+            for future in tqdm(
+                as_completed(futures),
+                total=len(futures),
+                desc="Collecting sequences (CSV)",
+                unit="file",
+            ):
+                sequences.extend(future.result())
+
+    logger.info(f"Collected {len(sequences):,} sequences from {len(files)} CSV files")
     return sequences
 
 
@@ -406,7 +442,7 @@ def optimize_sequences(
     if num_workers is None:
         num_workers = os.cpu_count() or 1
 
-    sequences = _collect_csv_sequences(files, sequence_column, filters)
+    sequences = _collect_csv_sequences(files, sequence_column, filters, num_workers=num_workers)
 
     if not sequences:
         logger.warning("No sequences found after filtering. Nothing to optimize.")
@@ -479,12 +515,31 @@ def _convert_oas_parquet(
             yield {"sequence": seq}
 
 
+class _ParquetFileCollector:
+    """Picklable callable that extracts sequences from a single OAS parquet file.
+
+    Used by ``ProcessPoolExecutor`` in ``_collect_parquet_sequences`` to
+    parallelise file reading.
+    """
+
+    def __init__(self, sequence_column: str, filters: dict[str, list[str]] | None):
+        self.sequence_column = sequence_column
+        self.filters = filters
+
+    def __call__(self, filepath: str) -> list[str]:
+        return [
+            item["sequence"]
+            for item in _convert_oas_parquet(filepath, sequence_column=self.sequence_column, filters=self.filters)
+        ]
+
+
 def _collect_parquet_sequences(
     files: list[str],
     sequence_column: str,
     filters: dict[str, list[str]] | None,
+    num_workers: int = 1,
 ) -> list[str]:
-    """Read all sequences from a list of OAS parquet files.
+    """Read all sequences from a list of OAS parquet files in parallel.
 
     Parameters
     ----------
@@ -494,17 +549,32 @@ def _collect_parquet_sequences(
         Name of the parquet column containing sequences.
     filters : dict[str, list[str]] or None
         Row-level metadata filters.
+    num_workers : int, optional
+        Number of parallel workers.  Default is 1 (sequential).
 
     Returns
     -------
     list[str]
         Flat list of all qualifying sequence strings.
     """
+    collector = _ParquetFileCollector(sequence_column, filters)
     sequences: list[str] = []
-    for filepath in files:
-        for item in _convert_oas_parquet(filepath, sequence_column=sequence_column, filters=filters):
-            sequences.append(item["sequence"])
-    logger.info(f"Collected {len(sequences)} sequences from {len(files)} parquet files")
+
+    if num_workers <= 1:
+        for filepath in tqdm(files, desc="Collecting sequences (parquet)", unit="file"):
+            sequences.extend(collector(filepath))
+    else:
+        with ProcessPoolExecutor(max_workers=num_workers) as pool:
+            futures = {pool.submit(collector, fp): fp for fp in files}
+            for future in tqdm(
+                as_completed(futures),
+                total=len(futures),
+                desc="Collecting sequences (parquet)",
+                unit="file",
+            ):
+                sequences.extend(future.result())
+
+    logger.info(f"Collected {len(sequences):,} sequences from {len(files)} parquet files")
     return sequences
 
 
@@ -574,7 +644,7 @@ def optimize_parquet_sequences(
     if num_workers is None:
         num_workers = os.cpu_count() or 1
 
-    sequences = _collect_parquet_sequences(files, sequence_column, filters)
+    sequences = _collect_parquet_sequences(files, sequence_column, filters, num_workers=num_workers)
 
     if not sequences:
         logger.warning("No sequences found after filtering. Nothing to optimize.")
