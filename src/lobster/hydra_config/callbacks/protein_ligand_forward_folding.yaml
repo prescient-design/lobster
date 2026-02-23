@@ -1,0 +1,35 @@
+# Protein-Ligand Forward Folding Callback
+# Evaluates ligand-conditioned vs unconditioned forward folding (sequence → structure)
+#
+# Key Question: Does providing ligand context improve structure prediction
+# for binding pocket residues?
+#
+# Tracks:
+# - tm_score_*: Overall TM-score (structure similarity)
+# - rmsd_overall_*: Overall backbone RMSD
+# - rmsd_pocket_*: Pocket-only RMSD (residues within threshold of ligand)
+# - rmsd_nonpocket_*: Non-pocket RMSD
+# - *_delta: Improvement from providing ligand context
+#
+# Usage in experiment config:
+#   defaults:
+#     - override /callbacks: gen_ume_protein_ligand
+#   callbacks:
+#     protein_ligand_forward_folding:
+#       save_every_n: 5000
+
+protein_ligand_forward_folding:
+  _target_: lobster.callbacks.ProteinLigandForwardFoldingCallback
+  data_dir: /cv/home/lisanzas/lobster/data/posebusters/processed/posebusters_benchmark_no_overlap/
+  structure_path: ${paths.output_dir}/protein_ligand_eval/
+  save_every_n: 1000
+  num_samples: 206  # All PoseBusters benchmark complexes (no overlap with training)
+  pocket_distance_threshold: 5.0  # Å - residues within this distance of ligand are "pocket"
+  nsteps: 100  # Diffusion steps for generation
+  metric_prefix: protein_ligand_forward_folding
+  # Ligand minimization options (for decoded ligand structures)
+  minimize_ligand: false
+  minimize_mode: "bonds_and_angles"  # "bonds_only", "bonds_and_angles", "local", or "full"
+  force_field: "MMFF94"
+  minimize_steps: 500
+
