@@ -13,9 +13,14 @@ Key features:
 - Flow matching for all modalities
 """
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from lobster.model.losses import DiffusionLoss
 
 import torch
 import torch.nn as nn
@@ -26,10 +31,12 @@ from tqdm import tqdm
 
 from lobster.model.latent_generator.cmdline import LatentEncoderDecoder
 from lobster.model.latent_generator.cmdline import methods as latent_generator_methods
+from lobster.model.latent_generator.utils import apply_se3_augmentation_protein_ligand
 from lobster.model.latent_generator.utils.residue_constants import NUM_BOND_TYPES
 
 from ._bond_prediction import BondMatrixLoss
 from ._gen_ume_protein_ligand_encoder import AuxiliaryTask, ProteinLigandEncoderModule
+from lobster.model.neobert._config import NEOBERT_CONFIGS
 
 # Bionemo interpolant code
 from bionemo.moco.distributions.prior import DiscreteMaskedPrior, DiscreteUniformPrior
@@ -120,6 +127,18 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         bond_loss_weight: float = 1.0,
         ligand_atom_loss_weight: float = 1.0,
         ligand_struct_loss_weight: float = 1.0,
+        # Diffusion loss params for continuous structure tokens
+        use_diffusion_loss_structure: bool = False,
+        diffusion_target_dim: int = 256,  # Structure embedding dim from LatentGenerator
+        diffusion_z_dim: int | None = None,  # Transformer hidden dim (auto-detect if None)
+        diffusion_depth: int = 3,  # MLP depth (from MAR: diffloss_d)
+        diffusion_width: int = 1024,  # MLP width (from MAR: diffloss_w)
+        diffusion_num_sampling_steps: str = "100",
+        diffusion_noise_schedule: Literal["linear", "cosine"] = "cosine",
+        diffusion_loss_weight: float = 1.0,
+        # SE(3) augmentation
+        use_se3_augmentation: bool = True,
+        se3_translation_scale: float = 1.0,
     ):
         self.save_hyperparameters()
         super().__init__()
@@ -147,6 +166,10 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         self.ligand_atom_loss_weight = ligand_atom_loss_weight
         self.ligand_struct_loss_weight = ligand_struct_loss_weight
 
+        # SE(3) augmentation config
+        self.use_se3_augmentation = use_se3_augmentation
+        self.se3_translation_scale = se3_translation_scale
+
         # Auxiliary tasks
         self.auxiliary_tasks = auxiliary_tasks
         self.auxiliary_task_loss_fns = {"regression": nn.MSELoss()}
@@ -154,6 +177,9 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         # LatentGenerator for structure encoding/decoding
         self.decode_tokens_during_training = decode_tokens_during_training
         self.structure_latent_encoder_decoder = LatentEncoderDecoder()
+
+        # Load from registered model name
+        logger.info(f"Loading LatentGenerator model: {latent_generator_model_name}")
         self.structure_latent_encoder_decoder.load_model(
             latent_generator_methods[latent_generator_model_name].model_config.checkpoint,
             latent_generator_methods[latent_generator_model_name].model_config.config_path,
@@ -165,11 +191,27 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         self.decoder_factory = self.structure_latent_encoder_decoder.model.decoder_factory
         self.loss_factory = self.structure_latent_encoder_decoder.model.loss_factory
 
+        # === CONTINUOUS/DISCRETE MODE SETUP ===
+        # Check if using continuous mode (quantizer is None)
+        self.use_continuous_structure = self.quantizer is None
+        if self.use_continuous_structure:
+            # For continuous mode, we need a way to handle masking
+            # Use a simple vocab: 0 = visible (placeholder), 1 = mask, 2 = pad
+            # The actual embedding values come from continuous embeddings, not discrete tokens
+            self.structure_embed_dim = self.structure_encoder.embed_dim
+            self.num_struc_classes = 3  # placeholder, mask, pad
+            self.mask_index_struc_tokens = 1
+            self.padding_index_struc_tokens = 2
+            logger.info(f"Using CONTINUOUS structure embeddings (dim={self.structure_embed_dim})")
+        else:
+            self.structure_embed_dim = None
+            self.num_struc_classes = self.quantizer.n_tokens + 2
+            self.mask_index_struc_tokens = self.quantizer.n_tokens
+            self.padding_index_struc_tokens = self.quantizer.n_tokens + 1
+            logger.info(f"Using DISCRETE structure tokens (vocab={self.quantizer.n_tokens})")
+
         # === FLOW MATCHING SETUP ===
         self.inverse_folding = inverse_folding
-        self.mask_index_struc_tokens = self.quantizer.n_tokens
-        self.padding_index_struc_tokens = self.quantizer.n_tokens + 1
-        self.num_struc_classes = self.quantizer.n_tokens + 2
 
         # Set up priors and interpolants
         device = "cpu"  # Will be moved to correct device during training
@@ -231,22 +273,99 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         # === BOND LOSS ===
         self.bond_loss_fn = BondMatrixLoss(ignore_diagonal=True)
 
-    def encode_structure(self, x_gt: Tensor, mask: Tensor, residue_index: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        # === DIFFUSION LOSS FOR STRUCTURE (Option A: Hybrid) ===
+        self.use_diffusion_loss_structure = use_diffusion_loss_structure
+        self.diffusion_loss_weight = diffusion_loss_weight
+        self.diffusion_loss_protein_struc: DiffusionLoss | None = None
+        self.diffusion_loss_ligand_struc: DiffusionLoss | None = None
+
+        if use_diffusion_loss_structure:
+            from lobster.model.losses import DiffusionLoss
+
+            # Auto-detect transformer hidden dim if not provided
+            if diffusion_z_dim is not None:
+                z_dim = diffusion_z_dim
+            elif encoder_kwargs.get("model_size") in NEOBERT_CONFIGS:
+                z_dim = NEOBERT_CONFIGS[encoder_kwargs["model_size"]]["hidden_size"]
+            else:
+                z_dim = 768  # Default fallback
+
+            # Initialize DiffusionLoss for protein structure
+            self.diffusion_loss_protein_struc = DiffusionLoss(
+                target_channels=diffusion_target_dim,
+                z_channels=z_dim,
+                depth=diffusion_depth,
+                width=diffusion_width,
+                num_sampling_steps=diffusion_num_sampling_steps,
+                noise_schedule=diffusion_noise_schedule,
+            )
+
+            # Initialize DiffusionLoss for ligand structure
+            self.diffusion_loss_ligand_struc = DiffusionLoss(
+                target_channels=diffusion_target_dim,
+                z_channels=z_dim,
+                depth=diffusion_depth,
+                width=diffusion_width,
+                num_sampling_steps=diffusion_num_sampling_steps,
+                noise_schedule=diffusion_noise_schedule,
+            )
+
+            # Initialize continuous structure projection in encoder
+            # This allows feeding back sampled embeddings during MAR-style generation
+            self.encoder.init_continuous_structure_proj(diffusion_target_dim)
+
+            logger.info(
+                f"Using DiffusionLoss for structure tokens "
+                f"(target_dim={diffusion_target_dim}, z_dim={z_dim}, "
+                f"depth={diffusion_depth}, width={diffusion_width})"
+            )
+
+    def encode_structure(
+        self, x_gt: Tensor, mask: Tensor, residue_index: Tensor, return_continuous: bool = False
+    ) -> tuple[Tensor, Tensor, Tensor] | tuple[Tensor, Tensor, Tensor, Tensor]:
         """Encode protein structure to tokens using LatentGenerator.
 
-        Handles both FSQLigandTokenizer (returns dicts) and standard quantizers.
+        Handles both FSQLigandTokenizer (returns dicts), standard quantizers,
+        and continuous mode (quantizer=None).
+
+        Parameters
+        ----------
+        x_gt : Tensor
+            Ground truth coordinates [B, L, 4*3].
+        mask : Tensor
+            Residue mask [B, L].
+        residue_index : Tensor
+            Residue indices [B, L].
+        return_continuous : bool
+            If True, also return continuous embeddings for DiffusionLoss.
 
         Returns
         -------
         x_quant : Tensor
             Soft token distribution with shape [B, L, n_tokens] for FSQLigandTokenizer,
-            or quantized logits for standard quantizers.
+            quantized logits for standard quantizers, or dummy tokens for continuous mode.
         x_quant_emb : Tensor
             Embeddings from encoder.
         out_mask : Tensor
             Mask for valid positions.
+        x_continuous : Tensor (only if return_continuous=True)
+            Raw continuous embeddings [B, L, embed_dim].
         """
         x_emb = self.structure_encoder(x_gt, mask, residue_index=residue_index)
+
+        if self.use_continuous_structure:
+            # Continuous mode: no quantization
+            # Return dummy discrete tokens (all zeros, will be masked anyway)
+            # The continuous embeddings are what we actually use
+            B, L, D = x_emb.shape
+            x_quant = torch.zeros(B, L, self.num_struc_classes, device=x_emb.device)
+            x_quant[:, :, 0] = 1.0  # All "visible" placeholder token
+            x_quant_emb = x_emb
+            out_mask = mask
+
+            if return_continuous:
+                return x_quant, x_quant_emb, out_mask, x_emb
+            return x_quant, x_quant_emb, out_mask
 
         # Handle FSQLigandTokenizer which returns dicts
         result = self.quantizer.quantize(x_emb, mask=mask)
@@ -263,14 +382,27 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             # Standard quantizer returns (x_quant, x_quant_emb, mask)
             x_quant, x_quant_emb, out_mask = result
 
+        if return_continuous:
+            return x_quant, x_quant_emb, out_mask, x_emb
         return x_quant, x_quant_emb, out_mask
 
     def encode_ligand_structure(
-        self, ligand_coords: Tensor, ligand_mask: Tensor, atom_indices: Tensor
-    ) -> tuple[Tensor, Tensor]:
+        self, ligand_coords: Tensor, ligand_mask: Tensor, atom_indices: Tensor, return_continuous: bool = False
+    ) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
         """Encode ligand structure to tokens using LatentGenerator.
 
         Note: The ViT encoder accepts ligand_coords as a separate argument with shape [B, N_atoms, 3].
+
+        Parameters
+        ----------
+        ligand_coords : Tensor
+            Ligand coordinates [B, N_atoms, 3].
+        ligand_mask : Tensor
+            Ligand atom mask [B, N_atoms].
+        atom_indices : Tensor
+            Atom indices [B, N_atoms].
+        return_continuous : bool
+            If True, also return continuous embeddings for DiffusionLoss.
 
         Returns
         -------
@@ -278,6 +410,8 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             Structure token indices with shape [B, N_atoms].
         out_mask : Tensor
             Mask for valid positions.
+        x_continuous : Tensor (only if return_continuous=True)
+            Raw continuous embeddings [B, N_atoms, embed_dim].
         """
         # Ligand coords: [B, N_atoms, 3] - passed directly to encoder
         # The encoder handles ligands separately via ligand_coords argument
@@ -288,6 +422,18 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             ligand_mask=ligand_mask,
             ligand_residue_index=atom_indices,
         )
+
+        if self.use_continuous_structure:
+            # Continuous mode: no quantization
+            # Return dummy discrete tokens (all masked)
+            B, N = ligand_coords.shape[:2]
+            x_quant_argmax = torch.full((B, N), self.mask_index_struc_tokens, device=ligand_coords.device)
+            x_quant_argmax[~ligand_mask.bool()] = self.padding_index_struc_tokens
+            out_mask = ligand_mask
+
+            if return_continuous:
+                return x_quant_argmax, out_mask, x_emb
+            return x_quant_argmax, out_mask
 
         # Handle FSQLigandTokenizer which returns dicts
         result = self.quantizer.quantize(x_emb, mask=None, ligand_mask=ligand_mask)
@@ -306,7 +452,123 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         x_quant_argmax = torch.argmax(x_quant, dim=-1)
         x_quant_argmax[~out_mask.bool()] = self.padding_index_struc_tokens
 
+        if return_continuous:
+            return x_quant_argmax, out_mask, x_emb
         return x_quant_argmax, out_mask
+
+    def encode_protein_ligand_structure(
+        self,
+        protein_coords: Tensor,
+        protein_mask: Tensor,
+        protein_indices: Tensor,
+        ligand_coords: Tensor,
+        ligand_mask: Tensor,
+        ligand_indices: Tensor,
+        ligand_atom_types: Tensor | None = None,
+        bond_matrix: Tensor | None = None,
+    ) -> dict[str, Tensor]:
+        """Encode protein and ligand structure JOINTLY for proper interaction.
+
+        This method encodes both protein and ligand together through the structure
+        encoder, allowing cross-attention between them. The embeddings are then
+        split and quantized separately.
+
+        Parameters
+        ----------
+        protein_coords : Tensor
+            Protein coordinates [B, L, n_atoms, 3].
+        protein_mask : Tensor
+            Protein mask [B, L].
+        protein_indices : Tensor
+            Protein residue indices [B, L].
+        ligand_coords : Tensor
+            Ligand coordinates [B, N_atoms, 3].
+        ligand_mask : Tensor
+            Ligand atom mask [B, N_atoms].
+        ligand_indices : Tensor
+            Ligand atom indices [B, N_atoms].
+        ligand_atom_types : Tensor, optional
+            Ligand atom type indices [B, N_atoms].
+        bond_matrix : Tensor, optional
+            Bond matrix [B, N_atoms, N_atoms].
+
+        Returns
+        -------
+        dict[str, Tensor]
+            Dictionary containing:
+            - "protein_tokens": Protein structure tokens [B, L]
+            - "protein_mask": Protein mask [B, L]
+            - "protein_embeddings": Continuous protein embeddings [B, L, D]
+            - "ligand_tokens": Ligand structure tokens [B, N_atoms]
+            - "ligand_mask": Ligand mask [B, N_atoms]
+            - "ligand_embeddings": Continuous ligand embeddings [B, N_atoms, D]
+        """
+        L = protein_coords.shape[1]
+
+        # Joint encoding: encode protein and ligand together
+        joint_emb = self.structure_encoder(
+            coords=protein_coords,
+            seq_mask=protein_mask,
+            residue_index=protein_indices,
+            ligand_coords=ligand_coords,
+            ligand_mask=ligand_mask,
+            ligand_residue_index=ligand_indices,
+            ligand_atom_types=ligand_atom_types,
+            ligand_bond_matrix=bond_matrix,
+        )
+        # joint_emb shape: [B, L + N_atoms, D]
+
+        # Split embeddings back into protein and ligand parts
+        protein_emb = joint_emb[:, :L, :]  # [B, L, D]
+        ligand_emb = joint_emb[:, L:, :]  # [B, N_atoms, D]
+
+        # Quantize protein embeddings
+        if self.use_continuous_structure:
+            # Continuous mode: no quantization, dummy tokens
+            B, L_prot, D = protein_emb.shape
+            protein_logits = torch.zeros(B, L_prot, self.num_struc_classes, device=protein_emb.device)
+            protein_logits[:, :, 0] = 1.0
+            protein_out_mask = protein_mask
+        else:
+            # Discrete mode: quantize
+            result = self.quantizer.quantize(protein_emb, mask=protein_mask)
+            if isinstance(result[0], dict):
+                tokens_dict, _, masks_dict = result
+                protein_logits = tokens_dict.get("protein_tokens", tokens_dict.get("ligand_tokens"))
+                protein_out_mask = masks_dict.get("protein_mask", masks_dict.get("ligand_mask"))
+            else:
+                protein_logits, _, protein_out_mask = result
+
+        protein_tokens = torch.argmax(protein_logits, dim=-1)
+        protein_tokens[~protein_out_mask.bool()] = self.padding_index_struc_tokens
+
+        # Quantize ligand embeddings
+        if self.use_continuous_structure:
+            # Continuous mode: dummy discrete tokens
+            B, N = ligand_coords.shape[:2]
+            ligand_tokens = torch.full((B, N), self.mask_index_struc_tokens, device=ligand_coords.device)
+            ligand_tokens[~ligand_mask.bool()] = self.padding_index_struc_tokens
+            ligand_out_mask = ligand_mask
+        else:
+            # Discrete mode: quantize
+            result = self.quantizer.quantize(ligand_emb, mask=None, ligand_mask=ligand_mask)
+            if isinstance(result[0], dict):
+                tokens_dict, _, masks_dict = result
+                ligand_logits = tokens_dict.get("ligand_tokens")
+                ligand_out_mask = masks_dict.get("ligand_mask")
+            else:
+                ligand_logits, _, ligand_out_mask = result
+            ligand_tokens = torch.argmax(ligand_logits, dim=-1)
+            ligand_tokens[~ligand_out_mask.bool()] = self.padding_index_struc_tokens
+
+        return {
+            "protein_tokens": protein_tokens,
+            "protein_mask": protein_out_mask,
+            "protein_embeddings": protein_emb,
+            "ligand_tokens": ligand_tokens,
+            "ligand_mask": ligand_out_mask,
+            "ligand_embeddings": ligand_emb,
+        }
 
     def decode_structure(
         self,
@@ -320,11 +582,15 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         When ligand data is present, it passes both to the vit_decoder which
         returns a dict with "protein_coords" and "ligand_coords".
 
+        For continuous mode (use_diffusion_loss_structure=True), pass continuous
+        embeddings directly via "structure_embeddings" key.
+
         Parameters
         ----------
         generated_output : dict
             Output from forward pass or generate_sample, containing structure_logits
-            and optionally ligand_structure_logits
+            and optionally ligand_structure_logits. For continuous mode, use
+            "structure_embeddings" and "ligand_structure_embeddings" keys.
         mask : Tensor
             [B, L] mask for valid protein positions
         ligand_mask : Tensor, optional
@@ -340,18 +606,45 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         decoder_name = "vit_decoder"
         decoded_x = {}
 
+        # Check for continuous mode (direct embeddings instead of logits)
+        if "structure_embeddings" in generated_output:
+            # Continuous mode: use embeddings directly
+            struc_tokens_ = generated_output["structure_embeddings"]
+            has_ligand = "ligand_structure_embeddings" in generated_output and ligand_mask is not None
+
+            if has_ligand:
+                lig_struc_tokens_ = generated_output["ligand_structure_embeddings"]
+                x_quant = {
+                    "protein_tokens": struc_tokens_,
+                    "ligand_tokens": lig_struc_tokens_,
+                }
+                mask_dict = {
+                    "protein_mask": mask,
+                    "ligand_mask": ligand_mask,
+                }
+                decoded_x[decoder_name] = self.decoder_factory.decoders[decoder_name](x_quant, mask_dict)
+            else:
+                decoded_x[decoder_name] = self.decoder_factory.decoders[decoder_name](struc_tokens_, mask)
+
+            return decoded_x
+
+        # Discrete mode: use logits
         # Get protein structure logits
         if "structure_logits" in generated_output:
             struc_logits = generated_output["structure_logits"]
         else:
-            raise ValueError("No structure_logits found in output")
+            raise ValueError("No structure_logits or structure_embeddings found in output")
 
-        # Slice to only valid token indices (exclude mask/pad tokens)
-        struc_tokens = struc_logits[..., : self.quantizer.n_tokens]
-
-        # Apply softmax with temperature for soft decoding
-        temp = 0.1
-        struc_tokens_ = torch.softmax(struc_tokens / temp, dim=-1)
+        # Handle continuous mode where quantizer may be None
+        if self.use_continuous_structure or self.quantizer is None:
+            # For continuous mode with logits (shouldn't normally happen, but handle gracefully)
+            struc_tokens_ = struc_logits
+        else:
+            # Slice to only valid token indices (exclude mask/pad tokens)
+            struc_tokens = struc_logits[..., : self.quantizer.n_tokens]
+            # Apply softmax with temperature for soft decoding
+            temp = 0.1
+            struc_tokens_ = torch.softmax(struc_tokens / temp, dim=-1)
 
         # Check if ligand data is present
         has_ligand = "ligand_structure_logits" in generated_output and ligand_mask is not None and ligand_mask.sum() > 0
@@ -359,8 +652,14 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         if has_ligand:
             # Get ligand structure logits
             lig_struc_logits = generated_output["ligand_structure_logits"]
-            lig_struc_tokens = lig_struc_logits[..., : self.quantizer.n_tokens]
-            lig_struc_tokens_ = torch.softmax(lig_struc_tokens / temp, dim=-1)
+
+            # Handle continuous mode where quantizer may be None
+            if self.use_continuous_structure or self.quantizer is None:
+                lig_struc_tokens_ = lig_struc_logits
+            else:
+                lig_struc_tokens = lig_struc_logits[..., : self.quantizer.n_tokens]
+                temp = 0.1
+                lig_struc_tokens_ = torch.softmax(lig_struc_tokens / temp, dim=-1)
 
             # Prepare dict input for vit_decoder (matching TokenizerMulti.decode pattern)
             x_quant = {
@@ -476,8 +775,39 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         bond_matrix: Tensor | None = None,
         protein_valid_mask: Tensor | None = None,
         ligand_valid_mask: Tensor | None = None,
+        # Continuous structure embeddings (for MAR-style generation)
+        structure_embeddings: Tensor | None = None,
+        ligand_structure_embeddings: Tensor | None = None,
     ) -> dict[str, Tensor]:
-        """Forward pass through encoder."""
+        """Forward pass through encoder.
+
+        Parameters
+        ----------
+        x_t : dict[str, Tensor]
+            Input tokens (sequence, structure, optionally ligand).
+        mask : Tensor
+            Attention mask.
+        residue_index : Tensor
+            Residue indices.
+        conditioning_tensor : Tensor
+            Conditioning input.
+        timesteps : dict[str, Tensor], optional
+            Timesteps for flow matching.
+        ligand_mask : Tensor, optional
+            Ligand mask.
+        bond_matrix : Tensor, optional
+            Bond matrix.
+        protein_valid_mask : Tensor, optional
+            Valid protein mask.
+        ligand_valid_mask : Tensor, optional
+            Valid ligand mask.
+        structure_embeddings : Tensor, optional
+            Pre-computed continuous protein structure embeddings [B, L, D].
+            Used for MAR-style iterative generation where previously sampled
+            embeddings are fed back into the model.
+        ligand_structure_embeddings : Tensor, optional
+            Pre-computed continuous ligand structure embeddings [B, N_atoms, D].
+        """
         # Expand timesteps if provided
         if timesteps is not None:
             timesteps = timesteps.copy()
@@ -501,6 +831,8 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             protein_valid_mask=protein_valid_mask,
             ligand_valid_mask=ligand_valid_mask,
             timesteps=timesteps,
+            structure_embeddings=structure_embeddings,
+            ligand_structure_embeddings=ligand_structure_embeddings,
         )
 
         return output
@@ -517,6 +849,11 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         protein_valid_mask: Tensor | None = None,
         ligand_valid_mask: Tensor | None = None,
         decoder_gt: dict[str, Tensor] | None = None,
+        # DiffusionLoss params (for continuous structure)
+        structure_embeddings_gt: Tensor | None = None,
+        ligand_structure_embeddings_gt: Tensor | None = None,
+        x_t_structure: Tensor | None = None,
+        x_t_ligand_structure: Tensor | None = None,
     ) -> tuple[Tensor, dict[str, Tensor]]:
         """Compute multi-modal loss.
 
@@ -542,6 +879,14 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             Mask for valid ligand samples in mixed batch.
         decoder_gt : dict[str, Tensor], optional
             Ground truth batch data for decoder loss (should contain coords, ligand_coords, etc.).
+        structure_embeddings_gt : Tensor, optional
+            Continuous structure embeddings for DiffusionLoss [B, L, D].
+        ligand_structure_embeddings_gt : Tensor, optional
+            Continuous ligand structure embeddings for DiffusionLoss [B, M, D].
+        x_t_structure : Tensor, optional
+            Interpolated structure tokens for mask derivation [B, L].
+        x_t_ligand_structure : Tensor, optional
+            Interpolated ligand structure tokens for mask derivation [B, M].
 
         Returns
         -------
@@ -552,7 +897,7 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         loss_dict = {}
 
         # === PROTEIN LOSSES ===
-        # Sequence loss
+        # Sequence loss (always discrete CE)
         loss_seq = self.interpolant_seq.loss(
             output["sequence_logits"], x_gt["sequence_tokens"], timesteps["sequence_tokens"]
         )
@@ -563,16 +908,59 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         else:
             loss_seq = loss_seq.mean()
 
-        # Structure loss
-        loss_struc = self.interpolant_struc.loss(
-            output["structure_logits"], x_gt["structure_tokens"], timesteps["structure_tokens"]
-        )
-        if protein_valid_mask is not None:
-            loss_struc = (loss_struc.mean(dim=-1) * protein_valid_mask.float()).sum() / (
-                protein_valid_mask.float().sum() + 1e-8
-            )
+        # Structure loss - Option A: Hybrid (DiffusionLoss if enabled)
+        # Initialize predicted embeddings for later use in decoding
+        pred_structure_embeddings = None
+        pred_ligand_structure_embeddings = None
+
+        if self.use_diffusion_loss_structure and structure_embeddings_gt is not None:
+            # Use DiffusionLoss for structure tokens
+            # Get hidden states for conditioning (need to expose from encoder)
+            structure_hidden = output.get("protein_hidden_states", output.get("last_hidden_state"))
+            if structure_hidden is not None:
+                # Extract protein portion if full hidden state
+                if "protein_hidden_states" not in output and mask is not None:
+                    B, L = mask.shape
+                    structure_hidden = structure_hidden[:, :L, :]
+
+                # Create diffusion mask from flow matching: mask=1 where position was corrupted
+                if x_t_structure is not None:
+                    diffusion_mask = (x_t_structure == self.mask_index_struc_tokens).float()
+                else:
+                    # Fallback: all positions if interpolated tokens not available
+                    diffusion_mask = torch.ones_like(mask).float()
+
+                # Apply validity masks
+                if protein_valid_mask is not None:
+                    diffusion_mask = diffusion_mask * protein_valid_mask[:, None].float()
+                if mask is not None:
+                    diffusion_mask = diffusion_mask * mask.float()
+
+                # Compute diffusion loss and get predicted embeddings for decoding
+                loss_struc, pred_structure_embeddings = self.diffusion_loss_protein_struc(
+                    target=structure_embeddings_gt,
+                    z=structure_hidden,
+                    mask=diffusion_mask,
+                    return_pred=True,
+                )
+                loss_struc = loss_struc * self.diffusion_loss_weight
+            else:
+                # Fallback if hidden states not available
+                logger.warning("No hidden states for DiffusionLoss, falling back to discrete loss")
+                loss_struc = self.interpolant_struc.loss(
+                    output["structure_logits"], x_gt["structure_tokens"], timesteps["structure_tokens"]
+                ).mean()
         else:
-            loss_struc = loss_struc.mean()
+            # Original discrete flow matching loss
+            loss_struc = self.interpolant_struc.loss(
+                output["structure_logits"], x_gt["structure_tokens"], timesteps["structure_tokens"]
+            )
+            if protein_valid_mask is not None:
+                loss_struc = (loss_struc.mean(dim=-1) * protein_valid_mask.float()).sum() / (
+                    protein_valid_mask.float().sum() + 1e-8
+                )
+            else:
+                loss_struc = loss_struc.mean()
 
         total_loss = total_loss + loss_seq + loss_struc
         loss_dict[f"{split}_loss_seq"] = loss_seq
@@ -595,18 +983,58 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             else:
                 loss_lig_atom = loss_lig_atom.mean()
 
-            # Ligand structure loss
-            loss_lig_struc = self.interpolant_ligand_struc.loss(
-                output["ligand_structure_logits"],
-                x_gt["ligand_structure_tokens"],
-                timesteps["ligand_structure_tokens"],
-            )
-            if ligand_valid_mask is not None:
-                loss_lig_struc = (loss_lig_struc.mean(dim=-1) * ligand_valid_mask.float()).sum() / (
-                    ligand_valid_mask.float().sum() + 1e-8
-                )
+            # Ligand structure loss - Option A: Hybrid (DiffusionLoss if enabled)
+            if self.use_diffusion_loss_structure and ligand_structure_embeddings_gt is not None:
+                # Use DiffusionLoss for ligand structure
+                ligand_hidden = output.get("ligand_hidden_states")
+                if ligand_hidden is None:
+                    # Extract from full hidden state
+                    full_hidden = output.get("last_hidden_state")
+                    if full_hidden is not None and mask is not None:
+                        B, L = mask.shape
+                        ligand_hidden = full_hidden[:, L:, :]
+
+                if ligand_hidden is not None:
+                    # Create diffusion mask from flow matching
+                    if x_t_ligand_structure is not None:
+                        lig_diffusion_mask = (x_t_ligand_structure == self.mask_index_struc_tokens).float()
+                    else:
+                        lig_diffusion_mask = torch.ones_like(ligand_mask).float()
+
+                    # Apply validity masks
+                    if ligand_valid_mask is not None:
+                        lig_diffusion_mask = lig_diffusion_mask * ligand_valid_mask[:, None].float()
+                    if ligand_mask is not None:
+                        lig_diffusion_mask = lig_diffusion_mask * ligand_mask.float()
+
+                    # Compute diffusion loss for ligand structure and get predicted embeddings
+                    loss_lig_struc, pred_ligand_structure_embeddings = self.diffusion_loss_ligand_struc(
+                        target=ligand_structure_embeddings_gt,
+                        z=ligand_hidden,
+                        mask=lig_diffusion_mask,
+                        return_pred=True,
+                    )
+                    loss_lig_struc = loss_lig_struc * self.diffusion_loss_weight
+                else:
+                    # Fallback if hidden states not available
+                    loss_lig_struc = self.interpolant_ligand_struc.loss(
+                        output["ligand_structure_logits"],
+                        x_gt["ligand_structure_tokens"],
+                        timesteps["ligand_structure_tokens"],
+                    ).mean()
             else:
-                loss_lig_struc = loss_lig_struc.mean()
+                # Original discrete flow matching loss
+                loss_lig_struc = self.interpolant_ligand_struc.loss(
+                    output["ligand_structure_logits"],
+                    x_gt["ligand_structure_tokens"],
+                    timesteps["ligand_structure_tokens"],
+                )
+                if ligand_valid_mask is not None:
+                    loss_lig_struc = (loss_lig_struc.mean(dim=-1) * ligand_valid_mask.float()).sum() / (
+                        ligand_valid_mask.float().sum() + 1e-8
+                    )
+                else:
+                    loss_lig_struc = loss_lig_struc.mean()
 
             # Bond prediction loss
             if bond_matrix_gt is not None:
@@ -628,8 +1056,25 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         if self.decode_tokens_during_training and decoder_gt is not None:
             if mask is not None:
                 with torch.no_grad():
+                    # In continuous mode, use predicted embeddings from diffusion loss
+                    # This allows tracking reconstruction learning during training
+                    decode_output = output
+                    if self.use_continuous_structure:
+                        decode_output = dict(output)  # Copy to avoid modifying original
+                        # Use predicted embeddings if available, otherwise fall back to ground truth
+                        if pred_structure_embeddings is not None:
+                            decode_output["structure_embeddings"] = pred_structure_embeddings
+                        elif structure_embeddings_gt is not None:
+                            decode_output["structure_embeddings"] = structure_embeddings_gt
+                        if pred_ligand_structure_embeddings is not None:
+                            decode_output["ligand_structure_embeddings"] = pred_ligand_structure_embeddings
+                        elif ligand_structure_embeddings_gt is not None:
+                            decode_output["ligand_structure_embeddings"] = ligand_structure_embeddings_gt
+
                     # Decode both protein and ligand together using vit_decoder
-                    decoded_x = self.decode_structure(output, mask, ligand_mask=ligand_mask if has_ligand else None)
+                    decoded_x = self.decode_structure(
+                        decode_output, mask, ligand_mask=ligand_mask if has_ligand else None
+                    )
 
                 # Get the vit_decoder output
                 vit_output = decoded_x.get("vit_decoder")
@@ -771,47 +1216,117 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         has_protein = "sequence" in batch and batch["sequence"].numel() > 0
         has_ligand = "ligand_coords" in batch and batch["ligand_coords"].numel() > 0
 
+        # === APPLY SE(3) AUGMENTATION (training only) ===
+        if self.use_se3_augmentation and split == "train":
+            with torch.no_grad():
+                protein_coords = batch.get("coords_res") if has_protein else None
+                protein_mask = batch.get("mask") if has_protein else None
+                ligand_coords = batch.get("ligand_coords") if has_ligand else None
+                ligand_mask = batch.get("ligand_mask") if has_ligand else None
+
+                if protein_coords is not None or ligand_coords is not None:
+                    # Apply same SE(3) transform to protein and ligand jointly
+                    augmented = apply_se3_augmentation_protein_ligand(
+                        protein_coords=protein_coords.clone() if protein_coords is not None else None,
+                        protein_mask=protein_mask,
+                        ligand_coords=ligand_coords.clone() if ligand_coords is not None else None,
+                        ligand_mask=ligand_mask,
+                        random_se3=True,
+                        translation_scale=self.se3_translation_scale,
+                        backbone_noise=0.0,
+                    )
+                    if has_protein:
+                        batch["coords_res"] = augmented.protein_coords
+                    if has_ligand:
+                        batch["ligand_coords"] = augmented.ligand_coords
+
         # === ENCODE GROUND TRUTH ===
         x_gt = {}
         mask = None
         seq_gt = None
         ligand_mask = None
         bond_matrix_gt = None
+        structure_embeddings_gt = None
+        ligand_structure_embeddings_gt = None
 
         with torch.no_grad():
-            # Protein (if present)
+            # Get data from batch
+            protein_coords = batch.get("coords_res") if has_protein else None
+            protein_mask = batch.get("mask") if has_protein else None
+            protein_indices = batch.get("indices") if has_protein else None
+            ligand_coords = batch.get("ligand_coords") if has_ligand else None
+            ligand_mask = batch.get("ligand_mask") if has_ligand else None
+            ligand_indices = batch.get("ligand_indices") if has_ligand else None
+            ligand_atom_types = batch.get("ligand_element_indices") if has_ligand else None
+            bond_matrix_gt = batch.get("bond_matrix") if has_ligand else None
+
             if has_protein:
                 seq_gt = batch["sequence"]
-                # Use coords_res from collate function
-                protein_coords = batch.get("coords_res", batch.get("input", [None])[0])
-                x_quant, _, mask = self.encode_structure(protein_coords, batch["mask"], batch["indices"])
+
+            # Joint encoding when both protein and ligand are present
+            if has_protein and has_ligand:
+                encoded = self.encode_protein_ligand_structure(
+                    protein_coords=protein_coords,
+                    protein_mask=protein_mask,
+                    protein_indices=protein_indices,
+                    ligand_coords=ligand_coords,
+                    ligand_mask=ligand_mask,
+                    ligand_indices=ligand_indices,
+                    ligand_atom_types=ligand_atom_types,
+                    bond_matrix=bond_matrix_gt,
+                )
+
+                # Extract results
+                struc_gt = encoded["protein_tokens"]
+                mask = encoded["protein_mask"]
+                structure_embeddings_gt = encoded["protein_embeddings"]
+
+                ligand_struc_gt = encoded["ligand_tokens"]
+                ligand_mask = encoded["ligand_mask"]
+                ligand_structure_embeddings_gt = encoded["ligand_embeddings"]
+
+                # Get ligand atom types
+                ligand_atom_gt = (
+                    ligand_atom_types if ligand_atom_types is not None else torch.full_like(ligand_indices, 3)
+                )
+
+                x_gt["sequence_tokens"] = seq_gt
+                x_gt["structure_tokens"] = struc_gt
+                x_gt["ligand_atom_tokens"] = ligand_atom_gt
+                x_gt["ligand_structure_tokens"] = ligand_struc_gt
+
+            elif has_protein:
+                # Protein-only: use existing encode_structure method
+                if self.use_diffusion_loss_structure:
+                    result = self.encode_structure(
+                        protein_coords, protein_mask, protein_indices, return_continuous=True
+                    )
+                    x_quant, _, mask, structure_embeddings_gt = result
+                else:
+                    x_quant, _, mask = self.encode_structure(protein_coords, protein_mask, protein_indices)
+
                 struc_gt = torch.argmax(x_quant, dim=-1)
                 struc_gt[~mask.bool()] = self.padding_index_struc_tokens
 
                 x_gt["sequence_tokens"] = seq_gt
                 x_gt["structure_tokens"] = struc_gt
 
-            # Ligand (if present)
-            if has_ligand:
-                ligand_coords = batch["ligand_coords"]
-                ligand_mask = batch["ligand_mask"]
-                ligand_indices = batch["ligand_indices"]
-
-                # Get ligand atom types
-                if "ligand_element_indices" in batch:
-                    ligand_atom_gt = batch["ligand_element_indices"]
+            elif has_ligand:
+                # Ligand-only: use existing encode_ligand_structure method
+                if ligand_atom_types is None:
+                    ligand_atom_gt = torch.full_like(ligand_indices, 3)
                 else:
-                    # Fallback to all carbon if not provided
-                    ligand_atom_gt = torch.full_like(ligand_indices, 3)  # 3 = C in ELEMENT_VOCAB_EXTENDED
+                    ligand_atom_gt = ligand_atom_types
 
-                # Encode ligand structure
-                ligand_struc_gt, _ = self.encode_ligand_structure(ligand_coords, ligand_mask, ligand_indices)
+                if self.use_diffusion_loss_structure:
+                    ligand_struc_gt, _, ligand_structure_embeddings_gt = self.encode_ligand_structure(
+                        ligand_coords, ligand_mask, ligand_indices, return_continuous=True
+                    )
+                else:
+                    ligand_struc_gt, _ = self.encode_ligand_structure(ligand_coords, ligand_mask, ligand_indices)
 
                 x_gt["ligand_atom_tokens"] = ligand_atom_gt
                 x_gt["ligand_structure_tokens"] = ligand_struc_gt
-
-                # Get bond matrix
-                bond_matrix_gt = batch.get("bond_matrix")
 
         # Get batch size from available data
         if has_protein:
@@ -872,6 +1387,11 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             bond_matrix_gt=bond_matrix_gt,
             protein_valid_mask=protein_valid_mask,
             ligand_valid_mask=ligand_valid_mask,
+            # DiffusionLoss params
+            structure_embeddings_gt=structure_embeddings_gt,
+            ligand_structure_embeddings_gt=ligand_structure_embeddings_gt,
+            x_t_structure=x_t.get("structure_tokens"),
+            x_t_ligand_structure=x_t.get("ligand_structure_tokens"),
             decoder_gt=decoder_gt,
         )
 
@@ -911,8 +1431,18 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         # Decode structure (only during training, not every batch)
         if self.decode_tokens_during_training and batch_idx % 1000 == 0:
             with torch.no_grad():
+                # In continuous mode, inject ground truth embeddings for decoding
+                # (predicted embeddings are computed inside compute_loss but not exposed here)
+                decode_output = output
+                if self.use_continuous_structure:
+                    decode_output = dict(output)  # Copy to avoid modifying original
+                    if structure_embeddings_gt is not None:
+                        decode_output["structure_embeddings"] = structure_embeddings_gt
+                    if ligand_structure_embeddings_gt is not None:
+                        decode_output["ligand_structure_embeddings"] = ligand_structure_embeddings_gt
+
                 # Unified decode for both protein and ligand
-                decoded_x = self.decode_structure(output, mask, ligand_mask=ligand_mask if has_ligand else None)
+                decoded_x = self.decode_structure(decode_output, mask, ligand_mask=ligand_mask if has_ligand else None)
                 outputs["decoded_x"] = decoded_x
 
                 # Extract ligand info (atom types, bond matrix) for callbacks
@@ -972,6 +1502,8 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         num_samples: int,
         inference_schedule_seq: Callable = LogInferenceSchedule,
         inference_schedule_struc: Callable = LinearInferenceSchedule,
+        inference_schedule_ligand_atom: Callable = None,
+        inference_schedule_ligand_struc: Callable = None,
         nsteps: int = 200,
         stochasticity_seq: int = 20,
         stochasticity_struc: int = 20,
@@ -988,14 +1520,42 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         num_atoms: int = 30,
         input_ligand_atom_tokens: Tensor = None,
         input_ligand_structure_tokens: Tensor = None,
+        input_ligand_structure_embeddings: Tensor = None,
         input_bond_matrix: Tensor = None,
         stochasticity_ligand: int = 20,
         temperature_ligand: float = 0.5,
+        ligand_is_context: bool = False,
+        # Compatibility with base Gen-UME (not used in protein-ligand model)
+        asynchronous_sampling: bool = False,
+        # Diffusion loss sampling params (for continuous structure generation)
+        diffusion_sampling_steps: int = 100,
+        diffusion_temperature: float = 1.0,
     ):
         """Generate samples with optional ligand.
 
         This extends the original Gen-UME generation to support ligand
         generation alongside protein.
+
+        When use_diffusion_loss_structure=True, structure generation uses
+        DiffusionLoss.sample() to produce continuous embeddings, which are
+        then decoded by vit_decoder to 3D coordinates.
+
+        Parameters
+        ----------
+        inference_schedule_ligand_atom : Callable, optional
+            Schedule class for ligand atom token generation. If None, falls back
+            to inference_schedule_seq (protein sequence schedule).
+        inference_schedule_ligand_struc : Callable, optional
+            Schedule class for ligand structure token generation. If None, falls
+            back to inference_schedule_struc (protein structure schedule).
+        ligand_is_context : bool
+            If True, the provided ligand is used as fixed conditioning context
+            and will NOT be updated during generation. Use this for inverse/forward
+            folding where the ligand provides structural context.
+        input_ligand_structure_embeddings : Tensor, optional
+            Continuous structure embeddings for ligand [B, N_atoms, D]. Required
+            in continuous mode when ligand_is_context=True. Obtain these via
+            encode_ligand_structure(..., return_continuous=True).
         """
         device = next(self.parameters()).device
 
@@ -1022,19 +1582,33 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         dts_seq = schedule_seq.discretize(device=device)
         dts_struc = schedule_struc.discretize(device=device)
 
+        # Set up independent ligand schedules (fall back to protein schedules if not specified)
+        schedule_lig_atom = (
+            inference_schedule_ligand_atom(nsteps=nsteps) if inference_schedule_ligand_atom else schedule_seq
+        )
+        schedule_lig_struc = (
+            inference_schedule_ligand_struc(nsteps=nsteps) if inference_schedule_ligand_struc else schedule_struc
+        )
+        ts_lig_atom = schedule_lig_atom.generate_schedule(device=device)
+        ts_lig_struc = schedule_lig_struc.generate_schedule(device=device)
+        dts_lig_atom = schedule_lig_atom.discretize(device=device)
+        dts_lig_struc = schedule_lig_struc.discretize(device=device)
+
         # Initialize defaults (same as original Gen-UME)
         mask = torch.ones((num_samples, length), device=device)
         residue_index = torch.arange(length, device=device)
         conditioning_tensor = torch.zeros((num_samples, length, 1), device=device)
 
         # Handle inverse/forward folding
+        # Use t=0.9950 (close to 1) to indicate "clean/conditioned" tokens
+        # In discrete flow matching: t=0 is noise/mask, t=1 is clean data
         if inverse_folding and input_structure_coords is not None:
             x_quant, _, mask = self.encode_structure(input_structure_coords, input_mask, input_indices)
             xt_struc = x_quant.argmax(dim=-1).to(device)
-            ts_struc = torch.full_like(ts_struc, 0.9950)
+            ts_struc = torch.full_like(ts_struc, 0.9950)  # Structure is clean/given (t≈1)
         elif forward_folding and input_sequence_tokens is not None:
             xt_seq = input_sequence_tokens.to(device)
-            ts_seq = torch.full_like(ts_seq, 0.9950)
+            ts_seq = torch.full_like(ts_seq, 0.9950)  # Sequence is clean/given (t≈1)
 
         # Initialize ligand tokens if generating
         xt_lig_atom = None
@@ -1059,23 +1633,81 @@ class ProteinLigandEncoderLightningModule(LightningModule):
             else:
                 bond_matrix = None
 
-        # Generation loop
-        for dt_seq, dt_struc, t_seq, t_struc in tqdm(
-            zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples"
+        # Check if using continuous structure generation
+        use_continuous_gen = self.use_diffusion_loss_structure and self.diffusion_loss_protein_struc is not None
+
+        # For continuous mode: track which positions have been "committed" (generated)
+        # Start with all positions needing generation
+        if use_continuous_gen:
+            # Initialize continuous embeddings storage
+            protein_structure_embeddings = torch.zeros(
+                num_samples, length, self.diffusion_loss_protein_struc.target_channels, device=device
+            )
+            protein_committed_mask = torch.zeros(
+                num_samples, length, device=device
+            )  # 0 = need to generate, 1 = committed
+
+            if generate_ligand:
+                # Check if ligand is fixed context with provided continuous embeddings
+                if ligand_is_context and input_ligand_structure_embeddings is not None:
+                    # Use provided embeddings and mark all positions as committed
+                    ligand_structure_embeddings = input_ligand_structure_embeddings.to(device)
+                    ligand_committed_mask = torch.ones(num_samples, num_atoms, device=device)
+                else:
+                    # Normal generation: start from zeros, commit as positions are unmasked
+                    ligand_structure_embeddings = torch.zeros(
+                        num_samples, num_atoms, self.diffusion_loss_ligand_struc.target_channels, device=device
+                    )
+                    ligand_committed_mask = torch.zeros(num_samples, num_atoms, device=device)
+
+        # Generation loop (includes independent ligand schedules)
+        for step_idx, (
+            dt_seq,
+            dt_struc,
+            t_seq,
+            t_struc,
+            dt_lig_atom,
+            dt_lig_struc,
+            t_lig_atom,
+            t_lig_struc,
+        ) in enumerate(
+            tqdm(
+                zip(dts_seq, dts_struc, ts_seq, ts_struc, dts_lig_atom, dts_lig_struc, ts_lig_atom, ts_lig_struc),
+                desc="Generating samples",
+                total=len(dts_seq),
+            )
         ):
             # Ensure all schedule tensors are on the correct device
             dt_seq = dt_seq.to(device)
             dt_struc = dt_struc.to(device)
+            dt_lig_atom = dt_lig_atom.to(device)
+            dt_lig_struc = dt_lig_struc.to(device)
             t_seq = schedule_seq.pad_time(num_samples, t_seq, device)
             t_struc = schedule_struc.pad_time(num_samples, t_struc, device)
+            t_lig_atom = schedule_lig_atom.pad_time(num_samples, t_lig_atom, device)
+            t_lig_struc = schedule_lig_struc.pad_time(num_samples, t_lig_struc, device)
             timesteps = {"sequence_tokens": t_seq, "structure_tokens": t_struc}
 
             x_t = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
             if generate_ligand:
-                timesteps["ligand_atom_tokens"] = t_seq  # Use same timestep for simplicity
-                timesteps["ligand_structure_tokens"] = t_struc
+                timesteps["ligand_atom_tokens"] = t_lig_atom  # Independent ligand atom schedule
+                timesteps["ligand_structure_tokens"] = t_lig_struc  # Independent ligand structure schedule
                 x_t["ligand_atom_tokens"] = xt_lig_atom
                 x_t["ligand_structure_tokens"] = xt_lig_struc
+
+            # For MAR-style generation: pass previously sampled embeddings
+            # The encoder will use these for committed positions, mask embedding for others
+            structure_embeddings_for_forward = None
+            ligand_structure_embeddings_for_forward = None
+
+            if use_continuous_gen:
+                # Create blended embeddings: sampled for committed, zeros for uncommitted
+                # The mask token embedding will be added in encoder for uncommitted positions
+                structure_embeddings_for_forward = protein_structure_embeddings * protein_committed_mask.unsqueeze(-1)
+                if generate_ligand:
+                    ligand_structure_embeddings_for_forward = (
+                        ligand_structure_embeddings * ligand_committed_mask.unsqueeze(-1)
+                    )
 
             output = self.forward(
                 x_t,
@@ -1085,9 +1717,11 @@ class ProteinLigandEncoderLightningModule(LightningModule):
                 timesteps=timesteps,
                 ligand_mask=ligand_mask,
                 bond_matrix=bond_matrix,
+                structure_embeddings=structure_embeddings_for_forward,
+                ligand_structure_embeddings=ligand_structure_embeddings_for_forward,
             )
 
-            # Update protein tokens
+            # Update protein sequence tokens (always discrete)
             xt_seq = self.interpolant_seq.step(
                 output["sequence_logits"],
                 t_seq,
@@ -1096,6 +1730,11 @@ class ProteinLigandEncoderLightningModule(LightningModule):
                 stochasticity=stochasticity_seq,
                 temperature=temperature_seq,
             )
+
+            # Update protein structure
+            # Always run discrete interpolant step to get the masking schedule
+            # This ensures continuous mode uses the SAME masking pattern as discrete mode
+            prev_xt_struc = xt_struc.clone()
             xt_struc = self.interpolant_struc.step(
                 output["structure_logits"],
                 t_struc,
@@ -1105,32 +1744,113 @@ class ProteinLigandEncoderLightningModule(LightningModule):
                 temperature=temperature_struc,
             )
 
-            # Update ligand tokens if generating
-            if generate_ligand:
+            if use_continuous_gen:
+                # Continuous mode: derive committed mask from discrete masking schedule
+                # Positions that are no longer mask tokens are "committed"
+                protein_hidden = output.get("protein_hidden_states")
+                if protein_hidden is not None:
+                    # Identify positions newly unmasked this step
+                    # prev_xt_struc == mask_token AND xt_struc != mask_token
+                    was_masked = prev_xt_struc == self.mask_index_struc_tokens
+                    is_unmasked = xt_struc != self.mask_index_struc_tokens
+                    newly_committed = was_masked & is_unmasked  # [B, L]
+
+                    if newly_committed.any():
+                        # Sample continuous embeddings for newly committed positions
+                        with torch.no_grad():
+                            sampled_embeddings = self.diffusion_loss_protein_struc.sample(
+                                z=protein_hidden,
+                                temperature=diffusion_temperature,
+                                num_steps=diffusion_sampling_steps,
+                            )
+
+                        # Update embeddings and mask for newly committed positions
+                        protein_structure_embeddings = torch.where(
+                            newly_committed.unsqueeze(-1),
+                            sampled_embeddings,
+                            protein_structure_embeddings,
+                        )
+                        protein_committed_mask = torch.where(
+                            newly_committed,
+                            torch.ones_like(protein_committed_mask),
+                            protein_committed_mask,
+                        )
+
+            # Update ligand tokens if generating (skip if ligand is fixed context)
+            if generate_ligand and not ligand_is_context:
                 xt_lig_atom = self.interpolant_ligand_atom.step(
                     output["ligand_atom_logits"],
-                    t_seq,
+                    t_lig_atom,  # Use independent ligand atom schedule
                     xt_lig_atom,
-                    dt_seq,
-                    stochasticity=stochasticity_ligand,
-                    temperature=temperature_ligand,
-                )
-                xt_lig_struc = self.interpolant_ligand_struc.step(
-                    output["ligand_structure_logits"],
-                    t_struc,
-                    xt_lig_struc,
-                    dt_struc,
+                    dt_lig_atom,  # Use independent ligand atom schedule
                     stochasticity=stochasticity_ligand,
                     temperature=temperature_ligand,
                 )
 
+                # Always run discrete interpolant step for ligand structure to get masking schedule
+                prev_xt_lig_struc = xt_lig_struc.clone()
+                xt_lig_struc = self.interpolant_ligand_struc.step(
+                    output["ligand_structure_logits"],
+                    t_lig_struc,  # Use independent ligand structure schedule
+                    xt_lig_struc,
+                    dt_lig_struc,  # Use independent ligand structure schedule
+                    stochasticity=stochasticity_ligand,
+                    temperature=temperature_ligand,
+                )
+
+                if use_continuous_gen:
+                    # Continuous mode: derive committed mask from discrete masking schedule
+                    ligand_hidden = output.get("ligand_hidden_states")
+                    if ligand_hidden is not None:
+                        # Identify positions newly unmasked this step
+                        was_masked = prev_xt_lig_struc == self.mask_index_struc_tokens
+                        is_unmasked = xt_lig_struc != self.mask_index_struc_tokens
+                        newly_committed = was_masked & is_unmasked  # [B, N_atoms]
+
+                        if newly_committed.any():
+                            # Sample continuous embeddings for newly committed positions
+                            with torch.no_grad():
+                                sampled_lig_embeddings = self.diffusion_loss_ligand_struc.sample(
+                                    z=ligand_hidden,
+                                    temperature=diffusion_temperature,
+                                    num_steps=diffusion_sampling_steps,
+                                )
+
+                            # Update embeddings and mask for newly committed positions
+                            ligand_structure_embeddings = torch.where(
+                                newly_committed.unsqueeze(-1),
+                                sampled_lig_embeddings,
+                                ligand_structure_embeddings,
+                            )
+                            ligand_committed_mask = torch.where(
+                                newly_committed,
+                                torch.ones_like(ligand_committed_mask),
+                                ligand_committed_mask,
+                            )
+
         # Final output
         result = output
         result["generated_seq_tokens"] = xt_seq
-        result["generated_struc_tokens"] = xt_struc
+
+        if use_continuous_gen:
+            # For continuous mode: return embeddings (decoding done by decode_structure())
+            result["generated_structure_embeddings"] = protein_structure_embeddings
+            result["generated_struc_tokens"] = None  # No discrete tokens
+            # Also add as "structure_embeddings" for decode_structure() compatibility
+            result["structure_embeddings"] = protein_structure_embeddings
+
+            if generate_ligand:
+                result["generated_ligand_structure_embeddings"] = ligand_structure_embeddings
+                result["generated_ligand_struc_tokens"] = None
+                # Also add as "ligand_structure_embeddings" for decode_structure() compatibility
+                result["ligand_structure_embeddings"] = ligand_structure_embeddings
+        else:
+            result["generated_struc_tokens"] = xt_struc
+
         if generate_ligand:
             result["generated_ligand_atom_tokens"] = xt_lig_atom
-            result["generated_ligand_struc_tokens"] = xt_lig_struc
+            if not use_continuous_gen:
+                result["generated_ligand_struc_tokens"] = xt_lig_struc
             result["predicted_bond_matrix"] = output["bond_logits"].argmax(dim=-1)
 
         return result

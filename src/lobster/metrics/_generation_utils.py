@@ -633,21 +633,25 @@ def predict_structure_with_esmfold(
     # 3. Add linkers between chains for ESMFold
     sequence_str, position_ids, linker_mask = add_linker_to_sequence(sequence_str)
 
-    # 4. Tokenize the sequence
+    # 4. Check if sequence exceeds max length (ESMFold limit)
+    max_length = cfg.generation.get("max_length", 512)
+    if len(sequence_str) > max_length:
+        return None  # Skip ESMFold for sequences that are too long
+
+    # 5. Tokenize the sequence
     tokenized_input = plm_fold.tokenizer.encode_plus(
         sequence_str,
         padding=True,
-        truncation=True,
-        max_length=cfg.generation.get("max_length", 512),
+        truncation=False,
         add_special_tokens=False,
         return_tensors="pt",
     )["input_ids"].to(device)
 
-    # 5. Fold with ESMFold
+    # 6. Fold with ESMFold
     with torch.no_grad():
         outputs = plm_fold.model(tokenized_input, position_ids=position_ids.unsqueeze(0).to(device))
 
-    # 6. Remove linkers from outputs
+    # 7. Remove linkers from outputs
     outputs["positions"] = outputs["positions"][:, :, linker_mask == 1, :, :]
     outputs["plddt"] = outputs["plddt"][:, linker_mask == 1]
     outputs["predicted_aligned_error"] = outputs["predicted_aligned_error"][:, linker_mask == 1]
@@ -656,12 +660,12 @@ def predict_structure_with_esmfold(
     sequence_list = list(sequence_str)
     sequence_str = "".join([seq_char for seq_char, mask_val in zip(sequence_list, linker_mask) if mask_val == 1])
 
-    # 7. Get folded structure metrics (TM-score, etc.)
+    # 8. Get folded structure metrics (TM-score, etc.)
     folded_structure_metrics, pred_coords = get_folded_structure_metrics(
         outputs, orig_coords[None], [sequence_str], mask=mask_i[None], device=device
     )
 
-    # 8. Prepare return dictionary with common results
+    # 9. Prepare return dictionary with common results
     result = {
         "folded_structure_metrics": folded_structure_metrics,
         "pred_coords": pred_coords,
@@ -672,7 +676,7 @@ def predict_structure_with_esmfold(
         "num_chains": len(chains_i.unique()),
     }
 
-    # 9. OPTIONAL: Align generated coords to prediction (inpainting mode only)
+    # 10. OPTIONAL: Align generated coords to prediction (inpainting mode only)
     if gen_coords is not None:
         gen_coords_aligned, rmsd_inpainted = align_and_compute_rmsd_inpainted(
             gen_coords=gen_coords,
@@ -1154,26 +1158,41 @@ class MetricsPlotter:
 class MetricsCSVWriter:
     """Helper class to write metrics to CSV files."""
 
-    def __init__(self, output_dir: Path, mode: str):
+    def __init__(self, output_dir: Path, mode: str, resume: bool = False):
         """Initialize CSV writer for a specific generation mode.
 
         Args:
             output_dir: Directory to save CSV files
             mode: Generation mode (unconditional, inverse_folding, forward_folding, inpainting)
+            resume: If True, append to existing CSV files instead of creating new ones
         """
         self.output_dir = output_dir
         self.mode = mode
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Create CSV file path for metrics
-        self.csv_path = output_dir / f"{mode}_metrics_{self.timestamp}.csv"
+        if resume:
+            existing_metrics = sorted(Path(output_dir).glob(f"{mode}_metrics_*.csv"), key=lambda x: x.stat().st_mtime)
+            existing_sequences = sorted(
+                Path(output_dir).glob(f"sequences_{mode}_*.csv"), key=lambda x: x.stat().st_mtime
+            )
+            if existing_metrics:
+                self.csv_path = existing_metrics[-1]
+                logger.info(f"Resume mode: appending to existing metrics CSV: {self.csv_path}")
+            else:
+                self.csv_path = output_dir / f"{mode}_metrics_{self.timestamp}.csv"
+                self._initialize_csv()
 
-        # Create CSV file path for sequences
-        self.sequences_csv_path = output_dir / f"sequences_{mode}_{self.timestamp}.csv"
-
-        # Initialize CSV files with headers
-        self._initialize_csv()
-        self._initialize_sequences_csv()
+            if existing_sequences:
+                self.sequences_csv_path = existing_sequences[-1]
+                logger.info(f"Resume mode: appending to existing sequences CSV: {self.sequences_csv_path}")
+            else:
+                self.sequences_csv_path = output_dir / f"sequences_{mode}_{self.timestamp}.csv"
+                self._initialize_sequences_csv()
+        else:
+            self.csv_path = output_dir / f"{mode}_metrics_{self.timestamp}.csv"
+            self.sequences_csv_path = output_dir / f"sequences_{mode}_{self.timestamp}.csv"
+            self._initialize_csv()
+            self._initialize_sequences_csv()
 
     def _initialize_csv(self):
         """Initialize CSV file with appropriate headers based on mode."""

@@ -49,6 +49,8 @@ class ViTEncoder(BaseEncoder):
         use_sequence_embedding: bool = False,
         mask_structure: float = 0.0,
         ligand_atom_embedding: bool = False,
+        use_ligand_bond_embedding: bool = False,
+        use_extended_element_vocab: bool = False,
         *args,
         **kwargs,
     ):
@@ -86,8 +88,13 @@ class ViTEncoder(BaseEncoder):
         logger.info(f"use sequence embedding: {self.use_sequence_embedding}")
         self.ligand_atom_embedding = ligand_atom_embedding
         logger.info(f"ligand atom embedding: {self.ligand_atom_embedding}")
+        self.use_ligand_bond_embedding = use_ligand_bond_embedding
+        logger.info(f"use ligand bond embedding: {self.use_ligand_bond_embedding}")
+        self.use_extended_element_vocab = use_extended_element_vocab
+        logger.info(f"use extended element vocab: {self.use_extended_element_vocab}")
 
         self.n_atoms = n_atoms
+        self.embed_dim = embed_dim
         n_xyz = 3
 
         # Neural networks
@@ -115,6 +122,8 @@ class ViTEncoder(BaseEncoder):
             add_cls_token=add_cls_token,
             sequence_embedding=use_sequence_embedding,
             ligand_atom_embedding=ligand_atom_embedding,
+            use_ligand_bond_embedding=use_ligand_bond_embedding,
+            use_extended_element_vocab=use_extended_element_vocab,
         )
 
     def featurize(
@@ -298,6 +307,7 @@ class ViTEncoder(BaseEncoder):
         ligand_mask: Tensor | None = None,
         ligand_residue_index: Tensor | None = None,
         ligand_atom_types: Tensor | None = None,
+        ligand_bond_matrix: Tensor | None = None,
         return_embeddings: bool = False,
         **kwargs,
     ):
@@ -308,6 +318,12 @@ class ViTEncoder(BaseEncoder):
         else:
             B, _, _ = ligand_coords.shape
 
+        # Extract bond_matrix from batch if not passed explicitly
+        if ligand_bond_matrix is None and "batch" in kwargs:
+            batch = kwargs["batch"]
+            if batch is not None and "bond_matrix" in batch:
+                ligand_bond_matrix = batch["bond_matrix"]
+
         emb = self.net(
             coords,
             seq_mask=seq_mask,
@@ -316,6 +332,7 @@ class ViTEncoder(BaseEncoder):
             ligand_mask=ligand_mask,
             ligand_residue_index=ligand_residue_index,
             ligand_atom_types=ligand_atom_types,
+            ligand_bond_matrix=ligand_bond_matrix,
             attn_drop_out_rate=self.attn_drop_out_rate,
             return_embeddings=return_embeddings,
             sequence=sequence,

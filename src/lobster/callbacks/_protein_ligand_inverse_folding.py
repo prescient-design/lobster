@@ -39,6 +39,14 @@ class ProteinLigandInverseFoldingCallback(lightning.Callback):
         Number of diffusion steps for generation
     metric_prefix : str
         Prefix for logged metrics
+    minimize_ligand : bool
+        Whether to apply geometry correction to decoded ligand structures
+    minimize_mode : str
+        Minimization mode: "bonds_only", "bonds_and_angles", "local", or "full"
+    force_field : str
+        Force field for minimization: "MMFF94", "MMFF94s", "UFF", etc.
+    minimize_steps : int
+        Maximum number of minimization steps
 
     Example
     -------
@@ -64,6 +72,10 @@ class ProteinLigandInverseFoldingCallback(lightning.Callback):
         pocket_distance_threshold: float = 5.0,
         nsteps: int = 100,
         metric_prefix: str = "protein_ligand_inverse_folding",
+        minimize_ligand: bool = False,
+        minimize_mode: str = "bonds_and_angles",
+        force_field: str = "MMFF94",
+        minimize_steps: int = 500,
     ):
         self.data_dir = data_dir
         self.structure_path = structure_path
@@ -72,6 +84,10 @@ class ProteinLigandInverseFoldingCallback(lightning.Callback):
         self.pocket_distance_threshold = pocket_distance_threshold
         self.nsteps = nsteps
         self.metric_prefix = metric_prefix
+        self.minimize_ligand = minimize_ligand
+        self.minimize_mode = minimize_mode
+        self.force_field = force_field
+        self.minimize_steps = minimize_steps
 
         self._evaluator = None
         self._samples = None
@@ -110,6 +126,10 @@ class ProteinLigandInverseFoldingCallback(lightning.Callback):
             nsteps=self.nsteps,
             device=device,
             max_length=max_length,
+            minimize_ligand=self.minimize_ligand,
+            minimize_mode=self.minimize_mode,
+            force_field=self.force_field,
+            minimize_steps=self.minimize_steps,
         )
 
         # Load samples

@@ -17,6 +17,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from lobster.model.latent_generator.io import load_ligand, load_pdb, writepdb, writepdb_ligand_complex
 from lobster.model.latent_generator.tokenizer import TokenizerMulti
+from lobster.model.latent_generator.utils import get_ligand_energy, minimize_ligand_structure
 
 py_logger = logging.getLogger(__name__)
 
@@ -289,6 +290,98 @@ methods = {
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
                 "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4375",
                 "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=15360",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 240 4375": ModelInfo(
+        description="Protein-ligand model with FSQ quantization (240 protein tokens, 4375 ligand tokens)",
+        features=[
+            "5-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "4375 ligand tokens",
+            "240 protein tokens",
+        ],
+        model_config=ModelConfig(
+            # Trained with different FSQ levels for smaller protein codebook (240 vs 4375)
+            checkpoint="/cv/scratch/u/lisanzas/latent_generator_fsq_sair_240_4375/runs//2026-02-02T21-26-19/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=5",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[5,4,3,2,2]",
+                "tokenizer.quantizer.ligand_levels=[7,5,5,5,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "tokenizer/loss_factory=structure_losses_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=240",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=4375",
+            ],
+        ),
+    ),
+    "LG Protein Ligand fsq 4375 15360 bond": ModelInfo(
+        description="Protein-ligand model with FSQ quantization, bond matrix embedding, and extended element vocabulary",
+        features=[
+            "5-dim embeddings",
+            "FSQ quantization",
+            "Ligand encoding support",
+            "Bond matrix embedding",
+            "Extended element vocabulary (25 tokens)",
+            "15360 ligand tokens",
+            "4375 protein tokens",
+        ],
+        model_config=ModelConfig(
+            # Trained with: slurm/scripts/train_latent_generator_protein_ligand_fsq_bond_element.sh
+            checkpoint="/cv/scratch/u/lisanzas/latent_generator_bond_element/runs/2026-01-24T20-54-23/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=5",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer.structure_encoder.ligand_atom_embedding=true",
+                "tokenizer.structure_encoder.use_ligand_bond_embedding=true",
+                "tokenizer.structure_encoder.use_extended_element_vocab=true",
+                "tokenizer/quantizer=fsq_quantizer_ligand",
+                "tokenizer.quantizer.protein_levels=[7,5,5,5,5]",
+                "tokenizer.quantizer.ligand_levels=[8,8,8,6,5]",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "tokenizer/loss_factory=structure_losses_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=4375",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=15360",
+            ],
+        ),
+    ),
+    "LG Protein Ligand cont": ModelInfo(
+        description="Protein-ligand model with CONTINUOUS embeddings (no quantization)",
+        features=[
+            "256-dim continuous embeddings",
+            "No quantization (quantizer=null)",
+            "Ligand encoding support",
+            "Bond matrix embedding",
+            "Extended element vocabulary (25 tokens)",
+            "For use with DiffusionLoss in Gen-UME",
+        ],
+        model_config=ModelConfig(
+            # Trained with: slurm/scripts/train_latent_generator_protein_ligand_continuous_bond_element.sh
+            checkpoint="/cv/scratch/u/lisanzas/latent_generator_continuous_bond_element/runs/2026-01-24T21-03-23/last.ckpt",
+            config_path="../../latent_generator/hydra_config/",
+            config_name="train_multi",
+            overrides=[
+                "tokenizer.structure_encoder.embed_dim=256",
+                "tokenizer.structure_encoder.embed_dim_hidden=512",
+                "tokenizer.structure_encoder.encode_ligand=true",
+                "tokenizer.structure_encoder.ligand_atom_embedding=true",
+                "tokenizer.structure_encoder.use_ligand_bond_embedding=true",
+                "tokenizer.structure_encoder.use_extended_element_vocab=true",
+                "tokenizer.quantizer=null",
+                "tokenizer/decoder_factory=struc_decoder_ligand",
+                "tokenizer/loss_factory=structure_losses_ligand",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.encode_ligand=true",
+                "tokenizer.decoder_factory.decoder_mapping.vit_decoder.struc_token_codebook_size=256",
+                "+tokenizer.decoder_factory.decoder_mapping.vit_decoder.ligand_struc_token_codebook_size=256",
             ],
         ),
     ),
@@ -808,6 +901,10 @@ load_model = encoder_decoder.load_model
 encode = encoder_decoder.encode
 decode = encoder_decoder.decode
 
+# Minimization functions are imported from utils and can be accessed via:
+# from lobster.model.latent_generator.cmdline import minimize_ligand_structure, get_ligand_energy
+# or directly from: from lobster.model.latent_generator.utils import minimize_ligand_structure, get_ligand_energy
+
 
 def main():
     """
@@ -984,7 +1081,47 @@ LG full attention
     parser.add_argument(
         "--output_file_decode", type=str, default="decoded_outputs.pt", help="Path to save decoded outputs"
     )
+    parser.add_argument(
+        "--output_pdb",
+        type=str,
+        default=None,
+        help="Path to save decoded structure as PDB (optional, auto-generated if not provided)",
+    )
     parser.add_argument("--overrides", type=str, nargs="+", help="Configuration overrides in the format key=value")
+
+    # Minimization options
+    parser.add_argument(
+        "--minimize",
+        action="store_true",
+        help="Minimize ligand structure after decoding using Open Babel force field",
+    )
+    parser.add_argument(
+        "--minimize_steps",
+        type=int,
+        default=500,
+        help="Maximum number of minimization steps (default: 500)",
+    )
+    parser.add_argument(
+        "--force_field",
+        type=str,
+        default="MMFF94",
+        choices=["MMFF94", "MMFF94s", "UFF", "GAFF", "Ghemical"],
+        help="Force field for minimization (default: MMFF94)",
+    )
+    parser.add_argument(
+        "--minimize_method",
+        type=str,
+        default="cg",
+        choices=["cg", "sd"],
+        help="Optimization method: cg (conjugate gradients) or sd (steepest descent)",
+    )
+    parser.add_argument(
+        "--minimize_mode",
+        type=str,
+        default="bonds_and_angles",
+        choices=["bonds_only", "bonds_and_angles"],
+        help="Minimization mode: 'bonds_only' (ideal bond lengths), 'bonds_and_angles' (ideal bonds + angles, recommended)",
+    )
 
     args = parser.parse_args()
 
@@ -1000,7 +1137,10 @@ LG full attention
         "LG Protein Ligand 4096",
         "LG Protein Ligand fsq 4375",
         "LG Protein Ligand fsq 4375 15360",
+        "LG Protein Ligand fsq 240 4375",
+        "LG Protein Ligand fsq 4375 15360 bond",
         "LG Protein Ligand fsq 1000",
+        "LG Protein Ligand cont",
         "LG Ligand 20A seq 3di Aux",
         "LG Ligand 20A",
         "LG Ligand 20A continuous",
@@ -1041,6 +1181,9 @@ LG full attention
             pdb_data["ligand_residue_index"] = ligand_data["atom_indices"]
             pdb_data["ligand_atom_names"] = ligand_data["atom_names"]
             pdb_data["ligand_indices"] = ligand_data["atom_indices"]
+            # Include bond matrix for CONECT records and minimization
+            if "bond_matrix" in ligand_data:
+                pdb_data["ligand_bond_matrix"] = ligand_data["bond_matrix"]
 
         if args.model_name in [
             "LG ESMC 300M 256 cont",
@@ -1066,7 +1209,70 @@ LG full attention
             if isinstance(decoded_outputs, dict):
                 x_recon_ligand = decoded_outputs["ligand_coords"]
                 x_recon_xyz = decoded_outputs["protein_coords"]
-                filename = f"{args.output_file_decode.split('.')[0]}_ligand_decoded.pdb"
+
+                # Get bond matrix and atom names for CONECT records (always retrieve these)
+                bond_matrix = decoded_outputs.get("ligand_bond_matrix", None)
+                if bond_matrix is None:
+                    bond_matrix = pdb_data.get("ligand_bond_matrix", None)
+                if bond_matrix is None:
+                    bond_matrix = pdb_data.get("bond_matrix", None)
+
+                ligand_atom_names = pdb_data.get("ligand_atom_names", None)
+                if ligand_atom_names is None:
+                    ligand_atom_names = pdb_data.get("atom_names", None)
+
+                # Apply ligand minimization if requested
+                if args.minimize and x_recon_ligand is not None:
+                    py_logger.info(
+                        f"Minimizing ligand structure (mode={args.minimize_mode}, force_field={args.force_field}, "
+                        f"steps={args.minimize_steps}, method={args.minimize_method})"
+                    )
+                    # Get atom types from input data if available
+                    ligand_atom_types = ligand_atom_names
+                    if ligand_atom_types is None:
+                        # Default to carbon for unknown atoms
+                        num_atoms = x_recon_ligand.shape[1]
+                        ligand_atom_types = ["C"] * num_atoms
+                        py_logger.warning(f"No atom types provided, defaulting to Carbon for {num_atoms} atoms")
+
+                    try:
+                        # Calculate energy before minimization
+                        energy_before = get_ligand_energy(
+                            x_recon_ligand[0], ligand_atom_types, bond_matrix, args.force_field
+                        )
+                        py_logger.info(f"Energy before minimization: {energy_before:.2f} kcal/mol")
+
+                        # Minimize
+                        x_recon_ligand_minimized = minimize_ligand_structure(
+                            x_recon_ligand[0],
+                            ligand_atom_types,
+                            bond_matrix=bond_matrix,
+                            steps=args.minimize_steps,
+                            force_field=args.force_field,
+                            method=args.minimize_method,
+                            mode=args.minimize_mode,
+                        )
+
+                        # Calculate energy after minimization
+                        energy_after = get_ligand_energy(
+                            x_recon_ligand_minimized, ligand_atom_types, bond_matrix, args.force_field
+                        )
+                        py_logger.info(f"Energy after minimization: {energy_after:.2f} kcal/mol")
+                        py_logger.info(f"Energy reduction: {energy_before - energy_after:.2f} kcal/mol")
+
+                        # Update ligand coordinates
+                        x_recon_ligand = x_recon_ligand_minimized.unsqueeze(0)
+                        decoded_outputs["ligand_coords"] = x_recon_ligand
+                        py_logger.info("Ligand minimization completed successfully")
+                    except Exception as e:
+                        py_logger.warning(f"Ligand minimization failed: {e}. Using original coordinates.")
+
+                # Determine PDB output filename
+                if args.output_pdb:
+                    filename = args.output_pdb
+                else:
+                    filename = f"{args.output_file_decode.split('.')[0]}_ligand_decoded.pdb"
+
                 if x_recon_xyz is not None:
                     if sequence_outputs is not None:
                         seq = sequence_outputs.argmax(dim=-1)
@@ -1075,10 +1281,10 @@ LG full attention
                         seq = torch.zeros(x_recon_xyz.shape[1], dtype=torch.long)[None]
                 else:
                     seq = None
-                    filename = f"{args.output_file_decode.split('.')[0]}_ligand_only_decoded.pdb"
+                    if not args.output_pdb:
+                        filename = f"{args.output_file_decode.split('.')[0]}_ligand_only_decoded.pdb"
                 if x_recon_ligand is not None:
                     ligand_atoms = x_recon_ligand[0]
-                    ligand_atom_names = None
                     ligand_chain = "L"
                     ligand_resname = "LIG"
                     if x_recon_xyz is not None:
@@ -1090,6 +1296,7 @@ LG full attention
                             ligand_resname=ligand_resname,
                             protein_atoms=x_recon_xyz[0],
                             protein_seq=seq[0],
+                            ligand_bond_matrix=bond_matrix,
                         )
                     else:
                         writepdb_ligand_complex(
@@ -1098,16 +1305,21 @@ LG full attention
                             ligand_atom_names=ligand_atom_names,
                             ligand_chain=ligand_chain,
                             ligand_resname=ligand_resname,
+                            ligand_bond_matrix=bond_matrix,
                         )
+                    py_logger.info(f"PDB structure saved to {filename}")
             else:
                 if sequence_outputs is not None:
                     seq = sequence_outputs.argmax(dim=-1)
                     seq[seq == 22] = 21
                 else:
                     seq = torch.zeros(decoded_outputs.shape[1], dtype=torch.long)[None]
-                filename = f"{args.output_file_decode.split('.')[0]}_decoded.pdb"
+                if args.output_pdb:
+                    filename = args.output_pdb
+                else:
+                    filename = f"{args.output_file_decode.split('.')[0]}_decoded.pdb"
                 writepdb(filename, decoded_outputs[0], seq[0])
-                writepdb(filename, decoded_outputs[0], seq[0])
+                py_logger.info(f"PDB structure saved to {filename}")
 
             # Save decoded outputs
             torch.save(decoded_outputs, args.output_file_decode)

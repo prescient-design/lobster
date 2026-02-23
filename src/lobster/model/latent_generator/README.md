@@ -14,6 +14,7 @@ A powerful protein and protein-ligand structure representation learning model fo
   - [Ligand Example](#ligand-example)
   - [Protein-Ligand Complex Example](#protein-ligand-complex-example)
   - [Command-line Example](#command-line-example)
+  - [Ligand Structure Minimization](#ligand-structure-minimization)
 - [Evaluation](#evaluation)
   - [Evaluating Reconstruction Quality on CASP15](#evaluating-reconstruction-quality-on-casp15)
 - [Model Configurations](#model-configurations)
@@ -249,6 +250,68 @@ uv run python src/lobster/model/latent_generator/cmdline/inference.py \
 
 # Get embeddings (requires Python API)
 ```
+
+### Ligand Structure Minimization
+
+For protein-ligand complexes, you can apply post-decoding geometry correction to improve ligand bond lengths and angles using Open Babel force fields. This is especially useful for improving the quality of decoded ligand structures.
+
+```bash
+# Decode with ligand minimization (bonds and angles correction - recommended)
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
+    --output_pdb decoded_complex.pdb \
+    --decode \
+    --minimize
+
+# Specify output paths explicitly
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
+    --output_file_encode encoded_latents.pt \
+    --output_file_decode decoded_outputs.pt \
+    --output_pdb decoded_complex.pdb \
+    --decode \
+    --minimize
+```
+
+#### Minimization Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--minimize` | False | Enable ligand structure minimization after decoding |
+| `--minimize_mode` | `bonds_and_angles` | Minimization strategy (see below) |
+| `--force_field` | `MMFF94` | Force field: `MMFF94`, `MMFF94s`, `UFF`, `GAFF`, `Ghemical` |
+| `--minimize_steps` | `500` | Maximum optimization steps |
+| `--minimize_method` | `cg` | Optimization method: `cg` (conjugate gradients) or `sd` (steepest descent) |
+
+#### Minimization Modes
+
+| Mode | Description |
+|------|-------------|
+| `bonds_and_angles` | **Recommended.** Constrained force field minimization that idealizes both bond lengths and angles while preserving overall structure. |
+| `bonds_only` | Only corrects bond lengths to ideal values, preserving torsion angles. |
+
+#### Example with Custom Minimization Settings
+
+```bash
+# Use UFF force field with bonds_only mode
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --pdb_path protein.pdb \
+    --ligand_path ligand.sdf \
+    --output_pdb output.pdb \
+    --decode \
+    --minimize \
+    --minimize_mode bonds_only \
+    --force_field UFF
+```
+
+#### CONECT Records
+
+When the ligand SDF file contains bond information, the output PDB will include CONECT records for proper bond visualization in molecular viewers like PyMOL, Chimera, or VMD.
 
 The tokens are discrete representations that can be used for tasks like discrete generation (with LLMs or PLMs) and compact storage of structure information, while embeddings are continuous representations useful for tasks like similarity search, feature extraction, and representation centric tasks.
 

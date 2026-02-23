@@ -16,6 +16,7 @@ import json
 
 # Import from latent_generator
 from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
+from lobster.model.latent_generator.cmdline import minimize_ligand_structure, get_ligand_energy
 from lobster.model.latent_generator.io import load_pdb, load_ligand, writepdb_ligand_complex, writepdb
 from lobster.model.latent_generator.utils._utils import kabsch_torch_batched
 from lobster.transforms._structure_transforms import StructureLigandTransform
@@ -251,6 +252,12 @@ def load_paired_protein_ligand_data(protein_path: str, ligand_path: str) -> dict
     elif "atom_names" in ligand_data:
         combined["ligand_atom_names"] = ligand_data["atom_names"]
 
+    # Bond matrix for connectivity (important for geometry idealization)
+    if "bond_matrix" in ligand_data:
+        combined["bond_matrix"] = ligand_data["bond_matrix"]
+    elif "ligand_bond_matrix" in ligand_data:
+        combined["bond_matrix"] = ligand_data["ligand_bond_matrix"]
+
     return combined
 
 
@@ -413,8 +420,25 @@ def evaluate_model_on_structure(
     output_dir: str = None,
     use_canonical_pose: bool = False,
     num_steps: int = None,
+    minimize_ligand: bool = False,
+    minimize_steps: int = 500,
+    force_field: str = "MMFF94",
+    minimize_mode: str = "bonds_and_angles",
 ) -> dict:
-    """Evaluate a single model on a single structure."""
+    """Evaluate a single model on a single structure.
+
+    Parameters
+    ----------
+    minimize_ligand : bool, default=False
+        If True, minimize ligand structure after decoding using Open Babel.
+    minimize_steps : int, default=500
+        Maximum number of minimization steps.
+    force_field : str, default="MMFF94"
+        Force field for minimization.
+    minimize_mode : str, default="bonds_and_angles"
+        Minimization mode: "bonds_only" (ideal bond lengths) or "bonds_and_angles" (recommended).
+        Force field for minimization: "MMFF94", "MMFF94s", "UFF", "GAFF", "Ghemical".
+    """
     results = {
         "model_name": model_name,
         "structure_path": structure_path,
@@ -422,6 +446,7 @@ def evaluate_model_on_structure(
         "rmsd": float("inf"),
         "success": False,
         "error": None,
+        "minimize_ligand": minimize_ligand,
     }
 
     # Check protein length and skip if > 512
@@ -477,6 +502,55 @@ def evaluate_model_on_structure(
     else:
         reconstructed_protein_coords = decoded_outputs
 
+    # Apply ligand minimization if requested
+    reconstructed_ligand_coords_minimized = None
+    if minimize_ligand and reconstructed_ligand_coords is not None:
+        try:
+            # Get atom types from structure data
+            ligand_atom_types = structure_data.get("ligand_atom_names", None)
+            if ligand_atom_types is None:
+                ligand_atom_types = structure_data.get("atom_names", None)
+            if ligand_atom_types is None:
+                # Default to carbon for unknown atoms
+                num_atoms = reconstructed_ligand_coords.shape[1]
+                ligand_atom_types = ["C"] * num_atoms
+
+            # Get bond matrix if available
+            bond_matrix = None
+            if isinstance(decoded_outputs, dict):
+                bond_matrix = decoded_outputs.get("ligand_bond_matrix", None)
+            if bond_matrix is None:
+                bond_matrix = structure_data.get("ligand_bond_matrix", None)
+            if bond_matrix is None:
+                bond_matrix = structure_data.get("bond_matrix", None)
+
+            # Calculate energy before minimization
+            energy_before = get_ligand_energy(
+                reconstructed_ligand_coords[0], ligand_atom_types, bond_matrix, force_field
+            )
+            results["ligand_energy_before"] = energy_before
+
+            # Minimize ligand structure
+            minimized_coords = minimize_ligand_structure(
+                reconstructed_ligand_coords[0],
+                ligand_atom_types,
+                bond_matrix=bond_matrix,
+                steps=minimize_steps,
+                force_field=force_field,
+                method="cg",
+                mode=minimize_mode,
+            )
+            reconstructed_ligand_coords_minimized = minimized_coords.unsqueeze(0)
+
+            # Calculate energy after minimization
+            energy_after = get_ligand_energy(minimized_coords, ligand_atom_types, bond_matrix, force_field)
+            results["ligand_energy_after"] = energy_after
+            results["ligand_energy_reduction"] = energy_before - energy_after
+
+        except Exception as e:
+            logger.warning(f"Ligand minimization failed for {structure_path}: {e}")
+            results["minimize_error"] = str(e)
+
     # Compute RMSD for both protein and ligand when both are reconstructed
     protein_rmsd = None
     ligand_rmsd = None
@@ -507,6 +581,7 @@ def evaluate_model_on_structure(
             )
 
     # Compute ligand RMSD if ligand was reconstructed
+    ligand_rmsd_minimized = None
     if reconstructed_ligand_coords is not None:
         # Get original ligand coordinates
         if "ligand_coords" in structure_data:
@@ -527,10 +602,17 @@ def evaluate_model_on_structure(
                 original_ligand_coords, reconstructed_ligand_coords, ligand_mask, "ligand"
             )
 
+            # Also compute RMSD for minimized ligand if available
+            if reconstructed_ligand_coords_minimized is not None:
+                ligand_rmsd_minimized, _, _ = compute_aligned_rmsd(
+                    original_ligand_coords, reconstructed_ligand_coords_minimized, ligand_mask, "ligand"
+                )
+
     # Compute complex RMSD when both protein and ligand are available
     complex_rmsd = None
     complex_protein_rmsd = None
     complex_ligand_rmsd = None
+    complex_ligand_rmsd_minimized = None
     if (
         reconstructed_protein_coords is not None
         and reconstructed_ligand_coords is not None
@@ -545,6 +627,24 @@ def evaluate_model_on_structure(
             protein_mask,
             ligand_mask,
         )
+
+        # Also compute complex RMSD with minimized ligand if available
+        if reconstructed_ligand_coords_minimized is not None:
+            (
+                complex_rmsd_minimized,
+                complex_protein_rmsd_minimized,
+                complex_ligand_rmsd_minimized,
+            ) = compute_complex_rmsd(
+                original_protein_coords,
+                reconstructed_protein_coords,
+                original_ligand_coords,
+                reconstructed_ligand_coords_minimized,
+                protein_mask,
+                ligand_mask,
+            )
+            results["complex_rmsd_minimized"] = complex_rmsd_minimized
+            results["complex_protein_rmsd_minimized"] = complex_protein_rmsd_minimized
+            results["complex_ligand_rmsd_minimized"] = complex_ligand_rmsd_minimized
 
     # Handle refined reconstruction (protein only for now)
     if refined_reconstructed_coords is not None and original_protein_coords is not None:
@@ -564,6 +664,12 @@ def evaluate_model_on_structure(
         if results["rmsd"] == float("inf"):  # Only set primary if protein wasn't available
             results["rmsd"] = ligand_rmsd
         results["success"] = True
+    # Store minimized ligand RMSD if available
+    if ligand_rmsd_minimized is not None and ligand_rmsd_minimized != float("inf"):
+        results["ligand_rmsd_minimized"] = ligand_rmsd_minimized
+        # Calculate improvement from minimization
+        if ligand_rmsd is not None and ligand_rmsd != float("inf"):
+            results["ligand_rmsd_improvement"] = ligand_rmsd - ligand_rmsd_minimized
     # Store complex RMSD results
     if complex_rmsd is not None and complex_rmsd != float("inf"):
         results["complex_rmsd"] = complex_rmsd
@@ -613,6 +719,7 @@ def evaluate_model_on_structure(
                     ligand_atoms=original_ligand_coords[0],  # Remove batch dim
                     ligand_atom_names=structure_data.get("ligand_atom_names", None),
                     ligand_resname="LIG",
+                    ligand_bond_matrix=structure_data.get("bond_matrix", None),
                 )
             elif has_protein:
                 writepdb(gt_filename, original_protein_coords, seq)
@@ -622,6 +729,7 @@ def evaluate_model_on_structure(
                     ligand_atoms=original_ligand_coords[0],
                     ligand_atom_names=structure_data.get("ligand_atom_names", None),
                     ligand_resname="LIG",
+                    ligand_bond_matrix=structure_data.get("bond_matrix", None),
                 )
 
             # Save aligned prediction structure
@@ -638,6 +746,7 @@ def evaluate_model_on_structure(
                     ligand_atoms=reconstructed_ligand_coords[0],  # Remove batch dim
                     ligand_atom_names=structure_data.get("ligand_atom_names", None),
                     ligand_resname="LIG",
+                    ligand_bond_matrix=structure_data.get("bond_matrix", None),
                 )
             elif has_protein:
                 writepdb(pred_filename, reconstructed_protein_coords, seq)
@@ -647,9 +756,36 @@ def evaluate_model_on_structure(
                     ligand_atoms=reconstructed_ligand_coords[0],
                     ligand_atom_names=structure_data.get("ligand_atom_names", None),
                     ligand_resname="LIG",
+                    ligand_bond_matrix=structure_data.get("bond_matrix", None),
                 )
 
             results["saved_structures"] = {"ground_truth": gt_filename, "prediction": pred_filename}
+
+            # Save minimized structure if available
+            if reconstructed_ligand_coords_minimized is not None:
+                minimized_filename = os.path.join(
+                    output_dir,
+                    f"{structure_name}_{model_safe_name}_{num_steps if num_steps is not None else 'default'}_minimized.pdb",
+                )
+                if has_protein and has_ligand:
+                    writepdb_ligand_complex(
+                        minimized_filename,
+                        protein_atoms=reconstructed_protein_coords[0],
+                        protein_seq=seq[0] if seq.dim() > 1 else seq,
+                        ligand_atoms=reconstructed_ligand_coords_minimized[0],
+                        ligand_atom_names=structure_data.get("ligand_atom_names", None),
+                        ligand_resname="LIG",
+                        ligand_bond_matrix=structure_data.get("bond_matrix", None),
+                    )
+                elif has_ligand:
+                    writepdb_ligand_complex(
+                        minimized_filename,
+                        ligand_atoms=reconstructed_ligand_coords_minimized[0],
+                        ligand_atom_names=structure_data.get("ligand_atom_names", None),
+                        ligand_resname="LIG",
+                        ligand_bond_matrix=structure_data.get("bond_matrix", None),
+                    )
+                results["saved_structures"]["minimized"] = minimized_filename
 
         except Exception as e:
             logger.warning(f"Failed to save structures for {structure_path}: {e}")
@@ -667,11 +803,18 @@ def evaluate_models_on_directory(
     use_canonical_pose: bool = False,
     num_steps_list: list[int] = None,
     max_save_structures: int = None,
+    minimize_ligand: bool = False,
+    minimize_steps: int = 500,
+    force_field: str = "MMFF94",
+    minimize_mode: str = "bonds_and_angles",
 ) -> dict:
     """Evaluate multiple models on all structures in a directory.
 
     Args:
         max_save_structures: Maximum number of structures to save. If None, saves all.
+        minimize_ligand: If True, minimize ligand structure after decoding.
+        minimize_steps: Maximum number of minimization steps.
+        force_field: Force field for minimization.
     """
 
     if num_steps_list is None:
@@ -742,6 +885,10 @@ def evaluate_models_on_directory(
                 "ligand_rmsd_values": [],
                 "average_ligand_rmsd": float("inf"),
                 "std_ligand_rmsd": float("inf"),
+                # Minimized ligand RMSD tracking
+                "ligand_rmsd_minimized_values": [],
+                "average_ligand_rmsd_minimized": float("inf"),
+                "std_ligand_rmsd_minimized": float("inf"),
                 # Complex RMSD tracking (protein+ligand aligned together)
                 "complex_rmsd_values": [],
                 "average_complex_rmsd": float("inf"),
@@ -750,6 +897,14 @@ def evaluate_models_on_directory(
                 "average_complex_protein_rmsd": float("inf"),
                 "complex_ligand_rmsd_values": [],
                 "average_complex_ligand_rmsd": float("inf"),
+                # Minimized complex RMSD tracking
+                "complex_rmsd_minimized_values": [],
+                "average_complex_rmsd_minimized": float("inf"),
+                "std_complex_rmsd_minimized": float("inf"),
+                "complex_protein_rmsd_minimized_values": [],
+                "average_complex_protein_rmsd_minimized": float("inf"),
+                "complex_ligand_rmsd_minimized_values": [],
+                "average_complex_ligand_rmsd_minimized": float("inf"),
                 # Refined reconstruction tracking
                 "rmsd_values_refined": [],
                 "successful_reconstructions_refined": 0,
@@ -816,6 +971,10 @@ def evaluate_models_on_directory(
                         structures_output_dir,
                         use_canonical_pose,
                         num_steps,
+                        minimize_ligand=minimize_ligand,
+                        minimize_steps=minimize_steps,
+                        force_field=force_field,
+                        minimize_mode=minimize_mode,
                     )
 
                     # Increment saved counter if structure was saved
@@ -838,6 +997,11 @@ def evaluate_models_on_directory(
                             all_results["models"][model_name][step_key]["ligand_rmsd_values"].append(
                                 result["ligand_rmsd"]
                             )
+                        # Track minimized ligand RMSD if available
+                        if "ligand_rmsd_minimized" in result:
+                            all_results["models"][model_name][step_key]["ligand_rmsd_minimized_values"].append(
+                                result["ligand_rmsd_minimized"]
+                            )
                         # Track complex RMSD if available
                         if "complex_rmsd" in result:
                             all_results["models"][model_name][step_key]["complex_rmsd_values"].append(
@@ -848,6 +1012,17 @@ def evaluate_models_on_directory(
                             )
                             all_results["models"][model_name][step_key]["complex_ligand_rmsd_values"].append(
                                 result["complex_ligand_rmsd"]
+                            )
+                        # Track minimized complex RMSD if available
+                        if "complex_rmsd_minimized" in result:
+                            all_results["models"][model_name][step_key]["complex_rmsd_minimized_values"].append(
+                                result["complex_rmsd_minimized"]
+                            )
+                            all_results["models"][model_name][step_key]["complex_protein_rmsd_minimized_values"].append(
+                                result["complex_protein_rmsd_minimized"]
+                            )
+                            all_results["models"][model_name][step_key]["complex_ligand_rmsd_minimized_values"].append(
+                                result["complex_ligand_rmsd_minimized"]
                             )
                         if "success_refined" in result and result["success_refined"]:
                             all_results["models"][model_name][step_key]["rmsd_values_refined"].append(
@@ -888,6 +1063,10 @@ def evaluate_models_on_directory(
                         structures_output_dir,
                         use_canonical_pose,
                         num_steps,
+                        minimize_ligand=minimize_ligand,
+                        minimize_steps=minimize_steps,
+                        force_field=force_field,
+                        minimize_mode=minimize_mode,
                     )
 
                     # Increment saved counter if structure was saved
@@ -910,6 +1089,11 @@ def evaluate_models_on_directory(
                             all_results["models"][model_name][step_key]["ligand_rmsd_values"].append(
                                 result["ligand_rmsd"]
                             )
+                        # Track minimized ligand RMSD if available
+                        if "ligand_rmsd_minimized" in result:
+                            all_results["models"][model_name][step_key]["ligand_rmsd_minimized_values"].append(
+                                result["ligand_rmsd_minimized"]
+                            )
                         # Track complex RMSD if available
                         if "complex_rmsd" in result:
                             all_results["models"][model_name][step_key]["complex_rmsd_values"].append(
@@ -920,6 +1104,17 @@ def evaluate_models_on_directory(
                             )
                             all_results["models"][model_name][step_key]["complex_ligand_rmsd_values"].append(
                                 result["complex_ligand_rmsd"]
+                            )
+                        # Track minimized complex RMSD if available
+                        if "complex_rmsd_minimized" in result:
+                            all_results["models"][model_name][step_key]["complex_rmsd_minimized_values"].append(
+                                result["complex_rmsd_minimized"]
+                            )
+                            all_results["models"][model_name][step_key]["complex_protein_rmsd_minimized_values"].append(
+                                result["complex_protein_rmsd_minimized"]
+                            )
+                            all_results["models"][model_name][step_key]["complex_ligand_rmsd_minimized_values"].append(
+                                result["complex_ligand_rmsd_minimized"]
                             )
                         if "success_refined" in result and result["success_refined"]:
                             all_results["models"][model_name][step_key]["rmsd_values_refined"].append(
@@ -957,6 +1152,19 @@ def evaluate_models_on_directory(
                     model_results["std_ligand_rmsd"] = np.std(model_results["ligand_rmsd_values"])
                     model_results["min_ligand_rmsd"] = np.min(model_results["ligand_rmsd_values"])
                     model_results["max_ligand_rmsd"] = np.max(model_results["ligand_rmsd_values"])
+                # Compute minimized ligand RMSD statistics
+                if model_results["ligand_rmsd_minimized_values"]:
+                    model_results["average_ligand_rmsd_minimized"] = np.mean(
+                        model_results["ligand_rmsd_minimized_values"]
+                    )
+                    model_results["std_ligand_rmsd_minimized"] = np.std(model_results["ligand_rmsd_minimized_values"])
+                    model_results["min_ligand_rmsd_minimized"] = np.min(model_results["ligand_rmsd_minimized_values"])
+                    model_results["max_ligand_rmsd_minimized"] = np.max(model_results["ligand_rmsd_minimized_values"])
+                    # Compute improvement from minimization
+                    if model_results["ligand_rmsd_values"]:
+                        model_results["average_ligand_rmsd_improvement"] = (
+                            model_results["average_ligand_rmsd"] - model_results["average_ligand_rmsd_minimized"]
+                        )
                 # Compute complex RMSD statistics
                 if model_results["complex_rmsd_values"]:
                     model_results["average_complex_rmsd"] = np.mean(model_results["complex_rmsd_values"])
@@ -967,6 +1175,20 @@ def evaluate_models_on_directory(
                         model_results["complex_protein_rmsd_values"]
                     )
                     model_results["average_complex_ligand_rmsd"] = np.mean(model_results["complex_ligand_rmsd_values"])
+                # Compute minimized complex RMSD statistics
+                if model_results.get("complex_rmsd_minimized_values"):
+                    model_results["average_complex_rmsd_minimized"] = np.mean(
+                        model_results["complex_rmsd_minimized_values"]
+                    )
+                    model_results["std_complex_rmsd_minimized"] = np.std(model_results["complex_rmsd_minimized_values"])
+                    model_results["min_complex_rmsd_minimized"] = np.min(model_results["complex_rmsd_minimized_values"])
+                    model_results["max_complex_rmsd_minimized"] = np.max(model_results["complex_rmsd_minimized_values"])
+                    model_results["average_complex_protein_rmsd_minimized"] = np.mean(
+                        model_results["complex_protein_rmsd_minimized_values"]
+                    )
+                    model_results["average_complex_ligand_rmsd_minimized"] = np.mean(
+                        model_results["complex_ligand_rmsd_minimized_values"]
+                    )
                 if model_results["rmsd_values_refined"]:
                     model_results["average_rmsd_refined"] = np.mean(model_results["rmsd_values_refined"])
                     model_results["std_rmsd_refined"] = np.std(model_results["rmsd_values_refined"])
@@ -1015,6 +1237,16 @@ def evaluate_models_on_directory(
                 )
                 logger.info(f"  Min Ligand RMSD: {model_results['min_ligand_rmsd']:.3f} Å")
                 logger.info(f"  Max Ligand RMSD: {model_results['max_ligand_rmsd']:.3f} Å")
+            # Print minimized ligand RMSD if available
+            if model_results.get("ligand_rmsd_minimized_values"):
+                logger.info(
+                    f"  Average Ligand RMSD (minimized): {model_results['average_ligand_rmsd_minimized']:.3f} ± {model_results['std_ligand_rmsd_minimized']:.3f} Å"
+                )
+                logger.info(f"  Min Ligand RMSD (minimized): {model_results['min_ligand_rmsd_minimized']:.3f} Å")
+                logger.info(f"  Max Ligand RMSD (minimized): {model_results['max_ligand_rmsd_minimized']:.3f} Å")
+                if "average_ligand_rmsd_improvement" in model_results:
+                    improvement = model_results["average_ligand_rmsd_improvement"]
+                    logger.info(f"  Ligand RMSD improvement from minimization: {improvement:+.3f} Å")
             # Print complex RMSD if available (protein+ligand aligned together)
             if model_results.get("complex_rmsd_values"):
                 logger.info(
@@ -1027,6 +1259,19 @@ def evaluate_models_on_directory(
                 )
                 logger.info(
                     f"    (Complex alignment) Ligand RMSD: {model_results['average_complex_ligand_rmsd']:.3f} Å"
+                )
+            # Print minimized complex RMSD if available
+            if model_results.get("complex_rmsd_minimized_values"):
+                logger.info(
+                    f"  Average Complex RMSD (minimized): {model_results['average_complex_rmsd_minimized']:.3f} ± {model_results['std_complex_rmsd_minimized']:.3f} Å"
+                )
+                logger.info(f"  Min Complex RMSD (minimized): {model_results['min_complex_rmsd_minimized']:.3f} Å")
+                logger.info(f"  Max Complex RMSD (minimized): {model_results['max_complex_rmsd_minimized']:.3f} Å")
+                logger.info(
+                    f"    (Complex alignment minimized) Protein RMSD: {model_results['average_complex_protein_rmsd_minimized']:.3f} Å"
+                )
+                logger.info(
+                    f"    (Complex alignment minimized) Ligand RMSD: {model_results['average_complex_ligand_rmsd_minimized']:.3f} Å"
                 )
             if model_results["rmsd_values_refined"]:
                 logger.info(
@@ -1061,7 +1306,7 @@ Available Models:
 Example usage Protein-only model:
   python src/lobster/metrics/evaluate_reconstruction.py \
     --models "LG full attention 2" \
-    --data_dir /data2/lisanzas/latent_generator_files/casp_recon/CASP15_merged/ \
+    --data_dir /cv/data/ai4dd/data2/lisanzas/latent_generator_files/casp_recon/CASP15_merged/ \
     --output_file reconstruction_results_protein_only.json \
     --save_structures \
     --structures_output_dir aligned_structures_protein_only
@@ -1069,13 +1314,13 @@ Example usage Protein-only model:
 Example usage Ligand-only model:
   python src/lobster/metrics/evaluate_reconstruction.py \
     --models "LG Ligand 20A" \
-    --data_dir /data/bucket/lisanza/structures/GEOM/processed/test/ \
+    --data_dir /cv/data/ai4dd/data2/lisanzas/geom_12_15_25/test/ \
     --output_file reconstruction_results_ligand_only.json
 
 Example usage Protein-Ligand model (with paired *_protein.pt and *_ligand.pt files):
   python src/lobster/metrics/evaluate_reconstruction.py \
     --models "LG Protein Ligand" \
-    --data_dir /data2/lisanzas/pdb_bind/test/ \
+    --data_dir /cv/data/ai4dd/data2/lisanzas/pdb_bind_12_15_25/test/ \
     --output_file reconstruction_results_protein_ligand.json \
     --save_structures \
     --structures_output_dir aligned_structures_protein_ligand
@@ -1087,7 +1332,7 @@ Example usage Protein-Ligand model (with paired *_protein.pt and *_ligand.pt fil
     parser.add_argument(
         "--data_dir",
         type=str,
-        default="/data2/lisanzas/latent_generator_files/casp_recon/CASP15_merged/",
+        default="/cv/data/ai4dd/data2/lisanzas/latent_generator_files/casp_recon/CASP15_merged/",
         help="Directory containing structure files to evaluate",
     )
 
@@ -1123,6 +1368,33 @@ Example usage Protein-Ligand model (with paired *_protein.pt and *_ligand.pt fil
         "--num_steps", nargs="+", type=int, help="List of num_steps values to test for each model (e.g., 1 5 10 20)"
     )
 
+    # Minimization options
+    parser.add_argument(
+        "--minimize_ligand",
+        action="store_true",
+        help="Minimize ligand structure after decoding using Open Babel force field",
+    )
+    parser.add_argument(
+        "--minimize_steps",
+        type=int,
+        default=500,
+        help="Maximum number of minimization steps (default: 500)",
+    )
+    parser.add_argument(
+        "--force_field",
+        type=str,
+        default="MMFF94",
+        choices=["MMFF94", "MMFF94s", "UFF", "GAFF", "Ghemical"],
+        help="Force field for minimization (default: MMFF94)",
+    )
+    parser.add_argument(
+        "--minimize_mode",
+        type=str,
+        default="bonds_and_angles",
+        choices=["bonds_only", "bonds_and_angles"],
+        help="Minimization mode: 'bonds_only' (ideal bond lengths), 'bonds_and_angles' (ideal bonds + angles via constrained minimization, recommended)",
+    )
+
     args = parser.parse_args()
 
     # Validate models
@@ -1144,6 +1416,10 @@ Example usage Protein-Ligand model (with paired *_protein.pt and *_ligand.pt fil
         logger.info(f"Saving aligned structures to: {args.structures_output_dir}")
         if args.max_save_structures:
             logger.info(f"Limiting to first {args.max_save_structures} structures")
+    if args.minimize_ligand:
+        logger.info(
+            f"Ligand minimization enabled: force_field={args.force_field}, steps={args.minimize_steps}, mode={args.minimize_mode}"
+        )
 
     # Run evaluation
     results = evaluate_models_on_directory(
@@ -1155,6 +1431,10 @@ Example usage Protein-Ligand model (with paired *_protein.pt and *_ligand.pt fil
         args.use_canonical_pose,
         args.num_steps,
         args.max_save_structures,
+        minimize_ligand=args.minimize_ligand,
+        minimize_steps=args.minimize_steps,
+        force_field=args.force_field,
+        minimize_mode=args.minimize_mode,
     )
     if results:
         logger.info("Evaluation completed successfully!")

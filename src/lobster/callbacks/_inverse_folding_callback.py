@@ -1,6 +1,7 @@
 import lightning
 import os
 import torch
+import torch.distributed as dist
 import glob
 from lobster.model.latent_generator.io import writepdb
 from loguru import logger
@@ -201,40 +202,71 @@ class InverseFoldingCallback(lightning.Callback):
 
             logger.info(f"Created validation dataloader with {len(self.val_dataset)} examples")
 
-    def on_train_batch_end(self, trainer, model, outputs, batch, batch_idx):
-        # Only run on rank 0 (CUDA device 0) in multinode/multi-GPU settings
-        if trainer.global_rank != 0:
-            return
+    def _is_distributed(self) -> bool:
+        """Check if we're running in a distributed setting."""
+        return dist.is_available() and dist.is_initialized()
 
+    def _barrier(self):
+        """Synchronize all ranks if running in distributed mode."""
+        if self._is_distributed():
+            dist.barrier()
+
+    def _get_unwrapped_model(self, model):
+        """Get the underlying model from DDP/FSDP wrapper if present.
+
+        This avoids triggering collective operations during callback evaluation.
+        """
+        # Handle PyTorch Lightning's LightningModule wrapping
+        if hasattr(model, "module"):
+            return model.module
+        return model
+
+    def on_train_batch_end(self, trainer, model, outputs, batch, batch_idx):
         current_step = trainer.global_step
 
-        # Get device from whatever tensor is available in the batch
-        if "sequence" in batch:
-            device = batch["sequence"].device
-        elif "ligand_coords" in batch:
-            device = batch["ligand_coords"].device
-        elif "coords" in batch:
-            device = batch["coords"].device
-        else:
-            # Fallback to model device
-            device = next(model.parameters()).device
+        # Check if this is a callback step - use deterministic condition based on batch_idx only
+        # All ranks must make the same decision to avoid deadlock at barriers
+        is_callback_step = batch_idx % self.save_every_n == 0
 
-        if self.use_plm_fold and self.plm_fold is not None:
-            self.plm_fold.to(device)
+        if not is_callback_step:
+            return
 
-        # Check appropriate data source based on loading method
-        has_data = (self.val_dataloader is not None) or (self.loaded_structures is not None)
+        # All ranks hit barrier before callback starts to ensure sync
+        # This prevents other ranks from continuing training while rank 0 runs evaluation
+        self._barrier()
 
-        if batch_idx % self.save_every_n == 0 and has_data:
-            # Perform inverse folding on validation examples
-            with torch.no_grad():
-                if self.dataset_path:
-                    # Use direct .pt file loading method
-                    self._perform_inverse_folding_pt_files(trainer, model, device, batch_idx, current_step)
+        # Only rank 0 runs the actual evaluation
+        if trainer.global_rank == 0:
+            # Check if we have data to evaluate
+            has_data = (self.val_dataloader is not None) or (self.loaded_structures is not None)
+
+            if has_data:
+                # Get device from whatever tensor is available in the batch
+                if "sequence" in batch:
+                    device = batch["sequence"].device
+                elif "ligand_coords" in batch:
+                    device = batch["ligand_coords"].device
+                elif "coords" in batch:
+                    device = batch["coords"].device
                 else:
-                    # Use CATH datamodule method
-                    self._perform_inverse_folding(trainer, model, device, batch_idx, current_step)
-            torch.cuda.empty_cache()
+                    # Fallback to model device
+                    device = next(model.parameters()).device
+
+                if self.use_plm_fold and self.plm_fold is not None:
+                    self.plm_fold.to(device)
+
+                # Perform inverse folding on validation examples
+                with torch.no_grad():
+                    if self.dataset_path:
+                        # Use direct .pt file loading method
+                        self._perform_inverse_folding_pt_files(trainer, model, device, batch_idx, current_step)
+                    else:
+                        # Use CATH datamodule method
+                        self._perform_inverse_folding(trainer, model, device, batch_idx, current_step)
+                torch.cuda.empty_cache()
+
+        # All ranks hit barrier after callback completes to ensure sync before resuming training
+        self._barrier()
 
     def _perform_inverse_folding(self, trainer, model, device, batch_idx, current_step):
         """Perform inverse folding on validation examples."""
@@ -353,7 +385,8 @@ class InverseFoldingCallback(lightning.Callback):
             clean_key = key.replace("inverse_folding_", "")
             metrics_to_log[f"{self.metric_prefix}/{clean_key}"] = value
 
-        model.log_dict(metrics_to_log, batch_size=1)  # Use batch_size=1 since we're logging aggregated metrics
+        # Use sync_dist=False and rank_zero_only=True to avoid distributed sync during callback
+        model.log_dict(metrics_to_log, batch_size=1, sync_dist=False, rank_zero_only=True)
 
         logger.info(f"Validation metrics averaged over {len(all_folded_structure_metrics)} batches:")
         logger.info(f"Average sequence percent identity: {avg_percent_identity:.2f}%")
@@ -459,11 +492,12 @@ class InverseFoldingCallback(lightning.Callback):
         avg_percent_identity = sum(all_percent_identities) / len(all_percent_identities)
 
         # Log averaged metrics with dataset-specific prefix
+        # Use sync_dist=False and rank_zero_only=True to avoid distributed sync during callback
         metrics_to_log = {
             f"{self.metric_prefix}/sequence_recovery": avg_percent_identity,
-            f"{self.metric_prefix}/num_samples": len(all_percent_identities),
+            f"{self.metric_prefix}/num_samples": float(len(all_percent_identities)),
         }
-        model.log_dict(metrics_to_log, batch_size=1)
+        model.log_dict(metrics_to_log, batch_size=1, sync_dist=False, rank_zero_only=True)
 
         logger.info(f"Inverse Folding Validation Results ({self.dataset_name}, step {current_step}):")
         logger.info(f"  Average sequence recovery: {avg_percent_identity:.2f}% (n={len(all_percent_identities)})")

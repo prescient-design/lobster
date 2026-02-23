@@ -37,6 +37,9 @@ uv run python -m lobster.cmdline.generate \
 - [Key Parameters](#key-parameters)
 - [Advanced Features](#advanced-features)
 - [Tips and Best Practices](#tips-and-best-practices)
+- [Protein-Ligand](#protein-ligand)
+  - [Protein-Ligand Inverse Folding](#protein-ligand-inverse-folding)
+  - [Protein-Ligand Forward Folding](#protein-ligand-forward-folding)
 
 ## Overview
 
@@ -561,6 +564,162 @@ The inverse folding and forward folding benchmarks use the dataset from:
   year={2024},
   url={https://arxiv.org/abs/2402.04997}
 }
+```
+
+## Protein-Ligand
+
+Gen-UME Protein-Ligand extends the model to handle protein-ligand complexes. The key insight is that **providing ligand context can improve both sequence design and structure prediction**, particularly for binding pocket residues.
+
+### Protein-Ligand Inverse Folding
+
+Design protein sequences conditioned on both protein structure **and** ligand context.
+
+**Command Line:**
+
+```bash
+# Evaluate inverse folding with/without ligand context
+uv run python -m lobster.cmdline.evaluate_protein_ligand_inverse_folding \
+    --checkpoint /cv/scratch/u/lisanzas/gen_ume_protein_ligand/runs//2026-01-27T16-05-28/epoch=114-step=37186-val_loss=3.1698.ckpt \
+    --data_dir /cv/data/ai4dd/data2/lisanzas/pdb_bind_12_15_25/test/ \
+    --structure_path ./protein_ligand_eval_inverse_folding/ \
+    --output protein_ligand_inverse_folding_results.csv \
+    --pocket_threshold 5.0 \
+    --num_samples 100 \
+    --nsteps 100 \
+    --device cuda \
+    --decode_structure \
+    --save_gt_structure \
+    --minimize_ligand
+```
+
+**Options:**
+- `--checkpoint`: Path to protein-ligand model checkpoint (required)
+- `--data_dir`: Directory with `*_protein.pt` and `*_ligand.pt` pairs (default: `/data2/lisanzas/pdb_bind_12_15_25/test/`)
+- `--structure_path`: Output directory for designed sequences (FASTA files), decoded structures (PDB files), and results
+- `--output`: Output CSV file for per-structure results (default: `protein_ligand_inverse_folding_results.csv`)
+- `--pocket_threshold`: Distance (Å) to define binding pocket residues (default: 5.0)
+- `--num_samples`: Number of samples to evaluate (-1 for all, default: 100)
+- `--nsteps`: Diffusion steps for generation (default: 100)
+- `--device`: Device for computation, `cuda` or `cpu` (default: `cuda`)
+- `--decode_structure`: Flag to decode and save predicted protein structures as PDB files (includes decoded ligand when ligand context is used)
+- `--save_gt_structure`: Flag to save ground truth protein and protein-ligand complex structures as PDB files
+- `--minimize_ligand`: Flag to apply Open Babel geometry correction to decoded ligand structures
+- `--minimize_mode`: Minimization mode: `bonds_only`, `bonds_and_angles` (default), `local`, or `full`
+- `--force_field`: Force field for minimization: `MMFF94` (default), `UFF`, `MMFF94s`, etc.
+- `--minimize_steps`: Maximum number of minimization steps (default: 500)
+
+**Output Files** (in `--structure_path`):
+```
+protein_ligand_eval/
+├── protein_ligand_inverse_folding_results.csv  # Per-structure metrics
+├── {pdb_id}_sequences.fasta                    # Ground truth + designed sequences
+├── {pdb_id}_protein.pdb                        # Ground truth protein structure (--save_gt_structure)
+├── {pdb_id}_complex.pdb                        # Ground truth protein-ligand complex (--save_gt_structure)
+├── {pdb_id}_decoded_no_ligand.pdb              # Decoded structure without ligand context (--decode_structure)
+├── {pdb_id}_decoded_with_ligand.pdb            # Decoded protein-ligand complex with ligand context (--decode_structure)
+└── ...
+```
+
+**Tracked Metrics:**
+- `aar_overall_*`: Overall amino acid recovery
+- `aar_pocket_*`: Pocket-only recovery (residues within threshold of ligand)
+- `aar_nonpocket_*`: Non-pocket recovery
+- `*_delta`: Improvement from providing ligand context
+
+### Protein-Ligand Forward Folding
+
+Predict protein structure from sequence **with ligand context**.
+
+**Command Line:**
+
+```bash
+# Evaluate forward folding with/without ligand context
+uv run python -m lobster.cmdline.evaluate_protein_ligand_forward_folding \
+    --checkpoint /cv/scratch/u/lisanzas/gen_ume_protein_ligand/runs//2026-01-27T16-05-28/epoch=114-step=37186-val_loss=3.1698.ckpt \
+    --data_dir /cv/data/ai4dd/data2/lisanzas/pdb_bind_12_15_25/test/ \
+    --structure_path ./protein_ligand_eval/ \
+    --output protein_ligand_forward_folding_results.csv \
+    --pocket_threshold 5.0 \
+    --num_samples 100 \
+    --nsteps 100 \
+    --device cuda \
+    --save_structures \
+    --save_gt_structure \
+    --minimize_ligand
+```
+
+**Options:**
+- `--checkpoint`: Path to protein-ligand model checkpoint (required)
+- `--data_dir`: Directory with `*_protein.pt` and `*_ligand.pt` pairs (default: `/data2/lisanzas/pdb_bind_12_15_25/test/`)
+- `--structure_path`: Output directory for predicted structures (PDB files) and results
+- `--output`: Output CSV file for per-structure results (default: `protein_ligand_forward_folding_results.csv`)
+- `--pocket_threshold`: Distance (Å) to define binding pocket residues (default: 5.0)
+- `--num_samples`: Number of samples to evaluate (-1 for all, default: 100)
+- `--nsteps`: Diffusion steps for generation (default: 100)
+- `--device`: Device for computation, `cuda` or `cpu` (default: `cuda`)
+- `--temperature_seq`: Temperature for sequence sampling (default: 0.5)
+- `--temperature_struc`: Temperature for structure sampling (default: 0.5)
+- `--save_structures`: Flag to save predicted protein structures as PDB files
+- `--save_gt_structure`: Flag to save ground truth protein and protein-ligand complex structures as PDB files
+- `--minimize_ligand`: Flag to apply Open Babel geometry correction to decoded ligand structures
+- `--minimize_mode`: Minimization mode: `bonds_only`, `bonds_and_angles` (default), `local`, or `full`
+- `--force_field`: Force field for minimization: `MMFF94` (default), `UFF`, `MMFF94s`, etc.
+- `--minimize_steps`: Maximum number of minimization steps (default: 500)
+
+**Output Files** (in `--structure_path`):
+```
+protein_ligand_eval/
+├── protein_ligand_forward_folding_results.csv  # Per-structure metrics
+├── {pdb_id}_gt_protein.pdb                     # Ground truth protein structure (--save_gt_structure)
+├── {pdb_id}_gt_complex.pdb                     # Ground truth protein-ligand complex (--save_gt_structure)
+├── {pdb_id}_pred_no_ligand.pdb                 # Predicted structure without ligand context (--save_structures)
+├── {pdb_id}_pred_with_ligand.pdb               # Predicted protein + decoded ligand structure (--save_structures)
+└── ...
+```
+
+**Callback Configuration** (for training-time evaluation):
+
+```yaml
+protein_ligand_forward_folding:
+  _target_: lobster.callbacks.ProteinLigandForwardFoldingCallback
+  data_dir: /cv/data/ai4dd/data2/lisanzas/pdb_bind_12_15_25/test/
+  structure_path: ${paths.output_dir}/protein_ligand_eval/
+  save_every_n: 1000
+  num_samples: 100
+  pocket_distance_threshold: 5.0  # Å
+  nsteps: 100
+  # Ligand minimization options (for decoded ligand structures)
+  minimize_ligand: false
+  minimize_mode: "bonds_and_angles"  # "bonds_only", "bonds_and_angles", "local", or "full"
+  force_field: "MMFF94"
+  minimize_steps: 500
+```
+
+**Tracked Metrics:**
+- `tm_score_*`: Overall TM-score (structure similarity)
+- `rmsd_overall_*`: Overall backbone RMSD
+- `rmsd_pocket_*`: Pocket-only RMSD (residues within threshold of ligand)
+- `rmsd_nonpocket_*`: Non-pocket RMSD
+- `*_delta`: Improvement from providing ligand context
+
+### Protein-Ligand Checkpoints
+
+**Latest checkpoint** (`/cv/scratch/u/lisanzas/gen_ume_protein_ligand/runs/2026-01-22T03-49-10/`):
+
+| Checkpoint | Validation Loss |
+|------------|-----------------|
+| `epoch=49-step=16126-val_loss=3.5112.ckpt` | **3.5112** (best) |
+| `epoch=57-step=18718-val_loss=3.5529.ckpt` | 3.5529 |
+| `epoch=47-step=15303-val_loss=3.5601.ckpt` | 3.5601 |
+
+### Data Format
+
+The protein-ligand evaluators expect paired `.pt` files:
+
+```
+data_dir/
+├── pdb_id_protein.pt  # Contains: coords_res, sequence, mask, indices
+└── pdb_id_ligand.pt   # Contains: atom_coords, atom_names/element_indices, mask, bond_matrix
 ```
 
 ## Support

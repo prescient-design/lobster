@@ -7,6 +7,7 @@ import torch
 from loguru import logger
 
 from lobster.model.latent_generator.io import writepdb_ligand_complex
+from lobster.model.latent_generator.utils import minimize_ligand_structure
 from lobster.model.latent_generator.utils.residue_constants import (
     ELEMENT_VOCAB_EXTENDED,
     convert_lobster_aa_tokenization_to_standard_aa,
@@ -29,6 +30,14 @@ class ProteinLigandDecodeCallback(lightning.Callback):
         Save structures every N batches
     save_separate : bool
         Whether to save protein and ligand separately in addition to complex
+    minimize_ligand : bool
+        Whether to apply geometry correction to ligand structures
+    minimize_mode : str
+        Minimization mode: "bonds_only" or "bonds_and_angles" (recommended)
+    force_field : str
+        Force field for minimization: "MMFF94", "MMFF94s", "UFF", etc.
+    minimize_steps : int
+        Maximum number of minimization steps
     """
 
     def __init__(
@@ -36,10 +45,18 @@ class ProteinLigandDecodeCallback(lightning.Callback):
         structure_path: str = None,
         save_every_n: int = 1000,
         save_separate: bool = True,
+        minimize_ligand: bool = False,
+        minimize_mode: str = "bonds_and_angles",
+        force_field: str = "MMFF94",
+        minimize_steps: int = 500,
     ):
         self.structure_path = structure_path
         self.save_every_n = save_every_n
         self.save_separate = save_separate
+        self.minimize_ligand = minimize_ligand
+        self.minimize_mode = minimize_mode
+        self.force_field = force_field
+        self.minimize_steps = minimize_steps
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Create output directories
@@ -48,6 +65,9 @@ class ProteinLigandDecodeCallback(lightning.Callback):
         if save_separate:
             os.makedirs(f"{self.structure_path}/proteins", exist_ok=True)
             os.makedirs(f"{self.structure_path}/ligands", exist_ok=True)
+
+        if self.minimize_ligand:
+            logger.info(f"Ligand minimization enabled: mode={minimize_mode}, force_field={force_field}")
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         """Save decoded structures at specified intervals."""
@@ -140,16 +160,42 @@ class ProteinLigandDecodeCallback(lightning.Callback):
                     f"{self.complex_dir}/complex_{batch_idx}_{current_step}_tseq_{t_seq:.2f}_tstruc_{t_struc:.2f}.pdb"
                 )
 
+                # Get bond matrix if available (key can be "bond_matrix" or "ligand_bond_matrix")
+                bond_matrix = batch.get("bond_matrix", batch.get("ligand_bond_matrix", None))
+                if bond_matrix is not None:
+                    bond_matrix = bond_matrix[0]  # First sample
+                    # Apply mask if present
+                    ligand_mask = outputs.get("ligand_mask")
+                    if ligand_mask is not None:
+                        valid_mask = ligand_mask[0].bool()
+                        bond_matrix = bond_matrix[valid_mask][:, valid_mask]
+
+                # Apply minimization if enabled
+                ligand_coords_to_save = ligand_coords.cpu() if torch.is_tensor(ligand_coords) else ligand_coords
+                if self.minimize_ligand:
+                    try:
+                        ligand_coords_to_save = minimize_ligand_structure(
+                            ligand_coords_to_save,
+                            ligand_atom_types,
+                            bond_matrix=bond_matrix,
+                            steps=self.minimize_steps,
+                            force_field=self.force_field,
+                            mode=self.minimize_mode,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Ligand minimization failed: {e}")
+
                 try:
                     writepdb_ligand_complex(
                         filename=complex_filename,
                         protein_atoms=x_recon_xyz[0],
                         protein_seq=seq[0],
                         protein_chain="A",
-                        ligand_atoms=ligand_coords.cpu() if torch.is_tensor(ligand_coords) else ligand_coords,
+                        ligand_atoms=ligand_coords_to_save,
                         ligand_atom_names=ligand_atom_types,
                         ligand_chain="L",
                         ligand_resname="LIG",
+                        ligand_bond_matrix=bond_matrix,
                     )
                     logger.info(f"Saved complex: {complex_filename}")
                 except Exception as e:
@@ -159,6 +205,11 @@ class ProteinLigandDecodeCallback(lightning.Callback):
                 if "coords_res" in batch and "ligand_coords" in batch:
                     gt_filename = f"{self.complex_dir}/complex_{batch_idx}_{current_step}_gt.pdb"
                     gt_ligand_names = batch.get("ligand_atom_names", [["C"] * batch["ligand_coords"].shape[1]])[0]
+
+                    # Get GT bond matrix if available (key can be "bond_matrix" or "ligand_bond_matrix")
+                    gt_bond_matrix = batch.get("bond_matrix", batch.get("ligand_bond_matrix", None))
+                    if gt_bond_matrix is not None:
+                        gt_bond_matrix = gt_bond_matrix[0]
 
                     try:
                         gt_seq = batch["sequence"][0]
@@ -179,6 +230,7 @@ class ProteinLigandDecodeCallback(lightning.Callback):
                             ligand_atom_names=gt_ligand_names,
                             ligand_chain="L",
                             ligand_resname="LIG",
+                            ligand_bond_matrix=gt_bond_matrix,
                         )
                         logger.info(f"Saved ground truth complex: {gt_filename}")
                     except Exception as e:
@@ -187,15 +239,41 @@ class ProteinLigandDecodeCallback(lightning.Callback):
         # Save ligand-only if no protein (GEOM dataset)
         elif not has_protein and has_ligand and ligand_coords is not None and ligand_atom_types is not None:
             ligand_filename = f"{self.structure_path}/ligands/ligand_{batch_idx}_{current_step}_tlig_{t_struc:.2f}.pdb"
+
+            # Get bond matrix if available (key can be "bond_matrix" or "ligand_bond_matrix")
+            bond_matrix = batch.get("bond_matrix", batch.get("ligand_bond_matrix", None))
+            if bond_matrix is not None:
+                bond_matrix = bond_matrix[0]  # First sample
+                ligand_mask = outputs.get("ligand_mask")
+                if ligand_mask is not None:
+                    valid_mask = ligand_mask[0].bool()
+                    bond_matrix = bond_matrix[valid_mask][:, valid_mask]
+
+            # Apply minimization if enabled
+            ligand_coords_to_save = ligand_coords.cpu() if torch.is_tensor(ligand_coords) else ligand_coords
+            if self.minimize_ligand:
+                try:
+                    ligand_coords_to_save = minimize_ligand_structure(
+                        ligand_coords_to_save,
+                        ligand_atom_types,
+                        bond_matrix=bond_matrix,
+                        steps=self.minimize_steps,
+                        force_field=self.force_field,
+                        mode=self.minimize_mode,
+                    )
+                except Exception as e:
+                    logger.warning(f"Ligand minimization failed: {e}")
+
             try:
                 writepdb_ligand_complex(
                     filename=ligand_filename,
                     protein_atoms=None,  # No protein
                     protein_seq=None,
-                    ligand_atoms=ligand_coords.cpu() if torch.is_tensor(ligand_coords) else ligand_coords,
+                    ligand_atoms=ligand_coords_to_save,
                     ligand_atom_names=ligand_atom_types,
                     ligand_chain="L",
                     ligand_resname="LIG",
+                    ligand_bond_matrix=bond_matrix,
                 )
                 logger.info(f"Saved ligand-only: {ligand_filename}")
             except Exception as e:
@@ -205,6 +283,12 @@ class ProteinLigandDecodeCallback(lightning.Callback):
             if "ligand_coords" in batch:
                 gt_filename = f"{self.structure_path}/ligands/ligand_{batch_idx}_{current_step}_gt.pdb"
                 gt_ligand_names = batch.get("ligand_atom_names", [["C"] * batch["ligand_coords"].shape[1]])[0]
+
+                # Get GT bond matrix (key can be "bond_matrix" or "ligand_bond_matrix")
+                gt_bond_matrix = batch.get("bond_matrix", batch.get("ligand_bond_matrix", None))
+                if gt_bond_matrix is not None:
+                    gt_bond_matrix = gt_bond_matrix[0]
+
                 try:
                     writepdb_ligand_complex(
                         filename=gt_filename,
@@ -214,6 +298,7 @@ class ProteinLigandDecodeCallback(lightning.Callback):
                         ligand_atom_names=gt_ligand_names,
                         ligand_chain="L",
                         ligand_resname="LIG",
+                        ligand_bond_matrix=gt_bond_matrix,
                     )
                     logger.info(f"Saved ground truth ligand: {gt_filename}")
                 except Exception as e:

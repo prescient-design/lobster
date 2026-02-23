@@ -9,6 +9,11 @@ from ._regression import (
     NaturalGaussianLoss,
     MixtureGaussianNLLLoss,
 )
+from ._diffusion_loss import (
+    DiffusionLoss,
+    SimpleMLPAdaLN,
+    create_diffusion_loss,
+)
 
 # Import registry data
 from ._registry import (
@@ -28,6 +33,10 @@ __all__ = [
     "ExponentialParameterizedLoss",
     "NaturalGaussianLoss",
     "MixtureGaussianNLLLoss",
+    # Diffusion loss for continuous tokens (MAR-style)
+    "DiffusionLoss",
+    "SimpleMLPAdaLN",
+    "create_diffusion_loss",
     # Registry constants and function
     "AVAILABLE_LOSS_FUNCTIONS",
     "DEFAULT_LOSS_FUNCTIONS",

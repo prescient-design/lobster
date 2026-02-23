@@ -3,3 +3,9 @@ backbone_reconstruction:
   structure_path: "${paths.output_dir}/structures/"
   save_every_n: 10000
   max_total_files: 1000  # Set to a number (e.g., 100) to limit total PDB files saved
+  use_extended_element_vocab: false
+  # Ligand minimization options
+  minimize_ligand: false
+  minimize_mode: "bonds_and_angles"  # "bonds_only" or "bonds_and_angles"
+  force_field: "MMFF94"
+  minimize_steps: 500

@@ -43,6 +43,7 @@ dependencies = [
     "polars>=1.33.0",
     "hydra-submitit-launcher>=1.2.0",
     "rdkit>=2024.9.4",
+    "openbabel-wheel>=3.1.1",  # For ligand structure minimization
 ]
 
 [build-system]

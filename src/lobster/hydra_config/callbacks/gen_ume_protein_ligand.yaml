@@ -10,6 +10,7 @@ defaults:
   - inverse_folding.yaml
   - inverse_folding_cameo.yaml
   - protein_ligand_inverse_folding.yaml
+  - protein_ligand_forward_folding.yaml
   - forward_folding.yaml
   - _self_
 
@@ -43,3 +44,8 @@ protein_ligand_decode:
   structure_path: "${paths.output_dir}/structures/"
   save_every_n: 10000
   save_separate: false
+  # Ligand minimization options
+  minimize_ligand: false
+  minimize_mode: "bonds_and_angles"  # "bonds_only" or "bonds_and_angles"
+  force_field: "MMFF94"
+  minimize_steps: 500

@@ -1,3 +1,4 @@
+import csv
 import logging
 from pathlib import Path
 import glob
@@ -124,7 +125,7 @@ def generate(cfg: DictConfig) -> None:
     plotter = None
     if cfg.generation.get("save_csv_metrics", True):
         generation_mode = cfg.generation.mode
-        csv_writer = MetricsCSVWriter(output_dir, generation_mode)
+        csv_writer = MetricsCSVWriter(output_dir, generation_mode, resume=cfg.generation.get("resume", False))
         logger.info(f"CSV metrics logging enabled for {generation_mode} mode")
 
         # Initialize plotter if plotting is enabled
@@ -955,8 +956,70 @@ def _generate_unconditional(
             f"Generating {num_samples} structures of length {current_length} with {nsteps} steps, will run with batch size {batch_size} for {n_iterations} iterations"
         )
 
-        # Initialize metrics collection for this length
+        # Resume support: build set of already-completed iterations (by PDB existence)
+        # This handles gaps from skipped iterations (e.g. max_retries exceeded)
+        completed_iterations = set()
+        is_resuming = gen_cfg.get("resume", False)
+        if is_resuming:
+            for check_iter in range(n_iterations):
+                all_exist = True
+                for check_i in range(batch_size):
+                    check_file = (
+                        output_dir
+                        / f"generated_structure_length_{current_length}_{check_iter * batch_size + check_i:03d}.pdb"
+                    )
+                    if not check_file.exists():
+                        all_exist = False
+                        break
+                if all_exist:
+                    completed_iterations.add(check_iter)
+            if completed_iterations:
+                logger.info(
+                    f"Resuming: {len(completed_iterations)}/{n_iterations} iterations already complete "
+                    f"for length {current_length} (will skip them individually)"
+                )
+            if len(completed_iterations) >= n_iterations:
+                logger.info(f"All {n_iterations} iterations already complete for length {current_length}, skipping")
+                continue
+
+        # Initialize metrics collection for this length, pre-loading from CSV on resume.
+        # Deduplicate by run_id keeping only the latest entry (by row order / timestamp).
         all_metrics = []
+        if is_resuming and completed_iterations:
+            existing_csvs = sorted(output_dir.glob("*_metrics_*.csv"), key=lambda x: x.stat().st_mtime)
+            if existing_csvs:
+                csv_path = existing_csvs[-1]
+                logger.info(f"Loading prior metrics from {csv_path} for length {current_length}")
+                try:
+                    csv_col_to_internal_key = {
+                        "plddt": "_plddt",
+                        "predicted_aligned_error": "_predicted_aligned_error",
+                        "tm_score": "_tm_score",
+                        "rmsd": "_rmsd",
+                    }
+                    metrics_by_run_id = {}
+                    with open(csv_path, newline="") as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            if row.get("sequence_length") and int(float(row["sequence_length"])) == current_length:
+                                run_id = row.get("run_id", "")
+                                metrics_dict = {}
+                                for key, value in row.items():
+                                    if key in ("run_id", "timestamp", "mode", "sequence_length", "num_samples"):
+                                        continue
+                                    if value is not None and value != "":
+                                        try:
+                                            internal_key = csv_col_to_internal_key.get(key, key)
+                                            metrics_dict[internal_key] = float(value)
+                                        except (ValueError, TypeError):
+                                            pass
+                                if metrics_dict:
+                                    metrics_by_run_id[run_id] = metrics_dict
+                    all_metrics = list(metrics_by_run_id.values())
+                    logger.info(f"Pre-loaded {len(all_metrics)} unique metric entries for length {current_length}")
+                except Exception as e:
+                    logger.warning(f"Failed to load prior metrics from CSV: {e}")
+                    all_metrics = []
 
         # Get quality control config for retry logic
         qc_config = {}
@@ -988,6 +1051,9 @@ def _generate_unconditional(
         max_retries_exceeded = 0
 
         for n_iter in range(n_iterations):
+            if n_iter in completed_iterations:
+                logger.debug(f"Skipping already-completed iteration {n_iter + 1}/{n_iterations}")
+                continue
             logger.info(f"Iteration {n_iter + 1}/{n_iterations}")
 
             # Retry loop for quality control
@@ -1010,6 +1076,32 @@ def _generate_unconditional(
                     if isinstance(inference_schedule_struc, str):
                         inference_schedule_struc = _get_inference_schedule_class(inference_schedule_struc)
 
+                    # Build sequence anchor tensors if enabled
+                    anchor_tokens = None
+                    anchor_mask = None
+                    anchor_cfg = gen_cfg.get("sequence_anchor_fraction", 0.0)
+                    if isinstance(anchor_cfg, (dict, DictConfig)):
+                        anchor_fraction = float(
+                            anchor_cfg.get(current_length, anchor_cfg.get(str(current_length), 0.0))
+                        )
+                    else:
+                        anchor_fraction = float(anchor_cfg)
+                    if anchor_fraction > 0.0:
+                        num_anchors = max(1, int(current_length * anchor_fraction))
+                        anchor_positions = torch.randperm(current_length, device=device)[:num_anchors]
+                        # Sample from 19 amino acids excluding Cysteine (index 4)
+                        allowed_aa = torch.tensor(
+                            [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19], device=device
+                        )
+                        rand_indices = torch.randint(0, len(allowed_aa), (batch_size, current_length), device=device)
+                        anchor_tokens = allowed_aa[rand_indices]
+                        anchor_mask = torch.ones((batch_size, current_length), device=device)
+                        anchor_mask[:, anchor_positions] = 0  # 0 = keep anchored
+                        logger.info(
+                            f"Sequence anchors enabled: fixing {num_anchors}/{current_length} "
+                            f"positions ({anchor_fraction * 100:.0f}%)"
+                        )
+
                     # Generate samples
                     generate_sample = model.generate_sample(
                         length=current_length,
@@ -1022,6 +1114,8 @@ def _generate_unconditional(
                         inference_schedule_seq=inference_schedule_seq,
                         inference_schedule_struc=inference_schedule_struc,
                         asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
+                        sequence_anchor_tokens=anchor_tokens,
+                        sequence_anchor_mask=anchor_mask,
                     )
 
                     # Create mask for decoding
@@ -1179,10 +1273,11 @@ def _generate_unconditional(
                         )
 
                         # Log metrics for unconditional generation
-                        if batch_metrics:
+                        if batch_metrics and not batch_metrics.get("_skipped", False):
                             logger.info("ESMFold validation metrics for unconditional generation:")
                             for key, value in batch_metrics.items():
-                                logger.info(f"  {key}: {value:.4f}")
+                                if isinstance(value, (int, float)):
+                                    logger.info(f"  {key}: {value:.4f}")
 
                             # Store metrics for CSV logging
                             if csv_writer is not None:
@@ -1310,7 +1405,7 @@ def _generate_unconditional(
 
                 foldseek_bin_path = cfg.generation.get(
                     "foldseek_bin_path",
-                    "/homefs/home/lisanzas/scratch/Develop/lobster/src/lobster/metrics/foldseek/bin",
+                    str(Path(__file__).resolve().parent.parent / "metrics" / "foldseek" / "bin"),
                 )
 
                 try:
@@ -1424,6 +1519,68 @@ def _generate_inverse_folding(
     logger.info(f"Processing structures with {nsteps} generation steps, batch size {batch_size}, n_trials {n_trials}")
     logger.info(f"Generating {n_designs_per_structure} sequence design(s) per structure")
 
+    # Build ligand file mapping for pocket AAR computation (optional)
+    ligand_structures_cfg = gen_cfg.get("ligand_structures", None)
+    pocket_distance_threshold = gen_cfg.get("pocket_distance_threshold", 5.0)
+    ligand_file_map = {}  # Maps protein path -> ligand path
+
+    if ligand_structures_cfg is not None:
+        # Resolve ligand file paths
+        ligand_paths = []
+        if isinstance(ligand_structures_cfg, str):
+            if "*" in ligand_structures_cfg or "?" in ligand_structures_cfg:
+                ligand_paths = glob.glob(ligand_structures_cfg)
+            else:
+                lpath = Path(ligand_structures_cfg)
+                if lpath.is_file():
+                    ligand_paths = [str(lpath)]
+                elif lpath.is_dir():
+                    ligand_paths = list(glob.glob(str(lpath / "*ligand.pt")))
+
+        # Build mapping: for each ligand file, find matching protein file
+        # Convention: *_ligand.pt <-> *_protein.pt (same prefix)
+        ligand_by_prefix = {}
+        for lp in ligand_paths:
+            prefix = Path(lp).stem.replace("_ligand", "")
+            ligand_by_prefix[prefix] = lp
+
+        for sp in structure_paths:
+            prefix = Path(sp).stem.replace("_protein", "")
+            if prefix in ligand_by_prefix:
+                ligand_file_map[sp] = ligand_by_prefix[prefix]
+
+        logger.info(
+            f"Pocket AAR enabled: found {len(ligand_file_map)}/{len(structure_paths)} "
+            f"matching ligand files (threshold={pocket_distance_threshold} Å)"
+        )
+    else:
+        logger.info("Pocket AAR disabled (no ligand_structures configured)")
+
+    def _compute_pocket_mask(protein_coords, ligand_coords, protein_mask=None, threshold=5.0):
+        """Compute pocket mask: residues with CA within threshold of any ligand atom."""
+        if protein_coords.dim() == 3:
+            ca_coords = protein_coords[:, 1, :]  # CA atoms (index 1)
+        else:
+            ca_coords = protein_coords
+        distances = torch.cdist(ca_coords.unsqueeze(0), ligand_coords.unsqueeze(0)).squeeze(0)
+        min_distances = distances.min(dim=1).values
+        pocket_mask = min_distances < threshold
+        if protein_mask is not None:
+            pocket_mask = pocket_mask & protein_mask.bool()
+        return pocket_mask
+
+    def _compute_aar(predicted_seq, ground_truth_seq, aar_mask=None):
+        """Compute amino acid recovery rate (0-1) with optional mask."""
+        if aar_mask is not None:
+            aar_mask = aar_mask.bool()
+            if aar_mask.sum() == 0:
+                return float("nan")
+            predicted_seq = predicted_seq[aar_mask]
+            ground_truth_seq = ground_truth_seq[aar_mask]
+        if len(predicted_seq) == 0:
+            return float("nan")
+        return (predicted_seq == ground_truth_seq).float().mean().item()
+
     # Initialize StructureBackboneTransform
     structure_transform = StructureBackboneTransform(max_length=cfg.generation.get("max_length", 512))
 
@@ -1433,6 +1590,12 @@ def _generate_inverse_folding(
     all_predicted_aligned_errors = []
     all_tm_scores = []
     all_rmsd_scores = []
+
+    # Pocket AAR aggregate statistics
+    all_aar_overall = []
+    all_aar_pocket = []
+    all_aar_nonpocket = []
+    all_n_pocket_residues = []
 
     with torch.no_grad():
         # Process structure files in batches
@@ -1446,6 +1609,7 @@ def _generate_inverse_folding(
             # Load structures from files
             batch_data = []
             valid_indices = []
+            max_len = cfg.generation.get("max_length", 512)
 
             for i, structure_path in enumerate(batch_paths):
                 logger.info(f"Loading {structure_path}")
@@ -1456,6 +1620,14 @@ def _generate_inverse_folding(
                     try:
                         structure_data = torch.load(structure_path, map_location="cpu")
                         if structure_data is not None:
+                            # Skip structures that exceed max_length before cropping
+                            raw_length = structure_data["coords_res"].shape[0]
+                            if raw_length > max_len:
+                                logger.info(
+                                    f"Skipping structure {structure_path} - too long "
+                                    f"({raw_length} residues, maximum {max_len})"
+                                )
+                                continue
                             # Apply StructureBackboneTransform
                             structure_data = structure_transform(structure_data)
                             batch_data.append(structure_data)
@@ -1468,6 +1640,14 @@ def _generate_inverse_folding(
                     # Load PDB/CIF file using existing method
                     structure_data = load_pdb(structure_path, add_batch_dim=False)
                     if structure_data is not None:
+                        # Skip structures that exceed max_length before cropping
+                        raw_length = structure_data["coords_res"].shape[0]
+                        if raw_length > max_len:
+                            logger.info(
+                                f"Skipping structure {structure_path} - too long "
+                                f"({raw_length} residues, maximum {max_len})"
+                            )
+                            continue
                         # Apply StructureBackboneTransform
                         structure_data = structure_transform(structure_data)
                         batch_data.append(structure_data)
@@ -1523,6 +1703,28 @@ def _generate_inverse_folding(
             coords_res[nan_indices] = 0
 
             logger.info(f"Batch {batch_idx + 1}: {B} structures, max length {max_length}")
+
+            # Load ligand coordinates for pocket AAR (if configured)
+            batch_ligand_coords = []
+            for fvi in filtered_valid_indices:
+                protein_path = batch_paths[fvi]
+                ligand_path = ligand_file_map.get(protein_path)
+                if ligand_path is not None:
+                    try:
+                        ligand_data_loaded = torch.load(ligand_path, weights_only=False, map_location="cpu")
+                        lig_coords = ligand_data_loaded.get(
+                            "atom_coords", ligand_data_loaded.get("coords", ligand_data_loaded.get("ligand_coords"))
+                        )
+                        if lig_coords is not None:
+                            batch_ligand_coords.append(lig_coords.to(device))
+                        else:
+                            logger.warning(f"No ligand coordinates found in {ligand_path}")
+                            batch_ligand_coords.append(None)
+                    except Exception as e:
+                        logger.warning(f"Failed to load ligand file {ligand_path}: {e}")
+                        batch_ligand_coords.append(None)
+                else:
+                    batch_ligand_coords.append(None)
 
             # Loop over designs - generate multiple independent designs per structure
             for design_idx in range(n_designs_per_structure):
@@ -1721,6 +1923,13 @@ def _generate_inverse_folding(
                                     chain_group=chain_group,  # Specify which chains to predict
                                 )
 
+                                # Skip if sequence too long for ESMFold
+                                if result is None:
+                                    logger.warning(
+                                        f"Chain group {chain_group} exceeds ESMFold max length, skipping ESMFold validation"
+                                    )
+                                    continue
+
                                 chain_group_results.append(result)
 
                                 logger.info(
@@ -1773,12 +1982,22 @@ def _generate_inverse_folding(
                                     restype_order_inv=restype_order_with_x_inv,
                                 )
 
-                                trial_tm_scores.append(result["folded_structure_metrics"]["_tm_score"])
-                                outputs = result["esmfold_outputs"]
-                                pred_coords = result["pred_coords"]
-                                trial_folded_structure_metrics = result["folded_structure_metrics"]
-
-                                logger.info(f"TM-score: {result['folded_structure_metrics']['_tm_score']:.3f}")
+                                # Skip if sequence too long for ESMFold
+                                if result is None:
+                                    logger.warning(
+                                        f"Structure exceeds ESMFold max length ({len(seq_i)} residues with linkers), "
+                                        "skipping ESMFold validation for this batch"
+                                    )
+                                    trial_tm_scores.append(float("nan"))
+                                    outputs = None
+                                    pred_coords = None
+                                    trial_folded_structure_metrics = {"_skipped": True, "_reason": "sequence_too_long"}
+                                else:
+                                    trial_tm_scores.append(result["folded_structure_metrics"]["_tm_score"])
+                                    outputs = result["esmfold_outputs"]
+                                    pred_coords = result["pred_coords"]
+                                    trial_folded_structure_metrics = result["folded_structure_metrics"]
+                                    logger.info(f"TM-score: {result['folded_structure_metrics']['_tm_score']:.3f}")
 
                         else:
                             # If ESMFold is not available, use generated structure as fallback
@@ -1874,6 +2093,64 @@ def _generate_inverse_folding(
 
                     all_percent_identities.extend(batch_percent_identities)
 
+                # Compute pocket AAR if ligand data is available
+                if ligand_file_map and original_sequences:
+                    batch_aar_overall = []
+                    batch_aar_pocket = []
+                    batch_aar_nonpocket = []
+                    batch_n_pocket = []
+
+                    for i, (orig_seq, gen_seq) in enumerate(zip(original_sequences, seq)):
+                        orig_len = len(orig_seq)
+                        gen_len = len(gen_seq)
+                        min_len = min(orig_len, gen_len)
+
+                        if min_len > 0:
+                            orig_seq_dev = orig_seq[:min_len].to(device)
+                            gen_seq_dev = gen_seq[:min_len].to(device)
+
+                            # Overall AAR (0-1 scale)
+                            aar_overall = _compute_aar(gen_seq_dev, orig_seq_dev)
+                            batch_aar_overall.append(aar_overall)
+
+                            # Pocket / non-pocket AAR
+                            lig_coords_i = batch_ligand_coords[i] if i < len(batch_ligand_coords) else None
+                            if lig_coords_i is not None:
+                                # Get protein coords (unpadded)
+                                orig_coords_i = filtered_batch_data[i]["coords_res"][:min_len].to(device)
+                                pocket_mask_i = _compute_pocket_mask(
+                                    orig_coords_i, lig_coords_i, threshold=pocket_distance_threshold
+                                )
+                                non_pocket_mask_i = ~pocket_mask_i
+
+                                n_pocket = int(pocket_mask_i.sum().item())
+                                batch_n_pocket.append(n_pocket)
+
+                                aar_pocket = _compute_aar(gen_seq_dev, orig_seq_dev, pocket_mask_i)
+                                aar_nonpocket = _compute_aar(gen_seq_dev, orig_seq_dev, non_pocket_mask_i)
+                                batch_aar_pocket.append(aar_pocket)
+                                batch_aar_nonpocket.append(aar_nonpocket)
+
+                                logger.info(
+                                    f"  AAR overall: {aar_overall:.3f}, "
+                                    f"pocket: {aar_pocket:.3f} ({n_pocket} residues), "
+                                    f"non-pocket: {aar_nonpocket:.3f}"
+                                )
+                            else:
+                                batch_aar_pocket.append(float("nan"))
+                                batch_aar_nonpocket.append(float("nan"))
+                                batch_n_pocket.append(0)
+                        else:
+                            batch_aar_overall.append(float("nan"))
+                            batch_aar_pocket.append(float("nan"))
+                            batch_aar_nonpocket.append(float("nan"))
+                            batch_n_pocket.append(0)
+
+                    all_aar_overall.extend(batch_aar_overall)
+                    all_aar_pocket.extend(batch_aar_pocket)
+                    all_aar_nonpocket.extend(batch_aar_nonpocket)
+                    all_n_pocket_residues.extend(batch_n_pocket)
+
                 # Write sequences to CSV
                 if csv_writer is not None:
                     # Convert generated sequences to strings
@@ -1932,8 +2209,14 @@ def _generate_inverse_folding(
                 if plm_fold is not None:
                     logger.info(f"Validating batch {batch_idx + 1} with ESMFold (reusing trial results)...")
 
+                    # Check if ESMFold was skipped due to sequence length
+                    if best_trial["folded_structure_metrics"].get("_skipped", False):
+                        logger.info(
+                            f"Skipping ESMFold validation (reason: {best_trial['folded_structure_metrics'].get('_reason', 'unknown')})"
+                        )
+                        batch_metrics = best_trial["folded_structure_metrics"]
                     # Reuse ESMFold results from the best trial
-                    if (
+                    elif (
                         best_trial["folded_structure_metrics"] is not None
                         and best_trial["esmfold_pred_coords"] is not None
                     ):
@@ -2017,8 +2300,8 @@ def _generate_inverse_folding(
                             max_length=max_length,
                         )
 
-                    # Collect metrics for aggregate statistics
-                    if batch_metrics:
+                    # Collect metrics for aggregate statistics (skip if ESMFold was skipped)
+                    if batch_metrics and not batch_metrics.get("_skipped", False):
                         all_plddt_scores.append(batch_metrics["_plddt"])
                         all_predicted_aligned_errors.append(batch_metrics["_predicted_aligned_error"])
                         all_tm_scores.append(batch_metrics["_tm_score"])
@@ -2086,6 +2369,36 @@ def _generate_inverse_folding(
 
     logger.info("=" * 80)
 
+    # Report pocket AAR statistics if available
+    if all_aar_overall:
+        import math
+
+        valid_aar_overall = [x for x in all_aar_overall if not math.isnan(x)]
+        valid_aar_pocket = [x for x in all_aar_pocket if not math.isnan(x)]
+        valid_aar_nonpocket = [x for x in all_aar_nonpocket if not math.isnan(x)]
+        valid_n_pocket = [x for x in all_n_pocket_residues if x > 0]
+
+        logger.info("")
+        logger.info("--- Pocket Amino Acid Recovery (AAR) ---")
+        if valid_aar_overall:
+            avg_aar = sum(valid_aar_overall) / len(valid_aar_overall)
+            logger.info(f"  Overall AAR: {avg_aar:.4f} ({avg_aar * 100:.2f}%) (n={len(valid_aar_overall)})")
+        if valid_aar_pocket:
+            avg_pocket = sum(valid_aar_pocket) / len(valid_aar_pocket)
+            logger.info(f"  Pocket AAR:  {avg_pocket:.4f} ({avg_pocket * 100:.2f}%) (n={len(valid_aar_pocket)})")
+        if valid_aar_nonpocket:
+            avg_nonpocket = sum(valid_aar_nonpocket) / len(valid_aar_nonpocket)
+            logger.info(
+                f"  Non-pocket AAR: {avg_nonpocket:.4f} ({avg_nonpocket * 100:.2f}%) (n={len(valid_aar_nonpocket)})"
+            )
+        if valid_aar_pocket and valid_aar_nonpocket:
+            delta = avg_pocket - avg_nonpocket
+            logger.info(f"  Delta (pocket - non-pocket): {delta:+.4f} ({delta * 100:+.2f}%)")
+        if valid_n_pocket:
+            avg_pocket_size = sum(valid_n_pocket) / len(valid_n_pocket)
+            logger.info(f"  Average pocket size: {avg_pocket_size:.1f} residues")
+        logger.info("=" * 80)
+
     # Write aggregate statistics to CSV
     if csv_writer is not None:
         logger.info("Writing inverse folding aggregate statistics to CSV...")
@@ -2098,6 +2411,13 @@ def _generate_inverse_folding(
             "tm_score": all_tm_scores,
             "rmsd": all_rmsd_scores,
         }
+
+        # Add pocket AAR metrics if available
+        if all_aar_overall:
+            metric_lists["aar_overall"] = all_aar_overall
+            metric_lists["aar_pocket"] = all_aar_pocket
+            metric_lists["aar_nonpocket"] = all_aar_nonpocket
+            metric_lists["n_pocket_residues"] = [float(x) for x in all_n_pocket_residues]
 
         # Calculate aggregate statistics
         aggregate_stats = calculate_aggregate_stats(metric_lists)
@@ -2976,6 +3296,13 @@ def _generate_inpainting(
                                     chain_group=chain_group,  # Specify which chains to predict
                                 )
 
+                                # Skip if sequence too long for ESMFold
+                                if result is None:
+                                    logger.warning(
+                                        f"Chain group {chain_group} exceeds ESMFold max length, skipping ESMFold validation"
+                                    )
+                                    continue
+
                                 chain_group_results.append(result)
 
                                 logger.info(
@@ -3043,19 +3370,31 @@ def _generate_inpainting(
                                     inpainting_mask_struc_i=inpaint_mask_struc_i,
                                 )
 
-                                # Update coordinates with aligned version
-                                x_recon_xyz[i, mask[i] == 1] = result["gen_coords_aligned"]
+                                # Skip if sequence too long for ESMFold
+                                if result is None:
+                                    logger.warning(
+                                        f"Structure exceeds ESMFold max length ({len(seq_i)} residues with linkers), "
+                                        "skipping ESMFold validation for this batch"
+                                    )
+                                    trial_tm_scores.append(float("nan"))
+                                    trial_rmsd_inpainted.append(float("nan"))
+                                    outputs = None
+                                    pred_coords = None
+                                    trial_folded_structure_metrics = {"_skipped": True, "_reason": "sequence_too_long"}
+                                else:
+                                    # Update coordinates with aligned version
+                                    x_recon_xyz[i, mask[i] == 1] = result["gen_coords_aligned"]
 
-                                trial_tm_scores.append(result["folded_structure_metrics"]["_tm_score"])
-                                trial_rmsd_inpainted.append(result["rmsd_inpainted"])
-                                outputs = result["esmfold_outputs"]
-                                pred_coords = result["pred_coords"]
-                                trial_folded_structure_metrics = result["folded_structure_metrics"]
+                                    trial_tm_scores.append(result["folded_structure_metrics"]["_tm_score"])
+                                    trial_rmsd_inpainted.append(result["rmsd_inpainted"])
+                                    outputs = result["esmfold_outputs"]
+                                    pred_coords = result["pred_coords"]
+                                    trial_folded_structure_metrics = result["folded_structure_metrics"]
 
-                                logger.info(
-                                    f"TM-score: {result['folded_structure_metrics']['_tm_score']:.3f}, "
-                                    f"Inpainted RMSD: {result['rmsd_inpainted']:.3f} Å"
-                                )
+                                    logger.info(
+                                        f"TM-score: {result['folded_structure_metrics']['_tm_score']:.3f}, "
+                                        f"Inpainted RMSD: {result['rmsd_inpainted']:.3f} Å"
+                                    )
 
                         else:
                             # Calculate TM-Score using TM-align
@@ -3357,8 +3696,8 @@ def _generate_inpainting(
                             max_length=max_length,
                         )
 
-                    # Collect metrics for aggregate statistics
-                    if batch_metrics:
+                    # Collect metrics for aggregate statistics (skip if ESMFold was skipped)
+                    if batch_metrics and not batch_metrics.get("_skipped", False):
                         all_plddt_scores.append(batch_metrics["_plddt"])
                         all_predicted_aligned_errors.append(batch_metrics["_predicted_aligned_error"])
                         all_tm_scores.append(batch_metrics["_tm_score"])
@@ -3853,6 +4192,11 @@ def _generate_binders(
                             inpainting_mask_struc_i=mask_structure[0],
                             chain_group=esmfold_chain_groups[0] if esmfold_chain_groups else None,
                         )
+
+                        # Skip if sequence too long for ESMFold
+                        if result is None:
+                            logger.warning("Structure exceeds ESMFold max length, skipping ESMFold validation")
+                            continue
 
                         logger.info("ESMFold validation metrics:")
                         if "folded_structure_metrics" in result:

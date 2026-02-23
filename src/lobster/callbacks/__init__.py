@@ -15,6 +15,7 @@ from ._inverse_folding_callback import InverseFoldingCallback
 from ._forward_folding_callback import ForwardFoldingCallback
 from ._protein_ligand_decode import ProteinLigandDecodeCallback
 from ._protein_ligand_inverse_folding import ProteinLigandInverseFoldingCallback
+from ._protein_ligand_forward_folding import ProteinLigandForwardFoldingCallback
 from ._s3_checkpoint_callback import S3CheckpointBackupCallback
 
 __all__ = [
@@ -38,5 +39,6 @@ __all__ = [
     "ForwardFoldingCallback",
     "ProteinLigandDecodeCallback",
     "ProteinLigandInverseFoldingCallback",
+    "ProteinLigandForwardFoldingCallback",
     "S3CheckpointBackupCallback",
 ]

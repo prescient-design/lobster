@@ -390,6 +390,9 @@ def apply_random_se3(coords_in, atom_mask=None, translation_scale=1.0, rotation_
 
     if rotation_mode == "svd":
         random_rot, _ = torch.linalg.qr(torch.randn(3, 3))
+        # QR decomposition can produce det=-1 (reflection). Ensure proper rotation (det=+1)
+        if torch.linalg.det(random_rot) < 0:
+            random_rot[:, 0] = -random_rot[:, 0]  # Flip first column to fix determinant
     elif rotation_mode == "quaternion":
         random_rot = uniform_rand_rotation(1).squeeze(0)
     elif rotation_mode == "none":
@@ -416,9 +419,11 @@ def apply_random_se3_2(coords_in, atom_mask=None, translation_scale=1.0, rotatio
     coords_in -= coords_mean
     if rotation_mode == "svd":
         random_rot, _ = torch.linalg.qr(torch.randn(3, 3))
+        # QR decomposition can produce det=-1 (reflection). Ensure proper rotation (det=+1)
+        if torch.linalg.det(random_rot) < 0:
+            random_rot[:, 0] = -random_rot[:, 0]  # Flip first column to fix determinant
     elif rotation_mode == "quaternion":
         random_rot = uniform_rand_rotation(1).squeeze(0)
-    random_rot, _ = torch.linalg.qr(torch.randn(3, 3))
     coords_in = coords_in @ random_rot.to(coords_in)
     random_trans = torch.randn_like(coords_mean) * translation_scale
     coords_in += random_trans.to(coords_in)
@@ -438,6 +443,99 @@ def apply_random_se3_batched(coords_in, atom_mask=None, translation_scale=1.0, r
             coords_in[b], atom_mask=atom_mask_b, translation_scale=translation_scale, rotation_mode=rotation_mode
         )
     return coords_in
+
+
+def apply_random_se3_protein_ligand(
+    protein_coords: torch.Tensor,
+    ligand_coords: torch.Tensor | None = None,
+    protein_mask: torch.Tensor | None = None,
+    ligand_mask: torch.Tensor | None = None,
+    translation_scale: float = 1.0,
+    rotation_mode: str = "quaternion",
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """Apply random SE(3) transformation to protein-ligand complex.
+
+    Applies the SAME rotation and translation to both protein and ligand
+    coordinates, ensuring they remain in the same reference frame.
+
+    Args:
+        protein_coords: Protein coordinates [B, L, n_atoms, 3] or [B, L, 3]
+        ligand_coords: Ligand coordinates [B, N_atoms, 3] or None
+        protein_mask: Protein mask [B, L] or None
+        ligand_mask: Ligand mask [B, N_atoms] or None
+        translation_scale: Scale factor for random translation
+        rotation_mode: Method to generate rotation ("svd", "quaternion", "none")
+
+    Returns:
+        Tuple of (transformed_protein_coords, transformed_ligand_coords)
+    """
+    B = protein_coords.shape[0]
+    device = protein_coords.device
+    dtype = protein_coords.dtype
+
+    # Determine if protein coords are flat [B, L, 3] or structured [B, L, n_atoms, 3]
+    is_flat = len(protein_coords.shape) == 3
+
+    for b in range(B):
+        # Compute center from protein CA atoms (or mean if flat)
+        if is_flat:
+            if protein_mask is not None:
+                valid_coords = protein_coords[b][protein_mask[b].bool()]
+                if valid_coords.numel() > 0:
+                    center = valid_coords.mean(dim=0, keepdim=True)  # [1, 3]
+                else:
+                    center = protein_coords[b].mean(dim=0, keepdim=True)
+            else:
+                center = protein_coords[b].mean(dim=0, keepdim=True)
+        else:
+            # Use CA atoms (index 1) for centering
+            ca_coords = protein_coords[b, :, 1, :]  # [L, 3]
+            if protein_mask is not None:
+                valid_ca = ca_coords[protein_mask[b].bool()]
+                if valid_ca.numel() > 0:
+                    center = valid_ca.mean(dim=0, keepdim=True)  # [1, 3]
+                else:
+                    center = ca_coords.mean(dim=0, keepdim=True)
+            else:
+                center = ca_coords.mean(dim=0, keepdim=True)
+
+        # Generate random rotation
+        if rotation_mode == "svd":
+            R, _ = torch.linalg.qr(torch.randn(3, 3, device=device, dtype=dtype))
+            # QR decomposition can produce det=-1 (reflection). Ensure proper rotation (det=+1)
+            if torch.linalg.det(R) < 0:
+                R[:, 0] = -R[:, 0]  # Flip first column to fix determinant
+        elif rotation_mode == "quaternion":
+            R = uniform_rand_rotation(1).squeeze(0).to(device=device, dtype=dtype)
+        elif rotation_mode == "none":
+            R = torch.eye(3, device=device, dtype=dtype)
+        else:
+            R = torch.eye(3, device=device, dtype=dtype)
+
+        # Generate random translation
+        trans = torch.randn(1, 3, device=device, dtype=dtype) * translation_scale
+
+        # Apply to protein: center, rotate, translate
+        if is_flat:
+            protein_coords[b] = (protein_coords[b] - center) @ R.T + trans
+        else:
+            # [L, n_atoms, 3] - need to broadcast center properly
+            protein_coords[b] = (protein_coords[b] - center.unsqueeze(0)) @ R.T + trans
+
+        # Apply mask to protein
+        if protein_mask is not None:
+            if is_flat:
+                protein_coords[b] = protein_coords[b] * protein_mask[b, :, None].float()
+            else:
+                protein_coords[b] = protein_coords[b] * protein_mask[b, :, None, None].float()
+
+        # Apply SAME transform to ligand (if present)
+        if ligand_coords is not None:
+            ligand_coords[b] = (ligand_coords[b] - center) @ R.T + trans
+            if ligand_mask is not None:
+                ligand_coords[b] = ligand_coords[b] * ligand_mask[b, :, None].float()
+
+    return protein_coords, ligand_coords
 
 
 def _graham_schmidt(x_axis: torch.Tensor, xy_plane: torch.Tensor, eps: float = 1e-12):

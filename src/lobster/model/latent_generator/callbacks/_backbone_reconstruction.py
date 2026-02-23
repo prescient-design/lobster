@@ -6,11 +6,39 @@ import torch
 
 from lobster.model.latent_generator.io import writepdb, writepdb_ligand_complex
 from lobster.model.latent_generator.utils import residue_constants
+from lobster.model.latent_generator.utils import minimize_ligand_structure
 
 logger = logging.getLogger(__name__)
 
 # make dictionary from index to one-letter amino acid code with residue_constants.restype_order_with_x
 idx_to_aa = dict(enumerate(residue_constants.restype_order_with_x))
+
+
+def get_element_name(idx: int, use_extended_vocab: bool = False) -> str:
+    """Get element name from index, supporting both standard and extended vocabularies.
+
+    Parameters
+    ----------
+    idx : int
+        Element index.
+    use_extended_vocab : bool
+        If True, use ELEMENT_VOCAB_EXTENDED (25 tokens).
+        If False, use ELEMENT_VOCAB (14 tokens).
+
+    Returns
+    -------
+    str
+        Element name (e.g., 'C', 'N', 'O') or 'X' for unknown.
+    """
+    if use_extended_vocab:
+        vocab = residue_constants.ELEMENT_VOCAB_EXTENDED
+    else:
+        vocab = residue_constants.ELEMENT_VOCAB
+
+    if 0 <= idx < len(vocab):
+        return vocab[idx]
+    else:
+        return "X"  # Unknown element
 
 
 def get_seq_from_batch(batch):
@@ -27,6 +55,11 @@ class BackboneReconstruction(lightning.Callback):
         target_paths: str = None,
         save_every_n: int = 1000,
         max_total_files: int = 1000,
+        use_extended_element_vocab: bool = False,
+        minimize_ligand: bool = False,
+        minimize_mode: str = "bonds_and_angles",
+        force_field: str = "MMFF94",
+        minimize_steps: int = 500,
     ):
         """Initialize BackboneReconstruction callback.
 
@@ -37,16 +70,34 @@ class BackboneReconstruction(lightning.Callback):
             max_total_files: Maximum total number of PDB files to keep. Older files
                 will be deleted when this limit is exceeded. If None, keeps all files.
                 Default: None
+            use_extended_element_vocab: If True, use ELEMENT_VOCAB_EXTENDED (25 tokens)
+                for mapping element indices to atom names. If False, use ELEMENT_VOCAB
+                (14 tokens). Default: False
+            minimize_ligand: If True, apply geometry correction to ligand structures.
+                Default: False
+            minimize_mode: Minimization mode - "bonds_only" or "bonds_and_angles" (recommended).
+                Default: "bonds_and_angles"
+            force_field: Force field for minimization - "MMFF94", "MMFF94s", "UFF", etc.
+                Default: "MMFF94"
+            minimize_steps: Maximum number of minimization steps. Default: 500
         """
         self.target_paths = target_paths
         self.STRUCTURE_PATH = structure_path
         self.save_every_n = save_every_n
         self.max_total_files = max_total_files
+        self.use_extended_element_vocab = use_extended_element_vocab
+        self.minimize_ligand = minimize_ligand
+        self.minimize_mode = minimize_mode
+        self.force_field = force_field
+        self.minimize_steps = minimize_steps
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         os.makedirs(f"{self.STRUCTURE_PATH}/recon", exist_ok=True)
 
         if self.max_total_files is not None:
             logger.info(f"Will keep maximum {self.max_total_files} total PDB files (oldest will be deleted)")
+        logger.info(f"Using {'extended' if use_extended_element_vocab else 'standard'} element vocabulary")
+        if self.minimize_ligand:
+            logger.info(f"Ligand minimization enabled: mode={minimize_mode}, force_field={force_field}")
 
     def _cleanup_old_files(self):
         """Remove oldest PDB files if total count exceeds max_total_files."""
@@ -152,6 +203,7 @@ class BackboneReconstruction(lightning.Callback):
                     # Apply mask to reconstructed ligand
                     ligand_mask_i = batch.get("ligand_mask", None)
                     ligand_atom_names_i = None
+                    bond_matrix_i = None
 
                     if ligand_mask_i is not None:
                         ligand_mask_i = ligand_mask_i[i].bool()
@@ -161,12 +213,37 @@ class BackboneReconstruction(lightning.Callback):
                         if x_recon_element is not None:
                             ligand_elements_masked = x_recon_element[i][ligand_mask_i]
                             ligand_atom_names_i = [
-                                residue_constants.ELEMENT_VOCAB[int(j)] for j in ligand_elements_masked
+                                get_element_name(int(j), self.use_extended_element_vocab)
+                                for j in ligand_elements_masked
                             ]
+
+                        # Get bond matrix with masking if available
+                        if "ligand_bond_matrix" in batch:
+                            full_bond_matrix = batch["ligand_bond_matrix"][i]
+                            # Apply mask to bond matrix (select rows and columns for valid atoms)
+                            bond_matrix_i = full_bond_matrix[ligand_mask_i][:, ligand_mask_i]
                     else:
                         ligand_coords_i = x_recon_ligand[i]
                         if x_recon_element is not None:
-                            ligand_atom_names_i = [residue_constants.ELEMENT_VOCAB[int(j)] for j in x_recon_element[i]]
+                            ligand_atom_names_i = [
+                                get_element_name(int(j), self.use_extended_element_vocab) for j in x_recon_element[i]
+                            ]
+                        if "ligand_bond_matrix" in batch:
+                            bond_matrix_i = batch["ligand_bond_matrix"][i]
+
+                    # Apply ligand minimization if enabled
+                    if self.minimize_ligand and ligand_atom_names_i is not None:
+                        try:
+                            ligand_coords_i = minimize_ligand_structure(
+                                ligand_coords_i,
+                                ligand_atom_names_i,
+                                bond_matrix=bond_matrix_i,
+                                steps=self.minimize_steps,
+                                force_field=self.force_field,
+                                mode=self.minimize_mode,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Ligand minimization failed: {e}")
 
                     writepdb_ligand_complex(
                         filename,
@@ -176,6 +253,7 @@ class BackboneReconstruction(lightning.Callback):
                         ligand_resname="LIG",
                         protein_atoms=protein_coords_i,
                         protein_seq=seq_i,
+                        ligand_bond_matrix=bond_matrix_i,
                     )
                 else:
                     writepdb(filename, protein_coords_i, seq_i)
@@ -197,6 +275,7 @@ class BackboneReconstruction(lightning.Callback):
                         # Apply mask to ground truth ligand
                         gt_ligand_mask_i = batch.get("ligand_mask", None)
                         gt_ligand_atom_names = None
+                        gt_bond_matrix_i = None
 
                         if gt_ligand_mask_i is not None:
                             gt_ligand_mask_i = gt_ligand_mask_i[i].bool()
@@ -206,14 +285,23 @@ class BackboneReconstruction(lightning.Callback):
                             if "ligand_element_indices" in batch:
                                 gt_ligand_elements_masked = batch["ligand_element_indices"][i][gt_ligand_mask_i]
                                 gt_ligand_atom_names = [
-                                    residue_constants.ELEMENT_VOCAB[int(j)] for j in gt_ligand_elements_masked
+                                    get_element_name(int(j), self.use_extended_element_vocab)
+                                    for j in gt_ligand_elements_masked
                                 ]
+
+                            # Get bond matrix with masking if available
+                            if "ligand_bond_matrix" in batch:
+                                full_bond_matrix = batch["ligand_bond_matrix"][i]
+                                gt_bond_matrix_i = full_bond_matrix[gt_ligand_mask_i][:, gt_ligand_mask_i]
                         else:
                             gt_ligand_coords_i = batch["ligand_coords"][i]
                             if "ligand_element_indices" in batch:
                                 gt_ligand_atom_names = [
-                                    residue_constants.ELEMENT_VOCAB[int(j)] for j in batch["ligand_element_indices"][i]
+                                    get_element_name(int(j), self.use_extended_element_vocab)
+                                    for j in batch["ligand_element_indices"][i]
                                 ]
+                            if "ligand_bond_matrix" in batch:
+                                gt_bond_matrix_i = batch["ligand_bond_matrix"][i]
 
                         writepdb_ligand_complex(
                             filename_gt,
@@ -223,6 +311,7 @@ class BackboneReconstruction(lightning.Callback):
                             ligand_resname="LIG",
                             protein_atoms=gt_protein_coords_i,
                             protein_seq=seq_gt_i,
+                            ligand_bond_matrix=gt_bond_matrix_i,
                         )
                     else:
                         writepdb(filename_gt, gt_protein_coords_i, seq_gt_i)
@@ -233,6 +322,7 @@ class BackboneReconstruction(lightning.Callback):
                 # Apply mask to reconstructed ligand
                 ligand_mask_i = batch.get("ligand_mask", None)
                 ligand_atom_names_i = None
+                bond_matrix_i = None
 
                 if ligand_mask_i is not None:
                     ligand_mask_i = ligand_mask_i[i].bool()
@@ -241,11 +331,36 @@ class BackboneReconstruction(lightning.Callback):
                     # Get ligand atom names with masking
                     if x_recon_element is not None:
                         ligand_elements_masked = x_recon_element[i][ligand_mask_i]
-                        ligand_atom_names_i = [residue_constants.ELEMENT_VOCAB[int(j)] for j in ligand_elements_masked]
+                        ligand_atom_names_i = [
+                            get_element_name(int(j), self.use_extended_element_vocab) for j in ligand_elements_masked
+                        ]
+
+                    # Get bond matrix with masking if available
+                    if "ligand_bond_matrix" in batch:
+                        full_bond_matrix = batch["ligand_bond_matrix"][i]
+                        bond_matrix_i = full_bond_matrix[ligand_mask_i][:, ligand_mask_i]
                 else:
                     ligand_coords_recon_i = x_recon_ligand[i]
                     if x_recon_element is not None:
-                        ligand_atom_names_i = [residue_constants.ELEMENT_VOCAB[int(j)] for j in x_recon_element[i]]
+                        ligand_atom_names_i = [
+                            get_element_name(int(j), self.use_extended_element_vocab) for j in x_recon_element[i]
+                        ]
+                    if "ligand_bond_matrix" in batch:
+                        bond_matrix_i = batch["ligand_bond_matrix"][i]
+
+                # Apply ligand minimization if enabled
+                if self.minimize_ligand and ligand_atom_names_i is not None:
+                    try:
+                        ligand_coords_recon_i = minimize_ligand_structure(
+                            ligand_coords_recon_i,
+                            ligand_atom_names_i,
+                            bond_matrix=bond_matrix_i,
+                            steps=self.minimize_steps,
+                            force_field=self.force_field,
+                            mode=self.minimize_mode,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Ligand minimization failed: {e}")
 
                 # Save reconstructed ligand
                 filename = f"{self.STRUCTURE_PATH}recon/{prefix}struc_{batch_idx}_{current_step}_gen_ligand_item{i}.pdb"
@@ -257,6 +372,7 @@ class BackboneReconstruction(lightning.Callback):
                     ligand_resname="LIG",
                     protein_atoms=None,
                     protein_seq=None,
+                    ligand_bond_matrix=bond_matrix_i,
                 )
                 logger.info(f"Saved {filename}")
 
@@ -269,6 +385,7 @@ class BackboneReconstruction(lightning.Callback):
                     # Apply mask to ground truth ligand
                     gt_ligand_mask_i = batch.get("ligand_mask", None)
                     gt_ligand_atom_names = None
+                    gt_bond_matrix_i = None
 
                     if gt_ligand_mask_i is not None:
                         gt_ligand_mask_i = gt_ligand_mask_i[i].bool()
@@ -278,14 +395,23 @@ class BackboneReconstruction(lightning.Callback):
                         if "ligand_element_indices" in batch:
                             gt_ligand_elements_masked = batch["ligand_element_indices"][i][gt_ligand_mask_i]
                             gt_ligand_atom_names = [
-                                residue_constants.ELEMENT_VOCAB[int(j)] for j in gt_ligand_elements_masked
+                                get_element_name(int(j), self.use_extended_element_vocab)
+                                for j in gt_ligand_elements_masked
                             ]
+
+                        # Get bond matrix with masking if available
+                        if "ligand_bond_matrix" in batch:
+                            full_bond_matrix = batch["ligand_bond_matrix"][i]
+                            gt_bond_matrix_i = full_bond_matrix[gt_ligand_mask_i][:, gt_ligand_mask_i]
                     else:
                         gt_ligand_coords_i = batch["ligand_coords"][i]
                         if "ligand_element_indices" in batch:
                             gt_ligand_atom_names = [
-                                residue_constants.ELEMENT_VOCAB[int(j)] for j in batch["ligand_element_indices"][i]
+                                get_element_name(int(j), self.use_extended_element_vocab)
+                                for j in batch["ligand_element_indices"][i]
                             ]
+                        if "ligand_bond_matrix" in batch:
+                            gt_bond_matrix_i = batch["ligand_bond_matrix"][i]
 
                     writepdb_ligand_complex(
                         filename_gt,
@@ -295,5 +421,6 @@ class BackboneReconstruction(lightning.Callback):
                         ligand_resname="LIG",
                         protein_atoms=None,
                         protein_seq=None,
+                        ligand_bond_matrix=gt_bond_matrix_i,
                     )
                     logger.info(f"Saved {filename_gt}")

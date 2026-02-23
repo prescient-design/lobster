@@ -15,7 +15,11 @@ import torch.nn.functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
-from lobster.model.latent_generator.utils.residue_constants import ELEMENT_VOCAB
+from lobster.model.latent_generator.utils.residue_constants import (
+    ELEMENT_VOCAB,
+    ELEMENT_VOCAB_EXTENDED,
+    NUM_BOND_TYPES,
+)
 
 # os.environ["HYDRA_FULL_ERROR"] = "1"
 
@@ -500,6 +504,8 @@ class TimeCondUViTEncoder(nn.Module):
         add_cls_token: bool = False,
         sequence_embedding: bool = False,
         ligand_atom_embedding: bool = False,
+        use_ligand_bond_embedding: bool = False,
+        use_extended_element_vocab: bool = False,
     ):
         super().__init__()
 
@@ -532,9 +538,24 @@ class TimeCondUViTEncoder(nn.Module):
 
             # Ligand atom type embedding using element vocabulary
             if ligand_atom_embedding:
-                logger.info("Adding ligand atom type embeddings")
-                # Use element vocabulary size
-                self.ligand_atom_type_embedding = nn.Embedding(len(ELEMENT_VOCAB), embed_dim_hidden)
+                if use_extended_element_vocab:
+                    vocab_size = len(ELEMENT_VOCAB_EXTENDED)
+                    logger.info(f"Adding ligand atom type embeddings (extended vocab: {vocab_size} tokens)")
+                else:
+                    vocab_size = len(ELEMENT_VOCAB)
+                    logger.info(f"Adding ligand atom type embeddings (standard vocab: {vocab_size} tokens)")
+                self.ligand_atom_type_embedding = nn.Embedding(vocab_size, embed_dim_hidden)
+
+            # Ligand bond matrix embedding (optional, for topology-aware encoding)
+            self.use_ligand_bond_embedding = use_ligand_bond_embedding
+            if use_ligand_bond_embedding:
+                logger.info("Adding ligand bond matrix embeddings")
+                from lobster.model.gen_ume._bond_embedding import BondMatrixEmbedding
+
+                self.ligand_bond_embedding = BondMatrixEmbedding(
+                    hidden_size=embed_dim_hidden,
+                    num_bond_types=NUM_BOND_TYPES,
+                )
         transformer_seq_len = seq_len // (2**1)
         assert transformer_seq_len % patch_size == 0
 
@@ -700,6 +721,7 @@ class TimeCondUViTEncoder(nn.Module):
         ligand_residue_index=None,
         sequence=None,
         ligand_atom_types=None,
+        ligand_bond_matrix=None,
         **kwargs,
     ):
         # === STAGE 1: Process protein coordinates ===
@@ -721,6 +743,10 @@ class TimeCondUViTEncoder(nn.Module):
             if self.ligand_atom_embedding and ligand_atom_types is not None:
                 ligand_type_embedding = self.ligand_atom_type_embedding(ligand_atom_types)
                 ligand_embedding = ligand_embedding + ligand_type_embedding
+
+            # Add bond matrix embeddings if available (topology-aware encoding)
+            if self.use_ligand_bond_embedding and ligand_bond_matrix is not None:
+                ligand_embedding = self.ligand_bond_embedding(ligand_embedding, ligand_bond_matrix, ligand_mask)
 
             if coords is not None:
                 x = torch.cat([x, ligand_embedding], -2)

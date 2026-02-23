@@ -9,6 +9,10 @@ from biopandas.mmcif import PandasMmcif
 from rdkit import Chem
 
 from lobster.model.latent_generator.utils import residue_constants
+from lobster.model.latent_generator.utils.residue_constants import (
+    ELEMENT_TO_IDX,
+    ELEMENT_VOCAB_EXTENDED_TO_IDX,
+)
 
 try:
     import cpdb
@@ -16,6 +20,94 @@ except ImportError:
     cpdb = None
 
 logger = logging.getLogger(__name__)
+
+
+# RDKit bond type to integer mapping (matches BOND_TYPES in residue_constants.py)
+# 0=none, 1=single, 2=double, 3=triple, 4=aromatic, 5=other
+RDKIT_BOND_TYPE_MAP = {
+    Chem.BondType.SINGLE: 1,
+    Chem.BondType.DOUBLE: 2,
+    Chem.BondType.TRIPLE: 3,
+    Chem.BondType.AROMATIC: 4,
+}
+
+
+def extract_bond_matrix(mol: Chem.Mol) -> torch.Tensor:
+    """Extract bond matrix from RDKit molecule.
+
+    Creates a symmetric matrix where entry [i,j] indicates the bond type
+    between atoms i and j.
+
+    Parameters
+    ----------
+    mol : Chem.Mol
+        RDKit molecule object with atoms and bonds.
+
+    Returns
+    -------
+    torch.Tensor
+        Bond type matrix of shape [N_atoms, N_atoms] with values:
+        0 = no bond
+        1 = single bond
+        2 = double bond
+        3 = triple bond
+        4 = aromatic bond
+        5 = other bond type
+    """
+    n_atoms = mol.GetNumAtoms()
+    bond_matrix = torch.zeros(n_atoms, n_atoms, dtype=torch.long)
+
+    for bond in mol.GetBonds():
+        i = bond.GetBeginAtomIdx()
+        j = bond.GetEndAtomIdx()
+        bond_type = RDKIT_BOND_TYPE_MAP.get(bond.GetBondType(), 5)  # 5 = OTHER
+        bond_matrix[i, j] = bond_type
+        bond_matrix[j, i] = bond_type  # Symmetric
+
+    return bond_matrix
+
+
+def extract_element_indices(mol: Chem.Mol, use_extended_vocab: bool = False) -> torch.Tensor:
+    """Extract element indices from RDKit molecule.
+
+    Maps each atom's element symbol to its index in the chosen vocabulary.
+
+    Parameters
+    ----------
+    mol : Chem.Mol
+        RDKit molecule object.
+    use_extended_vocab : bool
+        If True, use ELEMENT_VOCAB_EXTENDED (25 tokens) to match Gen-UME.
+        If False (default), use ELEMENT_VOCAB (14 tokens) for latent generator.
+
+    Returns
+    -------
+    torch.Tensor
+        Element indices of shape [N_atoms] with integer values.
+
+        If use_extended_vocab=False (default, ELEMENT_VOCAB, 14 tokens):
+            0=PAD, 1=B, 2=Bi, 3=Br, 4=C, 5=Cl, 6=F, 7=H, 8=I, 9=N, 10=O, 11=P, 12=S, 13=Si
+
+        If use_extended_vocab=True (ELEMENT_VOCAB_EXTENDED, 25 tokens):
+            0=PAD, 1=MASK, 2=UNK, 3=C, 4=N, 5=O, 6=S, 7=P, 8=F, 9=Cl, 10=Br, 11=I,
+            12=B, 13=Si, 14=Se, 15=As, 16=Zn, 17=Fe, 18=Cu, 19=Mg, 20=Ca, 21=Na,
+            22=K, 23=Bi, 24=H
+    """
+    if use_extended_vocab:
+        vocab = ELEMENT_VOCAB_EXTENDED_TO_IDX
+        default_idx = 2  # UNK token
+    else:
+        vocab = ELEMENT_TO_IDX
+        default_idx = 0  # PAD token (no UNK in ELEMENT_VOCAB)
+
+    element_indices = []
+    for atom in mol.GetAtoms():
+        symbol = atom.GetSymbol()
+        idx = vocab.get(symbol, default_idx)
+        element_indices.append(idx)
+
+    return torch.tensor(element_indices, dtype=torch.long)
+
 
 aa_3to1 = {
     "ALA": "A",
@@ -361,22 +453,43 @@ def reorder_molecule(mol, new_order):
     return new_mol.GetMol()
 
 
-def load_ligand(filepath: str, add_batch_dim: bool = True, canonical_order: bool = True) -> dict[str, Any]:
+def load_ligand(
+    filepath: str,
+    add_batch_dim: bool = True,
+    canonical_order: bool = True,
+    use_extended_element_vocab: bool = False,
+) -> dict[str, Any]:
     """Convert a ligand file to a PyTorch tensor.
 
-    Args:
-        filepath (str): Path to the ligand file. Can be a local path or an S3 URI.
-                       Supports .pdb, .mol2, and .sdf formats.
-        add_batch_dim (bool): Whether to add a batch dimension to the output.
-        canonical_order (bool): Whether to reorder the atoms to the canonical order.
+    Parameters
+    ----------
+    filepath : str
+        Path to the ligand file. Can be a local path or an S3 URI.
+        Supports .pdb, .mol2, and .sdf formats.
+    add_batch_dim : bool
+        Whether to add a batch dimension to the output.
+    canonical_order : bool
+        Whether to reorder the atoms to the canonical order (mol2/sdf only).
+    use_extended_element_vocab : bool
+        If True, use ELEMENT_VOCAB_EXTENDED (25 tokens) for element_indices
+        to match Gen-UME protein-ligand encoder.
+        If False (default), use ELEMENT_VOCAB (14 tokens) for latent generator.
 
-    Returns:
-        dict: A dictionary containing the following keys:
-            - 'pdb_path': The path to the ligand file. Could be .pdb or .mol2 or .sdf
-            - 'atom_names': A list of strings representing the atom names.
-            - 'atom_coords': A tensor of shape (1, N, 3) containing the coordinates of the ligand atoms.
-            - 'atom_indices': A tensor of shape (1, N) containing the atom indices.
-            - 'mask': A tensor of shape (1, N) containing the mask for the coordinates.
+    Returns
+    -------
+    dict
+        A dictionary containing the following keys:
+            - 'pdb_path': The path to the ligand file.
+            - 'atom_names': A list of strings representing the atom symbols.
+            - 'atom_coords': Tensor of shape [N, 3] or [1, N, 3] with coordinates.
+            - 'atom_indices': Tensor of shape [N] or [1, N] with atom indices.
+            - 'mask': Tensor of shape [N] or [1, N] with validity mask.
+            - 'element_indices': Tensor of shape [N] or [1, N] with element type indices
+              (only for mol2/sdf files). Uses ELEMENT_VOCAB (14 tokens) by default,
+              or ELEMENT_VOCAB_EXTENDED (25 tokens) if use_extended_element_vocab=True.
+            - 'bond_matrix': Tensor of shape [N, N] with bond types
+              (only for mol2/sdf files). Values: 0=none, 1=single, 2=double,
+              3=triple, 4=aromatic, 5=other.
     """
     if filepath.startswith("s3://"):
         # Parse S3 URI
@@ -421,17 +534,25 @@ def load_ligand(filepath: str, add_batch_dim: bool = True, canonical_order: bool
         atom_numbers = torch.tensor(atom_numbers, dtype=torch.int32)
         mask = torch.ones(coords.shape[0], dtype=torch.float32)
 
+        # Extract bond matrix and element indices from RDKit molecule
+        bond_matrix = extract_bond_matrix(mol)
+        element_indices = extract_element_indices(mol, use_extended_vocab=use_extended_element_vocab)
+
         structure_data = {
             "pdb_path": filepath,
             "atom_names": atom_names,
             "atom_coords": coords,
             "atom_indices": atom_numbers,
             "mask": mask,
+            "element_indices": element_indices,
+            "bond_matrix": bond_matrix,
         }
         if add_batch_dim:
             structure_data["atom_coords"] = structure_data["atom_coords"][None]
             structure_data["atom_indices"] = structure_data["atom_indices"][None]
             structure_data["mask"] = structure_data["mask"][None]
+            structure_data["element_indices"] = structure_data["element_indices"][None]
+            # Note: bond_matrix is NOT batched as it's [N, N] and collation handles it
 
         return structure_data
 

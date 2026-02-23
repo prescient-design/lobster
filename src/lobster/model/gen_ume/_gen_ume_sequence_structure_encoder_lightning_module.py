@@ -436,6 +436,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         inpainting_mask_sequence: Tensor = None,
         inpainting_mask_structure: Tensor = None,
         asynchronous_sampling: bool = False,
+        sequence_anchor_tokens: Tensor = None,
+        sequence_anchor_mask: Tensor = None,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -555,6 +557,10 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
             else:
                 xt_seq = xt_seq_new
                 xt_struc = xt_struc_new
+
+            # Apply sequence anchors: keep anchored positions fixed (mask=0), update free positions (mask=1)
+            if sequence_anchor_tokens is not None and sequence_anchor_mask is not None:
+                xt_seq = torch.where(sequence_anchor_mask.bool(), xt_seq, sequence_anchor_tokens)
 
             xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 
