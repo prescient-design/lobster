@@ -1,0 +1,46 @@
+# Example configuration for inverse folding (sequence design for given structures)
+# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_inverse_folding_750M
+
+# Output directory
+output_dir: "./examples/generated_inverse_folding_750M_pdb"
+
+# Random seed for reproducibility
+seed: 54321
+
+# Model configuration
+model:
+  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
+  ckpt_path: "/cv/data/ai4dd/data2/ume/gen_ume/runs//2025-11-17T20-31-05/last.ckpt"
+
+# Generation settings
+generation:
+  mode: inverse_folding
+  nsteps: 100 #200          # Fewer steps for inverse folding
+  batch_size: 1        # Process 1 structures at a time
+  n_trials: 1          # Number of trials for best output selection
+  
+  #Generation parameters
+  temperature_seq: 0.14995423473740457 #0.16423763902324678    
+  temperature_struc: 0.4178150796307539 #1.0  
+  stochasticity_seq: 10 #20 
+  stochasticity_struc: 50 #10
+
+  enable_sequence_token_check: true
+  sequence_token_check_retries: 100
+
+  n_designs_per_structure: 1  # Number of designs to generate per structure
+  # Input structures - update these paths to your PDB files
+  # Examples of different input formats:
+  # Single file: input_structures: "/path/to/structure.pdb"
+  # Directory: input_structures: "/path/to/pdb/directory/"
+  # Glob pattern: input_structures: "/path/to/structures/*.pdb"
+  # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
+  input_structures: "/cv/data/ai4dd/data2/lisanzas/multi_flow_data/test_set_filtered_pt/*.pt" #"/cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed/*.pt" #"/cv/data/ai4dd/data2/lisanzas/multi_flow_data/test_set_filtered_pt/*.pt"
+
+  # Enable ESMFold validation
+  use_esmfold: true
+  max_length: 512
+  
+  # Not used for inverse folding
+  length: null
+  num_samples: null
