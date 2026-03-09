@@ -13,6 +13,7 @@ from ._peer_dataset import PEERDataset
 from ._ptm_dataset import PTMDataset
 from ._round_robin_concat_iterable_dataset import RoundRobinConcatIterableDataset
 from ._shuffled_iterable_dataset import ShuffledIterableDataset
+from ._streaming_sequence_dataset import StreamingSequenceDataset
 from ._zinc_dataset import ZINCIterableDataset
 from .s3_datasets.base import UMEStreamingDataset
 
@@ -36,6 +37,7 @@ __all__ = [
     "LatentGeneratorPinderDataset",
     "ZINCIterableDataset",
     "OpenGenome2IterableDataset",
+    "StreamingSequenceDataset",
     "UMEStreamingDataset",
     "PTMDataset",
 ]
