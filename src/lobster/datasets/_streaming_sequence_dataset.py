@@ -7,18 +7,14 @@ each sequence for causal language modeling with ``LobsterPCLM``.
 from __future__ import annotations
 
 import importlib.resources
-import logging
 from collections.abc import Callable
 from typing import Any
 
-from litdata import StreamingDataset
-
+from lobster.datasets._tokenized_streaming_dataset import TokenizedStreamingDataset
 from lobster.tokenization import PmlmTokenizerTransform
 
-logger = logging.getLogger(__name__)
 
-
-class StreamingSequenceDataset(StreamingDataset):
+class StreamingSequenceDataset(TokenizedStreamingDataset):
     """LitData ``StreamingDataset`` that tokenizes protein sequences for CLM training.
 
     Each item stored in the optimized LitData directory is expected to be a dict
@@ -71,10 +67,10 @@ class StreamingSequenceDataset(StreamingDataset):
             seed=seed,
             drop_last=drop_last,
             cache_dir=cache_dir,
+            transform_fn=transform_fn,
         )
 
         self.sequence_key = sequence_key
-        self.transform_fn = transform_fn
         self.max_length = max_length
 
         path = importlib.resources.files("lobster") / "assets" / tokenizer_dir
@@ -86,37 +82,19 @@ class StreamingSequenceDataset(StreamingDataset):
             mlm=False,
         )
 
-    def __next__(self) -> dict[str, Any]:
-        """Return the next tokenized sample.
+    def _extract_sequence(self, item: dict[str, Any]) -> str:
+        return item.get(self.sequence_key, "")
 
-        Returns
-        -------
-        dict[str, Any]
-            Dictionary containing:
+    def _should_skip_sequence(self, sequence: Any) -> bool:
+        return not sequence
 
-            - ``input_ids`` – token ids tensor of shape ``(1, max_length)``
-            - ``labels`` – label tensor (padding positions set to -100)
-            - ``attention_mask`` – attention mask tensor
-            - ``sequence`` – the raw protein sequence string
-        """
-        item: dict = super().__next__()
-        sequence: str = item.get(self.sequence_key, "")
+    def _encode_sequence(self, sequence: str) -> dict[str, Any]:
+        return self._tokenizer_transform(sequence)
 
-        if not sequence:
-            logger.warning("Empty sequence encountered, skipping.")
-            return self.__next__()
-
-        if self.transform_fn is not None:
-            sequence = self.transform_fn(sequence)
-            if sequence is None or sequence == "":
-                logger.warning("Transform returned empty/None, skipping.")
-                return self.__next__()
-
-        tokenized = self._tokenizer_transform(sequence)
-
+    def _build_output(self, *, encoded: dict[str, Any], sequence: str, item: dict[str, Any]) -> dict[str, Any]:
         return {
-            "input_ids": tokenized["input_ids"],
-            "labels": tokenized["labels"],
-            "attention_mask": tokenized["attention_mask"],
+            "input_ids": encoded["input_ids"],
+            "labels": encoded["labels"],
+            "attention_mask": encoded["attention_mask"],
             "sequence": sequence,
         }

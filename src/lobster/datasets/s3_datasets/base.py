@@ -4,11 +4,11 @@ from collections.abc import Callable
 from typing import Any
 
 import litdata
-from litdata import StreamingDataset
 from litdata.streaming.item_loader import ParquetLoader
 from upath import UPath
 
 from lobster.constants import Modality, Split
+from lobster.datasets._tokenized_streaming_dataset import TokenizedStreamingDataset
 from lobster.tokenization import (
     get_ume_tokenizer_transforms,
 )
@@ -17,7 +17,7 @@ from lobster.transforms import TokenizerTransform
 logger = logging.getLogger(__name__)
 
 
-class UMEStreamingDataset(StreamingDataset):
+class UMEStreamingDataset(TokenizedStreamingDataset):
     """
     Base class for UME streaming datasets that handles tokenization and data loading
     with litdata.
@@ -119,21 +119,19 @@ class UMEStreamingDataset(StreamingDataset):
         """
         split = Split(split) if isinstance(split, str) else split
         subsample = self._calculate_subsample_rate(split)
-        s3_uri = self._get_and_validate_uri(split, use_optimized)
+        input_dir, streaming_kwargs = self._build_streaming_source(split, use_optimized, subsample)
 
         super().__init__(
-            s3_uri,
-            item_loader=ParquetLoader() if not use_optimized else None,
-            subsample=subsample,
-            drop_last=True,
+            input_dir,
             shuffle=split == Split.TRAIN,
             seed=seed,
             cache_dir=cache_dir,
-            force_override_state_dict=True,
+            drop_last=True,
+            transform_fn=transform_fn,
+            extra_transform_fns=extra_transform_fns,
+            **streaming_kwargs,
         )
 
-        self.transform_fn = transform_fn
-        self.extra_transform_fns = extra_transform_fns
         self.tokenize = tokenize
         self.max_length = max_length
         self.use_optimized = use_optimized
@@ -220,6 +218,16 @@ class UMEStreamingDataset(StreamingDataset):
 
         return s3_uri
 
+    def _build_streaming_source(self, split: Split, use_optimized: bool, subsample: float) -> tuple[str, dict[str, Any]]:
+        input_dir = self._get_and_validate_uri(split, use_optimized)
+        streaming_kwargs: dict[str, Any] = {
+            "subsample": subsample,
+            "force_override_state_dict": True,
+        }
+        if not use_optimized:
+            streaming_kwargs["item_loader"] = ParquetLoader()
+        return input_dir, streaming_kwargs
+
     def _setup_tokenizers(self, max_length: int | None, use_shared_tokenizer: bool = True) -> None:
         """
         Set up tokenizers for different modalities.
@@ -247,49 +255,21 @@ class UMEStreamingDataset(StreamingDataset):
             max_length=max_length, use_shared_tokenizer=use_shared_tokenizer
         )
 
-    def __next__(self) -> dict[str, Any]:
-        item: dict = super().__next__()
+    def _extract_sequence(self, item: dict[str, Any]) -> str:
+        return item.pop(self.SEQUENCE_KEY)
 
-        sequence: str = item.pop(self.SEQUENCE_KEY)
-
-        if sequence is None:
-            return self.__next__()
-
-        if self.transform_fn:
-            sequence: str | tuple[str | None, ...] | list[str | None] | None = self.transform_fn(sequence)
-
-        if sequence is None or (isinstance(sequence, list | tuple) and any(seq is None for seq in sequence)):
-            logger.warning(
-                f"Item in {self.__class__.__name__} is None or contains None (`{sequence}`). Skipping this item."
-            )
-            return self.__next__()
-
-        if self.extra_transform_fns is not None:
-            for key, fn in self.extra_transform_fns.items():
-                transformed = fn(sequence)
-
-                if transformed is None:
-                    logger.warning(
-                        f"Extra transform function {key} returned None for input `{sequence}`. Skipping this item."
-                    )
-                    return self.__next__()
-
-                item[key] = transformed
-
+    def _encode_sequence(self, sequence: str) -> dict[str, Any]:
         if not self.tokenize:
             return {
                 "input_ids": None,
                 "attention_mask": None,
-                "sequence": sequence,
-                "modality": self.MODALITY.value,
-                "dataset": self.__class__.__name__,
-                **item,
             }
+        return self.tokenizer_registry[self.MODALITY](sequence)
 
-        encoded = self.tokenizer_registry[self.MODALITY](sequence)
-
+    def _build_output(self, *, encoded: dict[str, Any], sequence: str, item: dict[str, Any]) -> dict[str, Any]:
         return {
-            **encoded,
+            "input_ids": encoded["input_ids"],
+            "attention_mask": encoded["attention_mask"],
             "sequence": sequence,
             "modality": self.MODALITY.value,
             "dataset": self.__class__.__name__,
