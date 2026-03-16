@@ -50,3 +50,38 @@ def map_checkpoint_keys(
         mapped_state_dict[key.replace(original_prefix, new_prefix, 1)] = value
 
     return mapped_state_dict
+
+
+# TODO: Add config.json support for checkpoint parameters
+# Once config.json files are added alongside checkpoints in S3, implement a
+# load_config_json() function to load non-critical params (model_size, pad_token_id, max_length)
+
+
+def infer_architecture_from_state_dict(state_dict: dict[str, torch.Tensor], prefix: str = "") -> dict:
+    """
+    Infer critical architecture parameters from checkpoint state_dict.
+    
+    Infers vocab_size and hidden_size from encoder weight shapes.
+    These parameters MUST match checkpoint weights and cannot be overridden.
+    """
+    inferred_params = {}
+    
+    # Try different possible key formats
+    encoder_key_variants = [
+        f"{prefix}model.encoder.weight",
+        "model.encoder.weight",
+        "encoder.neobert.model.encoder.weight",
+    ]
+    
+    for encoder_key in encoder_key_variants:
+        if encoder_key in state_dict:
+            vocab_size, hidden_size = state_dict[encoder_key].shape
+            inferred_params["vocab_size"] = vocab_size
+            inferred_params["hidden_size"] = hidden_size
+            logger.info(f"Inferred from checkpoint key '{encoder_key}': vocab_size={vocab_size}, hidden_size={hidden_size}")
+            break
+    
+    if not inferred_params:
+        logger.warning(f"Could not find encoder.weight in state_dict to infer vocab_size/hidden_size. Keys: {list(state_dict.keys())[:10]}")
+    
+    return inferred_params

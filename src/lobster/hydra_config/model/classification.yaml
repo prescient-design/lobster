@@ -1,0 +1,19 @@
+_target_: lobster.model._property_classification.PropertyClassification
+
+# Instantiate base encoder from pretrained UME v1 (ModernBERT)
+encoder:
+  _target_: lobster.model.UME.from_pretrained
+  model_name: ume-mini-base-12M
+  use_flash_attn: false
+
+config:
+  _target_: lobster.model._property_classification.PropertyClassificationConfig
+  task_name: property
+  num_classes: 2  # binary classification
+  loss_function: auto  # will use BCE for binary
+  hidden_sizes: [512]
+  dropout: 0.1
+  activation: auto
+  pooling: attn
+  lr: 1e-3
+  weight_decay: 0.0
