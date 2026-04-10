@@ -138,6 +138,15 @@ class ProteinLigandForwardFoldingEvaluator:
         Whether to try both original and reflected (mirror image) coordinates and
         select the one with higher TM-score. This is useful if the model might
         output mirror images of structures. Default: False.
+    use_protenix : bool
+        Whether to additionally validate with Protenix co-folding via Pylon endpoint.
+        Sends GT sequence + ligand SMILES to Protenix and compares to GT structure.
+    use_boltz : bool
+        Whether to additionally validate with Boltz-2 co-folding via Pylon endpoint.
+        Mutually exclusive with use_protenix; if both are True, Boltz is used.
+    raw_data_dir : str, optional
+        Path to raw benchmark data with SDF files for SMILES extraction. Required if
+        use_protenix=True or use_boltz=True.
     """
 
     def __init__(
@@ -173,6 +182,10 @@ class ProteinLigandForwardFoldingEvaluator:
         save_all_predictions: bool = False,
         # Mirror image handling
         try_reflection: bool = False,
+        # Co-folding validation (Protenix or Boltz)
+        use_protenix: bool = False,
+        use_boltz: bool = False,
+        raw_data_dir: str | None = None,
     ):
         self.data_dir = data_dir
         self.pocket_distance_threshold = pocket_distance_threshold
@@ -208,31 +221,37 @@ class ProteinLigandForwardFoldingEvaluator:
         # Mirror image handling
         self.try_reflection = try_reflection
 
+        # Co-folding validation
+        self.use_protenix = use_protenix or use_boltz
+        self.use_boltz = use_boltz
+        self.cofold_backend = "boltz" if use_boltz else "protenix"
+        self.raw_data_dir = raw_data_dir
+
         # Initialize tokenizer transform for sequence conversion
         self.tokenizer_transform = AminoAcidTokenizerTransform(max_length=max_length)
 
-        # Amino acid mapping (standard 21 tokens)
-        self.aa_map = {
-            0: "L",
-            1: "A",
-            2: "G",
-            3: "V",
-            4: "S",
-            5: "E",
-            6: "R",
-            7: "T",
-            8: "I",
-            9: "D",
-            10: "P",
+        # Standard amino acid mapping (alphabetical order, matching .pt file format)
+        self.standard_aa_map = {
+            0: "A",
+            1: "R",
+            2: "N",
+            3: "D",
+            4: "C",
+            5: "Q",
+            6: "E",
+            7: "G",
+            8: "H",
+            9: "I",
+            10: "L",
             11: "K",
-            12: "Q",
+            12: "M",
             13: "F",
-            14: "N",
-            15: "Y",
-            16: "M",
-            17: "H",
-            18: "W",
-            19: "C",
+            14: "P",
+            15: "S",
+            16: "T",
+            17: "W",
+            18: "Y",
+            19: "V",
             20: "X",
         }
 
@@ -433,6 +452,18 @@ class ProteinLigandForwardFoldingEvaluator:
                 logger.warning(f"Missing sequence for {pdb_id}, skipping")
                 continue
 
+            # Extract ligand SMILES (for CSV output and downstream co-folding)
+            smiles = None
+            if self.raw_data_dir:
+                sdf_path = os.path.join(self.raw_data_dir, pdb_id, f"{pdb_id}_ligand.sdf")
+                if os.path.exists(sdf_path):
+                    try:
+                        from lobster.metrics.pylon_client import ligand_sdf_to_smiles
+
+                        smiles = ligand_sdf_to_smiles(sdf_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to extract SMILES for {pdb_id}: {e}")
+
             samples.append(
                 {
                     "pdb_id": pdb_id,
@@ -442,10 +473,11 @@ class ProteinLigandForwardFoldingEvaluator:
                     "protein_indices": protein_indices,
                     "ligand_coords": ligand_coords,
                     "ligand_atom_types": ligand_atom_types,
-                    "ligand_atom_names": atom_names,  # Keep original atom names for PDB writing
+                    "ligand_atom_names": atom_names,
                     "ligand_mask": ligand_mask,
                     "ligand_indices": ligand_indices,
                     "bond_matrix": bond_matrix,
+                    "smiles": smiles,
                 }
             )
 
@@ -1077,6 +1109,8 @@ class ProteinLigandForwardFoldingEvaluator:
                 "length": len(gt_seq),
                 "n_pocket_residues": int(pocket_mask.sum().item()),
                 "n_nonpocket_residues": int(non_pocket_mask.sum().item()),
+                "sequence": self.sequence_to_string(gt_seq),
+                "smiles": sample.get("smiles", ""),
                 # Protein-only metrics
                 "tm_score_no_ligand": self.compute_tm_score(pred_coords_no_ligand, gt_coords, gt_seq, protein_mask),
                 "rmsd_overall_no_ligand": self.compute_rmsd(pred_coords_no_ligand, gt_coords, protein_mask),
@@ -1088,6 +1122,115 @@ class ProteinLigandForwardFoldingEvaluator:
                 "rmsd_pocket_with_ligand": self.compute_rmsd(pred_coords_with_ligand, gt_coords, pocket_mask),
                 "rmsd_nonpocket_with_ligand": self.compute_rmsd(pred_coords_with_ligand, gt_coords, non_pocket_mask),
             }
+
+            # Ligand placement metrics
+            decoded_ligand = pred_with_ligand.get("decoded_ligand_coords")
+            gt_ligand_coords = sample["ligand_coords"]
+            if decoded_ligand is not None and gt_ligand_coords is not None:
+                min_lig_len = min(len(decoded_ligand), len(gt_ligand_coords))
+                if min_lig_len > 0:
+                    pred_lig = decoded_ligand[:min_lig_len].detach().float()
+                    gt_lig = gt_ligand_coords[:min_lig_len].detach().float()
+
+                    # Raw ligand RMSD (no alignment)
+                    diff = pred_lig - gt_lig
+                    result["ligand_rmsd"] = float(torch.sqrt((diff**2).sum(dim=-1).mean()).item())
+
+                    pred_centroid = pred_lig.mean(dim=0)
+                    gt_centroid = gt_lig.mean(dim=0)
+                    centroid_dist = (pred_centroid - gt_centroid).norm().item()
+                    result["ligand_centroid_distance"] = centroid_dist
+
+                    # Aligned ligand RMSD (align pred protein to GT, apply to ligand)
+                    from lobster.metrics._generation_utils import (
+                        compute_aligned_ligand_rmsd,
+                        compute_protein_ligand_contacts,
+                    )
+
+                    aligned_metrics = compute_aligned_ligand_rmsd(
+                        pred_coords_with_ligand,
+                        gt_coords,
+                        pred_lig,
+                        gt_lig,
+                        protein_mask=protein_mask,
+                    )
+                    result.update(aligned_metrics)
+
+                    # Protein-ligand contacts (CA within 6A of ligand atoms)
+                    contact_metrics = compute_protein_ligand_contacts(
+                        pred_coords_with_ligand,
+                        pred_lig,
+                        contact_threshold=6.0,
+                    )
+                    result["n_protein_ligand_contacts"] = contact_metrics["n_contacts"]
+                    result["frac_residues_contacting_ligand"] = contact_metrics["frac_residues_in_contact"]
+                    result["n_ligand_atoms_contacted"] = contact_metrics["n_ligand_atoms_contacted"]
+                    result["frac_ligand_atoms_contacted"] = contact_metrics["frac_ligand_atoms_contacted"]
+                    result["ligand_contacts_protein"] = contact_metrics["n_contacts"] > 0
+
+                    # Ligand in pocket: pred ligand contacts at least one GT pocket residue
+                    if pocket_mask is not None and pocket_mask.any():
+                        pocket_contact = contact_metrics["contact_mask"] & pocket_mask.bool()
+                        n_pocket_contacts = int(pocket_contact.sum().item())
+                        result["n_pocket_contacts"] = n_pocket_contacts
+                        result["ligand_in_pocket"] = n_pocket_contacts > 0
+                    else:
+                        result["n_pocket_contacts"] = 0
+                        result["ligand_in_pocket"] = False
+
+            # Co-folding validation (Protenix or Boltz)
+            if self.use_protenix and sample.get("smiles"):
+                from lobster.metrics.pylon_client import (
+                    call_cofold,
+                    parse_structure_to_coords,
+                    parse_mmcif_ligand_coords,
+                )
+
+                gt_seq_str = self.sequence_to_string(gt_seq)
+                try:
+                    protenix_out = call_cofold(
+                        sequence=gt_seq_str,
+                        ligand_smiles=sample["smiles"],
+                        backend=self.cofold_backend,
+                    )
+                    confidence = protenix_out.get("confidence", {})
+                    result["protenix_iptm"] = confidence.get("iptm", float("nan"))
+                    result["protenix_ptm"] = confidence.get("ptm", float("nan"))
+                    result["protenix_plddt"] = confidence.get("plddt", float("nan"))
+
+                    structure_text = protenix_out.get("structure")
+                    if structure_text:
+                        pred_backbone = parse_structure_to_coords(structure_text)
+                        min_len = min(len(pred_backbone), len(gt_coords))
+                        pred_bb = pred_backbone[:min_len].cpu()
+                        gt_bb = gt_coords[:min_len].cpu()
+                        seq_for_tm = gt_seq[:min_len].cpu()
+                        mask_for_tm = protein_mask[:min_len].cpu()
+                        pocket_for_tm = pocket_mask[:min_len].cpu()
+
+                        result["protenix_tm_score"] = self.compute_tm_score(pred_bb, gt_bb, seq_for_tm, mask_for_tm)
+                        result["protenix_rmsd"] = self.compute_rmsd(pred_bb, gt_bb, mask_for_tm)
+                        if pocket_for_tm.any():
+                            result["protenix_rmsd_pocket"] = self.compute_rmsd(pred_bb, gt_bb, pocket_for_tm)
+
+                        # Check Protenix ligand placement
+                        try:
+                            protenix_lig_coords = parse_mmcif_ligand_coords(structure_text)
+                            if len(protenix_lig_coords) > 0 and len(gt_ligand_coords) > 0:
+                                min_lig = min(len(protenix_lig_coords), len(gt_ligand_coords))
+                                pred_l = protenix_lig_coords[:min_lig].float()
+                                gt_l = gt_ligand_coords[:min_lig].cpu().float()
+                                diff_l = pred_l - gt_l
+                                result["protenix_ligand_rmsd"] = float(
+                                    torch.sqrt((diff_l**2).sum(dim=-1).mean()).item()
+                                )
+                                p_centroid = pred_l.mean(dim=0)
+                                g_centroid = gt_l.mean(dim=0)
+                                result["protenix_ligand_centroid_dist"] = (p_centroid - g_centroid).norm().item()
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.warning(f"Protenix co-folding failed for {pdb_id}: {e}")
 
             # Add best-of-N info if applicable
             if self.num_predictions > 1:
@@ -1177,6 +1320,38 @@ class ProteinLigandForwardFoldingEvaluator:
             "mean_pocket_size": results_df["n_pocket_residues"].mean(),
         }
 
+        # Ligand placement summary
+        if "ligand_rmsd" in results_df.columns:
+            summary["mean_ligand_rmsd"] = results_df["ligand_rmsd"].mean()
+            summary["mean_ligand_centroid_distance"] = results_df["ligand_centroid_distance"].mean()
+            if "ligand_rmsd_aligned" in results_df.columns:
+                summary["mean_ligand_rmsd_aligned"] = results_df["ligand_rmsd_aligned"].mean()
+                summary["mean_ligand_centroid_distance_aligned"] = results_df["ligand_centroid_distance_aligned"].mean()
+            if "n_protein_ligand_contacts" in results_df.columns:
+                summary["mean_protein_ligand_contacts"] = results_df["n_protein_ligand_contacts"].mean()
+                summary["mean_frac_ligand_atoms_contacted"] = results_df["frac_ligand_atoms_contacted"].mean()
+            if "ligand_contacts_protein" in results_df.columns:
+                summary["ligand_contacts_protein_fraction"] = results_df["ligand_contacts_protein"].mean()
+            if "ligand_in_pocket" in results_df.columns:
+                summary["ligand_in_pocket_fraction"] = results_df["ligand_in_pocket"].mean()
+            if "n_pocket_contacts" in results_df.columns:
+                summary["mean_pocket_contacts"] = results_df["n_pocket_contacts"].mean()
+
+        # Protenix summary
+        if "protenix_tm_score" in results_df.columns:
+            for col in [
+                "protenix_tm_score",
+                "protenix_rmsd",
+                "protenix_rmsd_pocket",
+                "protenix_iptm",
+                "protenix_ptm",
+                "protenix_plddt",
+                "protenix_ligand_rmsd",
+                "protenix_ligand_centroid_dist",
+            ]:
+                if col in results_df.columns:
+                    summary[f"mean_{col}"] = results_df[col].mean()
+
         # Add reflection statistics if try_reflection is enabled
         if self.try_reflection and "reflected_no_ligand" in results_df.columns:
             summary["reflection_rate_no_ligand"] = results_df["reflected_no_ligand"].mean()
@@ -1187,5 +1362,5 @@ class ProteinLigandForwardFoldingEvaluator:
         return {"results_df": results_df, "summary": summary}
 
     def sequence_to_string(self, seq_tensor: Tensor) -> str:
-        """Convert sequence tensor to string."""
-        return "".join([self.aa_map.get(int(s), "X") for s in seq_tensor.cpu().tolist()])
+        """Convert sequence tensor (in standard format) to string."""
+        return "".join([self.standard_aa_map.get(int(s), "X") for s in seq_tensor.cpu().tolist()])

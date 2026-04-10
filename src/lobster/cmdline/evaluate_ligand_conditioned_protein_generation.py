@@ -227,6 +227,27 @@ def main():
         default=1234,
         help="Random seed for reproducibility",
     )
+    parser.add_argument(
+        "--use_protenix",
+        action="store_true",
+        help="Validate with Protenix co-folding via Pylon endpoint (iptm, chain_pair_iptm, scTM)",
+    )
+    parser.add_argument(
+        "--use_boltz",
+        action="store_true",
+        help="Validate with Boltz-2 co-folding via Pylon (alternative to --use_protenix)",
+    )
+    parser.add_argument(
+        "--raw_data_dir",
+        type=str,
+        default=None,
+        help="Path to raw benchmark data with SDF files for SMILES extraction (required for --use_protenix/--use_boltz)",
+    )
+    parser.add_argument(
+        "--skip_esmfold",
+        action="store_true",
+        help="Skip ESMFold validation (use only Protenix for validation)",
+    )
 
     args = parser.parse_args()
 
@@ -270,13 +291,17 @@ def main():
         logger.error(f"Failed to load model: {e}")
         sys.exit(1)
 
-    # Load ESMFold (always required for self-consistency)
-    from lobster.model import LobsterPLMFold
+    # Load ESMFold (unless skipped)
+    plm_fold = None
+    if not args.skip_esmfold:
+        from lobster.model import LobsterPLMFold
 
-    logger.info("Loading ESMFold for self-consistency evaluation...")
-    plm_fold = LobsterPLMFold(model_name="esmfold_v1", max_length=512)
-    plm_fold.to(args.device)
-    logger.info("ESMFold loaded successfully")
+        logger.info("Loading ESMFold for self-consistency evaluation...")
+        plm_fold = LobsterPLMFold(model_name="esmfold_v1", max_length=512)
+        plm_fold.to(args.device)
+        logger.info("ESMFold loaded successfully")
+    else:
+        logger.info("ESMFold skipped (--skip_esmfold)")
 
     # Get max_length from model if available
     num_samples = None if args.num_samples == -1 else args.num_samples
@@ -313,6 +338,9 @@ def main():
         force_field=args.force_field,
         minimize_steps=args.minimize_steps,
         plm_fold=plm_fold,
+        use_protenix=args.use_protenix,
+        use_boltz=args.use_boltz,
+        raw_data_dir=args.raw_data_dir,
     )
 
     # Load samples

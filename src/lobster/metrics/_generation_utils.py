@@ -1734,7 +1734,7 @@ def align_and_compute_rmsd(
     masked_coords1_ca = coords1_ca_aligned[mask.bool()]  # (M, 3)
     masked_coords2_ca = coords2_ca[mask.bool()]  # (M, 3)
 
-    rmsd = torch.sqrt(torch.mean((masked_coords1_ca - masked_coords2_ca) ** 2)).item()
+    rmsd = torch.sqrt(torch.mean(torch.sum((masked_coords1_ca - masked_coords2_ca) ** 2, dim=-1))).item()
 
     # If we need to return aligned full structure (all atoms, not just CA)
     if return_aligned:
@@ -1818,3 +1818,123 @@ def align_and_compute_rmsd_inpainted(
     )
 
     return gen_coords_aligned, rmsd_inpainted
+
+
+def compute_protein_ligand_contacts(
+    protein_coords: torch.Tensor,
+    ligand_coords: torch.Tensor,
+    contact_threshold: float = 6.0,
+) -> dict:
+    """Compute contact statistics between protein and ligand.
+
+    Parameters
+    ----------
+    protein_coords : Tensor
+        Protein coordinates. Either [L, 3, 3] backbone (N, CA, C) — CA atoms
+        (index 1) are used — or [L, 3] if already CA-only.
+    ligand_coords : Tensor
+        Ligand atom coordinates [N_atoms, 3].
+    contact_threshold : float
+        Distance cutoff in angstroms for defining a contact.
+
+    Returns
+    -------
+    dict
+        n_contacts: number of protein residues within threshold of any ligand atom
+        frac_residues_in_contact: fraction of protein residues in contact
+        n_ligand_atoms_contacted: number of ligand atoms within threshold of any CA
+        frac_ligand_atoms_contacted: fraction of ligand atoms contacted
+        min_protein_ligand_dist: minimum CA-ligand atom distance
+        contact_mask: boolean tensor [L] of which residues are in contact
+    """
+    if protein_coords.dim() == 3:
+        ca_coords = protein_coords[:, 1, :].detach().float()
+    else:
+        ca_coords = protein_coords.detach().float()
+    lig = ligand_coords.detach().float()
+
+    dists = torch.cdist(ca_coords.unsqueeze(0), lig.unsqueeze(0)).squeeze(0)  # [L, N_lig]
+    min_dist_per_residue = dists.min(dim=1).values  # [L]
+    min_dist_per_lig_atom = dists.min(dim=0).values  # [N_lig]
+
+    contact_mask = min_dist_per_residue < contact_threshold
+    n_contacts = int(contact_mask.sum().item())
+    n_lig_contacted = int((min_dist_per_lig_atom < contact_threshold).sum().item())
+
+    return {
+        "n_contacts": n_contacts,
+        "frac_residues_in_contact": n_contacts / max(ca_coords.shape[0], 1),
+        "n_ligand_atoms_contacted": n_lig_contacted,
+        "frac_ligand_atoms_contacted": n_lig_contacted / max(lig.shape[0], 1),
+        "min_protein_ligand_dist": float(dists.min().item()),
+        "contact_mask": contact_mask,
+    }
+
+
+def compute_aligned_ligand_rmsd(
+    pred_protein_coords: torch.Tensor,
+    gt_protein_coords: torch.Tensor,
+    pred_ligand_coords: torch.Tensor,
+    gt_ligand_coords: torch.Tensor,
+    protein_mask: torch.Tensor | None = None,
+) -> dict:
+    """Compute ligand RMSD after aligning predicted protein to GT protein.
+
+    Aligns the predicted protein backbone to the ground truth via Kabsch on
+    CA atoms, then applies the same rigid-body transform to the predicted
+    ligand coordinates. The ligand RMSD is computed in this aligned frame,
+    which measures how well the ligand is positioned relative to the protein.
+
+    Parameters
+    ----------
+    pred_protein_coords : Tensor [L, 3, 3]
+        Predicted protein backbone (N, CA, C).
+    gt_protein_coords : Tensor [L, 3, 3]
+        Ground truth protein backbone (N, CA, C).
+    pred_ligand_coords : Tensor [N_lig, 3]
+        Predicted ligand atom coordinates.
+    gt_ligand_coords : Tensor [N_lig, 3]
+        Ground truth ligand atom coordinates.
+    protein_mask : Tensor [L], optional
+        Mask for valid protein positions used in alignment.
+
+    Returns
+    -------
+    dict
+        ligand_rmsd_aligned: RMSD after protein-based alignment
+        ligand_centroid_distance_aligned: centroid distance after alignment
+    """
+    pred_ca = pred_protein_coords[:, 1, :].detach().float()
+    gt_ca = gt_protein_coords[:, 1, :].detach().float()
+    pred_lig = pred_ligand_coords.detach().float()
+    gt_lig = gt_ligand_coords.detach().float()
+
+    if protein_mask is not None:
+        pmask = protein_mask.bool()
+    else:
+        pmask = torch.ones(pred_ca.shape[0], dtype=torch.bool, device=pred_ca.device)
+
+    centroid_pred = pred_ca[pmask].mean(dim=0)
+    centroid_gt = gt_ca[pmask].mean(dim=0)
+
+    n_valid = pmask.sum().item()
+    ones_mask = torch.ones(1, int(n_valid), device=pred_ca.device)
+    _, (R, _) = kabsch_torch_batched(
+        P=pred_ca[pmask].unsqueeze(0),
+        Q=gt_ca[pmask].unsqueeze(0),
+        mask=ones_mask,
+        return_transform=True,
+    )
+    R = R.squeeze(0)
+
+    pred_lig_centered = pred_lig - centroid_pred.unsqueeze(0)
+    pred_lig_aligned = torch.matmul(pred_lig_centered, R.transpose(0, 1)) + centroid_gt.unsqueeze(0)
+
+    diff = pred_lig_aligned - gt_lig
+    rmsd = float(torch.sqrt((diff**2).sum(dim=-1).mean()).item())
+    centroid_dist = float((pred_lig_aligned.mean(dim=0) - gt_lig.mean(dim=0)).norm().item())
+
+    return {
+        "ligand_rmsd_aligned": rmsd,
+        "ligand_centroid_distance_aligned": centroid_dist,
+    }

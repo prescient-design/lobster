@@ -141,6 +141,16 @@ class ProteinLigandInverseFoldingEvaluator:
     plm_fold : object, optional
         Pre-loaded LobsterPLMFold model instance. Required if use_esmfold=True.
         Load with: LobsterPLMFold(model_name="esmfold_v1", max_length=512).
+    use_protenix : bool
+        Whether to validate designed sequences with Protenix co-folding via Pylon endpoint.
+        When enabled, folds designed sequence + ligand SMILES and computes TM-score, RMSD,
+        pocket RMSD, iptm, ptm, plddt vs ground truth (default: False).
+    use_boltz : bool
+        Whether to validate designed sequences with Boltz-2 co-folding via Pylon endpoint.
+        Mutually exclusive with use_protenix; if both are True, Boltz is used.
+    raw_data_dir : str, optional
+        Path to raw benchmark data with SDF files for SMILES extraction. Required if
+        use_protenix=True or use_boltz=True. E.g., posebusters_benchmark_set/.
     """
 
     def __init__(
@@ -176,6 +186,10 @@ class ProteinLigandInverseFoldingEvaluator:
         # ESMFold validation
         use_esmfold: bool = False,
         plm_fold: object | None = None,
+        # Co-folding validation (Protenix or Boltz)
+        use_protenix: bool = False,
+        use_boltz: bool = False,
+        raw_data_dir: str | None = None,
     ):
         self.data_dir = data_dir
         self.pocket_distance_threshold = pocket_distance_threshold
@@ -212,6 +226,17 @@ class ProteinLigandInverseFoldingEvaluator:
             raise ValueError(
                 "plm_fold must be provided when use_esmfold=True. "
                 "Load with: LobsterPLMFold(model_name='esmfold_v1', max_length=512)"
+            )
+
+        # Co-folding validation
+        self.use_protenix = use_protenix or use_boltz
+        self.use_boltz = use_boltz
+        self.cofold_backend = "boltz" if use_boltz else "protenix"
+        self.raw_data_dir = raw_data_dir
+        if (use_protenix or use_boltz) and raw_data_dir is None:
+            raise ValueError(
+                "raw_data_dir must be provided when use_protenix=True or use_boltz=True. "
+                "Point to the raw benchmark directory containing SDF files."
             )
 
         # Standard amino acid mapping (alphabetical order, matching writepdb num2aa)
@@ -430,6 +455,25 @@ class ProteinLigandInverseFoldingEvaluator:
                 logger.warning(f"Missing sequence for {pdb_id}, skipping")
                 continue
 
+            # Extract ligand SMILES (for CSV output and downstream co-folding)
+            smiles = None
+            if self.raw_data_dir:
+                sdf_path = os.path.join(self.raw_data_dir, pdb_id, f"{pdb_id}_ligand.sdf")
+                if os.path.exists(sdf_path):
+                    try:
+                        from lobster.metrics.pylon_client import ligand_sdf_to_smiles
+
+                        smiles = ligand_sdf_to_smiles(sdf_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to extract SMILES for {pdb_id}: {e}")
+                elif atom_names and bond_matrix is not None:
+                    try:
+                        from lobster.metrics.pylon_client import ligand_data_to_smiles
+
+                        smiles = ligand_data_to_smiles(atom_names, bond_matrix, ligand_coords)
+                    except Exception as e:
+                        logger.warning(f"Failed to reconstruct SMILES for {pdb_id}: {e}")
+
             samples.append(
                 {
                     "pdb_id": pdb_id,
@@ -439,10 +483,11 @@ class ProteinLigandInverseFoldingEvaluator:
                     "protein_indices": protein_indices,
                     "ligand_coords": ligand_coords,
                     "ligand_atom_types": ligand_atom_types,
-                    "ligand_atom_names": atom_names,  # Keep original atom names for PDB writing
+                    "ligand_atom_names": atom_names,
                     "ligand_mask": ligand_mask,
                     "ligand_indices": ligand_indices,
                     "bond_matrix": bond_matrix,
+                    "smiles": smiles,
                 }
             )
 
@@ -1172,6 +1217,8 @@ class ProteinLigandInverseFoldingEvaluator:
                 "length": len(gt_seq),
                 "n_pocket_residues": int(pocket_mask.sum().item()),
                 "n_nonpocket_residues": int(non_pocket_mask.sum().item()),
+                "sequence": self.sequence_to_string(pred_seq_with_ligand),
+                "smiles": sample.get("smiles", ""),
                 # Protein-only metrics
                 "aar_overall_no_ligand": self.compute_aar(pred_seq_no_ligand, gt_seq, protein_mask),
                 "aar_pocket_no_ligand": self.compute_aar(pred_seq_no_ligand, gt_seq, pocket_mask),
@@ -1251,6 +1298,68 @@ class ProteinLigandInverseFoldingEvaluator:
                 if structure_path and esmfold_gt.get("esmfold_coords") is not None:
                     esmfold_pdb_path = os.path.join(structure_path, f"{pdb_id}_esmfold_gt.pdb")
                     writepdb(esmfold_pdb_path, esmfold_gt["esmfold_coords"], gt_seq_masked)
+
+            # Co-folding validation (Protenix or Boltz)
+            if self.use_protenix and sample.get("smiles"):
+                from lobster.metrics.pylon_client import call_cofold, parse_structure_to_coords
+
+                gt_coords = sample["protein_coords"]
+
+                for mode, pred_seq in [("no_ligand", pred_seq_no_ligand), ("with_ligand", pred_seq_with_ligand)]:
+                    seq_str = self.sequence_to_string(pred_seq[protein_mask.bool()])
+                    try:
+                        protenix_out = call_cofold(
+                            sequence=seq_str,
+                            ligand_smiles=sample["smiles"],
+                            backend=self.cofold_backend,
+                        )
+                        confidence = protenix_out.get("confidence", {})
+                        result[f"protenix_iptm_{mode}"] = confidence.get("iptm", float("nan"))
+                        result[f"protenix_ptm_{mode}"] = confidence.get("ptm", float("nan"))
+                        result[f"protenix_plddt_{mode}"] = confidence.get("plddt", float("nan"))
+
+                        structure_text = protenix_out.get("structure")
+                        if structure_text:
+                            pred_backbone = parse_structure_to_coords(structure_text)
+                            min_len = min(len(pred_backbone), len(gt_coords))
+                            pred_bb = pred_backbone[:min_len].cpu()
+                            gt_bb = gt_coords[:min_len].cpu()
+                            seq_for_tm = gt_seq[:min_len].cpu()
+                            pocket_for_tm = pocket_mask[:min_len].cpu()
+
+                            from lobster.model.latent_generator.utils.residue_constants import (
+                                restype_order_with_x_inv,
+                            )
+                            from tmtools import tm_align
+
+                            seq_str_for_tm = "".join(
+                                [restype_order_with_x_inv.get(int(s), "X") for s in seq_for_tm.cpu().tolist()]
+                            )
+                            pred_ca = pred_bb[:, 1, :].detach().cpu().numpy()
+                            gt_ca = gt_bb[:, 1, :].detach().cpu().numpy()
+                            tm_out = tm_align(pred_ca, gt_ca, seq_str_for_tm, seq_str_for_tm)
+                            result[f"protenix_tm_{mode}"] = tm_out.tm_norm_chain1
+
+                            rmsd_overall = align_and_compute_rmsd(
+                                pred_bb.detach(),
+                                gt_bb.detach(),
+                                mask=None,
+                                return_aligned=False,
+                                device=pred_bb.device,
+                            )
+                            result[f"protenix_rmsd_{mode}"] = float(rmsd_overall)
+
+                            if pocket_for_tm.any():
+                                rmsd_pocket = align_and_compute_rmsd(
+                                    pred_bb[pocket_for_tm].detach(),
+                                    gt_bb[pocket_for_tm].detach(),
+                                    mask=None,
+                                    return_aligned=False,
+                                    device=pred_bb.device,
+                                )
+                                result[f"protenix_rmsd_pocket_{mode}"] = float(rmsd_pocket)
+                    except Exception as e:
+                        logger.warning(f"Protenix co-fold failed for {pdb_id} ({mode}): {e}")
 
             results.append(result)
 
@@ -1359,6 +1468,20 @@ class ProteinLigandInverseFoldingEvaluator:
                     "std_esmfold_tm_delta": results_df["esmfold_tm_delta"].std(),
                 }
             )
+
+        # Add Protenix summary metrics if available
+        if self.use_protenix and "protenix_tm_no_ligand" in results_df.columns:
+            for mode in ["no_ligand", "with_ligand"]:
+                for metric in ["tm", "rmsd", "rmsd_pocket", "iptm", "ptm", "plddt"]:
+                    col = f"protenix_{metric}_{mode}"
+                    if col in results_df.columns:
+                        summary[f"mean_{col}"] = results_df[col].mean()
+
+            if "protenix_tm_with_ligand" in results_df.columns and "protenix_tm_no_ligand" in results_df.columns:
+                results_df["protenix_tm_delta"] = (
+                    results_df["protenix_tm_with_ligand"] - results_df["protenix_tm_no_ligand"]
+                )
+                summary["mean_protenix_tm_delta"] = results_df["protenix_tm_delta"].mean()
 
         return {"results_df": results_df, "summary": summary}
 

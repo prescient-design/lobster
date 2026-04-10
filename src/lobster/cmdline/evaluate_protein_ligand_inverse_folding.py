@@ -213,6 +213,22 @@ def main():
         help="Validate designed sequences with ESMFold (fold and compare to GT structure)",
     )
     parser.add_argument(
+        "--use_protenix",
+        action="store_true",
+        help="Validate designed sequences with Protenix co-folding via Pylon (protein + ligand SMILES)",
+    )
+    parser.add_argument(
+        "--use_boltz",
+        action="store_true",
+        help="Validate designed sequences with Boltz-2 co-folding via Pylon (alternative to --use_protenix)",
+    )
+    parser.add_argument(
+        "--raw_data_dir",
+        type=str,
+        default=None,
+        help="Path to raw benchmark data with SDF files for SMILES extraction (required for --use_protenix/--use_boltz)",
+    )
+    parser.add_argument(
         "--max_protein_length",
         type=int,
         default=512,
@@ -313,6 +329,9 @@ def main():
         use_esmfold=args.use_esmfold,
         plm_fold=plm_fold,
         max_protein_length=args.max_protein_length,
+        use_protenix=args.use_protenix,
+        use_boltz=args.use_boltz,
+        raw_data_dir=args.raw_data_dir,
     )
 
     # Log SE3 augmentation status

@@ -118,8 +118,19 @@ class LigandConditionedProteinGenerationEvaluator:
         Force field for minimization: "MMFF94", "MMFF94s", "UFF", etc.
     minimize_steps : int
         Maximum number of minimization steps.
-    plm_fold : object
+    plm_fold : object, optional
         Pre-loaded LobsterPLMFold model instance for ESMFold prediction.
+        Required if use_protenix and use_boltz are both False.
+    use_protenix : bool
+        Whether to validate with Protenix co-folding via Pylon endpoint instead of
+        (or in addition to) ESMFold. When enabled, sends generated sequence + ligand
+        SMILES to Protenix and computes iptm, chain_pair_iptm, scTM, scRMSD.
+    use_boltz : bool
+        Whether to validate with Boltz-2 co-folding via Pylon endpoint.
+        Mutually exclusive with use_protenix; if both are True, Boltz is used.
+    raw_data_dir : str, optional
+        Path to raw benchmark data with SDF files for SMILES extraction. Required if
+        use_protenix=True or use_boltz=True.
     """
 
     def __init__(
@@ -149,6 +160,9 @@ class LigandConditionedProteinGenerationEvaluator:
         force_field: str = "MMFF94",
         minimize_steps: int = 500,
         plm_fold: object = None,
+        use_protenix: bool = False,
+        use_boltz: bool = False,
+        raw_data_dir: str | None = None,
     ):
         self.data_dir = data_dir
         self.length = length
@@ -175,11 +189,21 @@ class LigandConditionedProteinGenerationEvaluator:
         self.force_field = force_field
         self.minimize_steps = minimize_steps
         self.plm_fold = plm_fold
+        self.use_protenix = use_protenix or use_boltz
+        self.use_boltz = use_boltz
+        self.cofold_backend = "boltz" if use_boltz else "protenix"
+        self.raw_data_dir = raw_data_dir
 
-        if plm_fold is None:
+        if plm_fold is None and not self.use_protenix:
+            logger.warning(
+                "No plm_fold provided and use_protenix/use_boltz not set. "
+                "ESMFold self-consistency metrics (scTM, pLDDT) will be NaN. "
+                "Pass plm_fold=LobsterPLMFold(...) to enable ESMFold validation."
+            )
+        if self.use_protenix and raw_data_dir is None:
             raise ValueError(
-                "plm_fold is required for self-consistency evaluation. "
-                "Load with: LobsterPLMFold(model_name='esmfold_v1', max_length=512)"
+                "raw_data_dir must be provided when use_protenix=True or use_boltz=True. "
+                "Point to the raw benchmark directory containing SDF files."
             )
 
         self.standard_aa_map = {
@@ -351,6 +375,25 @@ class LigandConditionedProteinGenerationEvaluator:
             )
             bond_matrix = ligand_data.get("bond_matrix")
 
+            # Extract SMILES (for CSV output and downstream co-folding)
+            smiles = None
+            if self.raw_data_dir:
+                sdf_path = os.path.join(self.raw_data_dir, ligand_id, f"{ligand_id}_ligand.sdf")
+                if os.path.exists(sdf_path):
+                    try:
+                        from lobster.metrics.pylon_client import ligand_sdf_to_smiles
+
+                        smiles = ligand_sdf_to_smiles(sdf_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to extract SMILES for {ligand_id}: {e}")
+                elif atom_names and bond_matrix is not None:
+                    try:
+                        from lobster.metrics.pylon_client import ligand_data_to_smiles
+
+                        smiles = ligand_data_to_smiles(atom_names, bond_matrix, ligand_coords)
+                    except Exception as e:
+                        logger.warning(f"Failed to reconstruct SMILES for {ligand_id}: {e}")
+
             samples.append(
                 {
                     "ligand_id": ligand_id,
@@ -360,6 +403,7 @@ class LigandConditionedProteinGenerationEvaluator:
                     "ligand_mask": ligand_mask,
                     "ligand_indices": ligand_indices,
                     "bond_matrix": bond_matrix,
+                    "smiles": smiles,
                 }
             )
 
@@ -698,10 +742,17 @@ class LigandConditionedProteinGenerationEvaluator:
             except Exception as e:
                 logger.warning(f"Ligand minimization failed for {ligand_id}: {e}")
 
-        # Fold generated sequence with ESMFold
         seq_str = self.sequence_to_string(pred_seq)
-        esm_result = self.fold_with_esmfold(seq_str)
-        esmfold_coords = esm_result["esmfold_coords"]
+
+        # ESMFold self-consistency validation
+        esmfold_coords = None
+        esm_plddt = float("nan")
+        esm_pae = float("nan")
+        if self.plm_fold is not None:
+            esm_result = self.fold_with_esmfold(seq_str)
+            esmfold_coords = esm_result["esmfold_coords"]
+            esm_plddt = esm_result["plddt"]
+            esm_pae = esm_result["pae"]
 
         # Compute pocket mask on the decoded structure
         pocket_mask = None
@@ -726,19 +777,71 @@ class LigandConditionedProteinGenerationEvaluator:
             "n_ligand_atoms_in_contact": contact_metrics.get("n_ligand_atoms_in_contact", 0),
             "frac_ligand_atoms_in_contact": contact_metrics.get("frac_ligand_atoms_in_contact", 0.0),
             "min_protein_ligand_dist": contact_metrics.get("min_protein_ligand_dist", float("nan")),
-            "scTM": self.compute_tm_score(decoded_coords, esmfold_coords, pred_seq),
-            "scRMSD": self.compute_rmsd(decoded_coords, esmfold_coords),
-            "plddt": esm_result["plddt"],
-            "pae": esm_result["pae"],
             "sequence": seq_str,
+            "smiles": sample.get("smiles", ""),
         }
 
-        if pocket_mask is not None and n_pocket > 0:
-            result["pocket_scTM"] = self.compute_tm_score(decoded_coords, esmfold_coords, pred_seq, pocket_mask)
-            result["pocket_scRMSD"] = self.compute_rmsd(decoded_coords, esmfold_coords, pocket_mask)
+        # ESMFold metrics
+        if esmfold_coords is not None:
+            result["scTM"] = self.compute_tm_score(decoded_coords, esmfold_coords, pred_seq)
+            result["scRMSD"] = self.compute_rmsd(decoded_coords, esmfold_coords)
+            result["plddt"] = esm_plddt
+            result["pae"] = esm_pae
+            if pocket_mask is not None and n_pocket > 0:
+                result["pocket_scTM"] = self.compute_tm_score(decoded_coords, esmfold_coords, pred_seq, pocket_mask)
+                result["pocket_scRMSD"] = self.compute_rmsd(decoded_coords, esmfold_coords, pocket_mask)
+            else:
+                result["pocket_scTM"] = float("nan")
+                result["pocket_scRMSD"] = float("nan")
         else:
+            result["scTM"] = float("nan")
+            result["scRMSD"] = float("nan")
+            result["plddt"] = float("nan")
+            result["pae"] = float("nan")
             result["pocket_scTM"] = float("nan")
             result["pocket_scRMSD"] = float("nan")
+
+        # Co-folding validation (Protenix or Boltz)
+        if self.use_protenix and sample.get("smiles"):
+            from lobster.metrics.pylon_client import call_cofold, parse_structure_to_coords
+
+            try:
+                protenix_out = call_cofold(
+                    sequence=seq_str,
+                    ligand_smiles=sample["smiles"],
+                    backend=self.cofold_backend,
+                )
+                confidence = protenix_out.get("confidence", {})
+                result["protenix_iptm"] = confidence.get("iptm", float("nan"))
+                result["protenix_ptm"] = confidence.get("ptm", float("nan"))
+                result["protenix_plddt"] = confidence.get("plddt", float("nan"))
+                result["protenix_ranking_score"] = confidence.get("ranking_score", float("nan"))
+                chain_pair_iptm = confidence.get("chain_pair_iptm")
+                if chain_pair_iptm is not None:
+                    result["protenix_chain_pair_iptm"] = (
+                        chain_pair_iptm if isinstance(chain_pair_iptm, (int, float)) else float("nan")
+                    )
+
+                structure_text = protenix_out.get("structure")
+                if structure_text:
+                    pred_backbone = parse_structure_to_coords(structure_text)
+                    min_len = min(len(pred_backbone), len(decoded_coords))
+                    pred_bb = pred_backbone[:min_len].cpu()
+                    dec_bb = decoded_coords[:min_len].cpu()
+                    seq_for_tm = pred_seq[:min_len].cpu()
+
+                    result["protenix_scTM"] = self.compute_tm_score(dec_bb, pred_bb, seq_for_tm)
+                    result["protenix_scRMSD"] = self.compute_rmsd(dec_bb, pred_bb)
+
+                    if pocket_mask is not None and n_pocket > 0:
+                        pocket_for_tm = pocket_mask[:min_len].cpu()
+                        if pocket_for_tm.any():
+                            result["protenix_pocket_scTM"] = self.compute_tm_score(
+                                dec_bb, pred_bb, seq_for_tm, pocket_for_tm
+                            )
+                            result["protenix_pocket_scRMSD"] = self.compute_rmsd(dec_bb, pred_bb, pocket_for_tm)
+            except Exception as e:
+                logger.warning(f"Protenix co-fold failed for {ligand_id}: {e}")
 
         # Attach tensors for optional structure saving (not serialized to CSV)
         result["_pred_seq"] = pred_seq
@@ -906,12 +1009,13 @@ class LigandConditionedProteinGenerationEvaluator:
                 pred_seq,
             )
 
-        # Save ESMFold-predicted structure
-        writepdb(
-            os.path.join(structure_path, f"{ligand_id}_esmfold.pdb"),
-            esmfold_coords,
-            pred_seq,
-        )
+        # Save ESMFold-predicted structure (if ESMFold was run)
+        if esmfold_coords is not None:
+            writepdb(
+                os.path.join(structure_path, f"{ligand_id}_esmfold.pdb"),
+                esmfold_coords,
+                pred_seq,
+            )
 
     def _empty_summary(self) -> dict:
         """Return summary dict with NaN values for empty results."""
@@ -941,7 +1045,7 @@ class LigandConditionedProteinGenerationEvaluator:
         n_total_designs = len(results_df)
         n_ligands = len(best_df)
 
-        return {
+        summary = {
             "n_ligands": n_ligands,
             "n_total_designs": n_total_designs,
             "num_designs": self.num_designs,
@@ -969,3 +1073,58 @@ class LigandConditionedProteinGenerationEvaluator:
             "std_pae": best_df["pae"].std(),
             "mean_pocket_size": best_df["n_pocket_residues"].mean(),
         }
+
+        # Co-folding metrics (Protenix/Boltz)
+        # These map to Proteina-Complexa evaluation criteria:
+        #   protenix_iptm → analogous to RF3 min_ipAE (interface confidence)
+        #   protenix_scRMSD → analogous to RF3 binder_scRMSD_ca (backbone preserved)
+        #   protenix_ligand_rmsd → analogous to RF3 ligand_scRMSD_aligned (ligand position)
+        cofold_cols = [
+            "protenix_iptm",
+            "protenix_ptm",
+            "protenix_plddt",
+            "protenix_ranking_score",
+            "protenix_chain_pair_iptm",
+            "protenix_scTM",
+            "protenix_scRMSD",
+            "protenix_pocket_scTM",
+            "protenix_pocket_scRMSD",
+            "protenix_ligand_rmsd",
+            "protenix_ligand_centroid_dist",
+        ]
+        for col in cofold_cols:
+            if col in best_df.columns:
+                vals = best_df[col].dropna()
+                if len(vals) > 0:
+                    summary[f"mean_{col}"] = vals.mean()
+                    summary[f"std_{col}"] = vals.std()
+                    summary[f"median_{col}"] = vals.median()
+
+        # Proteina-Complexa-compatible success rates (using cofold metrics as proxies)
+        # Thresholds from Proteina-Complexa evaluation docs:
+        #   min_ipAE * 31 < 2.0 → iptm > 0.6 (approximate cofold equivalent)
+        #   binder_scRMSD_ca < 2.0 → scRMSD < 2.0
+        #   ligand_scRMSD_aligned < 5.0 → ligand_rmsd < 5.0
+        all_df = results_df
+        if "protenix_iptm" in all_df.columns:
+            has_cofold = all_df["protenix_iptm"].notna()
+            n_cofold = has_cofold.sum()
+            if n_cofold > 0:
+                cofold_df = all_df[has_cofold]
+                pass_iptm = (cofold_df["protenix_iptm"] > 0.6).sum()
+                summary["cofold_n_evaluated"] = int(n_cofold)
+                summary["cofold_pass_iptm_gt_0.6"] = int(pass_iptm)
+                summary["cofold_pass_rate_iptm"] = float(pass_iptm / n_cofold)
+
+                if "protenix_scRMSD" in cofold_df.columns:
+                    pass_scrmsd = (cofold_df["protenix_scRMSD"] < 2.0).sum()
+                    summary["cofold_pass_scRMSD_lt_2.0"] = int(pass_scrmsd)
+
+                    pass_both = ((cofold_df["protenix_iptm"] > 0.6) & (cofold_df["protenix_scRMSD"] < 2.0)).sum()
+                    summary["cofold_pass_iptm_and_scRMSD"] = int(pass_both)
+
+                if "protenix_ligand_rmsd" in cofold_df.columns:
+                    pass_lig = (cofold_df["protenix_ligand_rmsd"] < 5.0).sum()
+                    summary["cofold_pass_ligand_rmsd_lt_5.0"] = int(pass_lig)
+
+        return summary

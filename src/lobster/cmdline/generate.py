@@ -1050,6 +1050,24 @@ def _generate_unconditional(
         total_retries = 0
         max_retries_exceeded = 0
 
+        # Build sequence logit bias tensor from config
+        sequence_logit_bias = None
+        bias_cfg = gen_cfg.get("sequence_logit_bias", None)
+        if bias_cfg:
+            from lobster.tokenization._amino_acid import AA_VOCAB
+
+            sequence_logit_bias = torch.zeros(len(AA_VOCAB), device=device)
+            for aa, bias_val in bias_cfg.items():
+                if aa in AA_VOCAB:
+                    sequence_logit_bias[AA_VOCAB[aa]] = float(bias_val)
+                else:
+                    logger.warning(f"Unknown amino acid '{aa}' in sequence_logit_bias, skipping")
+            logger.info(f"Sequence logit bias: {dict(bias_cfg)}")
+
+        sequence_logit_bias_steps = int(gen_cfg.get("sequence_logit_bias_steps", 10))
+        if sequence_logit_bias is not None:
+            logger.info(f"Sequence logit bias applied for first {sequence_logit_bias_steps} denoising steps")
+
         for n_iter in range(n_iterations):
             if n_iter in completed_iterations:
                 logger.debug(f"Skipping already-completed iteration {n_iter + 1}/{n_iterations}")
@@ -1116,6 +1134,8 @@ def _generate_unconditional(
                         asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
                         sequence_anchor_tokens=anchor_tokens,
                         sequence_anchor_mask=anchor_mask,
+                        sequence_logit_bias=sequence_logit_bias,
+                        sequence_logit_bias_steps=sequence_logit_bias_steps,
                     )
 
                     # Create mask for decoding

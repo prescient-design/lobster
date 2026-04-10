@@ -230,6 +230,22 @@ def main():
         default=512,
         help="Maximum protein-only length. Samples exceeding this are skipped (default: 512)",
     )
+    parser.add_argument(
+        "--use_protenix",
+        action="store_true",
+        help="Additionally validate with Protenix co-folding via Pylon endpoint",
+    )
+    parser.add_argument(
+        "--use_boltz",
+        action="store_true",
+        help="Additionally validate with Boltz-2 co-folding via Pylon (alternative to --use_protenix)",
+    )
+    parser.add_argument(
+        "--raw_data_dir",
+        type=str,
+        default=None,
+        help="Path to raw benchmark data with SDF files for SMILES extraction (required for --use_protenix/--use_boltz)",
+    )
 
     args = parser.parse_args()
 
@@ -317,6 +333,10 @@ def main():
         save_all_predictions=args.save_all_predictions,
         # Mirror image handling
         try_reflection=args.try_reflection,
+        # Co-folding validation
+        use_protenix=args.use_protenix,
+        use_boltz=args.use_boltz,
+        raw_data_dir=args.raw_data_dir,
     )
 
     # Load samples
@@ -377,6 +397,17 @@ def main():
     print(f"  Without ligand: {summary['mean_rmsd_nonpocket_no_ligand']:.2f}")
     print(f"  With ligand:    {summary['mean_rmsd_nonpocket_with_ligand']:.2f}")
     print(f"  Delta:          {summary['mean_rmsd_nonpocket_delta']:+.2f} (±{summary['std_rmsd_nonpocket_delta']:.2f})")
+
+    if "mean_ligand_rmsd_aligned" in summary:
+        print("\n--- Ligand Placement ---")
+        print(f"  Ligand RMSD (raw):     {summary['mean_ligand_rmsd']:.2f} Å")
+        print(f"  Ligand RMSD (aligned): {summary['mean_ligand_rmsd_aligned']:.2f} Å")
+        print(f"  Ligand centroid dist (aligned): {summary['mean_ligand_centroid_distance_aligned']:.2f} Å")
+        print(f"  Protein-ligand contacts (6Å): {summary['mean_protein_ligand_contacts']:.1f}")
+        print(f"  Frac ligand atoms contacted:  {summary['mean_frac_ligand_atoms_contacted']:.3f}")
+        print(f"  Ligand contacts protein:       {summary.get('ligand_contacts_protein_fraction', 0):.1%}")
+        print(f"  Ligand in correct pocket:      {summary['ligand_in_pocket_fraction']:.1%}")
+        print(f"  Mean pocket contacts:          {summary.get('mean_pocket_contacts', 0):.1f}")
 
     print("\n" + "=" * 70)
 
