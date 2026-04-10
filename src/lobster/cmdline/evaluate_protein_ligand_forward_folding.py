@@ -407,6 +407,8 @@ def main():
         print(f"  Frac ligand atoms contacted:  {summary['mean_frac_ligand_atoms_contacted']:.3f}")
         print(f"  Ligand contacts protein:       {summary.get('ligand_contacts_protein_fraction', 0):.1%}")
         print(f"  Ligand in correct pocket:      {summary['ligand_in_pocket_fraction']:.1%}")
+        if "good_fold_and_in_pocket_fraction" in summary:
+            print(f"  Good fold + in pocket (TM>0.5): {summary['good_fold_and_in_pocket_fraction']:.1%}")
         print(f"  Mean pocket contacts:          {summary.get('mean_pocket_contacts', 0):.1f}")
 
     print("\n" + "=" * 70)

@@ -1334,6 +1334,9 @@ class ProteinLigandForwardFoldingEvaluator:
                 summary["ligand_contacts_protein_fraction"] = results_df["ligand_contacts_protein"].mean()
             if "ligand_in_pocket" in results_df.columns:
                 summary["ligand_in_pocket_fraction"] = results_df["ligand_in_pocket"].mean()
+                # Good fold (TM > 0.5) AND ligand in correct pocket
+                good_fold = results_df["tm_score_with_ligand"] > 0.5
+                summary["good_fold_and_in_pocket_fraction"] = (results_df["ligand_in_pocket"] & good_fold).mean()
             if "n_pocket_contacts" in results_df.columns:
                 summary["mean_pocket_contacts"] = results_df["n_pocket_contacts"].mean()
 
