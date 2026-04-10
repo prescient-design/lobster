@@ -62,6 +62,8 @@ class StructureLightningDataModule(LightningDataModule):
         dataset_types: list[str] | None = None,
         buffer_size: int = 5,
         stat_workers: int | None = None,
+        balance_datasets: bool = False,
+        max_cluster_replicates: int | None = None,
     ) -> None:
         """:param path_to_datasets: path to data set directories
 
@@ -187,6 +189,8 @@ class StructureLightningDataModule(LightningDataModule):
         self.use_shards = use_shards
         self.buffer_size = buffer_size
         self.use_ligand_dataset = use_ligand_dataset
+        self.balance_datasets = balance_datasets
+        self.max_cluster_replicates = max_cluster_replicates
 
         # Handle dataset_types with backwards compatibility
         if dataset_types is not None:
@@ -426,18 +430,49 @@ class StructureLightningDataModule(LightningDataModule):
 
     def train_dataloader(self) -> DataLoader:
         if not self.use_shards and isinstance(self._sampler, (functools.partial, RandomizedMinorityUpsampler)):
-            group_indices = []
+            import random as _random
+
+            per_dataset_clusters = []
             cumulative_size = 0
             for dataset in self._train_dataset.datasets:
-                # convert local indices to global indices
                 global_clusters = []
                 for cluster in dataset.get_cluster_dict:
                     global_cluster = [idx + cumulative_size for idx in cluster]
                     global_clusters.append(global_cluster)
-                # group_indices.extend(dataset.get_cluster_dict)
-                # ic(dataset.get_cluster_dict)
-                group_indices.extend(global_clusters)
+                per_dataset_clusters.append(global_clusters)
                 cumulative_size += len(dataset)
+
+            if self.balance_datasets and len(per_dataset_clusters) > 1:
+                max_clusters = max(len(dc) for dc in per_dataset_clusters)
+                group_indices = []
+                for dc in per_dataset_clusters:
+                    n = len(dc)
+                    if n == 0:
+                        continue
+                    if n < max_clusters:
+                        target = max_clusters
+                        if self.max_cluster_replicates is not None:
+                            target = min(target, n * self.max_cluster_replicates)
+                        repeats = target // n
+                        remainder = target % n
+                        balanced = dc * repeats + _random.sample(dc, remainder)
+                        group_indices.extend(balanced)
+                        logger.info(
+                            f"Balanced dataset: {n} clusters replicated to {len(balanced)} "
+                            f"(x{target / n:.2f})"
+                            + (
+                                f" [capped at {self.max_cluster_replicates}x]"
+                                if self.max_cluster_replicates is not None and target < max_clusters
+                                else ""
+                            )
+                        )
+                    else:
+                        group_indices.extend(dc)
+                        logger.info(f"Balanced dataset: {n} clusters (max, unchanged)")
+            else:
+                group_indices = []
+                for dc in per_dataset_clusters:
+                    group_indices.extend(dc)
 
             if isinstance(self._sampler, functools.partial):
                 self._sampler = self._sampler(group_indices)

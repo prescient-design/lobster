@@ -214,16 +214,18 @@ def load_pdb(filepath: str, add_batch_dim: bool = True) -> dict[str, Any] | None
                     f"Warning: {filepath} and residue {residue_number} and chain {chain_id} has multiple CA atoms, taking the first one"
                 )
 
-            if coords_ca.shape[0] == coords_n.shape[0] and coords_ca.shape[0] == coords_c.shape[0]:
-                backbone_coords.append(np.stack((coords_n[0:1], coords_ca[0:1], coords_c[0:1]), axis=1))
-                sequence.append(residue["residue_name"].values[0])
-                # if chain_id is an empty string, set it to 'A'
-                if chain_id == "":
-                    chain_id = "A"
-                chains.append(chain_id)
-                residue_numbers.append(residue_number)
-            else:
+            if coords_ca.shape[0] == 0:
                 continue
+
+            ca_pos = coords_ca[0:1]
+            n_pos = coords_n[0:1] if coords_n.shape[0] > 0 else ca_pos
+            c_pos = coords_c[0:1] if coords_c.shape[0] > 0 else ca_pos
+            backbone_coords.append(np.stack((n_pos, ca_pos, c_pos), axis=1))
+            sequence.append(residue["residue_name"].values[0])
+            if chain_id == "":
+                chain_id = "A"
+            chains.append(chain_id)
+            residue_numbers.append(residue_number)
 
     try:
         backbone_coords = np.stack(backbone_coords)

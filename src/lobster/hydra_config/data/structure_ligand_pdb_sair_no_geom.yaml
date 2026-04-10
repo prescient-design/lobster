@@ -28,10 +28,13 @@ max_length: 512 # Maximum length of the sequence; not used
 # 'ligand' = ligand-only or protein-ligand pairs (uses LigandDataset)
 dataset_types: ["structure", "ligand", "ligand", "ligand", "ligand"]
 
-# Cluster file for PDB dataset (sequence clustering)
+# Cluster files: PDB (seqid40), PDBBind (MMseqs2 40%), SAIR (MMseqs2 40%), val, test
 cluster_file_list: [
   "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt",
-  null, null, null, null
+  "/cv/data/ai4dd/data2/lisanzas/pdb_bind_12_15_25/pdbbind_mmseqs_seqid40_clusters.pt",
+  "/cv/data/ai4dd/data2/lisanzas/sair_12_15_25/sair_mmseqs_seqid40_clusters.pt",
+  null,
+  null
 ]
 
 files_to_keep: null
@@ -40,6 +43,7 @@ use_ligand_dataset: true
 testing: false
 datasets: pdb_pbind_sair_no_geom  # New name for this config
 use_shards: false
+balance_datasets: true  # Equalize sampling: PDB, PDBBind, SAIR each ~33%
 
 # Dataloader Params
 batch_size: 8

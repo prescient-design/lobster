@@ -1,0 +1,33 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml
+  - transform_fn: structure_backbone_aa_tokenizer_transform.yaml
+  - ligand_transform_fn: structure_ligand_transform.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+root: /cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/
+
+# PDB (protein-only) + PDBBind + SAIR + PLINDER (new real protein-ligand data)
+path_to_datasets: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt",  # PDB train
+  "/cv/data/ai4dd/data2/lisanzas/pdb_bind_12_15_25/train/",                             # PDBBind train
+  "/cv/data/ai4dd/data2/lisanzas/sair_12_15_25/train/",                                 # SAIR train
+  "/cv/scratch/u/lisanzas/plinder_processed/train/",                                     # PLINDER (60k pairs)
+]
+max_length: 512
+
+dataset_types: ["structure", "ligand", "ligand", "ligand"]
+
+cluster_file_list: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt",
+  null, null, null
+]
+
+files_to_keep: null
+files_to_keep_list: [null, null, null, null]
+use_ligand_dataset: true
+testing: false
+datasets: ligand_pdb_pbind_sair_plinder
+use_shards: false
+
+batch_size: 8
+num_workers: 12

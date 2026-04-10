@@ -1602,11 +1602,13 @@ class ProteinLigandEncoderLightningModule(LightningModule):
         # Handle inverse/forward folding
         # Use t=0.9950 (close to 1) to indicate "clean/conditioned" tokens
         # In discrete flow matching: t=0 is noise/mask, t=1 is clean data
+        # Both can be True simultaneously to fix both protein sequence and structure
+        # (e.g. for ligand-only refinement conditioned on a fixed protein)
         if inverse_folding and input_structure_coords is not None:
             x_quant, _, mask = self.encode_structure(input_structure_coords, input_mask, input_indices)
             xt_struc = x_quant.argmax(dim=-1).to(device)
             ts_struc = torch.full_like(ts_struc, 0.9950)  # Structure is clean/given (t≈1)
-        elif forward_folding and input_sequence_tokens is not None:
+        if forward_folding and input_sequence_tokens is not None:
             xt_seq = input_sequence_tokens.to(device)
             ts_seq = torch.full_like(ts_seq, 0.9950)  # Sequence is clean/given (t≈1)
 

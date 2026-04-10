@@ -438,6 +438,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         asynchronous_sampling: bool = False,
         sequence_anchor_tokens: Tensor = None,
         sequence_anchor_mask: Tensor = None,
+        sequence_logit_bias: Tensor | None = None,
+        sequence_logit_bias_steps: int = 10,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -511,8 +513,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
             xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 
-        for dt_seq, dt_struc, t_seq, t_struc in tqdm(
-            zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples"
+        for step_idx, (dt_seq, dt_struc, t_seq, t_struc) in enumerate(
+            tqdm(zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples")
         ):
             t_seq = inference_schedule_seq.pad_time(num_samples, t_seq, device)
             t_struc = inference_schedule_struc.pad_time(num_samples, t_struc, device)
@@ -520,6 +522,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
             unmasked_x = self.forward(xt, mask, residue_index, conditioning_tensor, timesteps=timesteps)
             unmasked_sequence_tokens = unmasked_x["sequence_logits"]
+            if sequence_logit_bias is not None and step_idx < sequence_logit_bias_steps:
+                unmasked_sequence_tokens = unmasked_sequence_tokens + sequence_logit_bias
             xt_seq_new = self.interpolant_seq.step(
                 unmasked_sequence_tokens,
                 t_seq,
