@@ -32,6 +32,11 @@ class InverseFoldingCallback(lightning.Callback):
         max_length: int = 512,
         use_hf_datasets: bool = True,
         cache_dir: str | None = None,
+        nsteps: int = 100,
+        temperature_seq: float = 0.5,
+        temperature_struc: float = 1.0,
+        stochasticity_seq: int = 20,
+        stochasticity_struc: int = 20,
     ):
         self.structure_path = structure_path
         self.save_every_n = save_every_n
@@ -49,6 +54,11 @@ class InverseFoldingCallback(lightning.Callback):
         self.cache_dir = cache_dir
         self.loaded_structures = None
         self.structure_transform = None
+        self.nsteps = nsteps
+        self.temperature_seq = temperature_seq
+        self.temperature_struc = temperature_struc
+        self.stochasticity_seq = stochasticity_seq
+        self.stochasticity_struc = stochasticity_struc
 
         # Auto-generate metric prefix if not provided
         self.metric_prefix = metric_prefix or f"inverse_folding_{self.dataset_name}"
@@ -291,7 +301,11 @@ class InverseFoldingCallback(lightning.Callback):
                 length=L,
                 num_samples=B,
                 inverse_folding=True,
-                nsteps=100,
+                nsteps=self.nsteps,
+                temperature_seq=self.temperature_seq,
+                temperature_struc=self.temperature_struc,
+                stochasticity_seq=self.stochasticity_seq,
+                stochasticity_struc=self.stochasticity_struc,
                 input_structure_coords=coords_res,
                 input_mask=mask,
                 input_indices=indices,
@@ -444,7 +458,11 @@ class InverseFoldingCallback(lightning.Callback):
                 length=max_length,
                 num_samples=B,
                 inverse_folding=True,
-                nsteps=100,
+                nsteps=self.nsteps,
+                temperature_seq=self.temperature_seq,
+                temperature_struc=self.temperature_struc,
+                stochasticity_seq=self.stochasticity_seq,
+                stochasticity_struc=self.stochasticity_struc,
                 input_structure_coords=coords_res,
                 input_mask=mask,
                 input_indices=indices,

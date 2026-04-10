@@ -34,6 +34,7 @@ class ForwardFoldingCallback(lightning.Callback):
         num_samples: int = 127,
         max_length: int = 512,
         nsteps: int = 200,
+        batch_size: int = 10,
         temperature_seq: float = 0.3610371899835548,
         temperature_struc: float = 0.2195534567490864,
         stochasticity_seq: int = 1,
@@ -49,6 +50,7 @@ class ForwardFoldingCallback(lightning.Callback):
             num_samples: Number of samples to evaluate per callback
             max_length: Maximum sequence length to process
             nsteps: Number of diffusion steps for generation
+            batch_size: Structures per eval batch (reduce for protein-ligand to avoid OOM)
             temperature_seq: Temperature for sequence sampling
             temperature_struc: Temperature for structure sampling
             stochasticity_seq: Stochasticity parameter for sequence
@@ -61,6 +63,7 @@ class ForwardFoldingCallback(lightning.Callback):
         self.num_samples = num_samples
         self.max_length = max_length
         self.nsteps = nsteps
+        self.eval_batch_size = batch_size
         self.temperature_seq = temperature_seq
         self.temperature_struc = temperature_struc
         self.stochasticity_seq = stochasticity_seq
@@ -175,10 +178,10 @@ class ForwardFoldingCallback(lightning.Callback):
         all_rmsd_scores = []
 
         # Process CAMEO structures in batches
-        batch_size = 10
+        batch_size = self.eval_batch_size
         num_structures = min(len(self.cameo_structures), self.num_samples)
 
-        logger.info(f"Evaluating forward folding on {num_structures} CAMEO structures")
+        logger.info(f"Evaluating forward folding on {num_structures} CAMEO structures (batch_size={batch_size})")
 
         for batch_start in tqdm.tqdm(
             range(0, num_structures, batch_size),
@@ -346,3 +349,5 @@ class ForwardFoldingCallback(lightning.Callback):
         logger.info(f"Forward Folding Validation Results (step {current_step}):")
         logger.info(f"  Average TM-score: {avg_tm_score:.3f} (n={len(all_tm_scores)})")
         logger.info(f"  Average RMSD: {avg_rmsd:.2f} Å")
+        # Free GPU memory before returning to training (reduces OOM risk)
+        torch.cuda.empty_cache()
