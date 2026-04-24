@@ -213,21 +213,27 @@ class LobsterMGM(pl.LightningModule):
         return loss, logging_dicts
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of the model for ONNX compiling.
+        """Extract stacked hidden states from all encoder layers.
+
+        Runs a forward pass through the multi-granularity model backbone and
+        returns hidden representations from every layer, stacked along a new
+        dimension. This method is intended for ONNX export and direct
+        inference; it does **not** compute the masked-LM loss.
 
         Parameters
         ----------
-        input_ids: torch.Tensor
-            The input tensor.
-        attention_mask: torch.Tensor
-            The attention mask tensor.
+        input_ids : torch.Tensor
+            Token IDs of shape ``(batch_size, sequence_length)``.
+        attention_mask : torch.Tensor
+            Binary mask of shape ``(batch_size, sequence_length)`` where ``1``
+            indicates a real token and ``0`` indicates padding.
 
         Returns
         -------
         torch.Tensor
-            The output tensor.
-
+            Hidden states of shape
+            ``(batch_size, num_layers, sequence_length, hidden_size)``
+            where ``num_layers`` includes the embedding layer.
         """
         preds = self.model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
         hidden_states = preds["hidden_states"]  # hidden reps (B, L, H)

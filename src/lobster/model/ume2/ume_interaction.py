@@ -109,7 +109,28 @@ class UMEInteraction(nn.Module):
         inputs1: dict[str, Tensor],
         inputs2: dict[str, Tensor],
         use_cross_attention: bool = True,
-    ):
+    ) -> tuple[Tensor, Tensor]:
+        """Encode two molecular inputs and optionally mix via cross-attention.
+
+        Parameters
+        ----------
+        inputs1 : dict[str, Tensor]
+            First input dictionary with keys ``"modality"``, ``"input_ids"``
+            of shape ``(batch_size, seq_len_1)``, and ``"attention_mask"``
+            of shape ``(batch_size, seq_len_1)``.
+        inputs2 : dict[str, Tensor]
+            Second input dictionary with the same keys as *inputs1*, where
+            shapes may differ in sequence length.
+        use_cross_attention : bool
+            If *True*, apply the cross-attention interaction module to the
+            hidden states before returning.
+
+        Returns
+        -------
+        tuple[Tensor, Tensor]
+            Hidden states for each input, both of shape
+            ``(batch_size, seq_len, hidden_size)``.
+        """
         encoder1 = self.molecular_encoders[inputs1["modality"]]
         encoder2 = self.molecular_encoders[inputs2["modality"]]
 
