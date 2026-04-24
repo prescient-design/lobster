@@ -83,7 +83,27 @@ class UMESequenceEncoderModule(nn.Module):
 
     def forward(
         self, input_ids: Tensor, attention_mask: Tensor, return_auxiliary_tasks: bool = False, **kwargs
-    ) -> Tensor:
+    ) -> dict[str, Tensor | tuple[Tensor, ...]]:
+        """Encode token sequences through the NeoBERT backbone.
+
+        Parameters
+        ----------
+        input_ids : Tensor
+            Token IDs of shape ``(batch_size, sequence_length)``.
+        attention_mask : Tensor
+            Binary mask of shape ``(batch_size, sequence_length)`` where ``1``
+            indicates a real token and ``0`` indicates padding.
+        return_auxiliary_tasks : bool
+            If *True*, run auxiliary task heads and include their outputs in
+            the returned dictionary.
+
+        Returns
+        -------
+        dict[str, Tensor | tuple[Tensor, ...]]
+            Dictionary with at least ``"last_hidden_state"`` of shape
+            ``(batch_size, sequence_length, hidden_size)``. Auxiliary task
+            outputs are added when ``return_auxiliary_tasks`` is *True*.
+        """
         output = self.neobert(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
 
         if self.auxiliary_tasks is not None and return_auxiliary_tasks:

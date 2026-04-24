@@ -166,7 +166,38 @@ class UMESequenceStructureEncoderModule(nn.Module):
         return_auxiliary_tasks: bool = False,
         timesteps: Tensor | None = None,
         **kwargs,
-    ) -> Tensor:
+    ) -> dict[str, Tensor | tuple[Tensor, ...]]:
+        """Encode paired sequence and structure tokens through the backbone.
+
+        Embeds sequence and structure tokens separately, concatenates them
+        with an optional conditioning signal, and passes the result through
+        the NeoBERT encoder. Output logits for both sequence and structure
+        are projected from the last hidden state.
+
+        Parameters
+        ----------
+        sequence_input_ids : Tensor
+            Sequence token IDs of shape ``(batch_size, seq_len)``.
+        structure_input_ids : Tensor
+            Structure token IDs of shape ``(batch_size, seq_len)``.
+        position_ids : Tensor
+            Residue position indices of shape ``(batch_size, seq_len)``.
+            Currently unused internally but accepted for API consistency.
+        attention_mask : Tensor
+            Binary mask of shape ``(batch_size, seq_len)``.
+        conditioning_tensor : Tensor | None
+            Optional conditioning signal for guided generation.
+        return_auxiliary_tasks : bool
+            If *True*, run auxiliary task heads and include their outputs.
+        timesteps : Tensor | None
+            Diffusion timesteps, passed through to the backbone.
+
+        Returns
+        -------
+        dict[str, Tensor | tuple[Tensor, ...]]
+            Dictionary with ``"last_hidden_state"``, ``"sequence_logits"``,
+            ``"structure_logits"``, and optionally auxiliary task outputs.
+        """
         sequence_output = self.sequence_embedding(sequence_input_ids)
         structure_output = self.structure_embedding(structure_input_ids)
         conditioning_output = self.conditioning_embedding(conditioning_tensor)

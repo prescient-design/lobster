@@ -49,14 +49,43 @@ class NeoBERTModule(nn.Module):
     def forward(
         self,
         input_ids: Tensor,
-        position_ids: Tensor = None,
-        max_seqlen: int = None,
-        cu_seqlens: Tensor = None,
-        attention_mask: Tensor = None,
+        position_ids: Tensor | None = None,
+        max_seqlen: int | None = None,
+        cu_seqlens: Tensor | None = None,
+        attention_mask: Tensor | None = None,
         output_hidden_states: bool = False,
         output_attentions: bool = False,
         **kwargs,
-    ) -> dict:
+    ) -> dict[str, Tensor | tuple[Tensor, ...]]:
+        """Run the NeoBERT encoder and return the last hidden state.
+
+        Parameters
+        ----------
+        input_ids : Tensor
+            Token IDs of shape ``(batch_size, sequence_length)``.
+        position_ids : Tensor | None
+            Position indices of shape ``(batch_size, sequence_length)``.
+            Inferred from ``input_ids`` when *None*.
+        max_seqlen : int | None
+            Maximum sequence length in the batch, used with packed/unpadded
+            inputs together with ``cu_seqlens``.
+        cu_seqlens : Tensor | None
+            Cumulative sequence lengths for packed inputs.
+        attention_mask : Tensor | None
+            Binary mask of shape ``(batch_size, sequence_length)`` where ``1``
+            indicates a real token and ``0`` indicates padding.
+        output_hidden_states : bool
+            If *True*, include all intermediate hidden states in the output.
+        output_attentions : bool
+            If *True*, include attention weights in the output.
+
+        Returns
+        -------
+        dict[str, Tensor | tuple[Tensor, ...]]
+            Dictionary with ``"last_hidden_state"`` of shape
+            ``(batch_size, sequence_length, hidden_size)``, and optionally
+            ``"hidden_states"`` and ``"attentions"``.
+        """
         output = self.model(
             input_ids=input_ids,
             position_ids=position_ids,

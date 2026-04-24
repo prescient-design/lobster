@@ -315,7 +315,32 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         conditioning_tensor: Tensor,
         timesteps: dict[str, Tensor] | None = None,
     ) -> dict[str, Tensor]:
-        """Forward pass of the model, for inference."""
+        """Denoise interpolated sequence and structure tokens.
+
+        Intended for inference. Passes noised tokens through the encoder to
+        predict the clean (unmasked) sequence and structure tokens.
+
+        Parameters
+        ----------
+        x_t : dict[str, Tensor]
+            Noised token tensors with keys ``"sequence_tokens"`` and
+            ``"structure_tokens"``, each of shape ``(batch_size, seq_len)``.
+        mask : Tensor
+            Attention mask of shape ``(batch_size, seq_len)``.
+        residue_index : Tensor
+            Residue position indices of shape ``(batch_size, seq_len)``.
+        conditioning_tensor : Tensor
+            Conditioning signal for guided generation.
+        timesteps : dict[str, Tensor] | None
+            Diffusion timesteps with keys ``"sequence_tokens"`` and
+            ``"structure_tokens"``, each of shape ``(batch_size,)``. Expanded
+            internally to match sequence length.
+
+        Returns
+        -------
+        dict[str, Tensor]
+            Predicted unmasked tokens from the encoder.
+        """
         if timesteps is not None:
             timesteps = timesteps.copy()
             # expand to be same length as x_t e.g from B to B,L
