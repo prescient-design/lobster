@@ -23,13 +23,7 @@ from ._utils_checkpoint import get_s3_last_modified_timestamp, get_ume_checkpoin
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
-warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
-
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 
 
 class UME(L.LightningModule):
@@ -221,9 +215,11 @@ class UME(L.LightningModule):
         )
 
         # Metrics need to be attributes so that Lighting will handle moving them to the right device
-        for modality in Modality:
-            setattr(self, f"train_perplexity/{modality.value}", Perplexity(ignore_index=-100))
-            setattr(self, f"val_perplexity/{modality.value}", Perplexity(ignore_index=-100))
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics.text.perplexity")
+            for modality in Modality:
+                setattr(self, f"train_perplexity/{modality.value}", Perplexity(ignore_index=-100))
+                setattr(self, f"val_perplexity/{modality.value}", Perplexity(ignore_index=-100))
 
     @property
     def modalities(self) -> list[str]:
