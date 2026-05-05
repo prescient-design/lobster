@@ -107,37 +107,37 @@ def main():
     parser.add_argument(
         "--temperature_seq",
         type=float,
-        default=0.15279667854390633,
+        default=0.153,
         help="Temperature for sequence sampling",
     )
     parser.add_argument(
         "--temperature_struc",
         type=float,
-        default=0.18605909386731256,
+        default=0.05,
         help="Temperature for structure sampling",
     )
     parser.add_argument(
         "--stochasticity_seq",
         type=int,
-        default=10,
+        default=20,
         help="Stochasticity parameter for sequence sampling",
     )
     parser.add_argument(
         "--stochasticity_struc",
         type=int,
-        default=10,
+        default=20,
         help="Stochasticity parameter for structure sampling",
     )
     parser.add_argument(
         "--temperature_ligand",
         type=float,
-        default=0.5819150856331732,
+        default=0.1,
         help="Temperature for ligand structure sampling",
     )
     parser.add_argument(
         "--stochasticity_ligand",
         type=int,
-        default=20,
+        default=5,
         help="Stochasticity parameter for ligand structure sampling",
     )
     parser.add_argument(

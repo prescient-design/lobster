@@ -13,6 +13,7 @@ defaults:
   - protein_ligand_decode.yaml
   - inverse_folding_cameo.yaml
   - forward_folding.yaml
+  - cg_boltz_eval.yaml
   - protein_ligand_inverse_folding.yaml
   - protein_ligand_forward_folding.yaml
   - _self_

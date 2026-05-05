@@ -17,6 +17,7 @@ from ._protein_ligand_decode import ProteinLigandDecodeCallback
 from ._protein_ligand_inverse_folding import ProteinLigandInverseFoldingCallback
 from ._protein_ligand_forward_folding import ProteinLigandForwardFoldingCallback
 from ._s3_checkpoint_callback import S3CheckpointBackupCallback
+from ._cg_boltz_eval import CGBoltzEvalCallback
 
 __all__ = [
     "MoleculeACELinearProbeCallback",
@@ -41,4 +42,5 @@ __all__ = [
     "ProteinLigandInverseFoldingCallback",
     "ProteinLigandForwardFoldingCallback",
     "S3CheckpointBackupCallback",
+    "CGBoltzEvalCallback",
 ]

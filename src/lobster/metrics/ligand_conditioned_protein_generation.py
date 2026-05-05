@@ -376,8 +376,8 @@ class LigandConditionedProteinGenerationEvaluator:
             bond_matrix = ligand_data.get("bond_matrix")
 
             # Extract SMILES (for CSV output and downstream co-folding)
-            smiles = None
-            if self.raw_data_dir:
+            smiles = ligand_data.get("smiles")
+            if smiles is None and self.raw_data_dir:
                 sdf_path = os.path.join(self.raw_data_dir, ligand_id, f"{ligand_id}_ligand.sdf")
                 if os.path.exists(sdf_path):
                     try:

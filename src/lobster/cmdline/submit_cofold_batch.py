@@ -158,6 +158,7 @@ def write_slurm_script(
     boltz_model: str = "boltz2",
     protenix_venv: str = "/cv/scratch/u/lisanzas/uv_envs/protenix/.venv",
     boltz_venv: str = "/cv/scratch/u/lisanzas/uv_envs/boltz/.venv",
+    max_concurrent: int | None = None,
 ) -> Path:
     """Write the SLURM array job script."""
     log_dir = output_dir / "logs"
@@ -176,7 +177,7 @@ def write_slurm_script(
 #SBATCH --cpus-per-task 8
 #SBATCH --mem={mem}
 #SBATCH --job-name=cofold_{backend}
-#SBATCH --array=0-{n_tasks - 1}
+#SBATCH --array=0-{n_tasks - 1}%{max_concurrent if max_concurrent else n_tasks}
 #SBATCH -o {log_dir}/%A_%a.out
 #SBATCH -e {log_dir}/%A_%a.err
 #SBATCH -t {time_limit}
@@ -199,6 +200,16 @@ WORK_DIR="${{WORK_BASE}}/task_${{TASK_ID}}"
 if [ ! -f "${{INPUT_JSON}}" ]; then
     echo "Input file not found: ${{INPUT_JSON}}"
     exit 0
+fi
+
+# Skip if result already exists AND is complete (has structure field)
+if [ -f "${{OUTPUT_JSON}}" ]; then
+    # Check the result has a non-null structure (not a partial/failed result)
+    HAS_STRUCT=$(python3 -c "import json; d=json.load(open('${{OUTPUT_JSON}}')); print('yes' if d.get('structure') else 'no')" 2>/dev/null || echo "no")
+    if [ "${{HAS_STRUCT}}" = "yes" ]; then
+        echo "Result already complete: ${{OUTPUT_JSON}}, skipping"
+        exit 0
+    fi
 fi
 
 cd /cv/home/lisanzas/lobster
@@ -250,6 +261,9 @@ def main():
     parser.add_argument("--protenix_venv", type=str, default="/cv/scratch/u/lisanzas/uv_envs/protenix/.venv")
     parser.add_argument("--boltz_venv", type=str, default="/cv/scratch/u/lisanzas/uv_envs/boltz/.venv")
     parser.add_argument("--submit", action="store_true", help="Actually submit the SLURM job (otherwise just prepare)")
+    parser.add_argument(
+        "--max_concurrent", type=int, default=None, help="Max concurrent SLURM array tasks (e.g. 80 for 10 nodes)"
+    )
 
     args = parser.parse_args()
     output_dir = Path(args.output_dir)
@@ -290,6 +304,7 @@ def main():
         boltz_model=args.boltz_model,
         protenix_venv=args.protenix_venv,
         boltz_venv=args.boltz_venv,
+        max_concurrent=args.max_concurrent,
     )
     print(f"SLURM script written to {script_path}")
     print(f"Array size: {n_tasks} tasks (0-{n_tasks - 1})")

@@ -28,6 +28,9 @@ set -euo pipefail
 #   COFOLD_BACKEND=rf3            # Co-folding backend: boltz, rf3, or both (default: rf3)
 #   COFOLD_TASKS=if,ff,cg,lmpnn  # Which eval tasks to co-fold (default: if,cg)
 #   RF3_N_CHUNKS=4                # Number of parallel RF3 GPU jobs (default: 4)
+#   CG_NUM_LIGANDS=4              # Number of ligands for conditioned gen (default: 4 = Proteina paper)
+#   CG_NUM_DESIGNS=10             # Designs per ligand for conditioned gen (default: 10)
+#   CG_DATA_DIR=...               # Override data dir for CG (default: proteina_ligand_targets)
 # ==============================================================================
 
 LOBSTER_DIR="/cv/home/lisanzas/lobster"
@@ -38,9 +41,12 @@ RAW_DATA_DIR="${LOBSTER_DIR}/data/posebusters/posebusters_benchmark_set/"
 
 CKPT="${CKPT:?Set CKPT=/path/to/checkpoint.ckpt}"
 EVAL_TAG="${EVAL_TAG:-$(date +%Y-%m-%dT%H-%M-%S)}"
-COFOLD_BACKEND="${COFOLD_BACKEND:-rf3}"
+COFOLD_BACKEND="${COFOLD_BACKEND:-boltz}"
 COFOLD_TASKS="${COFOLD_TASKS:-if,cg}"
 RF3_N_CHUNKS="${RF3_N_CHUNKS:-4}"
+CG_NUM_LIGANDS="${CG_NUM_LIGANDS:-4}"
+CG_NUM_DESIGNS="${CG_NUM_DESIGNS:-10}"
+CG_DATA_DIR="${CG_DATA_DIR:-${LOBSTER_DIR}/data/proteina_ligand_targets/processed}"
 
 # Copy checkpoint for reproducibility (training may overwrite last.ckpt)
 EVAL_CKPT_DIR="${BASE}/checkpoints_${EVAL_TAG}"
@@ -128,11 +134,12 @@ cd ${LOBSTER_DIR}
 mkdir -p ${CG_DIR}
 uv run python -m lobster.cmdline.evaluate_ligand_conditioned_protein_generation \
     --checkpoint '${CKPT}' \
-    --data_dir '${DATA_DIR}' \
+    --data_dir '${CG_DATA_DIR}' \
     --raw_data_dir '${RAW_DATA_DIR}' \
     --output conditioned_gen_results.csv \
     --structure_path '${CG_DIR}' \
-    --nsteps 100 --num_samples -1 \
+    --nsteps 200 --num_samples ${CG_NUM_LIGANDS} \
+    --num_designs ${CG_NUM_DESIGNS} \
     --save_structures --minimize_ligand
 echo 'DONE: conditioned generation'
 ")
@@ -211,6 +218,7 @@ for TASK in "${SELECTED_TASKS[@]}"; do
             --eval_csv "${CSV}" \
             --output_dir "${COFOLD_DIR}" \
             --backend boltz \
+            --id_col "${ID_COL}" \
             --submit
 
         echo "    Boltz2 submitted -> ${COFOLD_DIR}"
