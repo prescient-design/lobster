@@ -1340,10 +1340,8 @@ class MetricsCSVWriter:
                     _to_scalar(metrics.get("percent_identity_self_reflection", "")),
                     _to_scalar(metrics.get("tm_score_unconditional_to_forward", "")),
                     _to_scalar(metrics.get("rmsd_unconditional_to_forward", "")),
-                    _to_scalar(metrics.get("rmsd_unconditional_to_forward_kabsch", "")),
                     _to_scalar(metrics.get("tm_score_forward_to_inverse", "")),
                     _to_scalar(metrics.get("rmsd_forward_to_inverse", "")),
-                    _to_scalar(metrics.get("rmsd_forward_to_inverse_kabsch", "")),
                     # ESMFold baseline metrics
                     _to_scalar(metrics.get("plddt_unconditional", "")),
                     _to_scalar(metrics.get("pae_unconditional", "")),
@@ -1359,6 +1357,13 @@ class MetricsCSVWriter:
                     _to_scalar(metrics.get("pae_improvement", "")),
                     _to_scalar(metrics.get("tm_score_improvement", "")),
                     _to_scalar(metrics.get("rmsd_improvement", "")),
+                    # ESMFold structure comparison metrics
+                    _to_scalar(metrics.get("tm_score_unconditional_to_esmfold", "")),
+                    _to_scalar(metrics.get("rmsd_unconditional_to_esmfold", "")),
+                    _to_scalar(metrics.get("tm_score_forward_to_esmfold", "")),
+                    _to_scalar(metrics.get("rmsd_forward_to_esmfold", "")),
+                    _to_scalar(metrics.get("tm_score_esmfold_agreement_improvement", "")),
+                    _to_scalar(metrics.get("rmsd_esmfold_agreement_improvement", "")),
                 ]
             )
         elif self.mode == "inverse_folding":
@@ -1937,4 +1942,133 @@ def compute_aligned_ligand_rmsd(
     return {
         "ligand_rmsd_aligned": rmsd,
         "ligand_centroid_distance_aligned": centroid_dist,
+    }
+
+
+def compute_complex_metrics_vs_gt(
+    pred_backbone: torch.Tensor,
+    pred_ligand: torch.Tensor,
+    gt_backbone: torch.Tensor,
+    gt_ligand: torch.Tensor,
+    protein_mask: torch.Tensor | None = None,
+    pocket_threshold: float = 5.0,
+    contact_threshold: float = 6.0,
+) -> dict:
+    """Compute all structural metrics for a predicted protein-ligand complex vs GT.
+
+    Standardized function used by all evaluation pipelines (Gen-UME FF/IF,
+    Boltz2 co-fold, RF3 co-fold) to ensure consistent metric computation.
+
+    Parameters
+    ----------
+    pred_backbone : Tensor [L, 3, 3]
+        Predicted protein backbone (N, CA, C).
+    pred_ligand : Tensor [N_lig, 3]
+        Predicted ligand atom coordinates.
+    gt_backbone : Tensor [L, 3, 3]
+        Ground truth protein backbone (N, CA, C).
+    gt_ligand : Tensor [N_lig, 3]
+        Ground truth ligand atom coordinates.
+    protein_mask : Tensor [L], optional
+        Mask for valid protein positions. If None, all positions used.
+    pocket_threshold : float
+        Distance (A) to define binding pocket residues (CA to GT ligand).
+    contact_threshold : float
+        Distance (A) to define protein-ligand contacts (CA to pred ligand).
+
+    Returns
+    -------
+    dict with keys:
+        tm_score, rmsd_overall, rmsd_pocket, n_pocket_residues,
+        ligand_in_pocket, n_pocket_contacts, ligand_contacts_protein,
+        good_fold_and_in_pocket, ligand_rmsd_aligned, ligand_centroid_dist
+    """
+    from tmtools import tm_align
+
+    L = min(len(pred_backbone), len(gt_backbone))
+    pred_bb = pred_backbone[:L].detach().float()
+    gt_bb = gt_backbone[:L].detach().float()
+
+    if protein_mask is not None:
+        mask = protein_mask[:L].bool()
+    else:
+        mask = torch.ones(L, dtype=torch.bool)
+
+    pred_ca = pred_bb[mask, 1, :].numpy()
+    gt_ca = gt_bb[mask, 1, :].numpy()
+    seq_str = "A" * int(mask.sum())
+
+    # TM-score
+    try:
+        tm_out = tm_align(pred_ca, gt_ca, seq_str, seq_str)
+        tm_score = float(tm_out.tm_norm_chain1)
+    except Exception:
+        tm_score = float("nan")
+
+    # RMSD via Kabsch on full backbone
+    aligned_result = align_and_compute_rmsd(pred_bb, gt_bb, mask=mask.float(), return_aligned=True)
+    if isinstance(aligned_result, tuple):
+        pred_aligned, rmsd_overall = aligned_result
+    else:
+        pred_aligned = None
+        rmsd_overall = aligned_result
+
+    # Pocket definition: GT ligand within pocket_threshold of CA
+    pocket_mask = torch.zeros(L, dtype=torch.bool)
+    if len(gt_ligand) > 0:
+        gt_ca_t = gt_bb[:, 1, :]
+        dists = torch.cdist(gt_ca_t.float(), gt_ligand.float())
+        pocket_mask = (dists.min(dim=1).values < pocket_threshold) & mask
+
+    n_pocket = int(pocket_mask.sum().item())
+
+    # Pocket RMSD
+    rmsd_pocket = float("nan")
+    if n_pocket > 0 and pred_aligned is not None:
+        pred_pkt = pred_aligned[pocket_mask, 1, :]
+        gt_pkt = gt_bb[pocket_mask, 1, :]
+        rmsd_pocket = float(torch.sqrt(((pred_pkt - gt_pkt) ** 2).sum(dim=-1).mean()).item())
+
+    # Ligand-in-pocket: predicted ligand contacts GT pocket residues
+    # Uses unaligned predicted coords (matching merge_cofold_results behavior)
+    ligand_in_pocket = False
+    n_pocket_contacts = 0
+    ligand_contacts_protein = False
+    if len(pred_ligand) > 0:
+        pred_ca_unaligned = pred_bb[:, 1, :].float()
+        contacts = compute_protein_ligand_contacts(pred_ca_unaligned, pred_ligand, contact_threshold=contact_threshold)
+        ligand_contacts_protein = contacts["n_contacts"] > 0
+        contact_mask = contacts["contact_mask"][:L]
+        pocket_contacts = contact_mask & pocket_mask
+        n_pocket_contacts = int(pocket_contacts.sum().item())
+        ligand_in_pocket = pocket_contacts.any().item()
+
+    good_fold = tm_score > 0.5 if not (tm_score != tm_score) else False  # nan check
+    gfip = good_fold and ligand_in_pocket
+
+    # Ligand RMSD (after protein alignment)
+    ligand_rmsd = float("nan")
+    ligand_centroid_dist = float("nan")
+    if len(pred_ligand) > 0 and len(gt_ligand) > 0 and len(pred_ligand) == len(gt_ligand):
+        lig_result = compute_aligned_ligand_rmsd(
+            pred_protein_coords=pred_bb,
+            gt_protein_coords=gt_bb,
+            pred_ligand_coords=pred_ligand,
+            gt_ligand_coords=gt_ligand,
+            protein_mask=mask.float(),
+        )
+        ligand_rmsd = lig_result["ligand_rmsd_aligned"]
+        ligand_centroid_dist = lig_result["ligand_centroid_distance_aligned"]
+
+    return {
+        "tm_score": tm_score,
+        "rmsd_overall": float(rmsd_overall),
+        "rmsd_pocket": rmsd_pocket,
+        "n_pocket_residues": n_pocket,
+        "ligand_in_pocket": ligand_in_pocket,
+        "n_pocket_contacts": n_pocket_contacts,
+        "ligand_contacts_protein": ligand_contacts_protein,
+        "good_fold_and_in_pocket": gfip,
+        "ligand_rmsd_aligned": ligand_rmsd,
+        "ligand_centroid_dist": ligand_centroid_dist,
     }

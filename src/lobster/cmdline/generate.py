@@ -11,6 +11,7 @@ from loguru import logger
 from lobster.model.latent_generator.io import writepdb, load_pdb
 from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
+    restype_order_with_x,
     restype_order_with_x_inv,
 )
 from lobster.metrics import (
@@ -221,6 +222,84 @@ def _check_sequence_tokens(
     return True, ""
 
 
+def _save_failed_self_reflection_attempt(
+    output_dir: Path,
+    current_length: int,
+    iteration: int,
+    retry_count: int,
+    failure_reason: str,
+    initial_seq_str: str,
+    initial_structure: torch.Tensor | None = None,
+    mask_i: torch.Tensor | None = None,
+    extra_metrics: dict | None = None,
+) -> None:
+    """Save an SR failed attempt's input sequence, structure (if available), and metadata.
+
+    Creates ``<output_dir>/failed_self_reflection/`` containing one FASTA + PDB
+    pair per failed attempt and a single ``failed_self_reflection.csv`` log.
+    The post-hoc workflow can ESMFold the saved FASTA against the saved PDB to
+    measure SR-QC vs ESMFold-QC concordance.
+    """
+    import csv as _csv
+
+    fail_dir = output_dir / "failed_self_reflection"
+    fail_dir.mkdir(parents=True, exist_ok=True)
+    base = f"length_{current_length}_iter_{iteration:03d}_retry_{retry_count:03d}_{failure_reason}"
+
+    # FASTA with the (initial) unconditional sequence
+    fasta_path = fail_dir / f"{base}.fasta"
+    with open(fasta_path, "w") as fh:
+        fh.write(f">{base}\n{initial_seq_str}\n")
+
+    # Initial backbone PDB (only available post-token-check)
+    pdb_path = None
+    if initial_structure is not None and mask_i is not None:
+        pdb_path = fail_dir / f"{base}.pdb"
+        masked_struct = initial_structure[mask_i == 1]
+        seq_tokens = torch.tensor(
+            [restype_order_with_x.get(c, 20) for c in initial_seq_str],
+            device=initial_structure.device,
+        )
+        writepdb(str(pdb_path), masked_struct, seq_tokens)
+
+    # Append a row to failed_self_reflection.csv (create header if first time)
+    csv_path = fail_dir.parent / "failed_self_reflection.csv"
+    extras = extra_metrics or {}
+    fieldnames = [
+        "length",
+        "iteration",
+        "retry_count",
+        "failure_reason",
+        "fasta_path",
+        "pdb_path",
+        "sequence_length",
+        "sequence",
+        "tm_score_unconditional_to_forward",
+        "rmsd_unconditional_to_forward",
+        "tm_score_forward_to_inverse",
+        "rmsd_forward_to_inverse",
+        "percent_identity_self_reflection",
+    ]
+    write_header = not csv_path.exists()
+    with open(csv_path, "a", newline="") as fh:
+        w = _csv.DictWriter(fh, fieldnames=fieldnames)
+        if write_header:
+            w.writeheader()
+        row = {
+            "length": current_length,
+            "iteration": iteration,
+            "retry_count": retry_count,
+            "failure_reason": failure_reason,
+            "fasta_path": str(fasta_path),
+            "pdb_path": str(pdb_path) if pdb_path is not None else "",
+            "sequence_length": len(initial_seq_str),
+            "sequence": initial_seq_str,
+        }
+        for k in fieldnames[8:]:
+            row[k] = extras.get(k, "")
+        w.writerow(row)
+
+
 def _execute_self_reflection_pipeline(
     model,
     cfg: DictConfig,
@@ -233,6 +312,7 @@ def _execute_self_reflection_pipeline(
     batch_size: int,
     current_length: int,
     save_structures: bool = False,
+    retry_count: int = 0,
 ) -> dict[str, float] | None:
     """Execute self-reflection refinement pipeline to improve ESMFold metrics.
 
@@ -263,6 +343,12 @@ def _execute_self_reflection_pipeline(
     from lobster.transforms._structure_transforms import AminoAcidTokenizerTransform
 
     gen_cfg = cfg.generation
+    sr_cfg = gen_cfg.get("self_reflection", {}) if hasattr(gen_cfg, "self_reflection") else {}
+    save_failed = bool(sr_cfg.get("save_failed_attempts", False)) if hasattr(sr_cfg, "get") else False
+
+    def _initial_seq_str(i: int = 0) -> str:
+        seq_i = initial_seq[i, mask[i] == 1]
+        return "".join([restype_order_with_x_inv[j.item()] for j in seq_i])
 
     try:
         logger.info("=" * 80)
@@ -428,6 +514,22 @@ def _execute_self_reflection_pipeline(
                         f"{avg_tm_uncond_to_forward:.3f} < threshold {min_tm_score:.3f}"
                     )
                     logger.warning("  Iteration will be retried")
+                    if save_failed:
+                        for i in range(batch_size):
+                            _save_failed_self_reflection_attempt(
+                                output_dir=output_dir,
+                                current_length=current_length,
+                                iteration=iteration,
+                                retry_count=retry_count,
+                                failure_reason="forward_tm",
+                                initial_seq_str=_initial_seq_str(i),
+                                initial_structure=initial_structure[i],
+                                mask_i=mask[i],
+                                extra_metrics={
+                                    "tm_score_unconditional_to_forward": tm_scores_uncond_to_forward[i],
+                                    "rmsd_unconditional_to_forward": rmsd_uncond_to_forward[i],
+                                },
+                            )
                     return None
                 else:
                     logger.info(
@@ -1156,6 +1258,7 @@ def _generate_unconditional(
                             iteration=n_iter,
                             batch_size=batch_size,
                             current_length=current_length,
+                            retry_count=retry_count,
                         )
 
                         if self_reflection_metrics is not None:
