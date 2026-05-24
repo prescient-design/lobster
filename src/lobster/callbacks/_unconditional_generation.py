@@ -1,16 +1,14 @@
 import lightning
-import logging
 import os
 import torch
 from lobster.model.latent_generator.io import writepdb
+from loguru import logger
 from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
 )
 from lobster.model import LobsterPLMFold
 from lobster.metrics import get_folded_structure_metrics
-
-logger = logging.getLogger(__name__)
 
 
 class UnconditionalGenerationCallback(lightning.Callback):
@@ -39,7 +37,7 @@ class UnconditionalGenerationCallback(lightning.Callback):
             self.plm_fold = LobsterPLMFold(model_name="esmfold_v1", max_length=self.length)
             logger.info("Loaded ESMFold model for unconditional generation evaluation")
 
-    def on_train_batch_end(self, trainer, gen_ume, outputs, batch, batch_idx):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         # Only run on rank 0 (CUDA device 0) in multinode/multi-GPU settings
         if trainer.global_rank != 0:
             return
@@ -51,18 +49,24 @@ class UnconditionalGenerationCallback(lightning.Callback):
             self.plm_fold.to(device)
 
         if batch_idx % self.save_every_n == 0 and self.plm_fold is not None:
-            # Perform unconditional generation
-            self._perform_unconditional_generation(trainer, gen_ume, device, batch_idx, current_step)
+            with torch.no_grad():
+                self._perform_unconditional_generation(trainer, pl_module, device, batch_idx, current_step)
+            torch.cuda.empty_cache()
 
-    def _perform_unconditional_generation(self, trainer, gen_ume, device, batch_idx, current_step):
+    def _perform_unconditional_generation(self, trainer, pl_module, device, batch_idx, current_step):
         """Perform unconditional generation and folding."""
-        generate_sample = gen_ume.generate_sample(length=self.length, num_samples=self.num_samples)
+        generate_sample = pl_module.generate_sample(length=self.length, num_samples=self.num_samples)
         mask = torch.ones((self.num_samples, self.length), device=device)
-        decoded_x = gen_ume.decode_structure(generate_sample, mask)
+        decoded_x = pl_module.decode_structure(generate_sample, mask)
 
         for decoder_name in decoded_x:
             if "vit_decoder" == decoder_name:
-                x_recon_xyz = decoded_x[decoder_name]
+                vit_output = decoded_x[decoder_name]
+                # Handle both tensor output (protein-only) and dict output (protein-ligand)
+                if isinstance(vit_output, dict):
+                    x_recon_xyz = vit_output.get("protein_coords")
+                else:
+                    x_recon_xyz = vit_output
         if generate_sample["sequence_logits"].shape[-1] == 33:
             seq = convert_lobster_aa_tokenization_to_standard_aa(generate_sample["sequence_logits"], device=device)
         else:
@@ -101,4 +105,4 @@ class UnconditionalGenerationCallback(lightning.Callback):
             writepdb(filename, pred_coords[i], seq[i])
             logger.info(f"Saved {filename}")
 
-        gen_ume.log_dict({"uncoditional_loss": total_loss, **folded_structure_metrics}, batch_size=mask.shape[0])
+        pl_module.log_dict({"uncoditional_loss": total_loss, **folded_structure_metrics}, batch_size=mask.shape[0])
