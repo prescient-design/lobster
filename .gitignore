@@ -274,16 +274,14 @@ docs/leflur/research_notes/
 #   src/lobster/hydra_config/experiment/{generate_*, autoencode*, esmfold_baseline}.yaml
 #   src/lobster/hydra_config/experiment/{research,legacy}/
 #
+# EXCEPTION: the 23 YAMLs comprising the transitive Hydra dependency
+# closure of the 4 training configs that produced the publication
+# checkpoints (leflur-base/ted/pl + LG full attention + LG Protein
+# Ligand fsq 4375) are tracked explicitly via the `!`-prefixed
+# negations below the main untrack patterns.
+#
 # Callbacks (training-time LeFlur + LG evaluators)
-/src/lobster/hydra_config/callbacks/backbone_reconstruction.yaml
-/src/lobster/hydra_config/callbacks/cg_boltz_eval.yaml
-/src/lobster/hydra_config/callbacks/forward_folding.yaml
-/src/lobster/hydra_config/callbacks/inverse_folding_cameo.yaml
-/src/lobster/hydra_config/callbacks/latent_generator_defaults.yaml
 /src/lobster/hydra_config/callbacks/leflur*.yaml
-/src/lobster/hydra_config/callbacks/protein_ligand_decode.yaml
-/src/lobster/hydra_config/callbacks/protein_ligand_forward_folding.yaml
-/src/lobster/hydra_config/callbacks/protein_ligand_inverse_folding.yaml
 /src/lobster/hydra_config/callbacks/s3_backup.yaml
 # Data (training data configs + transform_fn variants)
 /src/lobster/hydra_config/data/structure_afdb_swissprot.yaml
@@ -293,7 +291,6 @@ docs/leflur/research_notes/
 /src/lobster/hydra_config/data/transform_fn/esm_embedding_transform.yaml
 /src/lobster/hydra_config/data/transform_fn/structure_3di_transform.yaml
 /src/lobster/hydra_config/data/transform_fn/structure_alt_seq_swap_transform.yaml
-/src/lobster/hydra_config/data/transform_fn/structure_backbone_aa_tokenizer_alt_seq_transform.yaml
 /src/lobster/hydra_config/data/transform_fn/structure_with_3di_c6d_transform.yaml
 /src/lobster/hydra_config/data/transform_fn/structure_with_3di_zernike_transform.yaml
 /src/lobster/hydra_config/data/transform_fn/structure_with_c6d_transform.yaml
@@ -306,6 +303,44 @@ docs/leflur/research_notes/
 # Training + dev-time experiment configs
 /src/lobster/hydra_config/experiment/train_*.yaml
 /src/lobster/hydra_config/experiment/test_gen_ume.yaml
+
+# --- Training-reproduction surface (tracked exceptions) ---
+# The closure below is the transitive Hydra `defaults:` dependency set
+# of the 4 training configs that produced the published checkpoints:
+#   - experiment/train_gen_ume_denovo.yaml             -> leflur-base + leflur-ted
+#   - experiment/train_gen_ume_protein_ligand_no_geom.yaml -> leflur-pl
+#   - experiment/train_latent_generator.yaml           -> LG full attention
+#   - experiment/train_latent_generator_protein_ligand_slurm.yaml -> LG Protein Ligand fsq 4375
+# Plus the data overlay used for the leflur-ted variant
+# (structure_pdb_afdb_denovo_ted_cath_ss_balanced).
+#
+# Callback dependencies
+!/src/lobster/hydra_config/callbacks/backbone_reconstruction.yaml
+!/src/lobster/hydra_config/callbacks/cg_boltz_eval.yaml
+!/src/lobster/hydra_config/callbacks/forward_folding.yaml
+!/src/lobster/hydra_config/callbacks/inverse_folding_cameo.yaml
+!/src/lobster/hydra_config/callbacks/latent_generator_defaults.yaml
+!/src/lobster/hydra_config/callbacks/leflur_fwd_cameo.yaml
+!/src/lobster/hydra_config/callbacks/leflur_protein_ligand.yaml
+!/src/lobster/hydra_config/callbacks/protein_ligand_decode.yaml
+!/src/lobster/hydra_config/callbacks/protein_ligand_forward_folding.yaml
+!/src/lobster/hydra_config/callbacks/protein_ligand_inverse_folding.yaml
+# Data dependencies
+!/src/lobster/hydra_config/data/structure_ligand_pdb.yaml
+!/src/lobster/hydra_config/data/structure_ligand_pdb_sair_no_geom.yaml
+!/src/lobster/hydra_config/data/structure_pdb_afdb_denovo.yaml
+!/src/lobster/hydra_config/data/structure_pdb_afdb_denovo_ted_cath_ss_balanced.yaml
+!/src/lobster/hydra_config/data/transform_fn/structure_backbone_aa_tokenizer_alt_seq_transform.yaml
+# Experiment training configs
+!/src/lobster/hydra_config/experiment/train_gen_ume_denovo.yaml
+!/src/lobster/hydra_config/experiment/train_gen_ume_protein_ligand_no_geom.yaml
+!/src/lobster/hydra_config/experiment/train_latent_generator.yaml
+!/src/lobster/hydra_config/experiment/train_latent_generator_protein_ligand_slurm.yaml
+# Model defaults
+!/src/lobster/hydra_config/model/latent_generator.yaml
+!/src/lobster/hydra_config/model/latent_generator_ligand.yaml
+!/src/lobster/hydra_config/model/leflur.yaml
+!/src/lobster/hydra_config/model/leflur_protein_ligand.yaml
 
 # Tier-2 research + Tier-3 legacy generate configs (kept on disk for
 # internal research workflows; not part of the publication inference

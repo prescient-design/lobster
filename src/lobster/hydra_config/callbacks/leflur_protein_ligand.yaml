@@ -1,0 +1,59 @@
+# Callbacks for Gen-UME Protein-Ligand training
+# Protein-only: CAMEO inverse folding + forward folding only (no CATH)
+# Protein-ligand: inverse folding, forward folding, decode (unchanged)
+#
+# Note: ForwardFoldingCallback uses smaller batch_size and nsteps for protein-ligand
+# to avoid OOM during validation (model is larger, ligand heads increase memory).
+
+defaults:
+  - model_checkpoint.yaml
+  - lr_monitor.yaml
+  - progress_bar.yaml
+  - structure_decode.yaml
+  - protein_ligand_decode.yaml
+  - inverse_folding_cameo.yaml
+  - forward_folding.yaml
+  - cg_boltz_eval.yaml
+  - protein_ligand_inverse_folding.yaml
+  - protein_ligand_forward_folding.yaml
+  - _self_
+
+
+# Best checkpoints by validation loss
+model_checkpoint:
+  dirpath: ${paths.output_dir}
+  filename: "{epoch}-{step}-{val_loss:.4f}"
+  monitor: val_loss
+  save_top_k: 3
+  mode: min
+  verbose: true
+  save_last: true  # Also save last.ckpt for resume / crash recovery
+
+# Keep last N checkpoints regardless of val_loss (crash recovery)
+last_checkpoint:
+  _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  dirpath: ${paths.output_dir}
+  filename: "last-{epoch}-{step}"
+  monitor: step
+  mode: max
+  save_top_k: 3
+  verbose: true
+  every_n_train_steps: 10000  # Save every 1000 steps
+
+# Reduce ForwardFoldingCallback memory for protein-ligand (avoids OOM)
+ForwardFoldingCallback:
+  batch_size: 4
+
+structure_decode:
+  structure_path: "${paths.output_dir}/structures/"
+  save_every_n: 10000
+
+protein_ligand_decode:
+  structure_path: "${paths.output_dir}/structures/"
+  save_every_n: 10000
+  save_separate: false
+  # Ligand minimization options
+  minimize_ligand: false
+  minimize_mode: "bonds_and_angles"  # "bonds_only" or "bonds_and_angles"
+  force_field: "MMFF94"
+  minimize_steps: 500

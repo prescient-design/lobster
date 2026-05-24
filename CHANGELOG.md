@@ -61,6 +61,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `metrics/` — RMSD-sqrt(3) regression, MetricsCSVWriter contract
   - `hydra_config/` — path overlay regression (no internal literals in
     public-facing configs), tier invariants
+- **Training-reproduction Hydra surface** for the four canonical
+  artifacts — 23 YAMLs comprising the full transitive `defaults:`
+  closure of the training entry points that produced the published
+  checkpoints:
+
+  | Training config | Produces |
+  |---|---|
+  | `experiment/train_gen_ume_denovo.yaml` | `leflur-base` (afdb + pdb), `leflur-ted` (afdb-swissprot + pdb + ted_cath ss-balanced data overlay) |
+  | `experiment/train_gen_ume_protein_ligand_no_geom.yaml` | `leflur-pl` (PDB + SAIR, no geometry loss — the published PoseBusters checkpoint) |
+  | `experiment/train_latent_generator.yaml` | LG full-attention codec (protein-only) |
+  | `experiment/train_latent_generator_protein_ligand_slurm.yaml` | LG protein-ligand FSQ-4375 codec |
+
+  Plus the 19 dependency YAMLs they pull in via Hydra `defaults:`:
+  `model/{leflur, leflur_protein_ligand, latent_generator, latent_generator_ligand}.yaml`;
+  `data/{structure_pdb_afdb_denovo, structure_pdb_afdb_denovo_ted_cath_ss_balanced, structure_ligand_pdb, structure_ligand_pdb_sair_no_geom}.yaml`
+  and `data/transform_fn/structure_backbone_aa_tokenizer_alt_seq_transform.yaml`;
+  10 training callbacks
+  (`backbone_reconstruction`, `cg_boltz_eval`, `forward_folding`,
+  `inverse_folding_cameo`, `latent_generator_defaults`,
+  `leflur_fwd_cameo`, `leflur_protein_ligand`,
+  `protein_ligand_decode`, `protein_ligand_forward_folding`,
+  `protein_ligand_inverse_folding`).
+
+  These are carved out from the bulk untrack of training configs (see
+  Removed below) via explicit `!`-prefixed exceptions in `.gitignore`
+  so external readers can audit and re-run the exact training recipes
+  that produced `leflur-base`, `leflur-ted`, `leflur-pl`, and the two
+  paired LG codecs on
+  [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur) /
+  [`Sidney-Lisanza/latent_generator`](https://huggingface.co/Sidney-Lisanza/latent_generator).
+  Each composes via the canonical entry pattern `python -m
+  lobster.cmdline.train experiment=<name>` against the published
+  Hydra `paths=public` overlay. Every other branch-added training,
+  callback, data, model, and `experiment/train_*` YAML remains
+  gitignored on the publication branch.
 
 ### Changed
 
@@ -117,19 +152,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fold) and `evaluate_ligandmpnn_baseline.py` (LigandMPNN inverse fold)
   remain available locally but are no longer tracked on the publication
   branch — they evaluate external tools, not LeFlur.
-- **Training-only Hydra configs added on this branch** — 62 YAMLs the
-  publication branch added on top of `origin/main` for LeFlur / Latent
-  Generator training, training-time callbacks (LeFlur evaluators,
-  protein-ligand decode/forward/inverse callbacks, LG defaults, S3
-  backup), training data configs (`structure_ligand_*`,
+- **Training-only Hydra configs added on this branch** — the
+  publication branch added a large bulk of YAMLs on top of `origin/main`
+  for LeFlur / Latent Generator training, training-time callbacks
+  (LeFlur evaluators, protein-ligand decode/forward/inverse callbacks,
+  LG defaults, S3 backup), training data configs (`structure_ligand_*`,
   `structure_pdb_afdb_*`, swissprot variants, transform_fn variants),
   model defaults (`model/leflur*.yaml`, `model/latent_generator*.yaml`),
-  generation parameter sub-configs (`generation/`), and 10 dev/training
+  generation parameter sub-configs (`generation/`), and dev/training
   experiment entries (`experiment/train_*`, `experiment/test_gen_ume`).
   They live on disk for local research workflows and are reachable via
   `paths=internal`, but are gitignored on the publication branch so the
   shipped Hydra surface is inference-only:
   `paths/`, `experiment/{generate_*, autoencode*, esmfold_baseline}.yaml`.
+  **Exception:** the 23-file transitive dependency closure of the
+  four training entry points that produced the canonical checkpoints
+  (`leflur-base`, `leflur-ted`, `leflur-pl`, LG full-attention, LG
+  protein-ligand FSQ-4375) is carved out via `!`-prefixed exceptions
+  in `.gitignore` and is tracked on the publication branch — see the
+  "Training-reproduction Hydra surface" entry under Added.
   (`experiment/{research,legacy,denovo_r5}/` are kept on disk for
   internal research but gitignored — see Removed entries below.) The
   11 Hydra configs the branch had
