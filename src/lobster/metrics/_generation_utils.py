@@ -1,5 +1,7 @@
 import torch
+from tmtools import tm_align
 import logging
+from loguru import logger
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -11,7 +13,6 @@ from lobster.model.latent_generator.utils.residue_constants import restype_order
 
 
 # Set up logging
-logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
@@ -632,21 +633,25 @@ def predict_structure_with_esmfold(
     # 3. Add linkers between chains for ESMFold
     sequence_str, position_ids, linker_mask = add_linker_to_sequence(sequence_str)
 
-    # 4. Tokenize the sequence
+    # 4. Check if sequence exceeds max length (ESMFold limit)
+    max_length = cfg.generation.get("max_length", 512)
+    if len(sequence_str) > max_length:
+        return None  # Skip ESMFold for sequences that are too long
+
+    # 5. Tokenize the sequence
     tokenized_input = plm_fold.tokenizer.encode_plus(
         sequence_str,
         padding=True,
-        truncation=True,
-        max_length=cfg.generation.get("max_length", 512),
+        truncation=False,
         add_special_tokens=False,
         return_tensors="pt",
     )["input_ids"].to(device)
 
-    # 5. Fold with ESMFold
+    # 6. Fold with ESMFold
     with torch.no_grad():
         outputs = plm_fold.model(tokenized_input, position_ids=position_ids.unsqueeze(0).to(device))
 
-    # 6. Remove linkers from outputs
+    # 7. Remove linkers from outputs
     outputs["positions"] = outputs["positions"][:, :, linker_mask == 1, :, :]
     outputs["plddt"] = outputs["plddt"][:, linker_mask == 1]
     outputs["predicted_aligned_error"] = outputs["predicted_aligned_error"][:, linker_mask == 1]
@@ -655,12 +660,12 @@ def predict_structure_with_esmfold(
     sequence_list = list(sequence_str)
     sequence_str = "".join([seq_char for seq_char, mask_val in zip(sequence_list, linker_mask) if mask_val == 1])
 
-    # 7. Get folded structure metrics (TM-score, etc.)
+    # 8. Get folded structure metrics (TM-score, etc.)
     folded_structure_metrics, pred_coords = get_folded_structure_metrics(
         outputs, orig_coords[None], [sequence_str], mask=mask_i[None], device=device
     )
 
-    # 8. Prepare return dictionary with common results
+    # 9. Prepare return dictionary with common results
     result = {
         "folded_structure_metrics": folded_structure_metrics,
         "pred_coords": pred_coords,
@@ -671,7 +676,7 @@ def predict_structure_with_esmfold(
         "num_chains": len(chains_i.unique()),
     }
 
-    # 9. OPTIONAL: Align generated coords to prediction (inpainting mode only)
+    # 10. OPTIONAL: Align generated coords to prediction (inpainting mode only)
     if gen_coords is not None:
         gen_coords_aligned, rmsd_inpainted = align_and_compute_rmsd_inpainted(
             gen_coords=gen_coords,
@@ -755,13 +760,6 @@ def get_folded_structure_metrics(outputs, ref_coords, ref_seq, prefix="", mask=N
     torch.Tensor
         The predicted coordinates of the structure. Shape [B, L, 3, 3].
     """
-    try:
-        from tmtools import tm_align
-    except ImportError as e:
-        raise ImportError(
-            "tmtools is required. Install with `uv sync --extra struct-gpu` or `uv sync --extra struct-cpu`"
-        ) from e
-
     pred_coords = outputs["positions"][-1][:, :, :3, :]  # [B, L, 3, 3]
     plddt_scores = outputs["plddt"].mean(dim=(-1, -2))  # [B]
     predicted_aligned_error = outputs["predicted_aligned_error"].mean(dim=(-1, -2))  # [B]
@@ -1160,26 +1158,41 @@ class MetricsPlotter:
 class MetricsCSVWriter:
     """Helper class to write metrics to CSV files."""
 
-    def __init__(self, output_dir: Path, mode: str):
+    def __init__(self, output_dir: Path, mode: str, resume: bool = False):
         """Initialize CSV writer for a specific generation mode.
 
         Args:
             output_dir: Directory to save CSV files
             mode: Generation mode (unconditional, inverse_folding, forward_folding, inpainting)
+            resume: If True, append to existing CSV files instead of creating new ones
         """
         self.output_dir = output_dir
         self.mode = mode
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Create CSV file path for metrics
-        self.csv_path = output_dir / f"{mode}_metrics_{self.timestamp}.csv"
+        if resume:
+            existing_metrics = sorted(Path(output_dir).glob(f"{mode}_metrics_*.csv"), key=lambda x: x.stat().st_mtime)
+            existing_sequences = sorted(
+                Path(output_dir).glob(f"sequences_{mode}_*.csv"), key=lambda x: x.stat().st_mtime
+            )
+            if existing_metrics:
+                self.csv_path = existing_metrics[-1]
+                logger.info(f"Resume mode: appending to existing metrics CSV: {self.csv_path}")
+            else:
+                self.csv_path = output_dir / f"{mode}_metrics_{self.timestamp}.csv"
+                self._initialize_csv()
 
-        # Create CSV file path for sequences
-        self.sequences_csv_path = output_dir / f"sequences_{mode}_{self.timestamp}.csv"
-
-        # Initialize CSV files with headers
-        self._initialize_csv()
-        self._initialize_sequences_csv()
+            if existing_sequences:
+                self.sequences_csv_path = existing_sequences[-1]
+                logger.info(f"Resume mode: appending to existing sequences CSV: {self.sequences_csv_path}")
+            else:
+                self.sequences_csv_path = output_dir / f"sequences_{mode}_{self.timestamp}.csv"
+                self._initialize_sequences_csv()
+        else:
+            self.csv_path = output_dir / f"{mode}_metrics_{self.timestamp}.csv"
+            self.sequences_csv_path = output_dir / f"sequences_{mode}_{self.timestamp}.csv"
+            self._initialize_csv()
+            self._initialize_sequences_csv()
 
     def _initialize_csv(self):
         """Initialize CSV file with appropriate headers based on mode."""
@@ -1281,6 +1294,7 @@ class MetricsCSVWriter:
             "percent_identity_original",
             "masked_positions",
             "sequence_type",
+            "latent_generator_tokens",
             "timestamp",
         ]
 
@@ -1326,10 +1340,8 @@ class MetricsCSVWriter:
                     _to_scalar(metrics.get("percent_identity_self_reflection", "")),
                     _to_scalar(metrics.get("tm_score_unconditional_to_forward", "")),
                     _to_scalar(metrics.get("rmsd_unconditional_to_forward", "")),
-                    _to_scalar(metrics.get("rmsd_unconditional_to_forward_kabsch", "")),
                     _to_scalar(metrics.get("tm_score_forward_to_inverse", "")),
                     _to_scalar(metrics.get("rmsd_forward_to_inverse", "")),
-                    _to_scalar(metrics.get("rmsd_forward_to_inverse_kabsch", "")),
                     # ESMFold baseline metrics
                     _to_scalar(metrics.get("plddt_unconditional", "")),
                     _to_scalar(metrics.get("pae_unconditional", "")),
@@ -1345,6 +1357,13 @@ class MetricsCSVWriter:
                     _to_scalar(metrics.get("pae_improvement", "")),
                     _to_scalar(metrics.get("tm_score_improvement", "")),
                     _to_scalar(metrics.get("rmsd_improvement", "")),
+                    # ESMFold structure comparison metrics
+                    _to_scalar(metrics.get("tm_score_unconditional_to_esmfold", "")),
+                    _to_scalar(metrics.get("rmsd_unconditional_to_esmfold", "")),
+                    _to_scalar(metrics.get("tm_score_forward_to_esmfold", "")),
+                    _to_scalar(metrics.get("rmsd_forward_to_esmfold", "")),
+                    _to_scalar(metrics.get("tm_score_esmfold_agreement_improvement", "")),
+                    _to_scalar(metrics.get("rmsd_esmfold_agreement_improvement", "")),
                 ]
             )
         elif self.mode == "inverse_folding":
@@ -1514,6 +1533,7 @@ class MetricsCSVWriter:
         sequence_type: str | None = None,
         percent_identities: list[float] | None = None,
         masked_positions: list[list[int]] | None = None,
+        latent_generator_tokens: list[str] | None = None,
     ):
         """Write generated sequences to CSV for diversity analysis.
 
@@ -1575,6 +1595,11 @@ class MetricsCSVWriter:
                 if masked_positions and sample_idx < len(masked_positions):
                     masked_pos = ",".join(map(str, masked_positions[sample_idx]))
 
+                # Handle latent_generator_tokens
+                tokens_str = ""
+                if latent_generator_tokens and sample_idx < len(latent_generator_tokens):
+                    tokens_str = latent_generator_tokens[sample_idx]
+
                 writer.writerow(
                     [
                         run_id,
@@ -1593,6 +1618,7 @@ class MetricsCSVWriter:
                         percent_id,
                         masked_pos,
                         sequence_type or "",
+                        tokens_str,
                         timestamp,
                     ]
                 )
@@ -1713,7 +1739,7 @@ def align_and_compute_rmsd(
     masked_coords1_ca = coords1_ca_aligned[mask.bool()]  # (M, 3)
     masked_coords2_ca = coords2_ca[mask.bool()]  # (M, 3)
 
-    rmsd = torch.sqrt(torch.mean((masked_coords1_ca - masked_coords2_ca) ** 2)).item()
+    rmsd = torch.sqrt(torch.mean(torch.sum((masked_coords1_ca - masked_coords2_ca) ** 2, dim=-1))).item()
 
     # If we need to return aligned full structure (all atoms, not just CA)
     if return_aligned:
@@ -1797,3 +1823,252 @@ def align_and_compute_rmsd_inpainted(
     )
 
     return gen_coords_aligned, rmsd_inpainted
+
+
+def compute_protein_ligand_contacts(
+    protein_coords: torch.Tensor,
+    ligand_coords: torch.Tensor,
+    contact_threshold: float = 6.0,
+) -> dict:
+    """Compute contact statistics between protein and ligand.
+
+    Parameters
+    ----------
+    protein_coords : Tensor
+        Protein coordinates. Either [L, 3, 3] backbone (N, CA, C) — CA atoms
+        (index 1) are used — or [L, 3] if already CA-only.
+    ligand_coords : Tensor
+        Ligand atom coordinates [N_atoms, 3].
+    contact_threshold : float
+        Distance cutoff in angstroms for defining a contact.
+
+    Returns
+    -------
+    dict
+        n_contacts: number of protein residues within threshold of any ligand atom
+        frac_residues_in_contact: fraction of protein residues in contact
+        n_ligand_atoms_contacted: number of ligand atoms within threshold of any CA
+        frac_ligand_atoms_contacted: fraction of ligand atoms contacted
+        min_protein_ligand_dist: minimum CA-ligand atom distance
+        contact_mask: boolean tensor [L] of which residues are in contact
+    """
+    if protein_coords.dim() == 3:
+        ca_coords = protein_coords[:, 1, :].detach().float()
+    else:
+        ca_coords = protein_coords.detach().float()
+    lig = ligand_coords.detach().float()
+
+    dists = torch.cdist(ca_coords.unsqueeze(0), lig.unsqueeze(0)).squeeze(0)  # [L, N_lig]
+    min_dist_per_residue = dists.min(dim=1).values  # [L]
+    min_dist_per_lig_atom = dists.min(dim=0).values  # [N_lig]
+
+    contact_mask = min_dist_per_residue < contact_threshold
+    n_contacts = int(contact_mask.sum().item())
+    n_lig_contacted = int((min_dist_per_lig_atom < contact_threshold).sum().item())
+
+    return {
+        "n_contacts": n_contacts,
+        "frac_residues_in_contact": n_contacts / max(ca_coords.shape[0], 1),
+        "n_ligand_atoms_contacted": n_lig_contacted,
+        "frac_ligand_atoms_contacted": n_lig_contacted / max(lig.shape[0], 1),
+        "min_protein_ligand_dist": float(dists.min().item()),
+        "contact_mask": contact_mask,
+    }
+
+
+def compute_aligned_ligand_rmsd(
+    pred_protein_coords: torch.Tensor,
+    gt_protein_coords: torch.Tensor,
+    pred_ligand_coords: torch.Tensor,
+    gt_ligand_coords: torch.Tensor,
+    protein_mask: torch.Tensor | None = None,
+) -> dict:
+    """Compute ligand RMSD after aligning predicted protein to GT protein.
+
+    Aligns the predicted protein backbone to the ground truth via Kabsch on
+    CA atoms, then applies the same rigid-body transform to the predicted
+    ligand coordinates. The ligand RMSD is computed in this aligned frame,
+    which measures how well the ligand is positioned relative to the protein.
+
+    Parameters
+    ----------
+    pred_protein_coords : Tensor [L, 3, 3]
+        Predicted protein backbone (N, CA, C).
+    gt_protein_coords : Tensor [L, 3, 3]
+        Ground truth protein backbone (N, CA, C).
+    pred_ligand_coords : Tensor [N_lig, 3]
+        Predicted ligand atom coordinates.
+    gt_ligand_coords : Tensor [N_lig, 3]
+        Ground truth ligand atom coordinates.
+    protein_mask : Tensor [L], optional
+        Mask for valid protein positions used in alignment.
+
+    Returns
+    -------
+    dict
+        ligand_rmsd_aligned: RMSD after protein-based alignment
+        ligand_centroid_distance_aligned: centroid distance after alignment
+    """
+    pred_ca = pred_protein_coords[:, 1, :].detach().float()
+    gt_ca = gt_protein_coords[:, 1, :].detach().float()
+    pred_lig = pred_ligand_coords.detach().float()
+    gt_lig = gt_ligand_coords.detach().float()
+
+    if protein_mask is not None:
+        pmask = protein_mask.bool()
+    else:
+        pmask = torch.ones(pred_ca.shape[0], dtype=torch.bool, device=pred_ca.device)
+
+    centroid_pred = pred_ca[pmask].mean(dim=0)
+    centroid_gt = gt_ca[pmask].mean(dim=0)
+
+    n_valid = pmask.sum().item()
+    ones_mask = torch.ones(1, int(n_valid), device=pred_ca.device)
+    _, (R, _) = kabsch_torch_batched(
+        P=pred_ca[pmask].unsqueeze(0),
+        Q=gt_ca[pmask].unsqueeze(0),
+        mask=ones_mask,
+        return_transform=True,
+    )
+    R = R.squeeze(0)
+
+    pred_lig_centered = pred_lig - centroid_pred.unsqueeze(0)
+    pred_lig_aligned = torch.matmul(pred_lig_centered, R.transpose(0, 1)) + centroid_gt.unsqueeze(0)
+
+    diff = pred_lig_aligned - gt_lig
+    rmsd = float(torch.sqrt((diff**2).sum(dim=-1).mean()).item())
+    centroid_dist = float((pred_lig_aligned.mean(dim=0) - gt_lig.mean(dim=0)).norm().item())
+
+    return {
+        "ligand_rmsd_aligned": rmsd,
+        "ligand_centroid_distance_aligned": centroid_dist,
+    }
+
+
+def compute_complex_metrics_vs_gt(
+    pred_backbone: torch.Tensor,
+    pred_ligand: torch.Tensor,
+    gt_backbone: torch.Tensor,
+    gt_ligand: torch.Tensor,
+    protein_mask: torch.Tensor | None = None,
+    pocket_threshold: float = 5.0,
+    contact_threshold: float = 6.0,
+) -> dict:
+    """Compute all structural metrics for a predicted protein-ligand complex vs GT.
+
+    Standardized function used by all evaluation pipelines (Gen-UME FF/IF,
+    Boltz2 co-fold, RF3 co-fold) to ensure consistent metric computation.
+
+    Parameters
+    ----------
+    pred_backbone : Tensor [L, 3, 3]
+        Predicted protein backbone (N, CA, C).
+    pred_ligand : Tensor [N_lig, 3]
+        Predicted ligand atom coordinates.
+    gt_backbone : Tensor [L, 3, 3]
+        Ground truth protein backbone (N, CA, C).
+    gt_ligand : Tensor [N_lig, 3]
+        Ground truth ligand atom coordinates.
+    protein_mask : Tensor [L], optional
+        Mask for valid protein positions. If None, all positions used.
+    pocket_threshold : float
+        Distance (A) to define binding pocket residues (CA to GT ligand).
+    contact_threshold : float
+        Distance (A) to define protein-ligand contacts (CA to pred ligand).
+
+    Returns
+    -------
+    dict with keys:
+        tm_score, rmsd_overall, rmsd_pocket, n_pocket_residues,
+        ligand_in_pocket, n_pocket_contacts, ligand_contacts_protein,
+        good_fold_and_in_pocket, ligand_rmsd_aligned, ligand_centroid_dist
+    """
+    from tmtools import tm_align
+
+    L = min(len(pred_backbone), len(gt_backbone))
+    pred_bb = pred_backbone[:L].detach().float()
+    gt_bb = gt_backbone[:L].detach().float()
+
+    if protein_mask is not None:
+        mask = protein_mask[:L].bool()
+    else:
+        mask = torch.ones(L, dtype=torch.bool)
+
+    pred_ca = pred_bb[mask, 1, :].numpy()
+    gt_ca = gt_bb[mask, 1, :].numpy()
+    seq_str = "A" * int(mask.sum())
+
+    # TM-score
+    try:
+        tm_out = tm_align(pred_ca, gt_ca, seq_str, seq_str)
+        tm_score = float(tm_out.tm_norm_chain1)
+    except Exception:
+        tm_score = float("nan")
+
+    # RMSD via Kabsch on full backbone
+    aligned_result = align_and_compute_rmsd(pred_bb, gt_bb, mask=mask.float(), return_aligned=True)
+    if isinstance(aligned_result, tuple):
+        pred_aligned, rmsd_overall = aligned_result
+    else:
+        pred_aligned = None
+        rmsd_overall = aligned_result
+
+    # Pocket definition: GT ligand within pocket_threshold of CA
+    pocket_mask = torch.zeros(L, dtype=torch.bool)
+    if len(gt_ligand) > 0:
+        gt_ca_t = gt_bb[:, 1, :]
+        dists = torch.cdist(gt_ca_t.float(), gt_ligand.float())
+        pocket_mask = (dists.min(dim=1).values < pocket_threshold) & mask
+
+    n_pocket = int(pocket_mask.sum().item())
+
+    # Pocket RMSD
+    rmsd_pocket = float("nan")
+    if n_pocket > 0 and pred_aligned is not None:
+        pred_pkt = pred_aligned[pocket_mask, 1, :]
+        gt_pkt = gt_bb[pocket_mask, 1, :]
+        rmsd_pocket = float(torch.sqrt(((pred_pkt - gt_pkt) ** 2).sum(dim=-1).mean()).item())
+
+    # Ligand-in-pocket: predicted ligand contacts GT pocket residues
+    # Uses unaligned predicted coords (matching merge_cofold_results behavior)
+    ligand_in_pocket = False
+    n_pocket_contacts = 0
+    ligand_contacts_protein = False
+    if len(pred_ligand) > 0:
+        pred_ca_unaligned = pred_bb[:, 1, :].float()
+        contacts = compute_protein_ligand_contacts(pred_ca_unaligned, pred_ligand, contact_threshold=contact_threshold)
+        ligand_contacts_protein = contacts["n_contacts"] > 0
+        contact_mask = contacts["contact_mask"][:L]
+        pocket_contacts = contact_mask & pocket_mask
+        n_pocket_contacts = int(pocket_contacts.sum().item())
+        ligand_in_pocket = pocket_contacts.any().item()
+
+    good_fold = tm_score > 0.5 if not (tm_score != tm_score) else False  # nan check
+    gfip = good_fold and ligand_in_pocket
+
+    # Ligand RMSD (after protein alignment)
+    ligand_rmsd = float("nan")
+    ligand_centroid_dist = float("nan")
+    if len(pred_ligand) > 0 and len(gt_ligand) > 0 and len(pred_ligand) == len(gt_ligand):
+        lig_result = compute_aligned_ligand_rmsd(
+            pred_protein_coords=pred_bb,
+            gt_protein_coords=gt_bb,
+            pred_ligand_coords=pred_ligand,
+            gt_ligand_coords=gt_ligand,
+            protein_mask=mask.float(),
+        )
+        ligand_rmsd = lig_result["ligand_rmsd_aligned"]
+        ligand_centroid_dist = lig_result["ligand_centroid_distance_aligned"]
+
+    return {
+        "tm_score": tm_score,
+        "rmsd_overall": float(rmsd_overall),
+        "rmsd_pocket": rmsd_pocket,
+        "n_pocket_residues": n_pocket,
+        "ligand_in_pocket": ligand_in_pocket,
+        "n_pocket_contacts": n_pocket_contacts,
+        "ligand_contacts_protein": ligand_contacts_protein,
+        "good_fold_and_in_pocket": gfip,
+        "ligand_rmsd_aligned": ligand_rmsd,
+        "ligand_centroid_dist": ligand_centroid_dist,
+    }

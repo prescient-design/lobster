@@ -98,8 +98,6 @@ def alphafold2_complex_scores(
         num_recycles=num_recycles,
         data_dir=alphafold_weights_dir,
         use_multimer=use_multimer,
-        use_initial_guess=False,
-        use_initial_atom_pos=False,
     )
 
     complex_model.prep_inputs(
@@ -201,8 +199,6 @@ def alphafold2_binder_scores(
     binder_model = mk_afdesign_model(
         protocol="hallucination",
         use_templates=False,
-        initial_guess=False,
-        use_initial_atom_pos=False,
         num_recycles=num_recycles,
         data_dir=alphafold_weights_dir,
         use_multimer=use_multimer,

@@ -1,12 +1,10 @@
 import subprocess
 import os
-import logging
 from pathlib import Path
 from biotite.sequence.io import fasta
 import shutil
 import pandas as pd
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def setup_foldseek_path(foldseek_bin_path):
@@ -149,6 +147,10 @@ def copy_structures_by_rmsd(output_dir, length, rmsd_threshold=2.0):
             return None, 0
 
         df_length = df[df["sequence_length"] == length].copy()
+        if "run_id" in df_length.columns:
+            df_length = df_length.drop_duplicates(subset="run_id", keep="last")
+        if "rmsd" in df_length.columns:
+            df_length = df_length[df_length["rmsd"].notna() & (df_length["rmsd"] != "")]
         logger.info(f"Found {len(df_length)} total structures for length {length}")
 
         if len(df_length) == 0:
