@@ -1,8 +1,9 @@
 # @package _global_
 defaults:
   - override /data: structure_sabdab
-  - override /model: leflur
-  - override /callbacks: leflur_inv
+  - override /model: gen_ume
+  - override /callbacks: gen_ume_inv
+
 compile: false
 
 logger:

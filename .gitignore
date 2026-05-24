@@ -267,6 +267,46 @@ docs/leflur/research_notes/
 /slurm/scripts/denovo_r5/
 /src/lobster/hydra_config/experiment/denovo_r5/
 
+# Training-only Hydra configs added on this branch but excluded from the
+# publication PR. They live on disk for local research workflows; the kept
+# inference surface lives at:
+#   src/lobster/hydra_config/paths/
+#   src/lobster/hydra_config/experiment/{generate_*, autoencode*, esmfold_baseline}.yaml
+#   src/lobster/hydra_config/experiment/{research,legacy}/
+#
+# Callbacks (training-time LeFlur + LG evaluators)
+/src/lobster/hydra_config/callbacks/backbone_reconstruction.yaml
+/src/lobster/hydra_config/callbacks/cg_boltz_eval.yaml
+/src/lobster/hydra_config/callbacks/forward_folding.yaml
+/src/lobster/hydra_config/callbacks/inverse_folding_cameo.yaml
+/src/lobster/hydra_config/callbacks/latent_generator_defaults.yaml
+/src/lobster/hydra_config/callbacks/leflur*.yaml
+/src/lobster/hydra_config/callbacks/protein_ligand_decode.yaml
+/src/lobster/hydra_config/callbacks/protein_ligand_forward_folding.yaml
+/src/lobster/hydra_config/callbacks/protein_ligand_inverse_folding.yaml
+/src/lobster/hydra_config/callbacks/s3_backup.yaml
+# Data (training data configs + transform_fn variants)
+/src/lobster/hydra_config/data/structure_afdb_swissprot.yaml
+/src/lobster/hydra_config/data/structure_esm_atlas_afdb_swissprot.yaml
+/src/lobster/hydra_config/data/structure_ligand_*.yaml
+/src/lobster/hydra_config/data/structure_pdb_afdb_*.yaml
+/src/lobster/hydra_config/data/transform_fn/esm_embedding_transform.yaml
+/src/lobster/hydra_config/data/transform_fn/structure_3di_transform.yaml
+/src/lobster/hydra_config/data/transform_fn/structure_alt_seq_swap_transform.yaml
+/src/lobster/hydra_config/data/transform_fn/structure_backbone_aa_tokenizer_alt_seq_transform.yaml
+/src/lobster/hydra_config/data/transform_fn/structure_with_3di_c6d_transform.yaml
+/src/lobster/hydra_config/data/transform_fn/structure_with_3di_zernike_transform.yaml
+/src/lobster/hydra_config/data/transform_fn/structure_with_c6d_transform.yaml
+/src/lobster/hydra_config/data/transform_fn/structure_zernike_transform.yaml
+# Model defaults (inference configs use _target_ directly; YAMLs unneeded)
+/src/lobster/hydra_config/model/latent_generator*.yaml
+/src/lobster/hydra_config/model/leflur*.yaml
+# Generation parameter sub-configs (unreferenced by kept inference configs)
+/src/lobster/hydra_config/generation/
+# Training + dev-time experiment configs
+/src/lobster/hydra_config/experiment/train_*.yaml
+/src/lobster/hydra_config/experiment/test_gen_ume.yaml
+
 # SLURM launcher READMEs (companion docs for the training/eval launchers
 # above; not needed for inference).
 /slurm/scripts/README_*.md

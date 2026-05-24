@@ -1,4 +1,4 @@
-_target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+_target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule 
 lr: 1e-3
 scheduler: cosine 
 scheduler_kwargs:

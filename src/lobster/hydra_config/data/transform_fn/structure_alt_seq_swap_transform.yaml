@@ -1,2 +1,0 @@
-structure_alt_seq_swap_transform:
-  _target_: lobster.transforms._structure_transforms.AlternativeSequenceSwapTransform

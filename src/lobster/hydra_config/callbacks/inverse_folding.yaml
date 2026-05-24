@@ -2,13 +2,6 @@ InverseFoldingCallback:
   _target_: lobster.callbacks._inverse_folding_callback.InverseFoldingCallback
   structure_path: ${paths.output_dir}/structures/
   save_every_n: 1000
-  dataset_name: cath
-  metric_prefix: inverse_folding_cath
   length: 100
   num_samples: 10
-  use_plm_fold: false
-  nsteps: 100
-  temperature_seq: 0.5
-  temperature_struc: 1.0
-  stochasticity_seq: 20
-  stochasticity_struc: 20
+  use_plm_fold: true

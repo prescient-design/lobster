@@ -1,6 +1,0 @@
-cg_boltz_eval:
-  _target_: lobster.callbacks.CGBoltzEvalCallback
-  eval_dir: "${paths.output_dir}/cg_boltz_evals"
-  num_designs: 10
-  data_dir: "/cv/home/lisanzas/lobster/data/proteina_ligand_targets/processed"
-  eval_every_n_steps: 20

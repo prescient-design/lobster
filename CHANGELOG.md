@@ -115,3 +115,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fold) and `evaluate_ligandmpnn_baseline.py` (LigandMPNN inverse fold)
   remain available locally but are no longer tracked on the publication
   branch — they evaluate external tools, not LeFlur.
+- **Training-only Hydra configs added on this branch** — 62 YAMLs the
+  publication branch added on top of `origin/main` for LeFlur / Latent
+  Generator training, training-time callbacks (LeFlur evaluators,
+  protein-ligand decode/forward/inverse callbacks, LG defaults, S3
+  backup), training data configs (`structure_ligand_*`,
+  `structure_pdb_afdb_*`, swissprot variants, transform_fn variants),
+  model defaults (`model/leflur*.yaml`, `model/latent_generator*.yaml`),
+  generation parameter sub-configs (`generation/`), and 10 dev/training
+  experiment entries (`experiment/train_*`, `experiment/test_gen_ume`).
+  They live on disk for local research workflows and are reachable via
+  `paths=internal`, but are gitignored on the publication branch so the
+  shipped Hydra surface is inference-only:
+  `paths/`, `experiment/{generate_*, autoencode*, esmfold_baseline}.yaml`,
+  `experiment/{research,legacy}/`. The 11 Hydra configs the branch had
+  *modified* on top of main (training callbacks + training data configs +
+  `experiment/train_gen_ume.yaml`) were reverted to their `origin/main`
+  state in lockstep so the publication PR no longer touches them.
+  Hydra configs that existed in `origin/main` unchanged — including
+  every other `model/*.yaml`, `data/*.yaml`, `callbacks/*.yaml`,
+  `evaluation/`, `experiment/ume-2/`, top-level `train.yaml` /
+  `finetune.yaml` / `intervene*.yaml` / `evaluate.yaml` / etc. — remain
+  tracked exactly as they are in main.

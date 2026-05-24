@@ -1,2 +1,0 @@
-structure_zernike_transform:
-  _target_: lobster.transforms._structure_transforms.StructureZernikeTransform

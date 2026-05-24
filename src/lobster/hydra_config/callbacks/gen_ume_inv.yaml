@@ -1,8 +1,12 @@
 defaults:
   - model_checkpoint.yaml
   - lr_monitor.yaml
-  - backbone_reconstruction.yaml
+  - progress_bar.yaml
+  - structure_decode.yaml
+  - inverse_folding.yaml
+  - unconditional_generation.yaml
   - _self_
+
 
 model_checkpoint:
   dirpath: ${paths.output_dir}
