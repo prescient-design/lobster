@@ -27,7 +27,6 @@ scripts/*.fasta
 scripts/fastas/*.fasta
 scripts/combined_db*
 *_play.py
-src/lobster/hydra_config/experiment/*
 src/lobster/mcp/claude_desktop_config.json
 
 notebooks/nathan/*
@@ -67,3 +66,164 @@ test_dxt/*
 src/lobster/model/integrations/ume_huggingface/model/*
 
 *.sh
+
+# ---------------------------------------------------------------------------
+# LeFlur cleanup, Phase 2 — repo-root research artifacts.
+#
+# Patterns below are intentionally anchored to the repo root (``/``-prefix)
+# so they do NOT shadow real tracked fixtures under ``test_data/``,
+# ``src/lobster/.../example_pdbs/``, ``assets/``, ``static/`` etc.
+# ---------------------------------------------------------------------------
+
+# Ad-hoc decode / sampling output blobs at repo root.
+/*.pdb
+/*.cif
+/*.sdf
+
+# Plot images dropped at repo root by analysis scripts.
+/*.png
+/*.svg
+
+# Reconstruction / summary JSON sweeps at repo root.
+/reconstruction_results*.json
+/*_summary.json
+/pl_*_summary.json
+
+# Local virtualenv + Hydra multirun + ad-hoc output dirs.
+/.venv/
+/multirun/
+/outputs/
+/output/
+
+# Top-level research / sweep / eval directories. Each pattern is a directory
+# of generated PDBs, parquet, foldseek output, or analysis CSVs — none of it
+# belongs in the source tree.
+/aligned_structures*/
+/posebusters_benchmark_*/
+/posebusters_astex_*/
+/posebusters_benchmark_forward_folding/
+/pl_forward_folding*/
+/pl_inverse_folding*/
+/cameo_inverse_folding_eval*/
+/cameo_protein_ligand_*/
+/forward_folding_analysis/
+/forward_folding_cameo_protein_ligand/
+/conditioned_gen_*/
+/cg_best_*/
+/comprehensive_mutation_study_*/
+/chimera_study_*/
+/interpolation_study_*/
+/latent_space_studies/
+/logit_distribution_analysis_*/
+/minimize_analysis/
+/denovo_analysis*/
+/denovo_data/
+/denovo_pssm/
+/denovo_structures_trimmed/
+/decode/
+/decoded/
+/length_*/
+/plots/
+/plots_method/
+/plots_seed/
+/structures/
+/structures_cameo/
+/structures_latest/
+/sweep_best_structures/
+/sweep_best_top10/
+/sweep_low_temp_more_steps_structures/
+/temp/
+/temp_structures/
+/token_space_experiments/
+/trajectory_pdbs/
+/trajectory_reference/
+/vocabulary_sampling_study_*/
+/best_designs_comparison/
+/my-structures/
+/lung_cancer/
+/ligand_cond_eval*/
+/ff_good_fold_in_pocket/
+/ff_ligand_placement_bestof5/
+/ff_structures_all_0408/
+/ff_structures_bestof5_all_0408/
+/benchmark_0407_v2_structures/
+/boltz_results_prot_no_msa/
+/1a9u_reconstructions/
+
+# LeFlur smoke outputs (from scripts/leflur_*_smoke.py).
+/leflur_smoke*/
+/leflur_ligand_smoke*/
+
+# PLL correlation / SR-gate report bundles (per-target dirs of CSV+PNG).
+/pll_correlation_report*/
+/pll_vs_sr_gate*/
+
+# Ad-hoc Python probes left at repo root.
+/test_lg.py
+/test_load.py
+/test_load_[0-9].py
+/test_protein_ligand_lg.py
+/analyze_inverse_folding.py
+/analyze_optimization_results.py
+/analyze_parquet.py
+/analyze_sequence_diversity.py
+/download_pdb_from_parquet.py
+/idealize_openbabel.py
+/idealize_openmm.py
+/load_pkl_data.py
+/extract_genume_metrics.py
+
+# Ad-hoc test scratch dirs the smoke pipeline writes.
+/test_backward_compat_inverse/
+/test_inference/
+/test_output/
+/test_tokens_output/
+/test_set_filtered_pdb_test/
+/testing_opus_struc_capabilities/
+
+# Stray notes left at root by analysis runs.
+/current_notes.txt
+/hc_tar*.txt
+
+# Examples/ sweep outputs (each dir is hundreds of generated PDBs + parquet).
+# Tracked example scripts (analyze_*.py, *.ipynb) are unaffected.
+/examples/generated_*/
+/examples/esmfold_baseline*/
+/examples/anchor_*/
+/examples/binder_design_output/
+/examples/forward_folding_rmsd_test/
+/examples/dplm2_unconditional_results/
+
+# Misc top-level research dirs (sweep outputs, eval bundles).
+/complexes/
+/developbability/
+/genie2/
+/gen_ume_paper_data/
+/interraction_descriptions/
+/la-proteina-outputs/
+/pdbbind_benchmark_forward_folding/
+/posebusters_ligand_cond_gen_structure_tokens/
+/proteina_targets_structures*/
+/protein_ligand_eval*/
+/protein_ligand_*_folding*/
+/protein_ligand_inverse_eval/
+/random_mutation_study_*/
+/rest_*_samples*/
+/rest_design_samples/
+/rest_verified_samples/
+/rest_visualization_samples/
+/rest_i2_visualization_samples/
+/rf3_*/
+/sample_outputs/
+/segmented_encoding_study_*/
+/single_chain/
+/spark_project/
+
+# Local datasets / large fixture cache (5+ GB on disk).
+/data/
+
+# Foldseek / MMseqs2 binaries pulled in for evaluation pipelines.
+# Real Python wrappers under src/lobster/metrics/*.py stay tracked.
+/src/lobster/metrics/foldseek/
+/src/lobster/metrics/mmseqs/
+/src/lobster/metrics/foldseek-linux-gpu.tar.gz

@@ -1,0 +1,800 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{listings}
+\usepackage{enumerate}
+
+% Page setup
+\geometry{margin=1in}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+
+% Hyperref setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    citecolor=blue,
+}
+
+% Custom commands
+\newcommand{\genume}{Gen-UME}
+\newcommand{\real}{\mathbb{R}}
+\newcommand{\vocab}{\mathcal{V}}
+
+% Title information
+\title{\textbf{Gen-UME: A Unified Generative Model for Joint Protein Sequence and Structure Design via Discrete Flow Matching}}
+
+\author{Anonymous}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Protein design requires simultaneous consideration of sequence and structure, as these modalities are fundamentally coupled through protein folding constraints. We present \textbf{\genume}, a unified generative framework that jointly models protein sequences and structures in discrete token spaces. We introduce \textbf{LatentGenerator}, a Vision Transformer-based autoencoder with symmetric encoder and decoder (6 layers, 8 heads, 256 hidden dims) that tokenizes 3D structures from Cartesian coordinates using a novel Simple Linear Quantizer (SLQ) with learned Gumbel-Softmax quantization. LatentGenerator is a general framework applicable to any macromolecular structure data represented as Cartesian coordinates. We demonstrate its versatility with high-fidelity reconstruction across diverse molecular types: $1.647 \pm 0.535$ Å RMSD on CASP15 proteins and $0.752 \pm 0.305$ Å RMSD on GEOM small molecules, validating its applicability to proteins, ligands, and beyond. \genume's architecture is built on NeoBERT \cite{lebreton2025}, a next-generation encoder, with novel extensions for sequence-structure co-generation through multimodal embeddings. While our framework is compatible with any discrete generative paradigm (autoregressive models, discrete diffusion, masked language modeling), our experiments focus on discrete flow matching via Continuous Time Markov Chains (CTMC), with independent time sampling enabling different generation dynamics per modality. We train models at two scales: 90M and 470M parameters. Both support three generation modes within a single framework: (1) unconditional generation of novel proteins, (2) inverse folding for sequence design, and (3) forward folding for structure prediction. We introduce a self-reflection mechanism---analogous to reasoning in large language models---where the model internally verifies sequence-structure consistency before producing final outputs. On benchmark evaluation, \genume~90M achieves \textbf{50.83\% amino acid recovery with 0.83 TM-score (2.41 Å RMSD, 63.8\% pass rate)} on inverse folding and \textbf{0.71 TM-score (4.09 Å RMSD, 42.1\% pass rate)} on forward folding. The larger 470M model demonstrates clear performance gains with scale: \textbf{55.26\% AAR with 0.84 TM-score (2.34 Å RMSD, 64.8\% pass rate)} on inverse folding and \textbf{0.75 TM-score (3.94 Å RMSD, 57.2\% pass rate)} on forward folding. For unconditional generation with self-reflection, the model produces high-quality structures with \textbf{TM-scores exceeding 0.80} when validated with ESMFold, with \textbf{85\% of 100-residue proteins} achieving RMSD $<$ 2Å between generated and folded structures, and \textbf{11-25\% structural diversity} across generated samples.
+\end{abstract}
+
+\section{Introduction}
+
+The intimate relationship between protein sequence and structure is central to biology. A protein's amino acid sequence determines how it folds into a three-dimensional structure, which in turn determines its function. Computational protein design must navigate this complex sequence-structure relationship to create proteins with desired properties.
+
+Traditional approaches treat protein sequence design and structure prediction as separate tasks. Structure prediction methods achieve high accuracy but cannot generate sequences for target structures. Inverse folding methods design sequences for given structures but cannot predict structures or generate novel proteins unconditionally. This separation fails to capture the inherent coupling between modalities and limits opportunities for joint optimization.
+
+Recent advances in generative modeling, particularly flow-based approaches, offer promise for modeling complex structured data. Concurrently, modern encoder architectures like NeoBERT \cite{lebreton2025} have demonstrated significant improvements over traditional BERT-based models through optimized depth-to-width ratios and extended context lengths. We introduce \textbf{\genume} (Generative Universal Molecular Encoder), a unified framework for joint protein sequence and structure generation based on discrete flow matching, built on the NeoBERT architecture.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+\item \textbf{LatentGenerator}: Vision Transformer-based structure autoencoder with symmetric encoder-decoder architecture (6 layers, 8 heads, 256 hidden dims, rotary position embeddings) for high-fidelity molecular tokenization ($1.647 \pm 0.535$ Å RMSD on CASP15 proteins), extensible to proteins, ligands, and protein-ligand complexes through element-aware embeddings and 20Å spatial attention masking.
+
+\item \textbf{Simple Linear Quantizer (SLQ)}: Novel differentiable quantization method using learned linear projections and Gumbel-Softmax (256 tokens, $\tau=0.5$) embedded within LatentGenerator, providing efficient alternative to VQ-VAE and FSQ while enabling end-to-end training.
+
+\item \textbf{Unified sequence-structure generation}: Single models (90M and 470M parameters) that jointly generate amino acid sequences and 3D protein structures through discrete flow matching on both modalities simultaneously.
+
+\item \textbf{NeoBERT-based architecture}: Leverage NeoBERT \cite{lebreton2025}, a state-of-the-art encoder with optimal depth-to-width ratio and 4,096 token context, adapted for multimodal protein sequence-structure generation.
+
+\item \textbf{Discrete flow matching for proteins}: Adopt discrete flow matching via CTMC \cite{campbell2024} for categorical spaces, with masking-based probability paths and independent time sampling enabling principled joint sequence-structure generation.
+
+\item \textbf{Multiple generation modes}: Support for unconditional generation, inverse folding, and forward folding within a unified framework through conditional flow matching.
+
+\item \textbf{Self-reflection verification}: Consistency checking procedure analogous to reasoning in LLMs, where the model ``checks its answer'' by verifying bidirectional sequence-structure compatibility through internal forward and inverse folding, accepting outputs only if they pass both structural and sequence identity thresholds.
+
+\item \textbf{Strong empirical performance}: Competitive results across three benchmarks with a unified model approach.
+\end{enumerate}
+
+\section{Related Work}
+
+\textbf{Protein Structure Prediction}: AlphaFold2 and ESMFold \cite{lin2023} achieve remarkable accuracy for structure prediction from sequence. These specialized models excel at forward prediction but cannot generate sequences for structures or create novel proteins.
+
+\textbf{Protein Sequence Design}: ProteinMPNN \cite{dauparas2022}, PiFold, and related methods perform inverse folding---designing sequences for target structures. While effective, they operate only on structure inputs and cannot perform structure prediction or unconditional generation.
+
+\textbf{Generative Protein Models}: RFdiffusion extends RoseTTAFold with diffusion for protein backbone generation. Chroma uses diffusion on protein structure clouds with equivariant networks. MultiFlow \cite{campbell2024} introduces discrete flow matching for protein co-design using Continuous Time Markov Chains, enabling joint sequence-structure generation through flow-based modeling. DPLM-2 \cite{wang2024} introduces a multimodal diffusion protein language model that uses lookup-free quantization for structure tokenization and achieves joint sequence-structure generation. These approaches typically operate on continuous representations or use separate diffusion processes for each modality.
+
+\textbf{Vision Transformers for Molecules}: Vision Transformers have shown strong performance on image tasks and are increasingly applied to molecular modeling. Unlike equivariant GNNs that encode symmetries explicitly, ViTs learn spatial relationships through attention, providing flexibility for diverse molecular types. Our LatentGenerator uses ViTs for both encoding and decoding 3D molecular structures, with spatial attention masking (20Å cutoff) to capture local geometric dependencies while maintaining computational efficiency.
+
+\textbf{Discrete Flow Matching}: Campbell et al.~\cite{campbell2024} introduced Discrete Flow Models (DFMs) for generative modeling on discrete state-spaces, enabling flow matching on categorical data through Continuous Time Markov Chains (CTMC). Their MultiFlow model demonstrated the effectiveness of discrete flow matching for protein sequence-structure co-design, using masking-based interpolation schedules to define probability paths between prior and data distributions. We adopt their discrete flow matching framework with CTMC dynamics, building upon it with NeoBERT architecture, novel Simple Linear Quantizer (SLQ) for structure tokenization, and independent time sampling for multimodal flows.
+
+\textbf{Multimodal Protein Models}: Multimodal models have demonstrated the value of joint training across biological modalities (sequences, structures, MSAs, etc.). \genume~extends this paradigm to generative modeling, enabling a single model to perform multiple design tasks through conditional generation.
+
+\textbf{Modern Encoder Architectures}: NeoBERT \cite{lebreton2025} represents the state-of-the-art in bidirectional encoders, achieving superior performance through optimized architecture design, modern pre-training data, and extended context (4,096 tokens). Despite its compact 250M parameter footprint, NeoBERT outperforms larger models like BERT-large and RoBERTa-large on the MTEB benchmark. We leverage NeoBERT's architecture as the foundation for our sequence-structure encoder.
+
+Our approach builds on Campbell et al.'s discrete flow matching framework with several key contributions: (1) we introduce Simple Linear Quantizer (SLQ), a novel differentiable quantization method for structure tokenization; (2) we build on NeoBERT's state-of-the-art encoder architecture for sequence-structure encoding; (3) we use independent time sampling for multimodal flows, allowing different unmasking dynamics per modality; and (4) we provide a unified framework supporting multiple generation modes (unconditional, inverse folding, forward folding) through a single trained model with self-reflection verification for consistency checking.
+
+\section{Method}
+
+\subsection{Problem Formulation}
+
+Let $\mathbf{s} = (s_1, \ldots, s_L) \in \vocab^L$ denote a protein sequence of length $L$, where $\vocab$ is the amino acid vocabulary ($|\vocab| = 33$: 20 standard amino acids plus special tokens). Let $\mathbf{x} \in \real^{L \times 3 \times 3}$ denote 3D coordinates of the protein backbone (N, C$_\alpha$, C atoms per residue).
+
+We learn a joint distribution $p(\mathbf{s}, \mathbf{x})$ enabling three generation tasks:
+
+\begin{enumerate}
+\item \textbf{Unconditional}: Sample $(\mathbf{s}, \mathbf{x}) \sim p(\mathbf{s}, \mathbf{x})$
+\item \textbf{Inverse folding}: Sample $\mathbf{s} \sim p(\mathbf{s}|\mathbf{x})$
+\item \textbf{Forward folding}: Sample $\mathbf{x} \sim p(\mathbf{x}|\mathbf{s})$
+\end{enumerate}
+
+\subsection{Architecture}
+
+\subsubsection{Structure Tokenization with LatentGenerator}
+
+To enable discrete flow matching on structures, we convert continuous 3D coordinates to discrete tokens using a pre-trained \textbf{LatentGenerator} autoencoder. LatentGenerator is a powerful structure representation learning model based on Vision Transformers (ViT) that can handle proteins, ligands, and protein-ligand complexes, making it extensible to non-protein biomolecules.
+
+\textbf{Architecture}: LatentGenerator employs symmetric Vision Transformer architectures for both encoding and decoding:
+
+\begin{itemize}
+\item \textbf{Encoder} (TimeCondUViTEncoder): 6-layer transformer with 8 attention heads, 32-dimensional head size, and 256 hidden dimensions
+\item \textbf{Quantizer} (Q): Simple Linear Quantizer (SLQ) with 256-token codebook 
+\item \textbf{Decoder} (TimeCondUViTDecoder): Symmetric 6-layer transformer matching encoder architecture
+\end{itemize}
+
+Both encoder and decoder use rotary position embeddings and process 3D backbone coordinates (N, C$_\alpha$, C atoms). For protein-ligand complexes, the model uses 20Å spatial attention masking to capture local structural dependencies.
+
+\textbf{Encoding-Decoding Pipeline}:
+\begin{align}
+\mathbf{z} &= E(\mathbf{x}, \mathbf{m}) \quad \text{(Encode structure to latent embeddings)} \\
+\mathbf{c} &= Q(\mathbf{z}) \in \{1,\ldots,256\}^L \quad \text{(Quantize to discrete structure tokens)} \\
+\hat{\mathbf{x}} &= D(\mathbf{c}, \mathbf{m}) \quad \text{(Decode tokens back to 3D coordinates)}
+\end{align}
+
+where $\mathbf{x} \in \real^{L \times 3 \times 3}$ are backbone coordinates and $\mathbf{m} \in \{0,1\}^L$ is a residue mask.
+
+\textbf{Performance}: LatentGenerator achieves high-fidelity reconstruction with $1.647 \pm 0.535$ Å RMSD on CASP15 proteins ($\leq$512 residues), demonstrating that discrete tokenization preserves structural information including 3Di secondary structure and C6D distance/orientation features.
+
+\textbf{Extensibility}: The ViT-based architecture naturally extends to non-protein biomolecules:
+\begin{itemize}
+\item \textbf{Ligands}: Processes ligand atom coordinates with element-aware embeddings, achieving $0.752 \pm 0.305$ Å RMSD reconstruction on 30,936 ligands from the GEOM dataset \cite{axelrod2022}
+\item \textbf{Protein-Ligand Complexes}: Joint encoding of protein residues and ligand atoms
+\item \textbf{General Molecules}: Flexible architecture can adapt to diverse molecular structures
+\end{itemize}
+
+This pre-trained LatentGenerator serves as a frozen structure encoder-decoder throughout \genume~training, providing a robust discrete representation of 3D molecular geometry.
+
+\textbf{Simple Linear Quantizer (SLQ)}: We employ a novel Simple Linear Quantizer for efficient and differentiable quantization. Given continuous latent embeddings $\mathbf{z} \in \real^{L \times d}$ from the structure encoder:
+
+\begin{align}
+\mathbf{z}_{\text{norm}} &= \text{LayerNorm}(\mathbf{z}) \\
+\text{logits} &= \text{Linear}(\mathbf{z}_{\text{norm}}) \in \real^{L \times 256} \\
+\mathbf{c} &= \text{GumbelSoftmax}(\text{logits}, \tau=0.5)
+\end{align}
+
+The quantizer uses:
+\begin{itemize}
+\item \textbf{256-token codebook}: Discrete vocabulary for structure representations
+\item \textbf{Gumbel-Softmax}: Differentiable approximation to argmax with temperature $\tau=0.5$, enabling end-to-end gradient flow during training
+\item \textbf{Layer normalization}: Stabilizes the logit predictions
+\item \textbf{Embedding dimension}: $d=4$ for the latent space before projection
+\end{itemize}
+
+\textbf{SLQ vs.~FSQ}: Our Simple Linear Quantizer differs from Finite Scalar Quantization \cite{mentzer2023} in several key ways:
+\begin{itemize}
+\item \textbf{SLQ}: Uses learned linear projection + Gumbel-Softmax for soft, differentiable quantization with a learned codebook
+\item \textbf{FSQ}: Projects to few dimensions (e.g., 3) with fixed scalar quantization per dimension, creating an \textbf{implicit codebook} as the Cartesian product of quantization levels (e.g., [8,6,5] $\rightarrow$ $8 \times 6 \times 5 = 240$ tokens)
+\item \textbf{Performance}: SLQ achieves better reconstruction quality with $1.647 \pm 0.535$ Å compared to FSQ [8,6,5] at $1.848 \pm 1.194$ Å
+\item \textbf{Codebook utilization}: SLQ uses 26.56\% (68/256 tokens) while FSQ uses 99.17\% (238/240 tokens). Despite lower utilization, SLQ achieves better performance, indicating learned quantization discovers more efficient representations.
+\item \textbf{Trade-offs}: SLQ offers superior average accuracy and $2.2\times$ lower variance (more consistent reconstructions), while FSQ uses nearly all available tokens with no learned parameters or codebook collapse issues. SLQ's learned representations provide adaptable quantization that better captures structural diversity with fewer active tokens.
+\end{itemize}
+
+\textbf{Structure Reconstruction Performance}:
+
+LatentGenerator's reconstruction quality evaluated on CASP15 proteins $\leq$ 512 residues (26 structures):
+
+\begin{table}[h]
+\centering
+\small
+\caption{Structure Reconstruction Performance on CASP15}
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+\textbf{Quantization} & \textbf{Arch.} & \textbf{Codebook} & \textbf{Util.} & \textbf{Avg} & \textbf{Std} & \textbf{Min} & \textbf{Max} & \textbf{Notes} \\
+\textbf{Method} & & \textbf{Size} & \textbf{(\%)} & \textbf{RMSD} & \textbf{RMSD} & \textbf{RMSD} & \textbf{RMSD} & \\
+ & & & & \textbf{(Å)} & \textbf{(Å)} & \textbf{(Å)} & \textbf{(Å)} & \\
+\midrule
+\textbf{No Quant.} & ViT (6L, 8H) & - & - & \textbf{0.462} & \textbf{0.322} & \textbf{0.200} & \textbf{1.271} & Baseline \\
+\textbf{SLQ (ours)} & ViT (6L, 8H) & 256 & 26.56 & \textbf{1.647} & 0.535 & 0.979 & 3.189 & Novel learned \\
+\textbf{FSQ [8,6,5]} & ViT (6L, 8H) & 240 & 99.17 & 1.848 & 1.194 & 0.483 & 5.419 & Fixed scalar \\
+\bottomrule
+\end{tabular}
+\label{tab:reconstruction}
+\end{table}
+
+The \textbf{continuous baseline} without quantization achieves the best reconstruction quality at $0.462 \pm 0.322$ Å RMSD, establishing an upper bound for performance. Among discrete quantization methods, our \textbf{Simple Linear Quantizer (SLQ)} with 256 explicit tokens achieves $1.647 \pm 0.535$ Å RMSD, outperforming \textbf{FSQ [8,6,5]} with 240 implicit tokens at $1.848 \pm 1.194$ Å RMSD. Notably, SLQ demonstrates $2.2\times$ lower variance, indicating more consistent reconstruction quality across diverse protein structures.
+
+\textbf{Ligand Reconstruction Performance}:
+
+The ligand-only LatentGenerator model (LG Ligand 20A) was evaluated on 30,936 ligand structures from the GEOM dataset \cite{axelrod2022}:
+
+\begin{table}[h]
+\centering
+\caption{Ligand Reconstruction Performance on GEOM}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Molecule Type} & \textbf{Architecture} & \textbf{Codebook Size} & \textbf{Avg RMSD (Å)} & \textbf{Std RMSD (Å)} & \textbf{Max RMSD (Å)} \\
+\midrule
+\textbf{Ligands} & ViT (6L, 8H) & 512 & \textbf{0.752} & 0.305 & 4.943 \\
+\bottomrule
+\end{tabular}
+\label{tab:ligand_reconstruction}
+\end{table}
+
+The ligand model achieves sub-angstrom reconstruction ($0.752 \pm 0.305$ Å RMSD), demonstrating that LatentGenerator's ViT-based architecture effectively tokenizes small molecule geometry while preserving atomic-level precision.
+
+\subsubsection{Unified Sequence-Structure Encoder}
+
+For each residue position $i$, we compute a combined embedding:
+
+\begin{align}
+e_i^{\text{seq}} &= \text{Embed}_{\text{seq}}(s_i) \quad \text{(Sequence embedding)} \\
+e_i^{\text{struct}} &= \text{Embed}_{\text{struct}}(c_i) \quad \text{(Structure embedding)} \\
+e_i^{\text{cond}} &= \text{Linear}(h_i) \quad \text{(Optional conditioning)} \\
+e_i &= \text{Linear}([e_i^{\text{seq}}; e_i^{\text{struct}}; e_i^{\text{cond}}]) \quad \text{(Combined)}
+\end{align}
+
+These are processed by a NeoBERT transformer \cite{lebreton2025}:
+
+\begin{equation}
+h_1, \ldots, h_L = \text{NeoBERT}(e_1, \ldots, e_L)
+\end{equation}
+
+We use NeoBERT's architecture with 12 layers, 768 hidden dimensions ($\sim$90M parameters), optimized depth-to-width ratio, and support for extended context up to 4,096 tokens. Separate output heads predict logits:
+
+\begin{align}
+\ell_i^{\text{seq}} &= \text{Linear}_{\text{seq}}(h_i) \in \real^{33} \\
+\ell_i^{\text{struct}} &= \text{Linear}_{\text{struct}}(h_i) \in \real^{258}
+\end{align}
+
+This architecture enables bidirectional information flow between sequences and structures through the shared transformer, leveraging NeoBERT's state-of-the-art encoding capabilities.
+
+\subsection{Discrete Flow Matching}
+
+We adopt discrete flow matching on categorical spaces following Campbell et al.~\cite{campbell2024}. Discrete flow matching provides a principled framework for generative modeling on categorical data by defining flows through Continuous Time Markov Chains (CTMC).
+
+\subsubsection{Discrete Flow Matching via CTMC}
+
+For categorical variables (sequences $\mathbf{s} \in \vocab^L$ and structure tokens $\mathbf{c} \in \{1,\ldots,K\}^L$), we define a probability path $p_t(\mathbf{z})$ that interpolates between a prior distribution $p_0(\mathbf{z})$ at $t=0$ and the data distribution $p_1(\mathbf{z})$ at $t=1$.
+
+\textbf{Conditional Flow Construction}: Given a data sample $\mathbf{z}_1 \sim p_1(\mathbf{z})$, we construct a conditional probability path:
+
+\begin{equation}
+p_t(\mathbf{z} | \mathbf{z}_1) = p(\mathbf{z}_t = \mathbf{z} | \mathbf{z}_0 \sim p_0, \mathbf{z}_1, t)
+\end{equation}
+
+This path is governed by a time-dependent transition rate matrix $\mathbf{R}_t$ that defines a CTMC. Following Campbell et al., we use a \textbf{masking schedule} where tokens gradually unmask from $t=0$ to $t=1$:
+
+\begin{equation}
+R_t(i \rightarrow j | \mathbf{z}_1) = \begin{cases}
+\alpha(t) & \text{if } i = \text{[MASK]}, j = \mathbf{z}_1 \text{ (unmasking to data)} \\
+0 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+where $\alpha(t)$ is the unmasking rate schedule. We use $\alpha(t) = 1-t$, so the probability of being unmasked increases linearly with time.
+
+\textbf{Marginal Distribution}: At time $t$, each position has probability:
+
+\begin{equation}
+p(\mathbf{z}_{t,i} = k | \mathbf{z}_{1,i}) = \begin{cases}
+\alpha(t) & \text{if } k = \mathbf{z}_{1,i} \text{ (unmasked to true token)} \\
+1 - \alpha(t) & \text{if } k = \text{[MASK]} \text{ (still masked)} \\
+0 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+This creates a simple interpolation where masked positions gradually reveal their true values.
+
+\subsubsection{Training Objective}
+
+The model learns a parameterized rate matrix $\mathbf{R}_\theta(t)$ by minimizing the continuous-time flow matching loss. For a single token position, the loss is:
+
+\begin{equation}
+\mathcal{L}_{\text{DFM}} = \mathbb{E}_{\mathbf{z}_1 \sim p_1, t \sim U(0,1), \mathbf{z}_t \sim p_t(\cdot|\mathbf{z}_1)} [\text{CE}(p_\theta(\mathbf{z}_1 | \mathbf{z}_t, t), \mathbf{z}_1)]
+\end{equation}
+
+where $p_\theta(\mathbf{z}_1 | \mathbf{z}_t, t) = \text{softmax}(\ell_\theta(\mathbf{z}_t, t))$ are the model's predicted logits for the clean data token given the noisy observation $\mathbf{z}_t$ at time $t$.
+
+\subsubsection{Joint Sequence-Structure Training}
+
+\genume~trains both modalities jointly with \textbf{independent time sampling}:
+
+\begin{equation}
+\mathcal{L}_{\text{flow}} = \mathcal{L}_{\text{DFM}}^{\text{seq}} + \mathcal{L}_{\text{DFM}}^{\text{struct}}
+\end{equation}
+
+where:
+\begin{itemize}
+\item $\mathcal{L}_{\text{DFM}}^{\text{seq}}$: Flow matching loss for amino acid sequences (vocabulary size $|\vocab| = 33$)
+\item $\mathcal{L}_{\text{DFM}}^{\text{struct}}$: Flow matching loss for structure tokens (vocabulary size $K = 256$)
+\end{itemize}
+
+We sample $t_{\text{seq}} \sim U(0,1)$ and $t_{\text{struct}} \sim U(0,1)$ \textbf{independently} for each modality, allowing the model to learn different unmasking dynamics for sequences and structures.
+
+\textbf{Total Training Objective}:
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{DFM}}^{\text{seq}} + \mathcal{L}_{\text{DFM}}^{\text{struct}}
+\end{equation}
+
+Note that the structure decoder $D(\mathbf{c}, \mathbf{m})$ from LatentGenerator is \textbf{frozen} during \genume~training.
+
+\textbf{Training Configuration}:
+\begin{itemize}
+\item Optimizer: AdamW ($\beta_1=0.9$, $\beta_2=0.98$, $\epsilon=10^{-12}$)
+\item Learning rate: $10^{-3}$ with 20K step warmup
+\item Training steps: 100,000 total
+\item Prior: Fully masked tokens for both modalities
+\item Unmasking schedule: $\alpha(t) = t$ (linear from 0 to 1)
+\end{itemize}
+
+\subsection{Inference and Generation}
+
+\subsubsection{Sampling Procedure}
+
+Following the discrete flow matching framework, generation proceeds by simulating the reverse CTMC from $t=0$ (fully masked prior) to $t=1$ (data distribution). We discretize the time interval $[0,1]$ into $N$ steps with $t_n = n/N$.
+
+\textbf{Temperature-Controlled Sampling}: We use temperature $\tau$ to control the sharpness of the predicted categorical distribution:
+
+\begin{align}
+\mathbf{s}_{n+1} &\sim \text{Categorical}(\text{softmax}(\ell_\theta^{\text{seq}} / \tau_{\text{seq}})) \\
+\mathbf{c}_{n+1} &\sim \text{Categorical}(\text{softmax}(\ell_\theta^{\text{struct}} / \tau_{\text{struct}}))
+\end{align}
+
+where lower $\tau$ produces more confident (peaked) distributions and higher $\tau$ produces more diverse samples.
+
+After $N$ steps, all positions are unmasked. For structure tokens, we decode to 3D coordinates: $\hat{\mathbf{x}} = D(\mathbf{c}_N, \mathbf{m})$.
+
+\textbf{Generation Parameters} (optimized for 90M model):
+
+\begin{table}[h]
+\centering
+\caption{Generation Parameters for 90M Model}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Mode} & \textbf{N (steps)} & $\boldsymbol{\tau_{\text{seq}}}$ & $\boldsymbol{\tau_{\text{struct}}}$ & \textbf{stoch.\_seq} & \textbf{stoch.\_struc} \\
+\midrule
+Unconditional & 1000 & 0.46 & 0.36 & 30 & 70 \\
+Inverse Folding & 200 & 0.16 & 1.0 & 20 & 10 \\
+Forward Folding & 100 & 0.30 & 0.11 & 10 & 30 \\
+\bottomrule
+\end{tabular}
+\label{tab:gen_params}
+\end{table}
+
+\subsubsection{Conditional Generation}
+
+\begin{itemize}
+\item \textbf{Inverse folding}: Fix $\mathbf{c} = \mathbf{c}^*$ ($t_{\text{struct}} \approx 1.0$), sample sequence tokens
+\item \textbf{Forward folding}: Fix $\mathbf{s} = \mathbf{s}^*$ ($t_{\text{seq}} \approx 1.0$), sample structure tokens
+\end{itemize}
+
+\subsubsection{Self-Reflection Verification}
+
+For unconditional generation, we introduce self-reflection---a technique analogous to reasoning in large language models where the model ``checks its answer'' to verify self-consistency. Similar to how LLMs can verify their reasoning through chain-of-thought or self-consistency checks, \genume~verifies sequence-structure compatibility by using its own forward and inverse folding capabilities:
+
+\textbf{Self-Reflection Pipeline}:
+\begin{enumerate}
+\item \textbf{Initial generation}: Generate initial $(\mathbf{s}_0, \mathbf{x}_0)$ unconditionally
+\item \textbf{Forward consistency check}: Generate $\mathbf{x}_1$ from $\mathbf{s}_0$ using the model's forward folding capability
+\item \textbf{Structural consistency}: Compute TM-score between $\mathbf{x}_0$ and $\mathbf{x}_1$
+\item \textbf{Inverse consistency check}: Generate $\mathbf{s}_1$ from $\mathbf{x}_1$ using the model's inverse folding capability
+\item \textbf{Sequence consistency}: Compute sequence identity between $\mathbf{s}_0$ and $\mathbf{s}_1$
+\item \textbf{Acceptance criteria}: Accept $(\mathbf{s}_0, \mathbf{x}_0)$ if TM-score$(\mathbf{x}_0, \mathbf{x}_1) > \theta_{\text{TM}}$ (0.83) AND sequence identity$(\mathbf{s}_0, \mathbf{s}_1) > \theta_{\text{seq}}$
+\item \textbf{Return original output}: Return original $(\mathbf{s}_0, \mathbf{x}_0)$ if both consistency checks pass
+\end{enumerate}
+
+\section{Experiments}
+
+\subsection{Setup}
+
+\textbf{Models}: 
+
+\textbf{\genume~90M}:
+\begin{itemize}
+\item Architecture: NeoBERT (12 layers, 768 hidden dim, 12 attention heads)
+\item Parameters: $\sim$90 million
+\item Structure codebook: 256 tokens (SLQ)
+\item Max length: 512 residues
+\end{itemize}
+
+\textbf{\genume~470M}:
+\begin{itemize}
+\item Architecture: NeoBERT (24 layers, 1024 hidden dim, 16 attention heads)
+\item Parameters: $\sim$470 million
+\item Structure codebook: 256 tokens (SLQ)
+\item Max length: 512 residues
+\end{itemize}
+
+\textbf{Training Data}: High-quality PDB structures filtered for resolution and redundancy
+
+\textbf{Benchmarks}:
+\begin{itemize}
+\item Inverse/Forward folding: Campbell et al.~(ICML 2024) dataset
+\item Unconditional: Generated at lengths 100, 200, 300, 400, 500
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+
+\textbf{Inverse Folding}:
+\begin{itemize}
+\item AAR (Amino Acid Recovery): \% positions matching native sequence
+\item TM-score: Structural similarity (target vs.~ESMFold-predicted from designed sequence)
+\end{itemize}
+
+\textbf{Forward Folding}:
+\begin{itemize}
+\item TM-score: Structural similarity (generated vs.~reference structure)
+\end{itemize}
+
+\textbf{Unconditional Generation}:
+\begin{itemize}
+\item ESMFold validation: Fold generated sequences, compare to generated structures
+\item TM-score: Similarity between \genume~structure and ESMFold prediction
+\item RMSD: C$_\alpha$ root-mean-square deviation
+\item pLDDT: ESMFold confidence score
+\item Diversity: Foldseek clustering (TM-score threshold 0.5)
+\end{itemize}
+
+\subsection{Results}
+
+\subsubsection{Inverse Folding}
+
+Performance on sequence design for given structures evaluated on two benchmarks:
+
+\textbf{Campbell et al.~ICML 2024 Benchmark (449 structures):}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Inverse Folding Performance on Campbell et al.~Benchmark}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Model} & \textbf{Tokens} & \textbf{AAR (\%)} & \textbf{TM-Score} & \textbf{RMSD (Å)} & \textbf{Pass Rate} & \textbf{pLDDT} \\
+\midrule
+\textbf{DPLM-2 650M} \cite{wang2024} & \textbf{8192} & \textbf{55.56} & \textbf{0.88} & \textbf{1.90} & \textbf{77.1\%} & \textbf{0.74} \\
+\textbf{\genume~470M SLQ} & \textbf{256} & \textbf{55.26} & \textbf{0.84} & \textbf{2.34} & \textbf{64.8\%} & \textbf{0.69} \\
+\textbf{\genume~90M SLQ} & \textbf{256} & \textbf{50.83} & \textbf{0.83} & \textbf{2.41} & \textbf{63.8\%} & \textbf{0.68} \\
+\bottomrule
+\end{tabular}
+\label{tab:inverse_folding_campbell}
+\end{table}
+
+\textbf{CAMEO 2022 Benchmark (127 structures):}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Inverse Folding Performance on CAMEO 2022 Benchmark}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Model} & \textbf{Tokens} & \textbf{AAR (\%)} & \textbf{TM-Score} & \textbf{RMSD (Å)} & \textbf{Pass Rate} & \textbf{pLDDT} \\
+\midrule
+\textbf{\genume~470M SLQ} & \textbf{256} & \textbf{32.94} & \textbf{0.73} & \textbf{3.89} & \textbf{44.1\%} & \textbf{0.64} \\
+\textbf{\genume~90M FSQ} & \textbf{240} & \textbf{30.35} & \textbf{0.74} & \textbf{3.49} & \textbf{52.0\%} & \textbf{0.64} \\
+\textbf{\genume~90M SLQ} & \textbf{256} & \textbf{29.76} & \textbf{0.72} & \textbf{3.97} & \textbf{48.8\%} & \textbf{0.62} \\
+\bottomrule
+\end{tabular}
+\label{tab:inverse_folding_cameo}
+\end{table}
+
+On the Campbell et al.~benchmark, DPLM-2 650M achieves the strongest inverse folding performance with 55.56\% AAR. \genume~470M SLQ achieves comparable AAR (55.26\%) despite using 27\% fewer parameters. The 470M model shows clear improvements over 90M: AAR increases from 50.83\% to 55.26\% (+8.7\%), demonstrating effective scaling.
+
+\subsubsection{Forward Folding}
+
+Performance on structure prediction from sequences:
+
+\textbf{Campbell et al.~ICML 2024 Benchmark (449 structures):}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Forward Folding Performance on Campbell et al.~Benchmark}
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+\textbf{Model} & \textbf{Tokens} & \textbf{TM-Score} & \textbf{RMSD (Å)} & \textbf{Pass Rate} \\
+\midrule
+\textbf{ESMFold 3B} \cite{lin2023} & \textbf{-} & \textbf{0.91} & \textbf{1.66} & \textbf{81.7\%} \\
+\textbf{DPLM-2 650M} \cite{wang2024} & \textbf{8192} & \textbf{0.77} & \textbf{3.13} & \textbf{53.5\%} \\
+\textbf{\genume~470M SLQ} & \textbf{256} & \textbf{0.75} & \textbf{3.94} & \textbf{57.2\%} \\
+\textbf{\genume~90M SLQ} & \textbf{256} & \textbf{0.71} & \textbf{4.09} & \textbf{42.1\%} \\
+\textbf{\genume~90M FSQ} & \textbf{240} & \textbf{0.70} & \textbf{4.40} & \textbf{42.5\%} \\
+\bottomrule
+\end{tabular}
+\label{tab:forward_folding_campbell}
+\end{table}
+
+\textbf{CAMEO 2022 Benchmark (127 structures):}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Forward Folding Performance on CAMEO 2022 Benchmark}
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+\textbf{Model} & \textbf{Tokens} & \textbf{TM-Score} & \textbf{RMSD (Å)} & \textbf{Pass Rate} \\
+\midrule
+\textbf{ESMFold 3B} \cite{lin2023} & \textbf{-} & \textbf{0.85} & \textbf{2.50} & \textbf{65.4\%} \\
+\textbf{DPLM-2 650M} \cite{wang2024} & \textbf{8192} & \textbf{0.70} & \textbf{4.31} & \textbf{35.4\%} \\
+\textbf{\genume~470M SLQ} & \textbf{256} & \textbf{0.65} & \textbf{6.15} & \textbf{34.6\%} \\
+\textbf{\genume~90M SLQ} & \textbf{256} & \textbf{0.63} & \textbf{5.61} & \textbf{26.0\%} \\
+\textbf{\genume~90M FSQ} & \textbf{240} & \textbf{0.62} & \textbf{5.91} & \textbf{28.3\%} \\
+\bottomrule
+\end{tabular}
+\label{tab:forward_folding_cameo}
+\end{table}
+
+ESMFold 3B achieves state-of-the-art forward folding as a specialized model. \genume~demonstrates competitive structure prediction within a unified framework. Scaling from 90M to 470M yields substantial improvements: TM-score increases from 0.71 to 0.75 (+5.6\%), and pass rate increases from 42.1\% to 57.2\% (+35.9\%).
+
+\subsubsection{Unconditional Generation}
+
+Summary of unconditional protein generation performance (averaged across lengths 100-500):
+
+\begin{table}[h]
+\centering
+\caption{Unconditional Generation Performance}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Model} & \textbf{Tokens} & \textbf{Pass (\%)} & \textbf{Clusters} & \textbf{Diversity (\%)} & \textbf{Notes} \\
+\midrule
+\textbf{\genume~90M SLQ} & \textbf{256} & \textbf{59.0} & \textbf{65} & \textbf{22.9} & Self-reflection \\
+\bottomrule
+\end{tabular}
+\label{tab:unconditional}
+\end{table}
+
+\genume~successfully generates novel proteins with 59\% average pass rate (RMSD $<$ 2.0 Å when validated with ESMFold) and demonstrates structural diversity across 65 total clusters (22.9\% average diversity).
+
+\subsubsection{Self-Reflection Ablation}
+
+To assess the impact of self-reflection verification on generation quality:
+
+\begin{table}[h]
+\centering
+\caption{Self-Reflection Ablation Study}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Method} & \textbf{Tokens} & \textbf{Pass (\%)} & \textbf{TM-Score} & \textbf{RMSD (Å)} & \textbf{Clusters} \\
+\midrule
+\textbf{\genume~90M (w/ reflect.)} & \textbf{256} & \textbf{59.0} & \textbf{0.83} & \textbf{2.43} & \textbf{65} \\
+\genume~90M (no reflect.) & 256 & 29.8 & 0.62 & 18.08 & 47 \\
+\textbf{\genume~470M (no reflect.)} & \textbf{256} & \textbf{45.8} & \textbf{0.75} & \textbf{8.04} & \textbf{54} \\
+\bottomrule
+\end{tabular}
+\label{tab:self_reflection}
+\end{table}
+
+The self-reflection verification filter dramatically improves sequence-structure consistency, doubling the pass rate (59.0\% vs.~29.8\%) for the 90M model and reducing RMSD by $7.4\times$ (2.43 Å vs.~18.08 Å). The 470M model without self-reflection achieves 45.8\% pass rate---substantially better than 90M without self-reflection (29.8\%), demonstrating that increased model capacity improves generation quality even without consistency filtering.
+
+\section{Discussion}
+
+\subsection{Unified Modeling Advantages}
+
+\genume~demonstrates that discrete flow matching via CTMC \cite{campbell2024} provides a powerful framework for unified protein design:
+
+\begin{enumerate}
+\item \textbf{Single model, multiple tasks}: One model supports unconditional generation, inverse folding, and forward folding
+\item \textbf{Improved consistency}: Joint modeling enforces sequence-structure compatibility
+\item \textbf{Flexible conditioning}: Natural support for partial conditioning
+\item \textbf{Efficient representation}: Structure tokenization via SLQ (256 tokens) enables efficient processing. \genume~achieves competitive performance with $32\times$ fewer structure tokens than DPLM-2 (256 vs 8192)
+\item \textbf{Independent time sampling}: Different unmasking dynamics for sequences and structures
+\end{enumerate}
+
+\subsection{Self-Reflection as Design Pattern}
+
+\textbf{Analogy to LLM Reasoning}: Self-reflection in \genume~mirrors recent advances in LLM reasoning, where models improve output quality by ``thinking through'' their answers before finalizing them. Just as language models benefit from chain-of-thought reasoning, \genume~improves protein design quality by internally verifying sequence-structure compatibility.
+
+\textbf{Key Parallels}:
+\begin{itemize}
+\item \textbf{LLMs}: Generate $\rightarrow$ Verify reasoning $\rightarrow$ Accept or reject answer
+\item \textbf{\genume}: Generate $(\mathbf{s}_0, \mathbf{x}_0) \rightarrow$ Verify consistency $\rightarrow$ Accept or reject design
+\end{itemize}
+
+\subsection{Limitations}
+
+\begin{enumerate}
+\item \textbf{Length scaling}: Performance decreases for proteins $>$400 residues
+\item \textbf{Backbone only}: Does not model side chains
+\item \textbf{Single chain}: No multi-chain complex support
+\item \textbf{Functional properties}: No explicit functional constraints
+\item \textbf{Structure resolution}: Discrete quantization limits fine detail (though both SLQ and FSQ maintain sub-2Å accuracy)
+\end{enumerate}
+
+\subsection{Future Directions}
+
+\begin{enumerate}
+\item \textbf{Further scaling}: Beyond 470M parameters (1B+ parameters)
+\item \textbf{Longer proteins}: Hierarchical or chunked generation beyond 512 residues
+\item \textbf{Side chains}: Extend to complete structures with all-atom resolution
+\item \textbf{Multi-chain}: Protein-protein interfaces and complexes
+\item \textbf{Functional conditioning}: Optimize for binding, stability, activity
+\item \textbf{RL fine-tuning}: Optimize for experimental validation metrics
+\end{enumerate}
+
+\section{Conclusion}
+
+We presented \genume, a unified framework for joint protein sequence and structure generation via discrete flow matching using Continuous Time Markov Chains (CTMC). Building on Campbell et al.'s \cite{campbell2024} discrete flow matching framework, \genume~introduces novel contributions in structure tokenization (Simple Linear Quantizer), architecture (NeoBERT-based encoder), and training (independent time sampling for multimodal flows). By modeling sequences and structures as discrete tokens and learning their joint distribution through CTMC-based flow matching, \genume~achieves competitive performance across three generation tasks within unified models at 90M and 470M parameter scales.
+
+Key results:
+\begin{itemize}
+\item \textbf{Inverse folding}: 50.83\% AAR / 0.83 TM-score / 2.41 Å RMSD (90M), 55.26\% AAR / 0.84 TM-score / 2.34 Å RMSD (470M)
+\item \textbf{Forward folding}: 0.71 TM-score / 4.09 Å RMSD / 42.1\% pass rate (90M SLQ), 0.75 TM-score / 3.94 Å RMSD / 57.2\% pass rate (470M SLQ)
+\item \textbf{Scaling benefits}: 470M SLQ shows consistent improvements across both tasks
+\item \textbf{Unconditional generation with self-reflection}: 0.80+ TM-score with 85\% pass rate (100aa), 11-25\% structural diversity
+\item \textbf{Structure tokenization}: $1.647 \pm 0.535$ Å RMSD (proteins), $0.752 \pm 0.305$ Å RMSD (ligands)
+\end{itemize}
+
+Our unified approach demonstrates that discrete flow matching via CTMC offers a powerful and flexible framework for computational protein design. The self-reflection verification mechanism shows that models can benefit from internally checking the consistency of their predictions before accepting final designs.
+
+\section*{Acknowledgments}
+
+We thank our institution for computational resources and helpful discussions. We thank the developers of PyTorch, Lightning, ESMFold, and other open-source tools.
+
+\begin{thebibliography}{99}
+
+\bibitem{axelrod2022}
+Axelrod, S. \& Gómez-Bombarelli, R. (2022).
+GEOM, energy-annotated molecular conformations for property prediction and molecular generation.
+\textit{Scientific Data}, 9, 185.
+
+\bibitem{campbell2024}
+Campbell, A., Yim, J., Barzilay, R., Rainforth, T., \& Jaakkola, T. (2024).
+Generative Flows on Discrete State-Spaces: Enabling Multimodal Flows with Applications to Protein Co-Design.
+\textit{ICML 2024}.
+
+\bibitem{dauparas2022}
+Dauparas, J., Anishchenko, I., Bennett, N., et al. (2022).
+Robust deep learning-based protein sequence design using ProteinMPNN.
+\textit{Science}.
+
+\bibitem{hsu2022}
+Hsu, C., Verkuil, R., Liu, J., et al. (2022).
+Learning inverse folding from millions of predicted structures.
+\textit{bioRxiv}.
+
+\bibitem{lebreton2025}
+Le Breton, G., et al. (2025).
+NeoBERT: A Next-Generation BERT.
+\textit{arXiv preprint arXiv:2502.19587}.
+
+\bibitem{lin2023}
+Lin, Z., Akin, H., Rao, R., et al. (2023).
+Evolutionary-scale prediction of atomic-level protein structure with a language model.
+\textit{Science}.
+
+\bibitem{mentzer2023}
+Mentzer, F., Minnen, D., Agustsson, E., \& Tschannen, M. (2023).
+Finite Scalar Quantization: VQ-VAE Made Simple.
+\textit{ICLR 2024}.
+
+\bibitem{robin2021}
+Robin, X., Haas, J., Gumienny, R., et al. (2021).
+Continuous Automated Model EvaluatiOn (CAMEO)---Perspectives on the future of fully automated evaluation of structure prediction methods.
+\textit{Proteins}, 89(12), 1977-1986.
+
+\bibitem{wang2024}
+Wang, Z., Xu, M., Ma, W., et al. (2024).
+DPLM-2: A Multimodal Diffusion Protein Language Model.
+\textit{arXiv preprint arXiv:2410.13782}.
+
+\end{thebibliography}
+
+\newpage
+\appendix
+
+\section{Supplementary Tables}
+
+\subsection{Detailed Unconditional Generation Results (With Self-Reflection)}
+
+Per-length performance breakdown for unconditional protein generation \textbf{with self-reflection} (100 samples per length):
+
+\begin{table}[h]
+\centering
+\caption{Unconditional Generation with Self-Reflection (90M Model)}
+\begin{tabular}{@{}ccccccccc@{}}
+\toprule
+\textbf{Length} & \textbf{Total} & \textbf{RMSD<2Å} & \textbf{Pass\%} & \textbf{Clusters} & \textbf{Div.\%} & \textbf{TM} & \textbf{RMSD} & \textbf{pLDDT} \\
+\midrule
+100 & 100 & 86 & 86.0 & 15 & 17.44 & 0.8255 & 1.753 & 0.7210 \\
+200 & 100 & 66 & 66.0 & 17 & 25.76 & 0.8017 & 2.170 & 0.6683 \\
+300 & 100 & 65 & 65.0 & 19 & 29.23 & 0.8371 & 2.151 & 0.6957 \\
+400 & 100 & 54 & 54.0 & 7 & 12.96 & 0.8454 & 2.268 & 0.7243 \\
+500 & 100 & 24 & 24.0 & 7 & 29.17 & 0.8187 & 3.810 & 0.7118 \\
+\midrule
+\textbf{Average} & & & \textbf{59.0} & & \textbf{22.9} & \textbf{0.83} & \textbf{2.43} & \\
+\bottomrule
+\end{tabular}
+\label{tab:uncond_with_reflection}
+\end{table}
+
+\subsection{Detailed Unconditional Generation Results (Without Self-Reflection)}
+
+Per-length performance breakdown for unconditional protein generation \textbf{without self-reflection} (100 samples per length):
+
+\begin{table}[h]
+\centering
+\caption{Unconditional Generation without Self-Reflection (90M Model)}
+\begin{tabular}{@{}ccccccccc@{}}
+\toprule
+\textbf{Length} & \textbf{Total} & \textbf{RMSD<2Å} & \textbf{Pass\%} & \textbf{Clusters} & \textbf{Div.\%} & \textbf{TM} & \textbf{RMSD} & \textbf{pLDDT} \\
+\midrule
+100 & 100 & 52 & 52.0 & 15 & 28.85 & 0.7114 & 4.011 & 0.6582 \\
+200 & 100 & 44 & 44.0 & 14 & 31.82 & 0.7108 & 6.181 & 0.6252 \\
+300 & 100 & 29 & 29.0 & 12 & 41.38 & 0.6464 & 15.45 & 0.6170 \\
+400 & 100 & 19 & 19.0 & 4 & 21.05 & 0.5223 & 35.03 & 0.5989 \\
+500 & 100 & 5 & 5.0 & 2 & 40.0 & 0.5336 & 29.74 & 0.5797 \\
+\midrule
+\textbf{Average} & & & \textbf{29.8} & & \textbf{32.6} & \textbf{0.62} & \textbf{18.08} & \\
+\bottomrule
+\end{tabular}
+\label{tab:uncond_without_reflection}
+\end{table}
+
+\subsection{Detailed Unconditional Generation Results (470M Without Self-Reflection)}
+
+\begin{table}[h]
+\centering
+\caption{Unconditional Generation without Self-Reflection (470M Model)}
+\begin{tabular}{@{}ccccccccc@{}}
+\toprule
+\textbf{Length} & \textbf{Total} & \textbf{RMSD<2Å} & \textbf{Pass\%} & \textbf{Clusters} & \textbf{Div.\%} & \textbf{TM} & \textbf{RMSD} & \textbf{pLDDT} \\
+\midrule
+100 & 100 & 68 & 68.0 & 14 & 20.59 & 0.7775 & 2.466 & 0.7015 \\
+200 & 100 & 44 & 44.0 & 14 & 31.82 & 0.7487 & 4.575 & 0.6542 \\
+300 & 100 & 55 & 55.0 & 14 & 25.45 & 0.7925 & 4.119 & 0.7047 \\
+400 & 96 & 22 & 22.92 & 7 & 31.82 & 0.7050 & 10.31 & 0.6672 \\
+500 & 100 & 39 & 39.0 & 5 & 12.82 & 0.7491 & 18.75 & 0.7103 \\
+\midrule
+\textbf{Average} & & & \textbf{45.8} & & \textbf{24.5} & \textbf{0.75} & \textbf{8.04} & \\
+\bottomrule
+\end{tabular}
+\label{tab:uncond_470m_no_reflection}
+\end{table}
+
+\subsection{Generation Parameters for 470M Model}
+
+Optimized generation parameters used for \genume~470M model:
+
+\begin{table}[h]
+\centering
+\small
+\caption{Generation Parameters for Different Model Scales}
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+\textbf{Mode} & \textbf{Model} & \textbf{N} & $\boldsymbol{\tau_{\text{seq}}}$ & $\boldsymbol{\tau_{\text{struct}}}$ & \textbf{stoch\_seq} & \textbf{stoch\_struc} & \textbf{Sched\_seq} & \textbf{Sched\_struc} \\
+\midrule
+Unconditional & 90M & 1000 & 0.46 & 0.36 & 30 & 70 & - & - \\
+Inverse Fold. & 90M & 200 & 0.16 & 1.0 & 20 & 10 & - & - \\
+Forward Fold. & 90M & 100 & 0.30 & 0.11 & 10 & 30 & - & - \\
+\midrule
+Unconditional & 470M & 400 & 0.273 & 0.316 & 20 & 60 & Log & Power \\
+Forward Fold. & 470M & 200 & 0.361 & 0.220 & 1 & 20 & - & - \\
+\bottomrule
+\end{tabular}
+\label{tab:gen_params_470m}
+\end{table}
+
+\section{Data Availability}
+
+\textbf{Reference Data}: All experimental results reported in this paper are sourced from the \texttt{gen\_ume\_paper\_data/} directory, which contains:
+\begin{itemize}
+\item Unconditional generation results (with and without self-reflection)
+\item LatentGenerator reconstruction results (CASP15)
+\item Inverse folding benchmarks
+\item Forward folding benchmarks
+\end{itemize}
+
+See \texttt{gen\_ume\_paper\_data/README.md} for complete data provenance and calculation methods.
+
+\section{Additional Implementation Details}
+
+\textbf{Repository}: [Anonymous - will be released upon publication]
+
+\textbf{Model checkpoint}: [Anonymous - will be released upon publication]
+
+\textbf{Key modules}:
+\begin{itemize}
+\item \texttt{lobster.model.gen\_ume}: Model implementation
+\item \texttt{lobster.cmdline.generate}: Generation interface
+\item \texttt{lobster.model.latent\_generator}: Structure encoder-decoder
+\end{itemize}
+
+\vspace{1cm}
+\noindent\textbf{License}: Apache 2.0 \\
+\textbf{Contact}: Anonymous
+
+\end{document}
+
+
