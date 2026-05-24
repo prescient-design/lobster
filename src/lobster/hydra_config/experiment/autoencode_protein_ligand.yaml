@@ -1,0 +1,42 @@
+# @package _global_
+
+# Protein-ligand autoencode: encode + decode complex structures through the
+# LG codec bundled inside a LeFlur protein-ligand checkpoint.
+#
+# Input layout: a directory containing paired ``<name>_protein.pt`` and
+# ``<name>_ligand.pt`` files (e.g. the PoseBusters benchmark fixtures).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.autoencode \
+#     --config-name experiment/autoencode_protein_ligand \
+#     autoencode.input=/path/to/posebusters_benchmark_no_overlap \
+#     autoencode.output_dir=/tmp/leflur_autoencode_pl
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/autoencode_protein_ligand"
+
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurProteinLigandLightningModule
+  ckpt_path: leflur-pl
+  latent_generator_model_name: "LG Protein Ligand fsq 4375"
+
+autoencode:
+  input: ???
+
+  output_dir: "${output_dir}"
+  output_csv: "autoencode_protein_ligand_results.csv"
+
+  save_pdbs: true
+  num_steps: null
+  use_canonical_pose: false
+
+  # Optional ligand minimization (MMFF94 by default).
+  minimize_ligand: false
+  minimize_mode: bonds_and_angles
+  force_field: MMFF94
+  minimize_steps: 500

@@ -43,6 +43,7 @@ dependencies = [
     "polars>=1.33.0",
     "hydra-submitit-launcher>=1.2.0",
     "rdkit>=2024.9.4",
+    "openbabel-wheel>=3.1.1",  # For ligand structure minimization
 ]
 
 [build-system]
@@ -63,6 +64,9 @@ lobster_dgeb_mock_eval = "lobster.evaluation.dgeb_mock_runner:main"
 lobster_mcp_server = "lobster.mcp.server:main"
 lobster_mcp_setup = "lobster.mcp.setup:main"
 lobster_ume_checkpoints = "lobster.cmdline.manage_ume_checkpoints:main"
+lobster_leflur_checkpoints = "lobster.cmdline.manage_leflur_checkpoints:main"
+lobster_generate = "lobster.cmdline.generate:generate"
+lobster_autoencode = "lobster.cmdline.autoencode:autoencode"
 
 [project.optional-dependencies]
 struct-cpu = [
@@ -76,6 +80,7 @@ struct-cpu = [
     "optree",
     "biotite",
     "tensordict",
+    "loguru",
     "icecream",
     "mpmath",
     "rotary-embedding-torch",
@@ -101,6 +106,7 @@ struct-gpu = [
     "optree",
     "biotite",
     "tensordict",
+    "loguru",
     "icecream",
     "mpmath",
     "rotary-embedding-torch",
