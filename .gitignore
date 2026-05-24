@@ -307,6 +307,15 @@ docs/leflur/research_notes/
 /src/lobster/hydra_config/experiment/train_*.yaml
 /src/lobster/hydra_config/experiment/test_gen_ume.yaml
 
+# Tier-2 research generate configs (kept on disk for internal research
+# workflows; not part of the publication inference surface).
+/src/lobster/hydra_config/experiment/research/
+
+# Optional research-only continuous-structure diffusion loss (gated by
+# use_diffusion_loss_structure=True, which no canonical LeFlur checkpoint
+# sets). Kept on disk for internal experiments only.
+/src/lobster/model/losses/_diffusion_loss.py
+
 # SLURM launcher READMEs (companion docs for the training/eval launchers
 # above; not needed for inference).
 /slurm/scripts/README_*.md

@@ -137,3 +137,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `evaluation/`, `experiment/ume-2/`, top-level `train.yaml` /
   `finetune.yaml` / `intervene*.yaml` / `evaluate.yaml` / etc. — remain
   tracked exactly as they are in main.
+- **Tier-2 research Hydra configs** at
+  `src/lobster/hydra_config/experiment/research/` (48 YAMLs). These are
+  internal-only research sweeps (binder design, denovo CAMEO / RGN2 /
+  multiflow / PoseBusters variants, 90M / 450M / 750M model size
+  ablations, FSQ vs SLQ codec studies, etc.) that exercise
+  `${paths.checkpoints.research_*}` interpolations only available under
+  the internal overlay. They live on disk for local research workflows
+  and are gitignored on the publication branch. The
+  `test_research_tier_composes` smoke (3 representative compose checks)
+  was dropped alongside — the publication CI has no signal to recover
+  from configs it doesn't ship. The Tier-1 inference compose tests
+  (`test_paths_internal_resolves` / `test_paths_public_resolves`) and
+  tier invariants (`test_tier1_uses_canonical_checkpoint`,
+  `test_no_internal_paths_in_publication_configs`) all remain green.
+- **Optional research-only `_diffusion_loss.py`** at
+  `src/lobster/model/losses/_diffusion_loss.py`. The
+  `DiffusionLoss` / `SimpleMLPAdaLN` / `create_diffusion_loss` exports
+  were only reachable via the (research-only)
+  `use_diffusion_loss_structure=True` Lightning-module flag. No
+  canonical LeFlur checkpoint (`leflur-base`, `leflur-ted`,
+  `leflur-pl`) sets this flag — the protein-ligand checkpoint that
+  drives the published PoseBusters numbers is the `no_geom_medium`
+  variant, which uses the standard discrete flow-matching loss for
+  structure tokens. `lobster/model/losses/__init__.py` is reverted to
+  its `origin/main` state (no diffusion imports); the conditional
+  import inside `LeFlurProteinLigandLightningModule` now targets the
+  underscore module directly and raises a clear `ImportError` with
+  recovery instructions when the optional file is absent. The file
+  itself stays on disk for internal experiments.

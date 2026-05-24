@@ -71,8 +71,7 @@ def test_no_internal_paths_in_publication_configs(config_path: Path) -> None:
         f"{config_path.relative_to(REPO_ROOT)} embeds hard-coded "
         f"Genentech-internal paths. Replace each with a "
         f"`${{paths.<group>.<name>}}` interpolation against "
-        f"`paths/internal.yaml` / `paths/public.yaml`. Offending lines:\n"
-        + "\n".join(offending)
+        f"`paths/internal.yaml` / `paths/public.yaml`. Offending lines:\n" + "\n".join(offending)
     )
 
 
@@ -92,16 +91,11 @@ _COMPOSE_TARGETS = [
     "experiment/autoencode_protein_ligand",
 ]
 
-# Representative Tier-2 (research) configs to confirm they still compose
-# after the Phase 6 directory move. Not exhaustive — the goal is to catch
-# regressions in the `experiment/research/<name>` reference style.
-_RESEARCH_COMPOSE_TARGETS = [
-    "experiment/research/generate_unconditional_denovo",
-    "experiment/research/generate_forward_folding_denovo_cameo",
-    "experiment/research/generate_inverse_folding_denovo_multiflow",
-    "experiment/research/generate_binder_design",
-    "experiment/research/generate_forward_folding_protein_ligand_cameo",
-]
+# NOTE: experiment/research/ configs are kept on disk for internal research
+# workflows but are gitignored on the publication branch. The dedicated
+# `test_research_tier_composes` smoke that previously parametrized over a
+# representative subset was dropped alongside the untracking — there is no
+# publication-CI signal to recover (the files simply aren't shipped).
 
 
 @pytest.fixture(autouse=True)
@@ -141,18 +135,6 @@ def test_paths_public_resolves(config_name: str, monkeypatch) -> None:
         assert cfg.get("model") is not None or cfg.get("autoencode") is not None
 
 
-@pytest.mark.parametrize("config_name", _RESEARCH_COMPOSE_TARGETS)
-def test_research_tier_composes(config_name: str) -> None:
-    """Research-tier configs still compose under the internal overlay after the Phase 6 move."""
-    with initialize_config_dir(
-        version_base=None,
-        config_dir=str(HYDRA_ROOT),
-        job_name="paths_research_smoke",
-    ):
-        cfg = compose(config_name=config_name)
-        assert cfg.get("model") is not None, f"{config_name} missing model"
-
-
 # --- Tier invariants (Phase 6) -------------------------------------------
 
 TIER_1_SHORT_NAMES = {"leflur-base", "leflur-ted", "leflur-pl"}
@@ -163,9 +145,7 @@ TIER_1_ALLOWED_INTERPOLATIONS = (
 )
 
 
-@pytest.mark.parametrize(
-    "config_path", _publication_configs(), ids=lambda p: p.name
-)
+@pytest.mark.parametrize("config_path", _publication_configs(), ids=lambda p: p.name)
 def test_tier1_uses_canonical_checkpoint(config_path: Path) -> None:
     """Tier-1 configs must use canonical short names (or canonical path interpolations).
 
@@ -174,9 +154,7 @@ def test_tier1_uses_canonical_checkpoint(config_path: Path) -> None:
     those interpolations only resolve under the internal overlay.
     """
     text = config_path.read_text()
-    has_ckpt = re.search(
-        r"^\s*ckpt_path\s*:\s*(?P<val>.+)$", text, re.MULTILINE
-    )
+    has_ckpt = re.search(r"^\s*ckpt_path\s*:\s*(?P<val>.+)$", text, re.MULTILINE)
     if has_ckpt is None:
         # Some autoencode configs nest ckpt_path differently; skip.
         return

@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from lobster.model.losses import DiffusionLoss
+    from lobster.model.losses._diffusion_loss import DiffusionLoss
 
 import torch
 import torch.nn as nn
@@ -290,7 +290,18 @@ class LeFlurProteinLigandLightningModule(LightningModule):
         self.diffusion_loss_ligand_struc: DiffusionLoss | None = None
 
         if use_diffusion_loss_structure:
-            from lobster.model.losses import DiffusionLoss
+            try:
+                from lobster.model.losses._diffusion_loss import DiffusionLoss
+            except ImportError as exc:
+                raise ImportError(
+                    "use_diffusion_loss_structure=True requires the optional "
+                    "lobster.model.losses._diffusion_loss module, which is not "
+                    "bundled with the publication wheel (research-only feature). "
+                    "No canonical LeFlur checkpoint (leflur-base, leflur-ted, "
+                    "leflur-pl) sets this flag — leave it at the default False, "
+                    "or obtain _diffusion_loss.py from the internal repository "
+                    "to re-enable the continuous-structure variant."
+                ) from exc
 
             # Auto-detect transformer hidden dim if not provided
             if diffusion_z_dim is not None:
