@@ -1,0 +1,105 @@
+# @package _global_
+
+# Unconditional generation evaluation for gen_ume_denovo with self-reflection refinement
+# Self-reflection forward/inverse stages use the GenUME-TED CAMEO benchmark hyperparameters
+# (matching generate_forward_folding_denovo_cameo.yaml / generate_inverse_folding_denovo_cameo.yaml).
+# QC thresholds are inherited from generate_unconditional_450M_self_reflection.yaml.
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/research/generate_unconditional_denovo_self_reflection
+
+# Output directory (overridden via Hydra CLI in SLURM driver)
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/gen_ume_denovo_unconditional_selfreflect"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration (overridden via Hydra CLI in SLURM driver)
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: "${paths.checkpoints.ted}"
+
+# Generation parameters
+generation:
+  mode: unconditional
+  length: [100, 200, 300, 400, 500]
+  num_samples: 100
+  nsteps: 400
+  batch_size: 1
+  save_csv_metrics: true
+  create_plots: true
+  asynchronous_sampling: false
+
+  # Unconditional sampling parameters (TED-val25-base values are passed as Hydra overrides from SLURM)
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 20
+  stochasticity_struc: 60
+
+  inference_schedule_seq: "LogInferenceSchedule"
+  inference_schedule_struc: "PowerInferenceSchedule"
+
+  # Per-amino-acid logit bias (set via Hydra override from SLURM, e.g. {V: 1.0})
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 10
+
+  enable_sequence_token_check: true
+  sequence_token_check_retries: 100
+
+  # Self-reflection refinement enabled
+  enable_self_reflection: true
+
+  # Self-reflection pipeline parameters
+  # Forward / inverse folding stages use the GenUME-TED CAMEO benchmark params
+  # to keep the refinement protocol comparable to the standalone forward/inverse benchmarks.
+  self_reflection:
+    use_esmfold_validation: false
+
+    # When true, every forward-fold-TM-QC-rejected attempt's initial sequence +
+    # initial backbone are saved under <output_dir>/failed_self_reflection/ with
+    # a row in failed_self_reflection.csv. Use to compute SR-QC vs ESMFold-QC
+    # concordance post-hoc by ESMFold-folding each saved fasta.
+    # Note: token-check and %id failures are NOT saved (degenerate sequences /
+    # refinement-divergence; not meaningful for ESMFold concordance).
+    save_failed_attempts: false
+
+    forward_folding:
+      nsteps: 200
+      temperature_seq: 0.3610371899835548
+      temperature_struc: 0.2195534567490864
+      stochasticity_seq: 1
+      stochasticity_struc: 20
+
+    inverse_folding:
+      nsteps: 100
+      temperature_seq: 0.14995423473740457
+      temperature_struc: 0.4178150796307539
+      stochasticity_seq: 10
+      stochasticity_struc: 50
+
+    # Quality control thresholds (kept from generate_unconditional_450M_self_reflection.yaml)
+    quality_control:
+      enable_tm_threshold: true
+      min_tm_score_forward: 0.8334123066155882
+      enable_min_percent_identity_threshold: true
+      min_percent_identity: 50
+      enable_max_percent_identity_threshold: true
+      max_percent_identity: 100
+      enable_sequence_token_check: true
+      max_retries: 100
+
+  # Outer ESMFold validation (final metrics, matches non-SR baseline protocol)
+  use_esmfold: true
+  max_length: 512
+
+  # Foldseek diversity analysis
+  calculate_foldseek_diversity: true
+  foldseek_bin_path: "${paths.binaries.foldseek_bin}"
+  foldseek_tmscore_threshold: 0.5
+  rmsd_threshold_for_diversity: 2.0
+
+  # Not used for unconditional generation
+  input_structures: null

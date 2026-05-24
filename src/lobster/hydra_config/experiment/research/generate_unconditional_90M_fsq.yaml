@@ -1,0 +1,61 @@
+# @package _global_
+
+# Example configuration for unconditional generation
+# Purpose: Improve ESMFold validation metrics through structure-sequence consistency
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/research/generate_unconditional_90M_fsq
+
+# Output directory
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "./examples/generated_unconditional_90M_fsq"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: "${paths.checkpoints.research_2025_11_14}" 
+
+# Generation parameters
+generation:
+  mode: unconditional
+  length: [100, 200, 300, 400, 500]
+  num_samples: 100
+  nsteps: 400
+  batch_size: 1
+  save_csv_metrics: true
+  create_plots: true
+  asynchronous_sampling: false
+  
+  # Unconditional generation parameters
+  temperature_seq: 0.27315634404739075 
+  temperature_struc: 0.31640411575109995 
+  stochasticity_seq: 20 
+  stochasticity_struc: 60
+
+  inference_schedule_seq: "LogInferenceSchedule"
+  inference_schedule_struc: "PowerInferenceSchedule"
+
+  enable_sequence_token_check: true
+  sequence_token_check_retries: 100
+  
+  # Enable self-reflection refinement (improves ESMFold metrics)
+  enable_self_reflection: false
+  
+  # Enable ESMFold validation (required to measure improvement)
+  use_esmfold: true
+  max_length: 512
+
+  # Foldseek Diversity Analysis (structural clustering)
+  calculate_foldseek_diversity: true  # Enable/disable diversity calculation
+  foldseek_bin_path: "${paths.binaries.foldseek_bin}"
+  foldseek_tmscore_threshold: 0.5  # TM-score threshold for Foldseek clustering
+  rmsd_threshold_for_diversity: 2.0  # Only cluster structures with RMSD < this threshold
+  
+  # Not used for unconditional generation
+  input_structures: null
+

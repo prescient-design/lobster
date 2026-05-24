@@ -1,0 +1,33 @@
+# @package _global_
+
+# Forward folding evaluation on MultiFlow test set
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/research/generate_forward_folding_denovo_multiflow
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/gen_ume_denovo_multiflow_forward_folding"
+
+seed: 54321
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: "${paths.checkpoints.base}"
+
+generation:
+  mode: forward_folding
+  nsteps: 200
+  batch_size: 1
+  n_trials: 1
+
+  temperature_seq: 0.3610371899835548
+  temperature_struc: 0.2195534567490864
+  stochasticity_seq: 1
+  stochasticity_struc: 20
+
+  input_structures: "${paths.benchmarks.multiflow_test}/*.pt"
+
+  max_length: 512
+  length: null
+  num_samples: null

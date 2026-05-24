@@ -1,0 +1,44 @@
+# @package _global_
+
+# LEGACY: superseded by experiment/generate_unconditional.yaml (canonical).
+# Kept here to preserve historical reproducibility of pre-Phase-6 evaluations.
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/legacy/generate_unconditional_old
+
+# Output directory
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "./examples/generated_unconditional"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt"
+
+# Generation parameters
+generation:
+  mode: unconditional
+  length: [100, 200, 300, 400, 500]
+  num_samples: 20       
+  nsteps: 800   
+  save_csv_metrics: true 
+  create_plots: true
+  asynchronous_sampling: true
+  
+  #Generation parameters
+  temperature_seq: 0.6570177117117687   
+  temperature_struc: 0.14683736083517593  
+  stochasticity_seq: 30 
+  stochasticity_struc: 60 
+  
+  # Enable ESMFold validation
+  use_esmfold: true
+  max_length: 512
+  
+  # Not used for unconditional generation
+  input_structures: null

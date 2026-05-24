@@ -1,0 +1,44 @@
+# @package _global_
+
+# Forward folding evaluation on CAMEO with Protein-Ligand Gen-UME model
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/research/generate_forward_folding_protein_ligand_cameo
+
+# Output directory
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "./forward_folding_cameo_protein_ligand"
+
+# Random seed for reproducibility
+seed: 54321
+
+# Model configuration - Protein-Ligand model
+model:
+  _target_: lobster.model.leflur.LeFlurProteinLigandLightningModule
+  ckpt_path: "${paths.checkpoints.pl}"
+
+# Generation settings
+generation:
+  mode: forward_folding
+  nsteps: 200
+  batch_size: 1
+  n_trials: 1
+  
+  # Generation parameters (from ForwardFoldingCallback)
+  temperature_seq: 0.3610371899835548
+  temperature_struc: 0.2195534567490864
+  stochasticity_seq: 1
+  stochasticity_struc: 20
+  
+  # CAMEO validation data
+  input_structures: "${paths.benchmarks.cameo}/*.pt"
+  
+  # Maximum length for structures
+  max_length: 512
+  
+  # Not used for forward folding
+  length: null
+  num_samples: null
+
