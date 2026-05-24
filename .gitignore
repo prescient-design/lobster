@@ -227,3 +227,20 @@ src/lobster/model/integrations/ume_huggingface/model/*
 /src/lobster/metrics/foldseek/
 /src/lobster/metrics/mmseqs/
 /src/lobster/metrics/foldseek-linux-gpu.tar.gz
+
+# ---------------------------------------------------------------------------
+# Research-only artifacts: kept locally for paper reproducibility but NOT
+# tracked in the publication-facing branch. End users only need the
+# `lobster_generate` / `lobster_autoencode` inference surface; the items
+# below are training launchers, ablation sweeps, and exploratory notes.
+# ---------------------------------------------------------------------------
+
+# Internal/exploratory design notes + paper drafts (research-only).
+docs/leflur/research_notes/
+
+# Per-PDB SLURM driver scripts from the R5 denovo benchmark (research-only).
+/slurm/scripts/denovo_r5/
+
+# SLURM launcher READMEs (companion docs for the training/eval launchers
+# above; not needed for inference).
+/slurm/scripts/README_*.md
