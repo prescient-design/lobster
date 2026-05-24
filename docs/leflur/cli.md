@@ -77,6 +77,38 @@ To see exactly what a config resolves to without running anything:
 lobster_generate --config-name experiment/generate_unconditional --cfg job paths=public
 ```
 
+### Evaluating against benchmarks (CAMEO / MultiFlow / PoseBusters)
+
+There are no separate `evaluate_*.py` scripts on the publication branch.
+Every evaluation routes through `lobster_generate` with a benchmark
+directory as `generation.input_structures` (folding modes) or
+`generation.data_dir` (ligand-conditioned modes). The CSV that the
+runner emits is the table you'd report on:
+
+```bash
+# Protein-only inverse folding on a directory of pre-processed .pt files
+lobster_generate \
+    --config-name experiment/generate_inverse_folding \
+    paths=public \
+    generation.input_structures="/path/to/cameo_processed/*.pt" \
+    generation.num_samples=127 \
+    output_dir=./eval_cameo_inverse
+
+# Protein-ligand forward folding on PoseBusters
+lobster_generate \
+    --config-name experiment/generate_ligand_conditioned_forward_folding \
+    paths=public \
+    generation.data_dir=/path/to/posebusters_no_overlap \
+    generation.raw_data_dir=/path/to/posebusters_set \
+    output_dir=./eval_pb_forward
+```
+
+The output CSV columns are documented in [Output schema](#output-schema)
+below. For paper-style baselines that compare against ESMFold or
+LigandMPNN (instead of LeFlur), see the `cmdline/evaluation/` directory
+in the repo (kept locally, not shipped) or use the upstream tools
+directly.
+
 ## `lobster_autoencode`
 
 Round-trip protein or protein-ligand structures through the latent

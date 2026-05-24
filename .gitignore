@@ -241,6 +241,11 @@ src/lobster/model/integrations/ume_huggingface/model/*
 /src/lobster/cmdline/distributed_esmfold_baseline.py
 /src/lobster/cmdline/distributed_generation/
 
+# Baseline competitor evaluators (run ESMFold / LigandMPNN, not LeFlur).
+# Kept locally for paper-table reproducibility but not part of the
+# publication inference surface.
+/src/lobster/cmdline/evaluation/
+
 # External-tool integration utilities (RF3 / Boltz batch wrappers,
 # external-prediction analyzers, `.pt` -> FASTA extraction). Kept
 # locally for reproducibility but not required for the publication

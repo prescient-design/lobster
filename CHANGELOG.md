@@ -81,3 +81,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (superseded by `docs/leflur/checkpoints.md` and the code itself; the
   bond-matrix planning doc was archived under
   `docs/leflur/research_notes/`).
+- **Standalone argparse evaluation CLIs**
+  `cmdline/evaluation/{evaluate_inverse_folding, evaluate_ligand_conditioned_protein_generation, evaluate_protein_ligand_forward_folding, evaluate_protein_ligand_inverse_folding}.py`.
+  All four were thin wrappers around runners that are already exposed
+  via Hydra modes. The single canonical evaluation entry point is now
+  `lobster_generate generation.mode=<X>` with the matching
+  `experiment/generate_*.yaml` config. Migration:
+
+  | Old standalone | New invocation |
+  |---|---|
+  | `python -m lobster.cmdline.evaluation.evaluate_inverse_folding ...` | `lobster_generate --config-name experiment/generate_inverse_folding ...` |
+  | `python -m lobster.cmdline.evaluation.evaluate_ligand_conditioned_protein_generation ...` | `lobster_generate --config-name experiment/generate_ligand_conditioned ...` |
+  | `python -m lobster.cmdline.evaluation.evaluate_protein_ligand_forward_folding ...` | `lobster_generate --config-name experiment/generate_ligand_conditioned_forward_folding ...` |
+  | `python -m lobster.cmdline.evaluation.evaluate_protein_ligand_inverse_folding ...` | `lobster_generate --config-name experiment/generate_ligand_conditioned_inverse_folding ...` |
+
+  The two competitor baselines `esmfold_baseline.py` (ESMFold forward
+  fold) and `evaluate_ligandmpnn_baseline.py` (LigandMPNN inverse fold)
+  remain available locally but are no longer tracked on the publication
+  branch — they evaluate external tools, not LeFlur.

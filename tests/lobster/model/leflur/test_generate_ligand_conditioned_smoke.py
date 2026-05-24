@@ -49,7 +49,8 @@ LIGAND_DIR = Path("/cv/home/lisanzas/lobster/data/posebusters/processed/posebust
 # the published self-consistency expectation is lower (mean scTM is
 # ligand-and-pocket dependent; the evaluator's success rubric uses scTM > 0.5
 # as the "high self-consistency" cutoff, see ``_print_summary`` in
-# ``cmdline/evaluation/evaluate_ligand_conditioned_protein_generation.py``). 0.4 is a
+# ``lobster_generate generation.mode=ligand_conditioned`` via
+# ``_ligand_conditioned_runner.run_ligand_conditioned_generation``). 0.4 is a
 # lenient single-sample smoke floor that catches structural collapse without
 # flaking on hard ligands or unlucky seeds.
 SCTM_FLOOR = 0.40
@@ -86,7 +87,8 @@ def ligand_conditioned_sample(tmp_path_factory):
     smoke = _load_smoke_module()
 
     out_dir = tmp_path_factory.mktemp("leflur_ligand_smoke")
-    # Hyperparameters mirror cmdline/evaluation/evaluate_ligand_conditioned_protein_generation.py
+    # Hyperparameters mirror the canonical Hydra config
+    # `experiment/generate_ligand_conditioned.yaml`
     # exactly so this test exercises the canonical inference recipe.
     args = smoke.parse_args(
         [

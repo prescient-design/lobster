@@ -1,9 +1,13 @@
 """Shared runners for the three ligand-conditioned LeFlur tasks.
 
-Backs both the Hydra entry point (:mod:`lobster.cmdline.generate`,
-``generation.mode={ligand_conditioned, protein_ligand_forward_folding,
-protein_ligand_inverse_folding}``) and the three back-compat argparse CLIs
-under ``src/lobster/cmdline/evaluation/evaluate_*ligand*.py``.
+Used exclusively by the Hydra entry point :mod:`lobster.cmdline.generate`
+(modes ``ligand_conditioned``, ``protein_ligand_forward_folding``,
+``protein_ligand_inverse_folding``) -- there is no separate argparse CLI
+for these tasks on the publication branch. Invoke via::
+
+    lobster_generate --config-name experiment/generate_ligand_conditioned
+    lobster_generate --config-name experiment/generate_ligand_conditioned_forward_folding
+    lobster_generate --config-name experiment/generate_ligand_conditioned_inverse_folding
 
 Three runners are exposed, each pairing a frozen-shape knob bundle
 (``*RunConfig``) with a thin wrapper around the corresponding evaluator
