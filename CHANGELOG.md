@@ -37,12 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   experiment configs are enforced (via tests) to interpolate through this
   overlay rather than hard-coding paths.
 - **Experiment config tiering** at `lobster/hydra_config/experiment/`:
-  - 9 Tier-1 canonical configs (flat at `experiment/`)
-  - 48 Tier-2 research configs (under `experiment/research/`)
-  - 1 Tier-3 legacy config (under `experiment/legacy/`)
-  - 32 per-PDB R5 inpainting configs (`experiment/denovo_r5/`) are kept
-    locally on internal machines but gitignored on the publication branch
-    since they are research-only sweeps.
+  - 9 Tier-1 canonical configs (flat at `experiment/`) — the only
+    experiment configs tracked on the publication branch.
+  - Tier 2 (`experiment/research/`, 48 configs), Tier 3
+    (`experiment/legacy/`, 1 config), and the R5 inpainting sweep
+    (`experiment/denovo_r5/`, 32 configs) are kept on disk for internal
+    research workflows but gitignored on the publication branch — they
+    reference `${paths.checkpoints.research_*}` / `${paths.checkpoints.legacy_*}`
+    keys that only resolve under the internal overlay.
 - **`lobster.metrics.protein_ligand`** subpackage — groups three
   `Evaluator` classes (forward folding, inverse folding, ligand-conditioned
   generation), two ablation scripts, and the LigandMPNN baseline.
@@ -127,8 +129,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   They live on disk for local research workflows and are reachable via
   `paths=internal`, but are gitignored on the publication branch so the
   shipped Hydra surface is inference-only:
-  `paths/`, `experiment/{generate_*, autoencode*, esmfold_baseline}.yaml`,
-  `experiment/{research,legacy}/`. The 11 Hydra configs the branch had
+  `paths/`, `experiment/{generate_*, autoencode*, esmfold_baseline}.yaml`.
+  (`experiment/{research,legacy,denovo_r5}/` are kept on disk for
+  internal research but gitignored — see Removed entries below.) The
+  11 Hydra configs the branch had
   *modified* on top of main (training callbacks + training data configs +
   `experiment/train_gen_ume.yaml`) were reverted to their `origin/main`
   state in lockstep so the publication PR no longer touches them.
@@ -137,19 +141,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `evaluation/`, `experiment/ume-2/`, top-level `train.yaml` /
   `finetune.yaml` / `intervene*.yaml` / `evaluate.yaml` / etc. — remain
   tracked exactly as they are in main.
-- **Tier-2 research Hydra configs** at
-  `src/lobster/hydra_config/experiment/research/` (48 YAMLs). These are
-  internal-only research sweeps (binder design, denovo CAMEO / RGN2 /
-  multiflow / PoseBusters variants, 90M / 450M / 750M model size
-  ablations, FSQ vs SLQ codec studies, etc.) that exercise
-  `${paths.checkpoints.research_*}` interpolations only available under
-  the internal overlay. They live on disk for local research workflows
-  and are gitignored on the publication branch. The
+- **Tier-2 research + Tier-3 legacy Hydra configs** at
+  `src/lobster/hydra_config/experiment/research/` (48 YAMLs) and
+  `src/lobster/hydra_config/experiment/legacy/` (1 YAML —
+  `generate_unconditional_old.yaml`). The research configs are
+  internal-only sweeps (binder design, denovo CAMEO / RGN2 / multiflow /
+  PoseBusters variants, 90M / 450M / 750M model size ablations, FSQ vs
+  SLQ codec studies, etc.) that exercise
+  `${paths.checkpoints.research_*}` interpolations; the legacy entry is
+  the previous-generation unconditional config referencing
+  `${paths.checkpoints.legacy_450M}`. Both interpolation sets only
+  resolve under the internal overlay. They live on disk for local
+  research workflows and are gitignored on the publication branch. The
   `test_research_tier_composes` smoke (3 representative compose checks)
-  was dropped alongside — the publication CI has no signal to recover
-  from configs it doesn't ship. The Tier-1 inference compose tests
-  (`test_paths_internal_resolves` / `test_paths_public_resolves`) and
-  tier invariants (`test_tier1_uses_canonical_checkpoint`,
+  and the orphan `_research_configs()` / `_legacy_configs()` helpers in
+  `test_paths_overlay.py` were dropped alongside — the publication CI
+  has no signal to recover from configs it doesn't ship. The Tier-1
+  inference compose tests (`test_paths_internal_resolves` /
+  `test_paths_public_resolves`) and tier invariants
+  (`test_tier1_uses_canonical_checkpoint`,
   `test_no_internal_paths_in_publication_configs`) all remain green.
 - **Optional research-only `_diffusion_loss.py`** at
   `src/lobster/model/losses/_diffusion_loss.py`. The

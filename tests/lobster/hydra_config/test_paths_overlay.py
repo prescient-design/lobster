@@ -34,10 +34,12 @@ EXPERIMENT_DIR = HYDRA_ROOT / "experiment"
 FORBIDDEN = re.compile(r"/cv/(data|scratch|home)\b")
 
 # Globs that are "publication scope" — the path overlay must cover them.
-# Phase 6 narrowed this to Tier 1 (top-level `experiment/*.yaml`). Tier 2
-# (`experiment/research/`) and Tier 3 (`experiment/legacy/`) configs are
-# allowed to reference research/legacy `${paths.checkpoints.*}` keys that
-# only resolve to working artifacts under the internal overlay.
+# Phase 6 narrowed this to Tier 1 (top-level `experiment/*.yaml`). The
+# Tier-2 `experiment/research/` configs and the single Tier-3
+# `experiment/legacy/generate_unconditional_old.yaml` are kept on disk
+# for internal research workflows but gitignored on the publication
+# branch — they reference research/legacy `${paths.checkpoints.*}` keys
+# that only resolve under the internal overlay.
 PUBLICATION_GLOBS = ("generate_*.yaml", "autoencode*.yaml")
 
 
@@ -48,14 +50,6 @@ def _publication_configs() -> list[Path]:
         for p in sorted(EXPERIMENT_DIR.glob(pattern)):
             paths.append(p)
     return paths
-
-
-def _research_configs() -> list[Path]:
-    return sorted((EXPERIMENT_DIR / "research").glob("generate_*.yaml"))
-
-
-def _legacy_configs() -> list[Path]:
-    return sorted((EXPERIMENT_DIR / "legacy").glob("generate_*.yaml"))
 
 
 @pytest.mark.parametrize("config_path", _publication_configs(), ids=lambda p: p.name)
@@ -166,7 +160,7 @@ def test_tier1_uses_canonical_checkpoint(config_path: Path) -> None:
     raise AssertionError(
         f"{config_path.relative_to(REPO_ROOT)} uses ckpt_path={val!r}; "
         f"Tier 1 must be one of {TIER_1_SHORT_NAMES} or "
-        f"{TIER_1_ALLOWED_INTERPOLATIONS}. Move this config under "
-        f"experiment/research/ or experiment/legacy/ if it needs a "
-        f"research/legacy checkpoint."
+        f"{TIER_1_ALLOWED_INTERPOLATIONS}. Move this config under the "
+        f"(gitignored) experiment/research/ or experiment/legacy/ subdir "
+        f"if it needs a research/legacy checkpoint."
     )

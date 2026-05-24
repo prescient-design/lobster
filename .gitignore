@@ -307,9 +307,11 @@ docs/leflur/research_notes/
 /src/lobster/hydra_config/experiment/train_*.yaml
 /src/lobster/hydra_config/experiment/test_gen_ume.yaml
 
-# Tier-2 research generate configs (kept on disk for internal research
-# workflows; not part of the publication inference surface).
+# Tier-2 research + Tier-3 legacy generate configs (kept on disk for
+# internal research workflows; not part of the publication inference
+# surface).
 /src/lobster/hydra_config/experiment/research/
+/src/lobster/hydra_config/experiment/legacy/
 
 # Optional research-only continuous-structure diffusion loss (gated by
 # use_diffusion_loss_structure=True, which no canonical LeFlur checkpoint
