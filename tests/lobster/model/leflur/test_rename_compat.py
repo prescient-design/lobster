@@ -20,7 +20,7 @@ The checkpoints exercised here are the three canonical ones referenced from
 - ``BASE`` — ``gen_ume_denovo_last_ckpt_2026-03-11T12-11-53`` (LEFLUR-P)
 - ``TED``  — ``gen_ume_denovo_ted_cath_ss_balanced_ckpt_2026-03-18T12-20-59``
   (LEFLUR-T)
-- ``PL``   — ``gen_ume_protein_ligand_medium`` (canonical protein-ligand)
+- ``PL``   — ``gen_ume_protein_ligand_no_geom_medium`` (canonical protein-ligand)
 
 Each test is skipped automatically when the corresponding local checkpoint file
 is not present so the suite still runs in CI / HuggingFace-only environments.
@@ -43,16 +43,9 @@ import torch
 # ``..._ckpt_<YYYY-MM-DDTHH-MM-SS>`` is the eval-launch timestamp, not the
 # checkpoint timestamp). Resolved by inspecting the symlink targets and the
 # ``ckpt_path`` hyperparameter on each checkpoint.
-BASE_CKPT = Path(
-    "/cv/scratch/u/lisanzas/gen_ume_denovo/runs/2026-03-08T17-09-23/last.ckpt"
-)
-TED_CKPT = Path(
-    "/cv/scratch/u/lisanzas/gen_ume_denovo_ted_cath/runs/2026-03-14T15-41-36/last.ckpt"
-)
-PL_CKPT = Path(
-    "/cv/scratch/u/lisanzas/gen_ume_protein_ligand_medium/runs"
-    "/2026-02-11T19-45-30/epoch=278-step=40057-val_loss=1.6365.ckpt"
-)
+BASE_CKPT = Path("/cv/scratch/u/lisanzas/gen_ume_denovo/runs/2026-03-08T17-09-23/last.ckpt")
+TED_CKPT = Path("/cv/scratch/u/lisanzas/gen_ume_denovo_ted_cath/runs/2026-03-14T15-41-36/last.ckpt")
+PL_CKPT = Path("/cv/scratch/u/lisanzas/gen_ume_protein_ligand_no_geom_medium/runs/2026-03-11T13-22-20/last.ckpt")
 
 
 def _skip_if_missing(path: Path) -> None:
@@ -97,17 +90,12 @@ def test_gen_ume_deprecation_shim_aliases_old_names() -> None:
     )
 
     assert gen_ume.UMESequenceStructureEncoderModule is LeFlurSequenceStructureEncoderModule
-    assert (
-        gen_ume.UMESequenceStructureEncoderLightningModule
-        is LeFlurSequenceStructureEncoderLightningModule
-    )
+    assert gen_ume.UMESequenceStructureEncoderLightningModule is LeFlurSequenceStructureEncoderLightningModule
     assert gen_ume.ProteinLigandEncoderModule is LeFlurProteinLigandEncoderModule
     assert gen_ume.ProteinLigandEncoderLightningModule is LeFlurProteinLigandLightningModule
 
     assert any(
-        issubclass(w.category, DeprecationWarning)
-        and "gen_ume is deprecated" in str(w.message)
-        for w in caught
+        issubclass(w.category, DeprecationWarning) and "gen_ume is deprecated" in str(w.message) for w in caught
     ), "expected DeprecationWarning from lobster.model.gen_ume"
 
 
@@ -145,9 +133,9 @@ def test_protein_only_checkpoint_state_dict_matches_renamed_module(
     keys = set(ck["state_dict"].keys())
     assert any(k.startswith("encoder.") for k in keys), "missing encoder.* state"
     assert any(k.startswith("quantizer.") for k in keys), "missing quantizer.* state"
-    assert any(
-        k.startswith("strucure_encoder.") for k in keys
-    ), "missing strucure_encoder.* state (sic — historical typo)"
+    assert any(k.startswith("strucure_encoder.") for k in keys), (
+        "missing strucure_encoder.* state (sic — historical typo)"
+    )
 
 
 def test_protein_ligand_checkpoint_state_dict_matches_renamed_module() -> None:
@@ -177,15 +165,13 @@ def test_protein_ligand_checkpoint_state_dict_matches_renamed_module() -> None:
     keys = set(ck["state_dict"].keys())
     prefixes = {k.split(".", 1)[0] for k in keys}
     assert "encoder" in prefixes, f"missing encoder.* state (got {sorted(prefixes)})"
-    assert (
-        "structure_encoder" in prefixes
-    ), f"missing structure_encoder.* state (got {sorted(prefixes)})"
-    assert any(
-        k.startswith("encoder.ligand_atom_output") for k in keys
-    ), "missing ligand_atom_output head — PL ckpt is incompatible with renamed module"
-    assert any(
-        k.startswith("encoder.ligand_structure_output") for k in keys
-    ), "missing ligand_structure_output head — PL ckpt is incompatible with renamed module"
+    assert "structure_encoder" in prefixes, f"missing structure_encoder.* state (got {sorted(prefixes)})"
+    assert any(k.startswith("encoder.ligand_atom_output") for k in keys), (
+        "missing ligand_atom_output head — PL ckpt is incompatible with renamed module"
+    )
+    assert any(k.startswith("encoder.ligand_structure_output") for k in keys), (
+        "missing ligand_structure_output head — PL ckpt is incompatible with renamed module"
+    )
 
 
 @pytest.mark.slow
@@ -196,9 +182,7 @@ def test_protein_ligand_checkpoint_state_dict_matches_renamed_module() -> None:
     ],
     ids=["ted"],
 )
-def test_protein_only_checkpoint_loads_via_lightning(
-    ckpt_path: Path, classname: str
-) -> None:
+def test_protein_only_checkpoint_loads_via_lightning(ckpt_path: Path, classname: str) -> None:
     """End-to-end ``load_from_checkpoint`` test on the TED checkpoint.
 
     BASE is intentionally excluded from this end-to-end variant because its

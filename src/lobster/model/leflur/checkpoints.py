@@ -134,10 +134,7 @@ class CheckpointInfo:
     @property
     def https_url(self) -> str:
         """Direct download URL (works without an HF token for public repos)."""
-        return (
-            f"https://huggingface.co/{self.hf_repo_id}/resolve/{HF_REVISION}/"
-            f"{self.hf_path}"
-        )
+        return f"https://huggingface.co/{self.hf_repo_id}/resolve/{HF_REVISION}/{self.hf_path}"
 
 
 # Registry. Short names use kebab-case to match the plan
@@ -186,27 +183,25 @@ KNOWN_CHECKPOINTS: dict[str, CheckpointInfo] = {
         paired_lg_codec="LG full attention",
         tags=("canonical", "protein-only", "publication"),
         local_source_path=(
-            "/cv/scratch/u/lisanzas/gen_ume_denovo/runs/"
-            "2026-03-06T15-30-31/epoch=17-step=6937-val_loss=0.8192.ckpt"
+            "/cv/scratch/u/lisanzas/gen_ume_denovo/runs/2026-03-06T15-30-31/epoch=17-step=6937-val_loss=0.8192.ckpt"
         ),
     ),
     "leflur-pl": CheckpointInfo(
         short_name="leflur-pl",
         hf_path="leflur_protein_ligand.ckpt",
         description=(
-            "Production protein-ligand checkpoint (2026-02-11). Drives all "
-            "ligand-conditioned generation + protein-ligand forward/inverse "
-            "folding evaluations."
+            "Production protein-ligand checkpoint (2026-03-11; no-geom-loss "
+            "medium variant). Drives all ligand-conditioned generation + "
+            "protein-ligand forward/inverse folding evaluations and reproduces "
+            "the PoseBusters NO inverse-folding numbers reported in the "
+            "conference benchmark (AAR overall no-ligand ~0.70, pocket ~0.78)."
         ),
         family="protein_ligand",
-        recommended_generation_config=(
-            "experiment/generate_forward_folding_protein_ligand_cameo"
-        ),
+        recommended_generation_config=("experiment/generate_forward_folding_protein_ligand_cameo"),
         paired_lg_codec="LG Protein Ligand fsq 4375",
         tags=("canonical", "protein-ligand"),
         local_source_path=(
-            "/cv/scratch/u/lisanzas/gen_ume_protein_ligand_medium/runs/"
-            "2026-02-11T19-45-30/epoch=278-step=40057-val_loss=1.6365.ckpt"
+            "/cv/scratch/u/lisanzas/gen_ume_protein_ligand_no_geom_medium/runs/2026-03-11T13-22-20/last.ckpt"
         ),
     ),
 }
@@ -232,10 +227,7 @@ PAIRED_LG_CHECKPOINTS: dict[str, CheckpointInfo] = {
         family="protein_ligand",
         tags=("canonical", "lg-codec"),
         hf_repo_id="Sidney-Lisanza/latent_generator",
-        local_source_path=(
-            "/cv/data/ai4dd/data2/ume/latent_generator_/runs/"
-            "2026-01-05T16-13-19/last.ckpt"
-        ),
+        local_source_path=("/cv/data/ai4dd/data2/ume/latent_generator_/runs/2026-01-05T16-13-19/last.ckpt"),
     ),
     "LG Protein Ligand cont": CheckpointInfo(
         short_name="LG Protein Ligand cont",
@@ -248,8 +240,7 @@ PAIRED_LG_CHECKPOINTS: dict[str, CheckpointInfo] = {
         tags=("canonical", "lg-codec"),
         hf_repo_id="Sidney-Lisanza/latent_generator",
         local_source_path=(
-            "/cv/scratch/u/lisanzas/latent_generator_continuous_bond_element/"
-            "runs/2026-01-24T21-03-23/last.ckpt"
+            "/cv/scratch/u/lisanzas/latent_generator_continuous_bond_element/runs/2026-01-24T21-03-23/last.ckpt"
         ),
     ),
 }
@@ -279,22 +270,16 @@ def list_checkpoints(family: str | None = None) -> list[CheckpointInfo]:
 # further wiring is needed.
 LG_HF_REPO_ID = "Sidney-Lisanza/latent_generator"
 LG_HF_REVISION = "main"
-LG_HF_PREFIX = (
-    f"https://huggingface.co/{LG_HF_REPO_ID}/resolve/{LG_HF_REVISION}/checkpoints_for_lg"
-)
+LG_HF_PREFIX = f"https://huggingface.co/{LG_HF_REPO_ID}/resolve/{LG_HF_REVISION}/checkpoints_for_lg"
 
 PAIRED_LG_CODECS: dict[str, str] = {
     # Protein-only LeFlur ("LG full attention") is already HF-backed
     # natively in inference.py — listed here for documentation only.
     "LG full attention": f"{LG_HF_PREFIX}/LG_full_attention.ckpt",
     # Production protein-ligand LeFlur — currently s3:// in inference.py.
-    "LG Protein Ligand fsq 4375": (
-        f"{LG_HF_PREFIX}/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt"
-    ),
+    "LG Protein Ligand fsq 4375": (f"{LG_HF_PREFIX}/LG_Protein_Ligand_fsq_4375_2026-01-05.ckpt"),
     # Continuous protein-ligand variant — currently /cv/scratch/ in inference.py.
-    "LG Protein Ligand cont": (
-        f"{LG_HF_PREFIX}/LG_Protein_Ligand_continuous_2026-01-24.ckpt"
-    ),
+    "LG Protein Ligand cont": (f"{LG_HF_PREFIX}/LG_Protein_Ligand_continuous_2026-01-24.ckpt"),
 }
 
 _paired_lg_overrides_installed = False
@@ -377,9 +362,7 @@ def _parse_hf_uri(uri: str) -> tuple[str, str, str]:
         body = uri[len("hf://") :]
         parts = body.split("/", 2)
         if len(parts) < 3:
-            raise ValueError(
-                f"hf:// URI must be hf://<owner>/<repo>/<path>, got {uri!r}"
-            )
+            raise ValueError(f"hf:// URI must be hf://<owner>/<repo>/<path>, got {uri!r}")
         owner, repo, filename = parts
         return f"{owner}/{repo}", HF_REVISION, filename
 
@@ -451,19 +434,14 @@ def resolve_checkpoint(uri_or_name: str | Path) -> Path:
         uri_or_name = str(uri_or_name)
 
     if not isinstance(uri_or_name, str):
-        raise TypeError(
-            f"resolve_checkpoint() expects str or Path, got "
-            f"{type(uri_or_name).__name__}"
-        )
+        raise TypeError(f"resolve_checkpoint() expects str or Path, got {type(uri_or_name).__name__}")
 
     value = uri_or_name.strip()
 
     # 1. Short name — look up the registered HF URI.
     if value in KNOWN_CHECKPOINTS:
         info = KNOWN_CHECKPOINTS[value]
-        logger.info(
-            "resolve_checkpoint: short name %r -> %s", value, info.hf_uri
-        )
+        logger.info("resolve_checkpoint: short name %r -> %s", value, info.hf_uri)
         return _hf_hub_download(HF_REPO_ID, info.hf_path, HF_REVISION)
 
     # 2. HF URI — download via huggingface_hub.
@@ -580,19 +558,13 @@ def upload_checkpoint(
 
     info = _entry_for_upload(short_name)
 
-    src = Path(source_path) if source_path else (
-        Path(info.local_source_path) if info.local_source_path else None
-    )
+    src = Path(source_path) if source_path else (Path(info.local_source_path) if info.local_source_path else None)
     if src is None:
-        raise ValueError(
-            f"{short_name!r} has no local_source_path registered; pass "
-            f"--source explicitly."
-        )
+        raise ValueError(f"{short_name!r} has no local_source_path registered; pass --source explicitly.")
     src = src.expanduser()
     if not src.exists():
         raise FileNotFoundError(
-            f"Source checkpoint not found at {src}. Pass a different "
-            f"--source or update the registry."
+            f"Source checkpoint not found at {src}. Pass a different --source or update the registry."
         )
 
     target_repo = repo_id or info.hf_repo_id
@@ -624,9 +596,7 @@ def upload_checkpoint(
             api.repo_info(repo_id=target_repo, repo_type="model")
         except RepositoryNotFoundError:
             logger.info("Creating HF repo %s (model)", target_repo)
-            api.create_repo(
-                repo_id=target_repo, repo_type="model", exist_ok=True
-            )
+            api.create_repo(repo_id=target_repo, repo_type="model", exist_ok=True)
 
     commit_info = api.upload_file(
         path_or_fileobj=str(src),
@@ -634,10 +604,7 @@ def upload_checkpoint(
         repo_id=target_repo,
         repo_type="model",
         revision=revision,
-        commit_message=(
-            commit_message
-            or f"Upload {short_name} ({src.name})"
-        ),
+        commit_message=(commit_message or f"Upload {short_name} ({src.name})"),
     )
     summary["commit_url"] = getattr(commit_info, "commit_url", "") or str(commit_info)
     return summary

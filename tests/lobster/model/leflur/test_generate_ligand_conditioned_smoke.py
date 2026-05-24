@@ -39,10 +39,7 @@ import pytest
 
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[4] / "scripts" / "leflur_ligand_conditioned_smoke.py"
-PL_CKPT = Path(
-    "/cv/scratch/u/lisanzas/gen_ume_protein_ligand_medium/runs"
-    "/2026-02-11T19-45-30/epoch=278-step=40057-val_loss=1.6365.ckpt"
-)
+PL_CKPT = Path("/cv/scratch/u/lisanzas/gen_ume_protein_ligand_no_geom_medium/runs/2026-03-11T13-22-20/last.ckpt")
 LIGAND_DIR = Path("/cv/home/lisanzas/lobster/data/posebusters/processed/posebusters_benchmark_no_overlap")
 
 # Ligand-conditioned designs run at lower temperatures than unconditional so

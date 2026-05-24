@@ -30,7 +30,11 @@ checkpoints:
   # TED — `leflur_denovo_ted_cath_ss_balanced_ckpt_2026-03-18T12-20-59`.
   ted: /cv/scratch/u/lisanzas/gen_ume_denovo/runs/2026-03-06T15-30-31/epoch=17-step=6937-val_loss=0.8192.ckpt
   # Protein-ligand production checkpoint (used by evaluator + sweep configs).
-  pl: /cv/scratch/u/lisanzas/gen_ume_protein_ligand_medium/runs/2026-02-11T19-45-30/epoch=278-step=40057-val_loss=1.6365.ckpt
+  # 2026-03-11 no-geom-loss medium variant; reproduces the PoseBusters NO
+  # inverse-folding AAR ~0.70 reported in the conference benchmark. The
+  # earlier 2026-02-11 medium snapshot underperforms by ~25 pp on AAR and is
+  # retained on disk for ablations but no longer the canonical PL ckpt.
+  pl: /cv/scratch/u/lisanzas/gen_ume_protein_ligand_no_geom_medium/runs/2026-03-11T13-22-20/last.ckpt
   # Research variants — keyed by training-run date so the mapping back to
   # the original run dir stays obvious.
   research_2025_11_07: /cv/data/ai4dd/data2/ume/gen_ume/runs//2025-11-07T13-19-11/last.ckpt

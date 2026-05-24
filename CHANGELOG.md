@@ -62,6 +62,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`leflur-pl` repointed** to the `gen_ume_protein_ligand_no_geom_medium`
+  2026-03-11 checkpoint (replacing the earlier 2026-02-11 medium snapshot).
+  The 2/11 weights underperformed by ~25 pp absolute AAR on the PoseBusters
+  no-overlap inverse-folding benchmark (overall 0.45 → 0.70, pocket
+  0.51 → 0.78). The 3/11 no-geom-loss variant is the checkpoint that
+  produced the conference benchmark numbers. The HuggingFace blob at
+  `Sidney-Lisanza/leflur/leflur_protein_ligand.ckpt` and the registered
+  `local_source_path` in `KNOWN_CHECKPOINTS` were both updated in lockstep;
+  internal users running `paths=internal` see the new path via
+  `paths.checkpoints.pl`, external users via `paths=public` get the new
+  weights on next `lobster_generate` invocation (the old cached blob is
+  invalidated when `huggingface_hub` resolves the new commit SHA, or
+  immediately via `lobster_leflur_checkpoints cache --clear`).
 - `lobster/__init__.py` imports `ensure_package` before the subpackages
   (fixes a latent circular-import in modules that call `ensure_package` at
   module-import time).
