@@ -1,0 +1,63 @@
+# @package _global_
+# Experiment config for training Gen-UME Protein-Ligand
+# 
+# This config trains the unified model on:
+# - PDB: protein-only structures (backbone)
+# - GEOM: ligand conformers (structure + bond matrix)
+# - PDBBind: protein-ligand complexes (with bond matrix)
+# - SAIR: protein-ligand complexes from SAIR (with bond matrix)
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_gen_ume_protein_ligand
+#
+defaults:
+  - override /data: structure_ligand_pdb_sair_bond
+  - override /model: leflur_protein_ligand
+  - override /callbacks: leflur_protein_ligand
+compile: false
+
+# Logging config
+logger:
+  name: gen_ume_protein_ligand-${model.encoder_kwargs.model_size}_${data.datasets}_${paths.timestamp}
+  project: lobster_gen_ume_protein_ligand
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+# Paths
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+# Trainer config
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: 100000
+  val_check_interval: 1000  # Validate every 1000 steps
+  limit_val_batches: 100    # Use 100 batches for validation
+  precision: bf16-mixed
+  accumulate_grad_batches: 40  # Effective batch size = 8 * 40 = 320
+  devices: auto
+  num_sanity_val_steps: 2
+
+# Data config overrides
+# Note: batch_size reduced from 40 to 8 for memory efficiency with bond matrix prediction
+# accumulate_grad_batches increased to 40 to maintain effective batch size of 320
+data:
+  batch_size: 8
+  num_workers: 8
+
+# Model config overrides
+model:
+  lr: 1e-4
+  num_warmup_steps: 5000
+  num_training_steps: 100000
+  scheduler_kwargs:
+    num_warmup_steps: 5000
+    num_training_steps: 100000
+  encoder_kwargs:
+    model_size: small
+

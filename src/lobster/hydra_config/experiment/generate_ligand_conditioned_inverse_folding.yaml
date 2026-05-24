@@ -1,0 +1,74 @@
+# @package _global_
+
+# Protein-ligand inverse folding: given a protein structure + ligand
+# context, design a sequence that folds back to the structure (optionally
+# with ESMFold validation).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.generate \
+#     --config-name experiment/generate_ligand_conditioned_inverse_folding \
+#     generation.data_dir=/path/to/posebusters_benchmark_no_overlap
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/ligand_cond_inverse_folding"
+
+seed: 1234
+
+model:
+  _target_: lobster.model.leflur.LeFlurProteinLigandLightningModule
+  ckpt_path: leflur-pl
+
+generation:
+  mode: protein_ligand_inverse_folding
+
+  # Sampling
+  nsteps: 100
+  batch_size: 1
+  max_length: 512
+  max_protein_length: 512
+  num_samples: 100   # null -> full benchmark
+
+  # Generation hyperparameters
+  temperature_seq: 0.5
+  temperature_struc: 0.5
+  stochasticity_seq: 20
+  stochasticity_struc: 20
+  temperature_ligand: 0.5
+  stochasticity_ligand: 20
+
+  # Schedules per modality
+  inference_schedule_seq: LogInferenceSchedule
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_ligand_atom: null
+  inference_schedule_ligand_struc: null
+
+  # Pocket
+  pocket_distance_threshold: 5.0
+
+  # Outputs
+  decode_structure: false
+  save_gt_structure: false
+  save_reconstructed_input: false
+
+  # Optional ligand minimization
+  minimize_ligand: false
+  minimize_mode: bonds_and_angles
+  force_field: MMFF94
+  minimize_steps: 500
+
+  # Encoding regularisation
+  use_se3_augmentation: false
+  se3_translation_scale: 1.0
+
+  # Validators
+  use_esmfold: false
+  use_protenix: false
+  use_boltz: false
+  raw_data_dir: null
+
+  # Data
+  data_dir: "${paths.benchmarks.posebusters_benchmark_no_overlap}"
+  input_structures: null

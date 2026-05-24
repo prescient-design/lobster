@@ -1,0 +1,68 @@
+# Model config for LeFlur Protein-Ligand with Diffusion Loss
+# Uses continuous structure embeddings instead of discrete tokens
+# The DiffusionLoss module (from MAR paper) models the per-token
+# probability distribution in continuous space.
+_target_: lobster.model.leflur.LeFlurProteinLigandLightningModule
+
+# Protein sequence tokens
+mask_token_id: 32
+pad_token_id: 1
+vocab_size: 33
+
+# Ligand atom tokens (from ELEMENT_VOCAB_EXTENDED)
+ligand_atom_vocab_size: 25
+ligand_mask_token_id: 1  # MASK token
+ligand_pad_token_id: 0   # PAD token
+
+# Bond types (0=none, 1=single, 2=double, 3=triple, 4=aromatic, 5=masked)
+num_bond_types: 6
+
+# Training params
+lr: 1e-4
+beta1: 0.9
+beta2: 0.98
+eps: 1e-12
+weight_decay: 0.01
+scheduler: cosine
+scheduler_kwargs:
+  num_warmup_steps: 5000
+  num_training_steps: 100000
+num_warmup_steps: 5000
+num_training_steps: 100000
+
+# Loss weights
+bond_loss_weight: 1.0
+ligand_atom_loss_weight: 1.0
+ligand_struct_loss_weight: 1.0
+
+# LatentGenerator for structure encoding/decoding
+# Note: For diffusion loss, you need a continuous LatentGenerator (quantizer=null)
+# "LG Protein Ligand cont" has 256-dim continuous embeddings
+decode_tokens_during_training: true
+latent_generator_model_name: "LG Protein Ligand cont"
+
+# Flow matching config (still used for position/mask selection)
+use_masked_prior: true
+inverse_folding: false  # Set to true for inverse folding training
+
+# === DIFFUSION LOSS CONFIG (NEW) ===
+# Option A: Hybrid - discrete flow matching for position selection,
+# DiffusionLoss for continuous embedding prediction
+use_diffusion_loss_structure: true
+diffusion_target_dim: 256  # Must match LatentGenerator structure_encoder.embed_dim
+diffusion_z_dim: null  # Auto-detect from encoder hidden_size (typically 768)
+diffusion_depth: 3  # MLP depth (from MAR: diffloss_d)
+diffusion_width: 1024  # MLP width (from MAR: diffloss_w)
+diffusion_num_sampling_steps: "100"  # Steps for generation
+diffusion_noise_schedule: cosine  # "linear" or "cosine"
+diffusion_loss_weight: 1.0  # Weight for structure diffusion loss
+
+# Encoder architecture kwargs (passed to NeoBERT via LeFlurProteinLigandEncoderModule)
+# Note: vocab sizes are computed dynamically from the LatentGenerator quantizer
+ckpt_path: null
+encoder_kwargs:
+  # max_length must accommodate protein (up to 512) + ligand (up to 200 atoms)
+  # This controls the rotary position embedding precomputation
+  max_length: 768
+  model_size: small  # Options: mini, small, base, large
+

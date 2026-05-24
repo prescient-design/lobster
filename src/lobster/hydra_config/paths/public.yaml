@@ -1,0 +1,72 @@
+# Open-source / external path overlay for LeFlur inference.
+#
+# Default expectation: an external user pip-installs `lobster`, runs
+# `lobster_leflur_checkpoints fetch leflur-ted`, and runs
+#   `lobster_generate ... paths=public`
+# (or omits `paths=` entirely once public becomes the default in Phase 5).
+#
+# All checkpoint paths are HuggingFace URIs that
+# `lobster.model.leflur.checkpoints.resolve_checkpoint()` (Phase 4) downloads
+# into `${paths.cache_dir}` on first access. Benchmark data and tool binaries
+# default to local cache subdirs the user must populate themselves.
+#
+# Environment variable knobs:
+#   LOBSTER_OUT      — default root for generated artifacts (defaults to ~/leflur_out)
+#   LOBSTER_CACHE    — default cache root (defaults to ~/.cache/lobster/leflur)
+#   FOLDSEEK_BIN     — path to a foldseek binary; otherwise expects a copy
+#                       under ${paths.cache_dir}/foldseek/bin
+
+# --- Existing default.yaml schema (preserved) ----------------------------
+timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S.%f}
+root_dir: ${oc.env:LOBSTER_OUT,${oc.env:HOME}/leflur_out}
+output_dir: ${paths.root_dir}/${paths.timestamp}
+
+# --- Local cache for downloaded checkpoints + benchmark fixtures ---------
+cache_dir: ${oc.env:LOBSTER_CACHE,${oc.env:HOME}/.cache/lobster/leflur}
+
+# --- LeFlur inference checkpoints ----------------------------------------
+#
+# Filenames match the Phase 4 manifest on Sidney-Lisanza/leflur. Use the
+# short names below as `paths.checkpoints.<name>` in generate configs;
+# `resolve_checkpoint()` materialises each URI into a local file path.
+checkpoints:
+  base: hf://Sidney-Lisanza/leflur/leflur_denovo_last_ckpt_2026-03-11T12-11-53.ckpt
+  ted: hf://Sidney-Lisanza/leflur/leflur_denovo_ted_cath_ss_balanced_ckpt_2026-03-18T12-20-59.ckpt
+  pl: hf://Sidney-Lisanza/leflur/leflur_protein_ligand.ckpt
+  research_2025_11_07: hf://Sidney-Lisanza/leflur/research/leflur_2025-11-07.ckpt
+  research_2025_11_14: hf://Sidney-Lisanza/leflur/research/leflur_2025-11-14.ckpt
+  research_2025_11_17: hf://Sidney-Lisanza/leflur/research/leflur_2025-11-17.ckpt
+  research_2026_01_04: hf://Sidney-Lisanza/leflur/research/leflur_2026-01-04.ckpt
+  legacy_450M: hf://Sidney-Lisanza/leflur/legacy/leflur_legacy_450M.ckpt
+
+# --- Eval-benchmark input directories ------------------------------------
+#
+# External users need to download these themselves. Phase 8 quickstart docs
+# describe the expected layout under ${paths.cache_dir}/benchmarks/<name>/.
+benchmarks:
+  cameo: ${paths.cache_dir}/benchmarks/cameo
+  multiflow_test: ${paths.cache_dir}/benchmarks/multiflow_test
+  rgn2_denovo: ${paths.cache_dir}/benchmarks/rgn2_denovo
+  rgn2_orphan: ${paths.cache_dir}/benchmarks/rgn2_orphan
+  posebusters_benchmark: ${paths.cache_dir}/benchmarks/posebusters_benchmark
+  posebusters_benchmark_no_overlap: ${paths.cache_dir}/benchmarks/posebusters_benchmark_no_overlap
+
+# --- Per-evaluation output dirs ------------------------------------------
+evaluations:
+  out_root: ${paths.root_dir}/evaluations
+
+# --- Tool binaries -------------------------------------------------------
+binaries:
+  foldseek_bin: ${oc.env:FOLDSEEK_BIN,${paths.cache_dir}/foldseek/bin}
+
+# --- Bundled example inputs ----------------------------------------------
+#
+# Example PDBs that ship in the source distribution under
+# ``src/lobster/model/latent_generator/example/example_pdbs/``. Defaults to
+# ``$LOBSTER_REPO`` if set, otherwise falls back to the installed-package
+# location resolved at runtime (Phase 8 quickstart docs walk through this).
+# `inpaint_template` is left as a required override for external users —
+# bring your own input PDB via `generation.input_structures=/path/to.pdb`.
+examples:
+  binder_template: ${oc.env:LOBSTER_REPO,${paths.cache_dir}/repo}/src/lobster/model/latent_generator/example/example_pdbs/tfr_bdr_6rwv.pdb
+  inpaint_template: ${oc.env:LOBSTER_EXAMPLE_INPAINT_PDB,???}

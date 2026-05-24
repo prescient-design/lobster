@@ -1,0 +1,80 @@
+# @package _global_
+
+defaults:
+  - train_latent_generator
+  - slurm
+  - _self_
+  - override /data: structure_ligand_pdb
+  - override /model: latent_generator_ligand
+
+# Ligand token count parameter to sweep (controls both quantizer and decoder codebook size)
+ligand_tokens: 512
+
+# Override model training steps to 100k
+model:
+  num_training_steps: 100000
+  num_warmup_steps: 10000
+  lr_scheduler:
+    num_training_steps: 100000
+    num_warmup_steps: 10000
+  # Fixed learning rate
+  optim:
+    lr: 5e-4
+  # Link quantizer ligand tokens to sweep parameter
+  quantizer:
+    ligand_n_tokens: ${ligand_tokens}
+  # Fixed decoder dimensions with linked ligand codebook size
+  decoder_factory:
+    decoder_mapping:
+      vit_decoder:
+        struc_token_dim: 512
+        ligand_struc_token_dim: 512
+        ligand_struc_token_codebook_size: ${ligand_tokens}
+
+# Data configuration
+data:
+  num_workers: 8
+
+# Trainer configuration
+trainer:
+  num_sanity_val_steps: 0
+  strategy: ddp_find_unused_parameters_true
+
+# SLURM launcher configuration
+hydra:
+  sweep:
+    dir: /cv/data/ai4dd/data2/ume/latent_generator_/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  launcher:
+    timeout_min: 10080  # 7 days
+    cpus_per_task: 16
+    nodes: 1
+    tasks_per_node: 8
+    gpus_per_node: 8
+    mem_gb: 256
+    partition: b200
+    qos: premium
+    setup:
+      - "cd $SLURM_SUBMIT_DIR"
+      - "source .venv/bin/activate"
+      - "nvidia-smi"
+      - "export LD_LIBRARY_PATH=/opt/amazon/efa/lib64:/opt/amazon/openmpi/lib64:/opt/amazon/ofi-nccl/lib64"
+      - "export WANDB_BASE_URL=https://genentech.wandb.io"
+      - "export WANDB_MODE=online"
+      - "export WANDB_DIR=$SLURM_SUBMIT_DIR/wandb"
+      - "export WANDB_INSECURE_DISABLE_SSL=true"
+      - "export HYDRA_FULL_ERROR=1"
+      - "export PYTHONUNBUFFERED=1"
+      - "export NCCL_DEBUG=INFO"
+      - "export LOBSTER_RUNS_DIR=/cv/data/ai4dd/data2/ume/latent_generator_/runs/"
+      - "export LOBSTER_DATA_DIR=/cv/data/ai4dd/data2/ume/.cache2/"
+      - "export LOBSTER_USER=$(whoami)"
+      - "export TOKENIZERS_PARALLELISM=true"
+      - "umask g+w"
+
+# WandB logger configuration for sweep grouping
+logger:
+  group: latent_gen_ligand_tokens_sweep_${now:%Y%m%d_%H%M%S}
+  tags: [ligand_tokens_sweep, latent_generator, protein_ligand]
+  name: lg_tokens${ligand_tokens}_dim512_lr5e-4
+

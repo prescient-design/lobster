@@ -1,22 +1,29 @@
+# @package _global_
+
 # Example configuration for unconditional generation
 # Purpose: Improve ESMFold validation metrics through structure-sequence consistency
-# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_unconditional
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/generate_unconditional
 
 # Output directory
-output_dir: "./examples/generated_unconditional"
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/unconditional_canonical"
 
 # Random seed for reproducibility
 seed: 12345
 
-# Model configuration
+# Model configuration — canonical TED checkpoint.
 model:
-  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt"
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-ted
 
 # Generation parameters
 generation:
   mode: unconditional
-  length: [500]
+  length: [100, 200, 300, 400, 500]
   num_samples: 10
   nsteps: 1000
   batch_size: 1
@@ -62,7 +69,7 @@ generation:
       enable_max_percent_identity_threshold: true # Enable maximum percent identity quality control
       max_percent_identity: 100             # Maximum percent identity - if too high, structure is too unique (%)
       enable_sequence_token_check: true      # Enable check for invalid sequence tokens (mask/unknown amino acids)
-      max_retries: 30                        # Maximum retry attempts per iteration
+      max_retries: 100                        # Maximum retry attempts per iteration
   
   # Enable ESMFold validation (required to measure improvement)
   use_esmfold: true
@@ -70,7 +77,7 @@ generation:
 
   # Foldseek Diversity Analysis (structural clustering)
   calculate_foldseek_diversity: true  # Enable/disable diversity calculation
-  foldseek_bin_path: "/homefs/home/lisanzas/scratch/Develop/lobster/src/lobster/metrics/foldseek/bin"
+  foldseek_bin_path: "${paths.binaries.foldseek_bin}"
   foldseek_tmscore_threshold: 0.5  # TM-score threshold for Foldseek clustering
   rmsd_threshold_for_diversity: 2.0  # Only cluster structures with RMSD < this threshold
   

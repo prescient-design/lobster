@@ -1,0 +1,3 @@
+_target_: lobster.transforms._structure_transforms.ESMEmbeddingTransform
+model_name: "esmc_300m"
+device: "auto" 

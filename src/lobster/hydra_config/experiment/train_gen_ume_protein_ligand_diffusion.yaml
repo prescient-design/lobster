@@ -1,0 +1,75 @@
+# @package _global_
+# Experiment config for training Gen-UME Protein-Ligand with Diffusion Loss
+#
+# This config trains the unified model using:
+# - Discrete flow matching for sequence, ligand atoms, and bonds
+# - DiffusionLoss for structure tokens (continuous embeddings)
+#
+# Based on MAR paper: "Autoregressive Image Generation without Vector Quantization"
+# https://arxiv.org/abs/2406.11838
+#
+# Key differences from standard gen_ume_protein_ligand:
+# - model.use_diffusion_loss_structure=true
+# - Uses continuous structure embeddings instead of discrete tokens
+# - DiffusionLoss MLP predicts embeddings conditioned on transformer hidden states
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_gen_ume_protein_ligand_diffusion
+#
+defaults:
+  - override /data: structure_ligand_pdb_sair_bond
+  - override /model: leflur_protein_ligand_diffusion
+  - override /callbacks: leflur_protein_ligand
+compile: false
+
+# Logging config
+logger:
+  name: gen_ume_pl_diffusion-${model.encoder_kwargs.model_size}_${data.datasets}_${paths.timestamp}
+  project: lobster_gen_ume_protein_ligand_diffusion
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+# Paths
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+# Trainer config
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: 100000
+  val_check_interval: 1000  # Validate every 1000 steps
+  limit_val_batches: 100    # Use 100 batches for validation
+  precision: bf16-mixed
+  accumulate_grad_batches: 40  # Effective batch size = 8 * 40 = 320
+  devices: auto
+  num_sanity_val_steps: 2
+
+# Data config overrides
+# Note: batch_size reduced from 40 to 8 for memory efficiency with bond matrix prediction
+# accumulate_grad_batches increased to 40 to maintain effective batch size of 320
+data:
+  batch_size: 8
+  num_workers: 8
+
+# Model config overrides
+model:
+  lr: 1e-4
+  num_warmup_steps: 5000
+  num_training_steps: 100000
+  scheduler_kwargs:
+    num_warmup_steps: 5000
+    num_training_steps: 100000
+  encoder_kwargs:
+    model_size: small
+  # DiffusionLoss hyperparameters (can be tuned)
+  diffusion_depth: 3
+  diffusion_width: 1024
+  diffusion_num_sampling_steps: "100"
+  diffusion_noise_schedule: cosine
+  diffusion_loss_weight: 1.0
+

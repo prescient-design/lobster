@@ -1,0 +1,95 @@
+# @package _global_
+# Sweep config for Gen-UME Protein-Ligand batch size and learning rate optimization
+#
+# This sweeps over:
+# - Batch sizes: 8, 16, 24, 32 per GPU (effective: batch_size * 8 GPUs * accumulate)
+# - Learning rates: 1e-4, 3e-4, 5e-4, 1e-3
+#
+# Usage (from lobster root):
+#   bash slurm/scripts/train_gen_ume_protein_ligand_batch_lr_sweep.sh
+
+defaults:
+  - train_gen_ume_protein_ligand
+  - slurm
+  - _self_
+
+# Trainer configuration
+trainer:
+  num_sanity_val_steps: 2
+  strategy: ddp_find_unused_parameters_true
+  accumulate_grad_batches: 20  # Reduced from 40 since we're testing larger batch sizes
+  max_steps: 50000  # Shorter runs for sweep (half of normal)
+  val_check_interval: 500  # More frequent validation for faster feedback
+
+# Model config - learning rate will be swept
+model:
+  lr: 1e-4  # Default, will be overridden by sweep
+  num_warmup_steps: 2500
+  num_training_steps: 50000
+  scheduler_kwargs:
+    num_warmup_steps: 2500
+    num_training_steps: 50000
+  use_se3_augmentation: true
+  se3_translation_scale: 1.0
+
+# Data configuration - batch size will be swept
+data:
+  batch_size: 8  # Default, will be overridden by sweep
+  num_workers: 8
+
+# Callbacks - enable minimization for proper evaluation
+callbacks:
+  protein_ligand_decode:
+    minimize_ligand: true
+  protein_ligand_inverse_folding:
+    minimize_ligand: true
+  protein_ligand_forward_folding:
+    minimize_ligand: true
+
+# SLURM launcher configuration
+hydra:
+  sweep:
+    dir: /cv/scratch/u/lisanzas/gen_ume_protein_ligand/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  launcher:
+    timeout_min: 10080  # 7 days
+    cpus_per_task: 48
+    nodes: 1
+    tasks_per_node: 1
+    gpus_per_node: null  # Using gres instead to specify B200
+    mem_gb: 256
+    partition: ai4dd
+    qos: llm
+    account: llm
+    gres: "gpu:b200:8"
+    setup:
+      - "cd /cv/home/lisanzas/lobster"
+      - "nvidia-smi"
+      - "export WANDB_BASE_URL=https://genentech.wandb.io"
+      - "export WANDB_MODE=online"
+      - "export WANDB_INSECURE_DISABLE_SSL=true"
+      - "export WANDB_INIT_TIMEOUT=300"
+      - "export HYDRA_FULL_ERROR=1"
+      - "export PYTHONUNBUFFERED=1"
+      - "export NCCL_DEBUG=INFO"
+      - "export NCCL_NET_PLUGIN=''"
+      - "export NCCL_P2P_DISABLE=0"
+      - "export NCCL_SHM_DISABLE=0"
+      - "export LOBSTER_RUNS_DIR=/cv/scratch/u/lisanzas/gen_ume_protein_ligand/runs/"
+      - "export LOBSTER_DATA_DIR=/cv/scratch/u/lisanzas/.cache/"
+      - "export LOBSTER_USER=$(whoami)"
+      - "export TOKENIZERS_PARALLELISM=true"
+      - "umask g+w"
+      - "mkdir -p /cv/scratch/u/lisanzas/slurm_logs/train_gen_ume_protein_ligand"
+      - "unset SLURM_NTASKS"
+      - "unset SLURM_JOB_NAME"
+      - "unset SLURM_NTASKS_PER_NODE"
+
+# WandB logger configuration for sweep grouping
+logger:
+  project: lobster_gen_ume_protein_ligand
+  group: gen_ume_batch_lr_sweep_${now:%Y%m%d_%H%M%S}
+  tags: [batch_lr_sweep, gen_ume, protein_ligand]
+  name: gen_ume_bs${data.batch_size}_lr${model.lr}
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+

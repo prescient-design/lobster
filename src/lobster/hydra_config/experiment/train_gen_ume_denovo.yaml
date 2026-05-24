@@ -1,0 +1,57 @@
+# @package _global_
+# Experiment config for training Gen-UME on protein-only data with de novo synthetic dataset
+#
+# Training data:
+# - PDB: 278k experimental protein structures (clustered at 40% seq identity)
+# - AFDB SwissProt: 198k AlphaFold DB structures
+# - De Novo: 772k synthetic structures from 4 generative models × 5 lengths (100-500),
+#   18,109 TM-score clusters, with alternative_sequences for runtime sequence diversity
+#
+# Hyperparams aligned with the medium protein-ligand AFDB run (bs=36, lr=1e-3, 8 GPUs).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_gen_ume_denovo
+#
+defaults:
+  - override /data: structure_pdb_afdb_denovo
+  - override /model: leflur
+  - override /callbacks: leflur_fwd_cameo
+compile: false
+
+logger:
+  name: gen_ume_denovo-${model.encoder_kwargs.model_size}_${data.datasets}_${paths.timestamp}
+  project: lobster_gen_ume_denovo
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: 50000
+  val_check_interval: 500
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 20
+  devices: 8
+  num_sanity_val_steps: 2
+
+data:
+  batch_size: 48
+  num_workers: 8
+
+model:
+  lr: 1e-3
+  num_warmup_steps: 2500
+  num_training_steps: 50000
+  scheduler_kwargs:
+    num_warmup_steps: 2500
+    num_training_steps: 50000
+  encoder_kwargs:
+    model_size: medium

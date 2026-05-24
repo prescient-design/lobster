@@ -1,0 +1,46 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml
+  - transform_fn: structure_backbone_aa_tokenizer_alt_seq_transform.yaml
+  - collate_fn: collate_fn_backbone_binder_target.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+root: /cv/data/ai4dd/data2/lisanzas/
+
+# Protein-only UME training: PDB + AFDB SwissProt + De Novo + TED + CATH
+# - PDB train: 280k structures (clustered at 40% seq identity)
+# - AFDB SwissProt train: 220k structures from AlphaFold DB
+# - De Novo: 772k synthetic structures from 4 generative models × 5 lengths
+# - TED: 6k structures from novel/high-symmetry AlphaFold domains (4,323 clusters)
+# - CATH: 27k structures from CATH S40 experimental domains (4,702 clusters)
+# - Validation: AFDB CAMEO set
+# - Test: AFDB multiflow set
+path_to_datasets: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/train_processed",
+  "/cv/scratch/u/lisanzas/denovo_dataset/ume_dataset/train_processed_pt",
+  "/cv/scratch/u/lisanzas/ted_ume_dataset/ume_dataset/train_processed_pt",
+  "/cv/scratch/u/lisanzas/cath_dataset/ume_dataset/train_processed_pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/test_multiflow_processed"
+]
+max_length: 512
+
+cluster_file_list: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/pdb_swissprot_clusters.pt",
+  "/cv/scratch/u/lisanzas/denovo_dataset/ume_dataset/denovo_clusters.pt",
+  "/cv/scratch/u/lisanzas/ted_ume_dataset/ume_dataset/ted_clusters.pt",
+  "/cv/scratch/u/lisanzas/cath_dataset/ume_dataset/cath_clusters.pt",
+  null,
+  null
+]
+
+files_to_keep: null
+files_to_keep_list: [null, null, null, null, null, null, null]
+testing: false
+use_shards: false
+datasets: pdb_afdb_denovo_ted_cath
+balance_datasets: true
+
+batch_size: 100
+num_workers: 12

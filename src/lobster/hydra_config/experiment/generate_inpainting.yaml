@@ -1,16 +1,23 @@
+# @package _global_
+
 # Example configuration for inpainting (regenerate specific residues of a given structure)
-# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_inpainting
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/generate_inpainting
 
 # Output directory
-output_dir: "./examples/generated_inpainting_test"
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/inpainting_canonical"
 
 # Random seed for reproducibility
 seed: 54321
 
-# Model configuration
+# Model configuration — canonical TED checkpoint.
 model:
-  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt" 
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-ted
 
 # Generation settings
 generation:

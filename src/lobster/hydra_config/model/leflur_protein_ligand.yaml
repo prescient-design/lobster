@@ -1,0 +1,57 @@
+# Model config for LeFlur Protein-Ligand
+# Extends LeFlur to support protein-only AND protein-ligand tasks
+_target_: lobster.model.leflur.LeFlurProteinLigandLightningModule
+
+# Protein sequence tokens
+mask_token_id: 32
+pad_token_id: 1
+vocab_size: 33
+
+# Ligand atom tokens (from ELEMENT_VOCAB_EXTENDED)
+ligand_atom_vocab_size: 25
+ligand_mask_token_id: 1  # MASK token
+ligand_pad_token_id: 0   # PAD token
+
+# Bond types (0=none, 1=single, 2=double, 3=triple, 4=aromatic, 5=masked)
+num_bond_types: 6
+
+# Training params
+lr: 1e-4
+beta1: 0.9
+beta2: 0.98
+eps: 1e-12
+weight_decay: 0.01
+scheduler: cosine
+scheduler_kwargs:
+  num_warmup_steps: 5000
+  num_training_steps: 100000
+num_warmup_steps: 5000
+num_training_steps: 100000
+
+# Loss weights
+bond_loss_weight: 1.0
+ligand_atom_loss_weight: 1.0
+ligand_struct_loss_weight: 1.0
+
+# SE(3) augmentation (random rotation + translation during training)
+use_se3_augmentation: true
+se3_translation_scale: 1.0
+
+# LatentGenerator for structure encoding/decoding
+# Uses FSQ (4375 tokens) for both protein and ligand structures
+decode_tokens_during_training: true
+latent_generator_model_name: "LG Protein Ligand fsq 4375"
+
+# Flow matching config
+use_masked_prior: true
+inverse_folding: false  # Set to true for inverse folding training
+
+# Encoder architecture kwargs (passed to NeoBERT via LeFlurProteinLigandEncoderModule)
+# Note: vocab sizes are computed dynamically from the LatentGenerator quantizer
+ckpt_path: null
+encoder_kwargs:
+  # max_length must accommodate protein (up to 512) + ligand (up to 200 atoms)
+  # This controls the rotary position embedding precomputation
+  max_length: 768
+  model_size: small  # Options: mini, small, medium, large
+

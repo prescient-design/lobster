@@ -1,18 +1,25 @@
+# @package _global_
+
 # Example configuration for forward folding (structure generation from input sequences and structures)
 # Forward folding takes input structures and their sequences, then generates new structures
 # Sequences are automatically tokenized using AminoAcidTokenizerTransform
-# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_forward_folding
+# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/generate_forward_folding
 
 # Output directory
-output_dir: "./examples/generated_forward_folding"
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/forward_folding_canonical"
 
 # Random seed for reproducibility
 seed: 54321
 
-# Model configuration
+# Model configuration — canonical TED checkpoint.
 model:
-  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt" 
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-ted
 
 # Generation settings
 generation:
@@ -33,7 +40,7 @@ generation:
   # Directory: input_structures: "/path/to/structure/directory/"
   # Glob pattern: input_structures: "/path/to/structures/*.pdb"
   # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
-  input_structures: "test_data/inv_folding/9jl9.pdb"
+  input_structures: "${paths.benchmarks.multiflow_test}/*.pt"
   
   # Maximum length for structures
   max_length: 512

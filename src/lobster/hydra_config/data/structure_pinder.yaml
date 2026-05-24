@@ -4,11 +4,11 @@ defaults:
   - collate_fn: collate_fn_backbone_binder_target.yaml # Collate function for the dataloader
 
 _target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
-root: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
-path_to_datasets: ["/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/train.pt", "/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/val.pt", /data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/test.pt"]
+root: /cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/temp/ # this doesnt do anything
+path_to_datasets: ["/cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/train.pt", "/cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/val.pt", /cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder_raw_pdbs_bb_coords/test.pt"]
 max_length: 512 
-cluster_file: /data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/cluster_dict.pt
-files_to_keep: /data/lisanzas/structure_tokenizer/studies/data/pinder/pinder_to_keep.pkl
+cluster_file: /cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder/processed_atom/pdb/all/cluster_dict.pt
+files_to_keep: /cv/data/ai4dd/data/lisanzas/structure_tokenizer/studies/data/pinder/pinder_to_keep.pkl
 testing: false
 datasets: pinder
 use_shards: false
