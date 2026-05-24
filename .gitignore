@@ -261,8 +261,11 @@ src/lobster/model/integrations/ume_huggingface/model/*
 # Internal/exploratory design notes + paper drafts (research-only).
 docs/leflur/research_notes/
 
-# Per-PDB SLURM driver scripts from the R5 denovo benchmark (research-only).
+# Per-PDB Hydra configs + SLURM driver scripts from the R5 denovo benchmark
+# (research-only inpainting sweep over 32 reference PDBs; not part of the
+# publication inference surface).
 /slurm/scripts/denovo_r5/
+/src/lobster/hydra_config/experiment/denovo_r5/
 
 # SLURM launcher READMEs (companion docs for the training/eval launchers
 # above; not needed for inference).

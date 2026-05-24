@@ -38,8 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overlay rather than hard-coding paths.
 - **Experiment config tiering** at `lobster/hydra_config/experiment/`:
   - 9 Tier-1 canonical configs (flat at `experiment/`)
-  - 80 Tier-2 research configs (under `experiment/research/` and `experiment/denovo_r5/`)
+  - 48 Tier-2 research configs (under `experiment/research/`)
   - 1 Tier-3 legacy config (under `experiment/legacy/`)
+  - 32 per-PDB R5 inpainting configs (`experiment/denovo_r5/`) are kept
+    locally on internal machines but gitignored on the publication branch
+    since they are research-only sweeps.
 - **`lobster.metrics.protein_ligand`** subpackage — groups three
   `Evaluator` classes (forward folding, inverse folding, ligand-conditioned
   generation), two ablation scripts, and the LigandMPNN baseline.
