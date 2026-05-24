@@ -126,6 +126,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Accidental resurrection of legacy LinearProbe callback family.** PR
+  #201 ("Update callback evaluations") on `main` migrated the
+  `LinearProbeCallback` framework to a new sklearn-based
+  `SklearnProbeCallback` family
+  (`CalmSklearnProbeCallback`, `MoleculeACESklearnProbeCallback`,
+  `PEERSklearnProbeCallback`, `SklearnProbeCallback`,
+  `SklearnProbeTaskConfig`). The legacy framework's 5 source files
+  (`_linear_probe_callback.py`, `_calm_linear_probe_callback.py`,
+  `_moleculeace_linear_probe_callback.py`,
+  `_peer_evaluation_callback.py`, `_peer_utils.py`) and 3 test files
+  (`test__calm_linear_probe_callback.py`,
+  `test__peer_evaluation_callback.py`,
+  `tests/lobster/evaluation/test_evaluate_model_with_callbacks.py`)
+  were deleted in that PR. Earlier feature commits on
+  `leflur_release` (`dda61d1`, `877b8b0`) accidentally re-introduced
+  all 9 files alongside an `__init__.py` re-export block. None of the
+  re-introduced files are imported by the LeFlur inference surface,
+  and `__init__.py` is now restored to its `origin/main` state with
+  only the LeFlur callback exports appended
+  (`StructureDecodeCallback`, `UnconditionalGenerationCallback`,
+  `InverseFoldingCallback`, `ForwardFoldingCallback`,
+  `ProteinLigandDecodeCallback`,
+  `ProteinLigandInverseFoldingCallback`,
+  `ProteinLigandForwardFoldingCallback`, `S3CheckpointBackupCallback`,
+  `CGBoltzEvalCallback`).
+- **Unused branch-added test fixture** `lobster/callbacks/_test_structure_cropping.py`
+  (added by `dda61d1`, no importers, never referenced).
+- **Off-topic stray edit** to `lobster/metrics/_alphafold2_scores.py`
+  reverted to `origin/main` — a 4-line removal of removed
+  `mk_afdesign_model` kwargs (`use_initial_guess`, `use_initial_atom_pos`,
+  `initial_guess`) that has nothing to do with LeFlur inference; can
+  re-land in a separate PR if the upstream-API-compat fix is needed.
 - Orphaned duplicate evaluators
   `lobster/metrics/evaluate_protein_ligand_{forward,inverse}_folding.py`
   (superseded by the cmdline entry-point versions).
