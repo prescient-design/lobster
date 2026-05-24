@@ -3,7 +3,7 @@
 Backs both the Hydra entry point (:mod:`lobster.cmdline.generate`,
 ``generation.mode={ligand_conditioned, protein_ligand_forward_folding,
 protein_ligand_inverse_folding}``) and the three back-compat argparse CLIs
-under ``src/lobster/cmdline/evaluate_*ligand*.py``.
+under ``src/lobster/cmdline/evaluation/evaluate_*ligand*.py``.
 
 Three runners are exposed, each pairing a frozen-shape knob bundle
 (``*RunConfig``) with a thin wrapper around the corresponding evaluator
@@ -134,9 +134,7 @@ def run_ligand_conditioned_generation(
 
     data_dir = Path(config.data_dir)
     if not data_dir.exists():
-        raise FileNotFoundError(
-            f"Ligand-conditioned data_dir does not exist: {data_dir}"
-        )
+        raise FileNotFoundError(f"Ligand-conditioned data_dir does not exist: {data_dir}")
 
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -145,8 +143,7 @@ def run_ligand_conditioned_generation(
         Path(config.structure_path).mkdir(parents=True, exist_ok=True)
 
     logger.info(
-        "Ligand-conditioned generation: data_dir=%s, length=%d, "
-        "num_designs=%d, nsteps=%d, num_samples=%s",
+        "Ligand-conditioned generation: data_dir=%s, length=%d, num_designs=%d, nsteps=%d, num_samples=%s",
         data_dir,
         config.length,
         config.num_designs,
@@ -189,15 +186,11 @@ def run_ligand_conditioned_generation(
     samples = evaluator.load_test_set()
     logger.info("Loaded %d ligand-conditioned samples", len(samples))
 
-    results = evaluator.evaluate(
-        model, samples, structure_path=config.structure_path
-    )
+    results = evaluator.evaluate(model, samples, structure_path=config.structure_path)
 
     # Write CSV. When structure_path is set we co-locate so the artefacts
     # stay in a single directory (matches old evaluator behaviour).
-    csv_target_dir = (
-        Path(config.structure_path) if config.structure_path else output_dir
-    )
+    csv_target_dir = Path(config.structure_path) if config.structure_path else output_dir
     csv_path = csv_target_dir / os.path.basename(config.output_csv_name)
     results["results_df"].to_csv(csv_path, index=False)
     logger.info("Wrote ligand-conditioned results to %s", csv_path)
@@ -277,9 +270,7 @@ def run_protein_ligand_forward_folding(
 
     data_dir = Path(config.data_dir)
     if not data_dir.exists():
-        raise FileNotFoundError(
-            f"Protein-ligand forward folding data_dir does not exist: {data_dir}"
-        )
+        raise FileNotFoundError(f"Protein-ligand forward folding data_dir does not exist: {data_dir}")
 
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -331,13 +322,9 @@ def run_protein_ligand_forward_folding(
     samples = evaluator.load_test_set()
     logger.info("Loaded %d forward-folding samples", len(samples))
 
-    results = evaluator.evaluate(
-        model, samples, structure_path=config.structure_path
-    )
+    results = evaluator.evaluate(model, samples, structure_path=config.structure_path)
 
-    csv_target_dir = (
-        Path(config.structure_path) if config.structure_path else output_dir
-    )
+    csv_target_dir = Path(config.structure_path) if config.structure_path else output_dir
     csv_path = csv_target_dir / os.path.basename(config.output_csv_name)
     results["results_df"].to_csv(csv_path, index=False)
     logger.info("Wrote forward-folding results to %s", csv_path)
@@ -410,9 +397,7 @@ def run_protein_ligand_inverse_folding(
 
     data_dir = Path(config.data_dir)
     if not data_dir.exists():
-        raise FileNotFoundError(
-            f"Protein-ligand inverse folding data_dir does not exist: {data_dir}"
-        )
+        raise FileNotFoundError(f"Protein-ligand inverse folding data_dir does not exist: {data_dir}")
 
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -464,13 +449,9 @@ def run_protein_ligand_inverse_folding(
     samples = evaluator.load_test_set()
     logger.info("Loaded %d inverse-folding samples", len(samples))
 
-    results = evaluator.evaluate(
-        model, samples, structure_path=config.structure_path
-    )
+    results = evaluator.evaluate(model, samples, structure_path=config.structure_path)
 
-    csv_target_dir = (
-        Path(config.structure_path) if config.structure_path else output_dir
-    )
+    csv_target_dir = Path(config.structure_path) if config.structure_path else output_dir
     csv_path = csv_target_dir / os.path.basename(config.output_csv_name)
     results["results_df"].to_csv(csv_path, index=False)
     logger.info("Wrote inverse-folding results to %s", csv_path)

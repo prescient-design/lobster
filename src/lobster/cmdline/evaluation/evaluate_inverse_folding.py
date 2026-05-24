@@ -4,7 +4,7 @@ This script evaluates sequence recovery for inverse folding without ligand conte
 Useful for comparing protein-only inverse folding performance.
 
 Usage:
-    uv run python -m lobster.cmdline.evaluate_inverse_folding \
+    uv run python -m lobster.cmdline.evaluation.evaluate_inverse_folding \
         --checkpoint /path/to/checkpoint.ckpt \
         --data_dir "/cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed/*.pt" \
         --num_samples 127 \

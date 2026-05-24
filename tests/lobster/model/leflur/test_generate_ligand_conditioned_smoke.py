@@ -38,37 +38,26 @@ from types import ModuleType
 import pytest
 
 
-_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "scripts"
-    / "leflur_ligand_conditioned_smoke.py"
-)
+_SCRIPT_PATH = Path(__file__).resolve().parents[4] / "scripts" / "leflur_ligand_conditioned_smoke.py"
 PL_CKPT = Path(
     "/cv/scratch/u/lisanzas/gen_ume_protein_ligand_medium/runs"
     "/2026-02-11T19-45-30/epoch=278-step=40057-val_loss=1.6365.ckpt"
 )
-LIGAND_DIR = Path(
-    "/cv/home/lisanzas/lobster/data/posebusters/processed"
-    "/posebusters_benchmark_no_overlap"
-)
+LIGAND_DIR = Path("/cv/home/lisanzas/lobster/data/posebusters/processed/posebusters_benchmark_no_overlap")
 
 # Ligand-conditioned designs run at lower temperatures than unconditional so
 # the published self-consistency expectation is lower (mean scTM is
 # ligand-and-pocket dependent; the evaluator's success rubric uses scTM > 0.5
 # as the "high self-consistency" cutoff, see ``_print_summary`` in
-# ``cmdline/evaluate_ligand_conditioned_protein_generation.py``). 0.4 is a
+# ``cmdline/evaluation/evaluate_ligand_conditioned_protein_generation.py``). 0.4 is a
 # lenient single-sample smoke floor that catches structural collapse without
 # flaking on hard ligands or unlucky seeds.
 SCTM_FLOOR = 0.40
 
 
 def _load_smoke_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "leflur_ligand_conditioned_smoke", str(_SCRIPT_PATH)
-    )
-    assert spec is not None and spec.loader is not None, (
-        f"could not build module spec from {_SCRIPT_PATH}"
-    )
+    spec = importlib.util.spec_from_file_location("leflur_ligand_conditioned_smoke", str(_SCRIPT_PATH))
+    assert spec is not None and spec.loader is not None, f"could not build module spec from {_SCRIPT_PATH}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -87,9 +76,7 @@ def _skip_if_unsupported(require_cuda: bool = True) -> None:
         except ImportError:
             pytest.skip("torch not installed")
         if not torch.cuda.is_available():
-            pytest.skip(
-                "CUDA unavailable; LeFlur PL sampling + ESMFold need a GPU in practice"
-            )
+            pytest.skip("CUDA unavailable; LeFlur PL sampling + ESMFold need a GPU in practice")
 
 
 @pytest.fixture(scope="module")
@@ -99,7 +86,7 @@ def ligand_conditioned_sample(tmp_path_factory):
     smoke = _load_smoke_module()
 
     out_dir = tmp_path_factory.mktemp("leflur_ligand_smoke")
-    # Hyperparameters mirror cmdline/evaluate_ligand_conditioned_protein_generation.py
+    # Hyperparameters mirror cmdline/evaluation/evaluate_ligand_conditioned_protein_generation.py
     # exactly so this test exercises the canonical inference recipe.
     args = smoke.parse_args(
         [
@@ -151,12 +138,8 @@ def test_ligand_conditioned_length100_decodes_to_pdb(ligand_conditioned_sample) 
 
     protein_pdb: Path = result["protein_pdb"]
     assert protein_pdb.exists(), f"missing protein PDB: {protein_pdb}"
-    atom_lines = sum(
-        1 for line in protein_pdb.read_text().splitlines() if line.startswith("ATOM")
-    )
-    assert atom_lines >= 250, (
-        f"protein PDB has only {atom_lines} ATOM lines; expected ~300 for L=100"
-    )
+    atom_lines = sum(1 for line in protein_pdb.read_text().splitlines() if line.startswith("ATOM"))
+    assert atom_lines >= 250, f"protein PDB has only {atom_lines} ATOM lines; expected ~300 for L=100"
 
     coords = result["protein_coords"]
     assert coords.shape[1] == args.length, "protein length mismatch"
@@ -165,9 +148,7 @@ def test_ligand_conditioned_length100_decodes_to_pdb(ligand_conditioned_sample) 
 
     seq = result["sequence"]
     assert len(seq) == args.length
-    assert set(seq) <= set("ACDEFGHIKLMNPQRSTVWYX"), (
-        f"unexpected AA codes: {sorted(set(seq))}"
-    )
+    assert set(seq) <= set("ACDEFGHIKLMNPQRSTVWYX"), f"unexpected AA codes: {sorted(set(seq))}"
 
     # Decoded ligand must be present and have at least as many heavy atoms
     # as the PoseBusters fixture provided.
@@ -175,17 +156,11 @@ def test_ligand_conditioned_length100_decodes_to_pdb(ligand_conditioned_sample) 
     assert lig_coords is not None, "model did not return decoded ligand coordinates"
     assert torch.isfinite(lig_coords).all(), "ligand coords contain NaN / Inf"
     n_decoded_atoms = lig_coords.shape[1]
-    assert n_decoded_atoms >= 5, (
-        f"only {n_decoded_atoms} decoded ligand atoms; PoseBusters fixtures have ≥10"
-    )
+    assert n_decoded_atoms >= 5, f"only {n_decoded_atoms} decoded ligand atoms; PoseBusters fixtures have ≥10"
 
     ligand_pdb: Path | None = result["ligand_pdb"]
-    assert ligand_pdb is not None and ligand_pdb.exists(), (
-        "ligand PDB was not written"
-    )
-    het_lines = sum(
-        1 for line in ligand_pdb.read_text().splitlines() if line.startswith("HETATM")
-    )
+    assert ligand_pdb is not None and ligand_pdb.exists(), "ligand PDB was not written"
+    het_lines = sum(1 for line in ligand_pdb.read_text().splitlines() if line.startswith("HETATM"))
     assert het_lines == n_decoded_atoms, (
         f"ligand PDB HETATM count ({het_lines}) does not match decoded atom count ({n_decoded_atoms})"
     )
@@ -208,10 +183,7 @@ def test_ligand_conditioned_length100_esmfold_agrees(
     sc_tm = esm["scTM"]
     sc_rmsd = esm["scRMSD"]
     plddt = esm["plddt"]
-    msg = (
-        f"ESMFold↔LeFlur (PL) scTM={sc_tm:.4f} (floor={SCTM_FLOOR:.2f}), "
-        f"scRMSD={sc_rmsd:.2f}Å, pLDDT={plddt:.3f}"
-    )
+    msg = f"ESMFold↔LeFlur (PL) scTM={sc_tm:.4f} (floor={SCTM_FLOOR:.2f}), scRMSD={sc_rmsd:.2f}Å, pLDDT={plddt:.3f}"
     assert sc_tm >= SCTM_FLOOR, msg
     # ESMFold pLDDT collapse → designed sequence quality regression.
     assert plddt >= 0.40, f"ESMFold pLDDT collapsed: {msg}"

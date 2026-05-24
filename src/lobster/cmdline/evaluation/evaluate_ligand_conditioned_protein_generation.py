@@ -6,14 +6,14 @@ the sequence is then folded with ESMFold, and the self-consistency between
 the model-decoded structure and the ESMFold prediction is measured.
 
 Usage:
-    uv run python -m lobster.cmdline.evaluate_ligand_conditioned_protein_generation \
+    uv run python -m lobster.cmdline.evaluation.evaluate_ligand_conditioned_protein_generation \
         --output results.csv \
         --structure_path ./output/ \
         --length 100 \
         --num_samples 10
 
 Example (full test set):
-    uv run python -m lobster.cmdline.evaluate_ligand_conditioned_protein_generation \
+    uv run python -m lobster.cmdline.evaluation.evaluate_ligand_conditioned_protein_generation \
         --output ligand_cond_protein_gen_results.csv \
         --structure_path ./ligand_cond_eval/ \
         --length 100 \
@@ -318,9 +318,7 @@ def main():
     # Output dir for the CSV: when structure_path is given the runner
     # writes alongside the structures; otherwise we use the current
     # directory (matches pre-Phase-5 evaluator behaviour).
-    csv_output_dir = (
-        args.structure_path if args.structure_path else os.getcwd()
-    )
+    csv_output_dir = args.structure_path if args.structure_path else os.getcwd()
 
     config = LigandConditionedRunConfig(
         data_dir=args.data_dir,
@@ -358,10 +356,7 @@ def main():
     )
 
     if args.minimize_ligand:
-        logger.info(
-            f"  Ligand minimization: {args.minimize_mode} "
-            f"({args.force_field}, {args.minimize_steps} steps)"
-        )
+        logger.info(f"  Ligand minimization: {args.minimize_mode} ({args.force_field}, {args.minimize_steps} steps)")
 
     results = run_ligand_conditioned_generation(model, config, plm_fold=plm_fold)
     _print_summary(args, results["summary"])

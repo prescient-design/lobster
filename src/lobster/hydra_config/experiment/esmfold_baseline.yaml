@@ -3,7 +3,7 @@
 # This configuration runs ESMFold as a baseline for forward folding comparison.
 # ESMFold takes only sequences and predicts structures, comparing against ground truth.
 #
-# Usage: uv run python -m lobster.cmdline.esmfold_baseline --config-path "../hydra_config/experiment" --config-name esmfold_baseline
+# Usage: uv run python -m lobster.cmdline.evaluation.esmfold_baseline --config-path "../../hydra_config/experiment" --config-name esmfold_baseline
 
 # Output directory
 output_dir: "./examples/esmfold_baseline_cameo"

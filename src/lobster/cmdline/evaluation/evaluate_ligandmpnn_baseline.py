@@ -5,7 +5,7 @@ on protein-ligand complexes. Co-folding validation is handled separately via
 SLURM batch jobs (see submit_cofold_batch.py).
 
 Usage:
-    uv run python -m lobster.cmdline.evaluate_ligandmpnn_baseline \
+    uv run python -m lobster.cmdline.evaluation.evaluate_ligandmpnn_baseline \
         --data_dir /path/to/posebusters_benchmark_no_overlap \
         --raw_data_dir /path/to/posebusters_benchmark_set \
         --output results.csv \

@@ -9,8 +9,8 @@ and compares predictions to ground truth structures.
 Outputs the same CSV format as forward_folding mode for easy comparison.
 
 Usage:
-    uv run python -m lobster.cmdline.esmfold_baseline \\
-        --config-path "../hydra_config/experiment" \\
+    uv run python -m lobster.cmdline.evaluation.esmfold_baseline \\
+        --config-path "../../hydra_config/experiment" \\
         --config-name esmfold_baseline
 """
 
@@ -31,7 +31,7 @@ from lobster.metrics import align_and_compute_rmsd
 from tmtools import tm_align
 
 
-@hydra.main(version_base=None, config_path="../hydra_config", config_name="experiment/esmfold_baseline")
+@hydra.main(version_base=None, config_path="../../hydra_config", config_name="experiment/esmfold_baseline")
 def main(cfg: DictConfig) -> None:
     """
     Run ESMFold baseline for forward folding comparison.

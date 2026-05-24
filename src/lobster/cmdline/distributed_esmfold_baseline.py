@@ -22,7 +22,7 @@ import wandb
 from omegaconf import OmegaConf
 
 # Import the main ESMFold baseline function
-from lobster.cmdline.esmfold_baseline import main as run_esmfold_baseline
+from lobster.cmdline.evaluation.esmfold_baseline import main as run_esmfold_baseline
 
 
 def main():
