@@ -20,6 +20,7 @@ from ._binders import _generate_binders
 from ._forward_folding import _generate_forward_folding
 from ._inpainting import _generate_inpainting
 from ._inverse_folding import _generate_inverse_folding
+from ._score_pll import _score_pll
 from ._unconditional import _generate_unconditional
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "_generate_inpainting",
     "_generate_inverse_folding",
     "_generate_unconditional",
+    "_score_pll",
 ]

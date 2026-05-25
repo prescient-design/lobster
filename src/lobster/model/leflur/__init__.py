@@ -9,6 +9,12 @@ from ._leflur_protein_ligand_encoder import LeFlurProteinLigandEncoderModule
 from ._leflur_protein_ligand_lightning import LeFlurProteinLigandLightningModule
 from ._bond_embedding import BondMatrixEmbedding
 from ._bond_prediction import BondMatrixPredictionHead, BondMatrixLoss
+from ._pll_scoring import (
+    PROTEIN_LIGAND_VARIANTS,
+    PROTEIN_VARIANTS,
+    score_protein_ligand_pll,
+    score_protein_pll,
+)
 from .checkpoints import (
     KNOWN_CHECKPOINTS,
     PAIRED_LG_CHECKPOINTS,
@@ -33,6 +39,10 @@ __all__ = [
     "BondMatrixEmbedding",
     "BondMatrixPredictionHead",
     "BondMatrixLoss",
+    "PROTEIN_VARIANTS",
+    "PROTEIN_LIGAND_VARIANTS",
+    "score_protein_pll",
+    "score_protein_ligand_pll",
     "KNOWN_CHECKPOINTS",
     "PAIRED_LG_CHECKPOINTS",
     "PAIRED_LG_CODECS",

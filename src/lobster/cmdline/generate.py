@@ -26,6 +26,7 @@ from lobster.cmdline.generate_modes._binders import _generate_binders
 from lobster.cmdline.generate_modes._forward_folding import _generate_forward_folding
 from lobster.cmdline.generate_modes._inpainting import _generate_inpainting
 from lobster.cmdline.generate_modes._inverse_folding import _generate_inverse_folding
+from lobster.cmdline.generate_modes._score_pll import _score_pll
 from lobster.cmdline.generate_modes._unconditional import _generate_unconditional
 
 # Set up logging
@@ -37,7 +38,7 @@ def generate(cfg: DictConfig) -> None:
     """Hydra entry point for the ``lobster_generate`` console script.
 
     Dispatches on ``cfg.generation.mode`` to one of the per-mode helpers in
-    this module. Seven modes are wired in:
+    this module. Eight modes are wired in:
 
     * ``unconditional`` — sample novel sequences + structures.
     * ``forward_folding`` — sequence → structure.
@@ -46,6 +47,8 @@ def generate(cfg: DictConfig) -> None:
     * ``ligand_conditioned`` — de-novo design conditioned on a ligand pocket.
     * ``protein_ligand_forward_folding`` — sequence + ligand → structure.
     * ``protein_ligand_inverse_folding`` — structure + ligand → sequence.
+    * ``score_pll`` — Monte-Carlo pseudo-NLL ranking of an existing
+      generation CSV. See :mod:`.generate_modes._score_pll`.
 
     Checkpoint paths in ``cfg.model.ckpt_path`` may be a short name from
     :data:`lobster.model.leflur.KNOWN_CHECKPOINTS` (e.g. ``leflur-ted``), an
@@ -87,10 +90,7 @@ def generate(cfg: DictConfig) -> None:
         # Accept short names ("leflur-ted"), hf:// URIs, https://huggingface.co/...
         # URLs, and local paths. See `lobster.model.leflur.checkpoints`.
         resolved_ckpt = resolve_checkpoint(cfg.model.ckpt_path)
-        logger.info(
-            f"Loading model from checkpoint: {cfg.model.ckpt_path!r} "
-            f"-> {resolved_ckpt}"
-        )
+        logger.info(f"Loading model from checkpoint: {cfg.model.ckpt_path!r} -> {resolved_ckpt}")
         model_cls = hydra.utils.get_class(cfg.model._target_)
         model = model_cls.load_from_checkpoint(str(resolved_ckpt))
     else:
@@ -148,6 +148,8 @@ def generate(cfg: DictConfig) -> None:
         _generate_protein_ligand_forward_folding(model, cfg, device, output_dir, plm_fold)
     elif generation_mode == "protein_ligand_inverse_folding":
         _generate_protein_ligand_inverse_folding(model, cfg, device, output_dir, plm_fold)
+    elif generation_mode == "score_pll":
+        _score_pll(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     else:
         raise ValueError(f"Unknown generation mode: {generation_mode}")
 
@@ -204,9 +206,7 @@ def _generate_ligand_conditioned(
             raw[key] = cfg.generation.get(key)
 
     if "data_dir" not in raw:
-        raw["data_dir"] = cfg.generation.get(
-            "data_dir"
-        ) or cfg.generation.get("input_structures")
+        raw["data_dir"] = cfg.generation.get("data_dir") or cfg.generation.get("input_structures")
     if raw.get("data_dir") is None:
         raise ValueError(
             "ligand_conditioned mode requires generation.data_dir (or "
@@ -243,9 +243,7 @@ def _collect_pl_task_kwargs(cfg: DictConfig, sub_key: str, top_level_keys: tuple
         if key in cfg.generation and key not in raw:
             raw[key] = cfg.generation.get(key)
     if "data_dir" not in raw:
-        raw["data_dir"] = cfg.generation.get(
-            "data_dir"
-        ) or cfg.generation.get("input_structures")
+        raw["data_dir"] = cfg.generation.get("data_dir") or cfg.generation.get("input_structures")
     return raw
 
 
@@ -303,8 +301,7 @@ def _generate_protein_ligand_forward_folding(
     )
     if raw.get("data_dir") is None:
         raise ValueError(
-            "protein_ligand_forward_folding mode requires generation.data_dir "
-            "pointing at the test fixtures."
+            "protein_ligand_forward_folding mode requires generation.data_dir pointing at the test fixtures."
         )
     raw.setdefault("output_dir", str(output_dir))
     raw.setdefault("device", str(device))
@@ -371,8 +368,7 @@ def _generate_protein_ligand_inverse_folding(
     )
     if raw.get("data_dir") is None:
         raise ValueError(
-            "protein_ligand_inverse_folding mode requires generation.data_dir "
-            "pointing at the test fixtures."
+            "protein_ligand_inverse_folding mode requires generation.data_dir pointing at the test fixtures."
         )
     raw.setdefault("output_dir", str(output_dir))
     raw.setdefault("device", str(device))

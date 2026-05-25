@@ -369,6 +369,67 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
 
         return unmasked_x
 
+    @torch.no_grad()
+    def score_pll(
+        self,
+        sequence_tokens: Tensor,
+        structure_tokens: Tensor,
+        mask: Tensor,
+        residue_index: Tensor | None = None,
+        *,
+        K: int = 32,
+        eps: float = 0.02,
+        seed: int = 0,
+        variants: tuple[str, ...] | None = None,
+    ) -> dict[str, Tensor]:
+        """Compute pseudo-NLL ranking scores for a batch of (seq, struc) pairs.
+
+        Centralized PLL scoring for the protein-only LeFlur checkpoint. See
+        :mod:`lobster.model.leflur._pll_scoring` for the full algorithmic
+        description.
+
+        Parameters
+        ----------
+        sequence_tokens : Tensor ``(B, L)``
+        structure_tokens : Tensor ``(B, L)``
+        mask : Tensor ``(B, L)`` of validity (1) vs padding (0)
+        residue_index : Tensor ``(B, L)`` or ``None``
+            When ``None``, ``torch.arange(L)`` is broadcast over the batch.
+        K : Monte-Carlo draws per modality (default 32).
+        eps : Stratified-t endpoint margin (default 0.02).
+        seed : Base seed; sample ``b`` uses ``seed + b`` so the per-sample
+            scoring is deterministic and order-independent.
+        variants : Subset of
+            :data:`lobster.model.leflur._pll_scoring.PROTEIN_VARIANTS`.
+            ``None`` returns the full default tuple.
+
+        Returns
+        -------
+        dict mapping each requested variant name (and the diagnostic
+        ``seq_score_arllh`` / ``struc_score_arllh`` weighted estimators when
+        ``seq`` / ``struc`` are requested) to a ``(B,)`` float tensor.
+        Lower NLL = higher likelihood; rank by ``argmin``.
+        """
+        from ._pll_scoring import PROTEIN_VARIANTS, score_protein_pll
+
+        was_training = self.training
+        self.eval()
+        try:
+            return score_protein_pll(
+                self,
+                sequence_tokens=sequence_tokens,
+                structure_tokens=structure_tokens,
+                mask=mask,
+                residue_index=residue_index,
+                K=K,
+                eps=eps,
+                seed=seed,
+                variants=variants if variants is not None else PROTEIN_VARIANTS,
+            )
+        finally:
+            if was_training:
+                self.train()
+
     def step(
         self, batch: dict[str, Tensor], batch_idx: int, split: Literal["train", "val"] = "train"
     ) -> dict[str, Tensor]:

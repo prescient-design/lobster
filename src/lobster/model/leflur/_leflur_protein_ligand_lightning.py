@@ -858,6 +858,76 @@ class LeFlurProteinLigandLightningModule(LightningModule):
 
         return output
 
+    @torch.no_grad()
+    def score_pll(
+        self,
+        sequence_tokens: Tensor,
+        structure_tokens: Tensor,
+        protein_mask: Tensor,
+        ligand_atom_tokens: Tensor,
+        ligand_structure_tokens: Tensor,
+        ligand_mask: Tensor,
+        residue_index: Tensor | None = None,
+        bond_matrix: Tensor | None = None,
+        *,
+        K: int = 32,
+        eps: float = 0.02,
+        seed: int = 0,
+        variants: tuple[str, ...] | None = None,
+    ) -> dict[str, Tensor]:
+        """4-modality pseudo-NLL ranking scores for the LeFlur-PL checkpoint.
+
+        Centralized PLL scoring for the protein-ligand LeFlur checkpoint. See
+        :mod:`lobster.model.leflur._pll_scoring` for the full algorithmic
+        description and the full list of supported variants.
+
+        Parameters
+        ----------
+        sequence_tokens, structure_tokens : Tensor ``(B, L)``
+            Protein sequence + structure tokens (clean).
+        protein_mask : Tensor ``(B, L)``
+            Protein attention/validity mask.
+        ligand_atom_tokens, ligand_structure_tokens : Tensor ``(B, M)``
+            Ligand atom + structure tokens (clean).
+        ligand_mask : Tensor ``(B, M)``
+        residue_index : Tensor ``(B, L)`` or ``None``
+        bond_matrix : Optional bond-matrix tensor consumed by the encoder.
+        K : Monte-Carlo draws per modality (default 32).
+        eps : Stratified-t endpoint margin (default 0.02).
+        seed : Base seed; sample ``b`` uses ``seed + b``.
+        variants : Subset of
+            :data:`lobster.model.leflur._pll_scoring.PROTEIN_LIGAND_VARIANTS`.
+            ``None`` returns the full default tuple of 8 variants.
+
+        Returns
+        -------
+        dict mapping each requested variant name to a ``(B,)`` float tensor.
+        Lower NLL = higher likelihood; rank by ``argmin``.
+        """
+        from ._pll_scoring import PROTEIN_LIGAND_VARIANTS, score_protein_ligand_pll
+
+        was_training = self.training
+        self.eval()
+        try:
+            return score_protein_ligand_pll(
+                self,
+                sequence_tokens=sequence_tokens,
+                structure_tokens=structure_tokens,
+                protein_mask=protein_mask,
+                ligand_atom_tokens=ligand_atom_tokens,
+                ligand_structure_tokens=ligand_structure_tokens,
+                ligand_mask=ligand_mask,
+                residue_index=residue_index,
+                bond_matrix=bond_matrix,
+                K=K,
+                eps=eps,
+                seed=seed,
+                variants=variants if variants is not None else PROTEIN_LIGAND_VARIANTS,
+            )
+        finally:
+            if was_training:
+                self.train()
+
     def compute_loss(
         self,
         split: str,
