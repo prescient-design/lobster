@@ -96,6 +96,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Hydra `paths=public` overlay. Every other branch-added training,
   callback, data, model, and `experiment/train_*` YAML remains
   gitignored on the publication branch.
+- **Pseudo-NLL ranking as a first-class generation mode** — centralised the
+  Monte-Carlo stratified-`t` pseudo-NLL estimator from the
+  conference-supplement studies into the framework:
+  - `lobster.model.leflur._pll_scoring` — pure helpers
+    (`stratified_t_samples`, `absorbing_corrupt`, `ce_on_masked`,
+    `score_protein_pll`, `score_protein_ligand_pll`) plus the variant
+    constants `PROTEIN_VARIANTS` (4) and `PROTEIN_LIGAND_VARIANTS` (8).
+  - `LeFlurSequenceStructureEncoderLightningModule.score_pll(...)` —
+    protein-only ranker (seq / struc / joint_protein / joint_true_2).
+  - `LeFlurProteinLigandLightningModule.score_pll(...)` — full 4-modality
+    ranker (8 variants including `joint_protein`, `joint_ligand`,
+    `joint_all`, `joint_true_4`).
+  - `generation.mode=score_pll` generation mode + Tier-1 Hydra config
+    `experiment/score_pll.yaml`. Reads any candidates CSV, writes
+    augmented CSV with `pll_<variant>` columns + optional per-group
+    `rank_<variant>` ranks when `generation.rank_within` is set.
+- **Benchmark tables in the LeFlur README** — `src/lobster/model/leflur/README.md`
+  now includes the 6 main-text benchmark tables (inverse / forward folding
+  on CAMEO and PoseBusters, unconditional generation, ligand-conditioned
+  generation) with per-row runnable `lobster_generate` invocations + a
+  dedicated **Best-of-N ranking with pseudo-NLL** section that documents
+  how the `N30 NLL` paper rows reproduce.
 
 ### Changed
 
