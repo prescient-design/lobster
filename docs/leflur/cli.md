@@ -1,6 +1,6 @@
 # LeFlur CLI Reference
 
-LeFlur exposes three console scripts. They're registered as entry points
+LeFlur exposes four console scripts. They're registered as entry points
 in `pyproject.toml` and become available as PATH commands once you've
 done `uv sync` (or `pip install -e .`).
 
@@ -8,7 +8,8 @@ done `uv sync` (or `pip install -e .`).
 |---|---|---|
 | `lobster_generate` | Run any of the five inference modes | Hydra config |
 | `lobster_autoencode` | Encode/decode PDB or paired PL `.pt` files through the latent space | Hydra config |
-| `lobster_leflur_checkpoints` | List / inspect / fetch / cache checkpoints | argparse subcommands |
+| `lobster_leflur_checkpoints` | List / inspect / fetch / cache model checkpoints | argparse subcommands |
+| `lobster_leflur_benchmarks` | List / inspect / fetch / cache evaluation benchmark datasets | argparse subcommands |
 
 ## `lobster_generate`
 
@@ -80,26 +81,29 @@ lobster_generate --config-name experiment/generate_unconditional --cfg job paths
 ### Evaluating against benchmarks (CAMEO / MultiFlow / PoseBusters)
 
 There are no separate `evaluate_*.py` scripts on the publication branch.
-Every evaluation routes through `lobster_generate` with a benchmark
-directory as `generation.input_structures` (folding modes) or
-`generation.data_dir` (ligand-conditioned modes). The CSV that the
-runner emits is the table you'd report on:
+Every evaluation routes through `lobster_generate` against one of the
+four canonical benchmark datasets mirrored to
+[`Sidney-Lisanza/leflur`](https://huggingface.co/datasets/Sidney-Lisanza/leflur)
+(dataset side). Pre-fetch the data once with `lobster_leflur_benchmarks
+fetch <short-name>` (see below); the generate configs then resolve their
+input directory through `${paths.benchmarks.<short-name>}` and run
+end-to-end with `paths=public`:
 
 ```bash
-# Protein-only inverse folding on a directory of pre-processed .pt files
+# 1. Pre-fetch the inputs (anonymous, no HF token needed).
+lobster_leflur_benchmarks fetch cameo
+lobster_leflur_benchmarks fetch posebusters_benchmark_no_overlap
+
+# 2. Reproduce LeFlur Table 1 row (CAMEO 2022 inverse folding).
 lobster_generate \
     --config-name experiment/generate_inverse_folding \
     paths=public \
-    generation.input_structures="/path/to/cameo_processed/*.pt" \
-    generation.num_samples=127 \
     output_dir=./eval_cameo_inverse
 
-# Protein-ligand forward folding on PoseBusters
+# 3. Reproduce LeFlur Table 4 row (PoseBusters NO PL forward folding).
 lobster_generate \
     --config-name experiment/generate_ligand_conditioned_forward_folding \
     paths=public \
-    generation.data_dir=/path/to/posebusters_no_overlap \
-    generation.raw_data_dir=/path/to/posebusters_set \
     output_dir=./eval_pb_forward
 ```
 
@@ -195,6 +199,70 @@ Cache root: /home/sid/.cache/lobster/leflur/checkpoints
   5.1 GiB  leflur_protein_ligand.ckpt
 Total: 11.3 GiB
 ```
+
+## `lobster_leflur_benchmarks`
+
+argparse-driven benchmark dataset management — the dataset-side
+companion to `lobster_leflur_checkpoints`. Six subcommands:
+
+```bash
+lobster_leflur_benchmarks list [--tag canonical|protein-ligand|publication|...]
+lobster_leflur_benchmarks inspect <short_name>
+lobster_leflur_benchmarks fetch <short_name>
+lobster_leflur_benchmarks cache
+lobster_leflur_benchmarks cache --clear [--dry-run]
+lobster_leflur_benchmarks dataset-card --print     # dump the HF dataset README to stdout
+```
+
+Maintainer-only:
+
+```bash
+lobster_leflur_benchmarks upload <short_name> [--dry-run] [--no-sanitize] [--with-card]
+lobster_leflur_benchmarks upload --all --token "$HF_TOKEN"
+lobster_leflur_benchmarks dataset-card --token "$HF_TOKEN"
+```
+
+By design this CLI **does not** add / update / delete registry entries —
+the publication scope freezes the registry in source. To add a new
+canonical benchmark, edit
+`src/lobster/model/leflur/benchmarks.py` and re-install.
+
+The four registered benchmarks (`cameo`, `multiflow_test`,
+`posebusters_benchmark_no_overlap`, `posebusters_benchmark`) drive every
+benchmark row in the LeFlur paper. See
+[`benchmarks.md`](benchmarks.md) for the per-dataset schema, citations,
+licenses, and how each short name maps to a publication table.
+
+### `fetch`
+
+Snapshot-downloads the benchmark from HuggingFace into
+`${LOBSTER_CACHE}/benchmarks/<short_name>/`, flattened so each `.pt` sits
+directly under the cache subdir. This is exactly the layout the
+`${paths.benchmarks.<name>}` interpolation in `paths/public.yaml`
+expects, so the publication generate configs run unchanged after a
+successful fetch.
+
+```bash
+$ lobster_leflur_benchmarks fetch posebusters_benchmark_no_overlap
+'posebusters_benchmark_no_overlap' -> ~/.cache/lobster/leflur/benchmarks/posebusters_benchmark_no_overlap
+  412 files matching '*.pt', total 10.0 MiB
+```
+
+### `cache`
+
+Without arguments: prints what's currently cached.
+
+With `--clear`: removes all cached benchmark files. Add `--dry-run` to
+preview the deletion without acting.
+
+### `dataset-card`
+
+Builds the HuggingFace dataset card README.md from the
+`KNOWN_BENCHMARKS` registry. Use `--print` to dump to stdout; pass
+`--token "$HF_TOKEN"` (maintainers only) to publish it to
+`datasets/Sidney-Lisanza/leflur/README.md`. The card always tracks the
+registry, so editing `benchmarks.py` and re-uploading the card is the
+one-step way to keep the published metadata in sync.
 
 ## Data formats
 

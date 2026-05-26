@@ -45,9 +45,14 @@ End-user docs live under [`docs/leflur/`](../../../../docs/leflur/):
 - **[`checkpoints.md`](../../../../docs/leflur/checkpoints.md)** — the three
   canonical checkpoints, how to list / inspect / fetch them, and how the
   paired Latent Generator codecs are pulled in automatically.
+- **[`benchmarks.md`](../../../../docs/leflur/benchmarks.md)** — the four
+  canonical evaluation benchmarks (CAMEO 2022, MultiFlow test, PoseBusters
+  paired and no-overlap), how to fetch them from HuggingFace via
+  `lobster_leflur_benchmarks`, and how each one maps to a publication
+  table.
 - **[`cli.md`](../../../../docs/leflur/cli.md)** — full CLI reference for
-  the three entry points: `lobster_generate`, `lobster_autoencode`, and
-  `lobster_leflur_checkpoints`.
+  the four entry points: `lobster_generate`, `lobster_autoencode`,
+  `lobster_leflur_checkpoints`, and `lobster_leflur_benchmarks`.
 
 ## How the pieces fit together
 
@@ -89,9 +94,27 @@ on the same base generate command — see
 [**Best-of-N ranking with pseudo-NLL**](#best-of-n-ranking-with-pseudo-nll)
 below for the ranking step.
 
-> All commands assume `paths=public` (HuggingFace checkpoints). The seed
-> matches the canonical Hydra config; override with `seed=<int>` to
-> regenerate with different randomness.
+> All commands assume `paths=public` (HuggingFace checkpoints + HuggingFace
+> benchmark inputs). The seed matches the canonical Hydra config; override
+> with `seed=<int>` to regenerate with different randomness.
+
+**Pre-fetch the inputs.** Each table consumes one benchmark dataset
+mirrored to the dataset side of
+[`Sidney-Lisanza/leflur`](https://huggingface.co/datasets/Sidney-Lisanza/leflur).
+Pull the four canonical benchmarks once with the dedicated CLI (anonymous
+download — no HF token required):
+
+```bash
+lobster_leflur_benchmarks fetch cameo                                # tables 1, 3
+lobster_leflur_benchmarks fetch multiflow_test                       # tables 1, 3 (MultiFlow rows)
+lobster_leflur_benchmarks fetch posebusters_benchmark_no_overlap     # tables 2, 4
+```
+
+Files land at `${LOBSTER_CACHE}/benchmarks/<short-name>/`, which is what
+`${paths.benchmarks.<name>}` interpolates to under `paths=public` — the
+generate commands below work unchanged after the fetch. See
+[`docs/leflur/benchmarks.md`](../../../../docs/leflur/benchmarks.md) for
+the per-benchmark schema, citations, and licenses.
 
 ### 1. Inverse folding — CAMEO 2022
 

@@ -41,8 +41,29 @@ checkpoints:
 
 # --- Eval-benchmark input directories ------------------------------------
 #
-# External users need to download these themselves. Phase 8 quickstart docs
-# describe the expected layout under ${paths.cache_dir}/benchmarks/<name>/.
+# Four benchmark datasets are mirrored to the dataset side of the public
+# HF repo `Sidney-Lisanza/leflur` (alongside the model checkpoints):
+#
+#     cameo                              -> cameo-2022/
+#     multiflow_test                     -> multiflow-test/
+#     posebusters_benchmark_no_overlap   -> posebusters-benchmark-no-overlap/
+#     posebusters_benchmark              -> posebusters-benchmark/
+#
+# Populate the local cache anonymously (no HF token required):
+#
+#     lobster_leflur_benchmarks fetch cameo
+#     lobster_leflur_benchmarks fetch multiflow_test
+#     lobster_leflur_benchmarks fetch posebusters_benchmark_no_overlap
+#
+# Each fetch lands files at `${paths.cache_dir}/benchmarks/<name>/*.pt`,
+# which matches the paths interpolated by `experiment/generate_*.yaml`
+# (see KNOWN_BENCHMARKS in src/lobster/model/leflur/benchmarks.py and
+# docs/leflur/benchmarks.md for the per-dataset schema, license, and
+# the publication-table mapping).
+#
+# The remaining benchmarks (`rgn2_denovo`, `rgn2_orphan`) are not yet
+# distributed on HF — external users must populate those dirs by hand
+# for now.
 benchmarks:
   cameo: ${paths.cache_dir}/benchmarks/cameo
   multiflow_test: ${paths.cache_dir}/benchmarks/multiflow_test

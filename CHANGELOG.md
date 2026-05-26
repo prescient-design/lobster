@@ -28,9 +28,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   protein-only vs protein-ligand inputs.
 - **`lobster_leflur_checkpoints`** console entry point — `list / inspect /
   fetch / cache` subcommands for managing the canonical checkpoint registry.
+- **`lobster_leflur_benchmarks`** console entry point — `list / inspect /
+  fetch / cache / upload / dataset-card` subcommands for managing the
+  canonical benchmark dataset registry. Companion to
+  `lobster_leflur_checkpoints` on the dataset side.
 - **`resolve_checkpoint()`** API — accepts short names, `hf://` URIs, HTTPS
   URLs, or local paths. Rejects `s3://` with a clear message. Idempotent
   cache under `$LOBSTER_CACHE` (default `~/.cache/lobster/leflur`).
+- **`resolve_benchmark()` / `fetch_benchmark()`** API — accepts short
+  names (`cameo`, `multiflow_test`, `posebusters_benchmark`,
+  `posebusters_benchmark_no_overlap`), `hf-dataset://owner/repo[/subdir]`
+  URIs, or local directories. Snapshot-downloads from HF into the same
+  `$LOBSTER_CACHE/benchmarks/<name>/` layout that
+  `${paths.benchmarks.<name>}` already interpolates to in
+  `paths/public.yaml`, with HF-side directory nesting flattened on the
+  fly so the publication generate configs run unchanged after fetch.
+- **Four canonical benchmarks** on the dataset side of
+  [`Sidney-Lisanza/leflur`](https://huggingface.co/datasets/Sidney-Lisanza/leflur):
+  `cameo` (127 .pt, 1.9 MiB), `multiflow_test` (449 .pt, 81 MiB),
+  `posebusters_benchmark_no_overlap` (412 .pt = 206 pairs, 10 MiB),
+  `posebusters_benchmark` (856 .pt = 428 pairs, 22 MiB). Together they
+  drive every benchmark row in LeFlur Tables 1–4. The `upload`
+  subcommand strips internal `pdb_path` fields down to basename on
+  publication so the released records carry no Genentech filesystem
+  leakage; pass `--no-sanitize` for a bit-identical upload.
 - **Hydra path overlay** at `lobster/hydra_config/paths/{internal,public}.yaml` —
   external users get the `public` overlay (HuggingFace + local cache),
   internal collaborators get `internal` (shared filesystem). All Tier-1
@@ -52,10 +73,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `installation.md` — extras, env vars, HF auth, Foldseek
   - `quickstart.md` — five-minute walkthroughs of all inference modes
   - `checkpoints.md` — registry + CLI + paired LG codec auto-resolution
-  - `cli.md` — full reference for the three entry points
+  - `benchmarks.md` — benchmark dataset registry + CLI + per-table
+    reproduction commands for the four canonical benchmarks
+  - `cli.md` — full reference for the four entry points
+    (`lobster_generate`, `lobster_autoencode`,
+    `lobster_leflur_checkpoints`, `lobster_leflur_benchmarks`)
 - **Test suites** at `tests/lobster/`:
-  - `model/leflur/` — checkpoint resolver, registry invariants, Lightning
-    module load smoke (CPU + GPU variants)
+  - `model/leflur/` — checkpoint resolver, benchmark resolver (52 tests
+    in `test_benchmarks.py` covering registry invariants, HF/local/S3
+    resolution branches, sanitiser correctness on protein + paired
+    protein-ligand records, dataset-card builder, chunked-upload retry
+    logic, CLI subcommand dispatch, and an end-to-end snapshot-flatten
+    contract test against the publication PoseBusters loader), registry
+    invariants, Lightning module load smoke (CPU + GPU variants)
   - `cmdline/` — Tier-1 dispatch smoke, CLI surface, ligand-conditioned
     runner config defaults
   - `metrics/` — RMSD-sqrt(3) regression, MetricsCSVWriter contract

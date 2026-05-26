@@ -146,13 +146,20 @@ checkpoint's hparams.
 
 The four most relevant configs:
 
-| Result | Config | Checkpoint |
-|---|---|---|
-| Unconditional generation (Table 1) | `experiment/generate_unconditional` | `leflur-ted` |
-| Forward folding (Table 2) | `experiment/generate_forward_folding` | `leflur-ted` |
-| Inverse folding (Table 3) | `experiment/generate_inverse_folding` | `leflur-ted` |
-| Ligand-conditioned generation (Table 4) | `experiment/generate_ligand_conditioned` | `leflur-pl` |
+| Result | Config | Checkpoint | Benchmark |
+|---|---|---|---|
+| Unconditional generation (Table 5) | `experiment/generate_unconditional` | `leflur-ted` | — (no benchmark inputs) |
+| Forward folding (Table 3) | `experiment/generate_forward_folding` | `leflur-ted` | `cameo` |
+| Inverse folding (Table 1) | `experiment/generate_inverse_folding` | `leflur-ted` | `cameo` |
+| Ligand-conditioned forward (Table 4) | `experiment/generate_ligand_conditioned_forward_folding` | `leflur-pl` | `posebusters_benchmark_no_overlap` |
+| Ligand-conditioned inverse (Table 2) | `experiment/generate_ligand_conditioned_inverse_folding` | `leflur-pl` | `posebusters_benchmark_no_overlap` |
 
 Each Tier-1 config is enforced by automated tests to use only canonical
 checkpoint references — see the tests under
 `tests/lobster/hydra_config/test_paths_overlay.py`.
+
+Benchmark inputs for the four folding tables are mirrored to the
+**dataset** side of `Sidney-Lisanza/leflur` and fetched via the
+`lobster_leflur_benchmarks` CLI — see
+[`benchmarks.md`](benchmarks.md) for the full registry, the per-dataset
+schema, and end-to-end reproduction commands from a clean machine.

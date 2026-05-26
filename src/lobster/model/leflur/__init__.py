@@ -28,6 +28,19 @@ from .checkpoints import (
     resolve_checkpoint,
     upload_checkpoint,
 )
+from .benchmarks import (
+    KNOWN_BENCHMARKS,
+    BenchmarkInfo,
+    cache_dir as cache_benchmark_dir,
+    cached_files as cached_benchmark_files,
+    clear_benchmark_cache,
+    fetch_benchmark,
+    generate_dataset_card_md,
+    list_benchmarks,
+    resolve_benchmark,
+    upload_benchmark,
+    upload_dataset_card,
+)
 
 __all__ = [
     "LeFlurSequenceStructureEncoderModule",
@@ -54,4 +67,15 @@ __all__ = [
     "list_checkpoints",
     "resolve_checkpoint",
     "upload_checkpoint",
+    "KNOWN_BENCHMARKS",
+    "BenchmarkInfo",
+    "cache_benchmark_dir",
+    "cached_benchmark_files",
+    "clear_benchmark_cache",
+    "fetch_benchmark",
+    "generate_dataset_card_md",
+    "list_benchmarks",
+    "resolve_benchmark",
+    "upload_benchmark",
+    "upload_dataset_card",
 ]
