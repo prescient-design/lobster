@@ -54,7 +54,12 @@ generation:
 
   # Best-of-N
   num_predictions: 1
-  best_of_n_metric: "plddt"
+  # The PoseBusters forward-folding evaluator only accepts "rmsd" or
+  # "tm_score" — and Table 4 reports tm_score-based metrics (GF+IP uses
+  # TM >= 0.5). With num_predictions=1 the choice is moot (single
+  # candidate), but the evaluator still validates the string on init,
+  # so we default to the metric the paper actually reports.
+  best_of_n_metric: "tm_score"
   save_all_predictions: false
 
   # Mirror image handling

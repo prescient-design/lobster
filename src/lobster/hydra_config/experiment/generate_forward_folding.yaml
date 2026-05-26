@@ -48,3 +48,9 @@ generation:
   # Not used for forward folding
   length: null
   num_samples: null
+
+  # ESMFold structure validation toggle. Declared here so it can be
+  # flipped via `generation.use_esmfold=true` on the CLI without
+  # needing the `+` add-key prefix; the runner reads it via
+  # `cfg.generation.get("use_esmfold", False)` in any case.
+  use_esmfold: false
