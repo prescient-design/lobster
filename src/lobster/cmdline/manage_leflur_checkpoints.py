@@ -57,9 +57,7 @@ def _format_size(num_bytes: int) -> str:
     return f"{num_bytes:.1f} PiB"
 
 
-def _filter_entries(
-    family: str | None, tag: str | None
-) -> list[CheckpointInfo]:
+def _filter_entries(family: str | None, tag: str | None) -> list[CheckpointInfo]:
     entries = list_checkpoints(family=family)
     if tag is not None:
         entries = [e for e in entries if tag in e.tags]
@@ -89,10 +87,7 @@ def cmd_list(args: argparse.Namespace) -> int:
     )
     col_widths = [max(len(row[i]) for row in rows) for i in range(4)]
     for i, row in enumerate(rows):
-        sys.stdout.write(
-            "  ".join(cell.ljust(col_widths[j]) for j, cell in enumerate(row))
-            + "\n"
-        )
+        sys.stdout.write("  ".join(cell.ljust(col_widths[j]) for j, cell in enumerate(row)) + "\n")
         if i == 0:
             sys.stdout.write("  ".join("-" * w for w in col_widths) + "\n")
     return 0
@@ -101,22 +96,15 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_inspect(args: argparse.Namespace) -> int:
     info = KNOWN_CHECKPOINTS.get(args.short_name)
     if info is None:
-        sys.stderr.write(
-            f"Unknown short name: {args.short_name!r}. Known names: "
-            f"{sorted(KNOWN_CHECKPOINTS)}\n"
-        )
+        sys.stderr.write(f"Unknown short name: {args.short_name!r}. Known names: {sorted(KNOWN_CHECKPOINTS)}\n")
         return 2
     sys.stdout.write(f"short_name      : {info.short_name}\n")
     sys.stdout.write(f"family          : {info.family}\n")
     sys.stdout.write(f"tags            : {', '.join(info.tags) or '-'}\n")
     sys.stdout.write(f"hf_uri          : {info.hf_uri}\n")
     sys.stdout.write(f"https_url       : {info.https_url}\n")
-    sys.stdout.write(
-        f"paired_lg_codec : {info.paired_lg_codec or '-'}\n"
-    )
-    sys.stdout.write(
-        f"recommended_cfg : {info.recommended_generation_config or '-'}\n"
-    )
+    sys.stdout.write(f"paired_lg_codec : {info.paired_lg_codec or '-'}\n")
+    sys.stdout.write(f"recommended_cfg : {info.recommended_generation_config or '-'}\n")
     sys.stdout.write(f"description     : {info.description}\n")
     return 0
 
@@ -136,16 +124,12 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 def cmd_upload(args: argparse.Namespace) -> int:
     """Upload one or many registered checkpoints to HuggingFace."""
     if args.all:
-        targets = list(KNOWN_CHECKPOINTS) + (
-            list(PAIRED_LG_CHECKPOINTS) if args.include_lg_codecs else []
-        )
+        targets = list(KNOWN_CHECKPOINTS) + (list(PAIRED_LG_CHECKPOINTS) if args.include_lg_codecs else [])
     elif args.lg_codecs:
         targets = list(PAIRED_LG_CHECKPOINTS)
     else:
         if not args.short_names:
-            sys.stderr.write(
-                "upload: pass at least one short name, or use --all / --lg-codecs\n"
-            )
+            sys.stderr.write("upload: pass at least one short name, or use --all / --lg-codecs\n")
             return 2
         targets = list(args.short_names)
 
@@ -167,18 +151,13 @@ def cmd_upload(args: argparse.Namespace) -> int:
 
         size_mib = int(summary["size_bytes"]) / (1024 * 1024)
         verb = "would upload" if args.dry_run else "uploaded"
-        sys.stdout.write(
-            f"  {verb} {name} ({size_mib:.0f} MiB) "
-            f"-> {summary['repo_id']}/{summary['hf_path']}"
-        )
+        sys.stdout.write(f"  {verb} {name} ({size_mib:.0f} MiB) -> {summary['repo_id']}/{summary['hf_path']}")
         if summary["commit_url"]:
             sys.stdout.write(f"\n      commit: {summary['commit_url']}")
         sys.stdout.write("\n")
 
     if errors:
-        sys.stderr.write(
-            f"\nupload finished with {len(errors)} error(s).\n"
-        )
+        sys.stderr.write(f"\nupload finished with {len(errors)} error(s).\n")
         return 1
     return 0
 
@@ -204,10 +183,7 @@ def cmd_cache(args: argparse.Namespace) -> int:
     total = sum(p.stat().st_size for p in files)
     sys.stdout.write(f"Total size : {_format_size(total)} across {len(files)} files\n\n")
     for path in files:
-        sys.stdout.write(
-            f"  {_format_size(path.stat().st_size):>10}  "
-            f"{path.relative_to(root)}\n"
-        )
+        sys.stdout.write(f"  {_format_size(path.stat().st_size):>10}  {path.relative_to(root)}\n")
     return 0
 
 
@@ -228,15 +204,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_list.add_argument("--family", choices=("protein", "protein_ligand"))
     p_list.add_argument(
         "--tag",
-        help=(
-            "Filter to a single tag (e.g. 'canonical', 'research', 'legacy')."
-        ),
+        help=("Filter to a single tag (e.g. 'canonical', 'research', 'legacy')."),
     )
     p_list.set_defaults(func=cmd_list)
 
-    p_inspect = subs.add_parser(
-        "inspect", help="Print full metadata for one short name."
-    )
+    p_inspect = subs.add_parser("inspect", help="Print full metadata for one short name.")
     p_inspect.add_argument("short_name")
     p_inspect.set_defaults(func=cmd_inspect)
 
@@ -249,9 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_fetch.add_argument(
         "target",
-        help=(
-            "Short name (e.g. leflur-ted), hf://... URI, or local path."
-        ),
+        help=("Short name (e.g. leflur-ted), hf://... URI, or local path."),
     )
     p_fetch.set_defaults(func=cmd_fetch)
 
@@ -286,10 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_upload.add_argument(
         "--source",
-        help=(
-            "Override the registered local source path (only meaningful "
-            "with a single short name)."
-        ),
+        help=("Override the registered local source path (only meaningful with a single short name)."),
     )
     p_upload.add_argument(
         "--repo",
@@ -297,9 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_upload.add_argument(
         "--token",
-        help=(
-            "HF token. Falls back to $HF_TOKEN / `huggingface-cli login`."
-        ),
+        help=("HF token. Falls back to $HF_TOKEN / `huggingface-cli login`."),
     )
     p_upload.add_argument(
         "--commit-message",
@@ -312,9 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_upload.set_defaults(func=cmd_upload)
 
-    p_cache = subs.add_parser(
-        "cache", help="Show or clear the local LeFlur checkpoint cache."
-    )
+    p_cache = subs.add_parser("cache", help="Show or clear the local LeFlur checkpoint cache.")
     p_cache.add_argument(
         "--clear",
         action="store_true",

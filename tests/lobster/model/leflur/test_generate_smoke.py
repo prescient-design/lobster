@@ -37,9 +37,7 @@ from types import ModuleType
 import pytest
 
 
-_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[4] / "scripts" / "leflur_generate_smoke.py"
-)
+_SCRIPT_PATH = Path(__file__).resolve().parents[4] / "scripts" / "leflur_generate_smoke.py"
 
 
 def _load_smoke_module() -> ModuleType:
@@ -50,24 +48,18 @@ def _load_smoke_module() -> ModuleType:
     ``importlib`` keeps the CLI script and this test consistent without
     forcing a package layout on ``scripts/``.
     """
-    spec = importlib.util.spec_from_file_location(
-        "leflur_generate_smoke", str(_SCRIPT_PATH)
-    )
-    assert spec is not None and spec.loader is not None, (
-        f"could not build module spec from {_SCRIPT_PATH}"
-    )
+    spec = importlib.util.spec_from_file_location("leflur_generate_smoke", str(_SCRIPT_PATH))
+    assert spec is not None and spec.loader is not None, f"could not build module spec from {_SCRIPT_PATH}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
 
 # The conference benchmark plan refers to this as
 # ``gen_ume_denovo_ted_cath_ss_balanced_ckpt_2026-03-18T12-20-59``. The
 # suffix is the *eval launch* timestamp; the underlying ckpt file is the
 # ``last.ckpt`` symlink in the 2026-03-14T15-41-36 training run.
-TED_CKPT = Path(
-    "/cv/scratch/u/lisanzas/gen_ume_denovo_ted_cath/runs"
-    "/2026-03-14T15-41-36/last.ckpt"
-)
+TED_CKPT = Path("/cv/scratch/u/lisanzas/gen_ume_denovo_ted_cath/runs/2026-03-14T15-41-36/last.ckpt")
 
 # Below this TM-score we are confident the structure/sequence agreement
 # has collapsed (TED mean TM at L=100 is ~0.934 per the benchmark plan, so
@@ -147,10 +139,7 @@ def test_unconditional_length100_decodes_to_pdb(generated_sample) -> None:
     # 3 backbone atoms (N, CA, C) × 100 residues = 300 ATOM lines, give or
     # take whatever ``writepdb`` adds. Anything below ~250 means the PDB
     # writer silently dropped residues.
-    assert n_atom_lines >= 250, (
-        f"backbone PDB has too few ATOM lines ({n_atom_lines}); "
-        f"expected ~300 for length=100"
-    )
+    assert n_atom_lines >= 250, f"backbone PDB has too few ATOM lines ({n_atom_lines}); expected ~300 for length=100"
 
     coords = result["coords"]
     assert coords.shape[0] == 1, "expected one sample"
@@ -164,9 +153,7 @@ def test_unconditional_length100_decodes_to_pdb(generated_sample) -> None:
     # (20 canonical AAs + X for unknown).
     seq = result["sequence"]
     assert len(seq) == args.length, "sequence length mismatch"
-    assert set(seq) <= set("ACDEFGHIKLMNPQRSTVWYX"), (
-        f"designed sequence contains unexpected codes: {sorted(set(seq))}"
-    )
+    assert set(seq) <= set("ACDEFGHIKLMNPQRSTVWYX"), f"designed sequence contains unexpected codes: {sorted(set(seq))}"
 
 
 @pytest.mark.slow
@@ -186,10 +173,7 @@ def test_unconditional_length100_esmfold_agrees(generated_sample) -> None:
     tm = esm["tm_score"]
     rmsd = esm["rmsd"]
     plddt = esm["plddt"]
-    msg = (
-        f"ESMFold↔LeFlur TM={tm:.4f} (floor={TM_FLOOR:.2f}), "
-        f"RMSD={rmsd:.2f}Å, pLDDT={plddt:.3f}"
-    )
+    msg = f"ESMFold↔LeFlur TM={tm:.4f} (floor={TM_FLOOR:.2f}), RMSD={rmsd:.2f}Å, pLDDT={plddt:.3f}"
     assert tm >= TM_FLOOR, msg
     # ESMFold should not be returning garbage pLDDT either — anything below
     # 0.5 means we are folding an obviously unfoldable sequence (designed

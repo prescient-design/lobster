@@ -36,20 +36,32 @@ from lobster.metrics import MetricsCSVWriter
 # If you add a column here, mirror it in the writer (and vice versa).
 EXPECTED_HEADERS: dict[str, list[str]] = {
     "unconditional": [
-        "run_id", "timestamp", "mode",
-        "plddt", "predicted_aligned_error", "tm_score", "rmsd",
-        "sequence_length", "num_samples",
+        "run_id",
+        "timestamp",
+        "mode",
+        "plddt",
+        "predicted_aligned_error",
+        "tm_score",
+        "rmsd",
+        "sequence_length",
+        "num_samples",
         "percent_identity_self_reflection",
         "tm_score_unconditional_to_forward",
         "rmsd_unconditional_to_forward",
         "tm_score_forward_to_inverse",
         "rmsd_forward_to_inverse",
-        "plddt_unconditional", "pae_unconditional",
-        "tm_score_esmfold_unconditional", "rmsd_esmfold_unconditional",
-        "plddt_refined", "pae_refined",
-        "tm_score_esmfold_refined", "rmsd_esmfold_refined",
-        "plddt_improvement", "pae_improvement",
-        "tm_score_improvement", "rmsd_improvement",
+        "plddt_unconditional",
+        "pae_unconditional",
+        "tm_score_esmfold_unconditional",
+        "rmsd_esmfold_unconditional",
+        "plddt_refined",
+        "pae_refined",
+        "tm_score_esmfold_refined",
+        "rmsd_esmfold_refined",
+        "plddt_improvement",
+        "pae_improvement",
+        "tm_score_improvement",
+        "rmsd_improvement",
         "tm_score_unconditional_to_esmfold",
         "rmsd_unconditional_to_esmfold",
         "tm_score_forward_to_esmfold",
@@ -58,23 +70,47 @@ EXPECTED_HEADERS: dict[str, list[str]] = {
         "rmsd_esmfold_agreement_improvement",
     ],
     "inverse_folding": [
-        "run_id", "timestamp", "mode",
-        "percent_identity", "plddt", "predicted_aligned_error",
-        "tm_score", "rmsd", "sequence_length", "input_file",
+        "run_id",
+        "timestamp",
+        "mode",
+        "percent_identity",
+        "plddt",
+        "predicted_aligned_error",
+        "tm_score",
+        "rmsd",
+        "sequence_length",
+        "input_file",
     ],
     "forward_folding": [
-        "run_id", "timestamp", "mode",
-        "tm_score", "rmsd", "sequence_length", "input_file",
+        "run_id",
+        "timestamp",
+        "mode",
+        "tm_score",
+        "rmsd",
+        "sequence_length",
+        "input_file",
     ],
 }
 
 EXPECTED_SEQUENCE_HEADERS = [
-    "run_id", "iteration", "sample_idx", "sequence",
-    "original_sequence", "inpainted_sequence",
-    "original_inpainted_sequence", "length", "generation_mode",
-    "input_structure", "num_chains", "chain_ids", "trial_selected",
-    "percent_identity_original", "masked_positions", "sequence_type",
-    "latent_generator_tokens", "timestamp",
+    "run_id",
+    "iteration",
+    "sample_idx",
+    "sequence",
+    "original_sequence",
+    "inpainted_sequence",
+    "original_inpainted_sequence",
+    "length",
+    "generation_mode",
+    "input_structure",
+    "num_chains",
+    "chain_ids",
+    "trial_selected",
+    "percent_identity_original",
+    "masked_positions",
+    "sequence_type",
+    "latent_generator_tokens",
+    "timestamp",
 ]
 
 
@@ -94,8 +130,7 @@ def test_metrics_csv_writer_header_contract(tmp_path: Path, mode: str) -> None:
     writer = MetricsCSVWriter(tmp_path, mode=mode)
     header = _read_first_row(writer.csv_path)
     assert header == EXPECTED_HEADERS[mode], (
-        f"{mode} header drifted from the published contract. "
-        f"Update _initialize_csv() AND EXPECTED_HEADERS in lockstep."
+        f"{mode} header drifted from the published contract. Update _initialize_csv() AND EXPECTED_HEADERS in lockstep."
     )
 
 
@@ -107,9 +142,7 @@ def test_sequences_csv_header_contract(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("mode", ["inverse_folding", "forward_folding"])
-def test_row_length_matches_header_with_missing_kwargs(
-    tmp_path: Path, mode: str
-) -> None:
+def test_row_length_matches_header_with_missing_kwargs(tmp_path: Path, mode: str) -> None:
     """write_batch_metrics produces a row whose length equals the header.
 
     Missing values must serialise to empty strings, never get dropped.
@@ -136,8 +169,7 @@ def test_row_length_matches_header_with_missing_kwargs(
     assert data, "no metric row was written"
     for r in data:
         assert len(r) == len(header), (
-            f"row width {len(r)} != header width {len(header)}; "
-            f"missing kwargs likely dropped silently. row={r!r}"
+            f"row width {len(r)} != header width {len(header)}; missing kwargs likely dropped silently. row={r!r}"
         )
 
 
@@ -169,8 +201,7 @@ def test_resume_appends_not_clobber(tmp_path: Path) -> None:
 
     writer_b = MetricsCSVWriter(tmp_path, mode=mode, resume=True)
     assert writer_b.csv_path == writer_a.csv_path, (
-        "resume=True did not pick up the existing CSV — it created a new "
-        "one, which is the historical clobber bug."
+        "resume=True did not pick up the existing CSV — it created a new one, which is the historical clobber bug."
     )
     writer_b.write_batch_metrics(
         metrics={"tm_score": 0.74, "rmsd": 1.4},
@@ -181,14 +212,11 @@ def test_resume_appends_not_clobber(tmp_path: Path) -> None:
 
     rows_after = _read_all_rows(writer_b.csv_path)
     assert len(rows_after) == 4, (
-        "resume mode should append a row; got "
-        f"{len(rows_after)} rows (expected header + 3 data)"
+        f"resume mode should append a row; got {len(rows_after)} rows (expected header + 3 data)"
     )
     # The original rows must be intact and in the same order.
     assert rows_after[:3] == rows_before
-    assert rows_after[3][0] == "run-b-1", (
-        "post-resume row did not land at the tail of the CSV"
-    )
+    assert rows_after[3][0] == "run-b-1", "post-resume row did not land at the tail of the CSV"
 
 
 def test_resume_with_no_existing_csv_creates_new(tmp_path: Path) -> None:

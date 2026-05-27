@@ -1,17 +1,16 @@
 import logging
-from typing import Optional
 
 
 def fix_aho_sequences(
-    input_sequences: list[Optional[str]],
-    anarci_outputs: list[Optional[str]],
+    input_sequences: list[str | None],
+    anarci_outputs: list[str | None],
     *,
-    desired_length: Optional[int] = None,
+    desired_length: int | None = None,
     remove_terminal_arginine: bool = True,
     fix_truncation: bool = False,
     allow_sequence_alteration: bool = True,
     **kwargs,
-) -> list[Optional[str]]:
+) -> list[str | None]:
     """
     Get the AHo-aligned versions of a list of sequences, as a list of strings containing
     dashes. The AHo alignment is unreliable, so if the computed AHo alignment is not of
@@ -75,13 +74,13 @@ def fix_aho_sequences(
 
 def _fix_aho_sequence(
     input_sequence: str,
-    anarci_output: Optional[str] = None,
+    anarci_output: str | None = None,
     *,
-    desired_length: Optional[int] = None,
+    desired_length: int | None = None,
     remove_terminal_arginine: bool = True,
     fix_truncation: bool = False,
     allow_sequence_alteration: bool = True,
-) -> Optional[str]:
+) -> str | None:
     """
     Process a single AHo-aligned sequence, possibly returning None, as described in
     `get_aho_sequence`.
@@ -126,7 +125,7 @@ def _fix_truncated_aho_sequence(aho_sequence: str, original_sequence: str) -> st
     return aho_sequence + missing_residues
 
 
-def _fix_sequence_length(aho_sequence: str, desired_length: int) -> Optional[str]:
+def _fix_sequence_length(aho_sequence: str, desired_length: int) -> str | None:
     """
     Attempt to fix an AHo sequence by either removing or appending dashes until it is of
     the desired length. Dashes are always added or removed at the end of the sequence

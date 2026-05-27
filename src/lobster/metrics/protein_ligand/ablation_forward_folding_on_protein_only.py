@@ -394,11 +394,7 @@ def main():
         logger.error(f"Checkpoint not found: {args.checkpoint}")
         sys.exit(1)
 
-    pt_count = (
-        len(glob(args.data_dir))
-        if "*" in args.data_dir
-        else len(glob(os.path.join(args.data_dir, "*.pt")))
-    )
+    pt_count = len(glob(args.data_dir)) if "*" in args.data_dir else len(glob(os.path.join(args.data_dir, "*.pt")))
     if pt_count == 0:
         logger.error(f"No .pt files found at {args.data_dir}")
         sys.exit(1)
@@ -412,9 +408,7 @@ def main():
         logger.info(f"Using max_length: {max_length}")
 
     tokenizer_transform = AminoAcidTokenizerTransform(max_length=max_length)
-    samples = load_protein_only_structures(
-        args.data_dir, args.num_samples, max_length, args.device
-    )
+    samples = load_protein_only_structures(args.data_dir, args.num_samples, max_length, args.device)
 
     schedule_seq = INFERENCE_SCHEDULE_MAP[args.inference_schedule_seq]
     schedule_struc = INFERENCE_SCHEDULE_MAP[args.inference_schedule_struc]

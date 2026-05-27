@@ -18,6 +18,7 @@ The CLI is exercised lightly via ``manage_leflur_checkpoints.build_parser``.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from unittest import mock
 
@@ -55,17 +56,13 @@ def fake_hf_download(monkeypatch):
     calls: list[dict] = []
 
     def _fake(*, repo_id: str, filename: str, revision: str, cache_dir: str):
-        calls.append(
-            {"repo_id": repo_id, "filename": filename, "revision": revision}
-        )
+        calls.append({"repo_id": repo_id, "filename": filename, "revision": revision})
         out = Path(cache_dir) / Path(filename).name
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(b"")
         return str(out)
 
-    monkeypatch.setattr(
-        "huggingface_hub.hf_hub_download", _fake, raising=True
-    )
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", _fake, raising=True)
     return calls
 
 
@@ -76,8 +73,7 @@ def test_canonical_short_names_registered() -> None:
     """Plan-mandated canonical short names live in the registry."""
     for short_name in ("leflur-base", "leflur-ted", "leflur-pl"):
         assert short_name in KNOWN_CHECKPOINTS, (
-            f"{short_name!r} missing from KNOWN_CHECKPOINTS — required by "
-            f"Phase 4 of the LeFlur publication cleanup."
+            f"{short_name!r} missing from KNOWN_CHECKPOINTS — required by Phase 4 of the LeFlur publication cleanup."
         )
 
 
@@ -85,10 +81,7 @@ def test_hf_uri_and_https_url_match_repo_id() -> None:
     """``hf_uri`` and ``https_url`` derive consistently from ``hf_path``."""
     for info in KNOWN_CHECKPOINTS.values():
         assert info.hf_uri == f"hf://{HF_REPO_ID}/{info.hf_path}"
-        assert info.https_url == (
-            f"https://huggingface.co/{HF_REPO_ID}/resolve/{HF_REVISION}/"
-            f"{info.hf_path}"
-        )
+        assert info.https_url == (f"https://huggingface.co/{HF_REPO_ID}/resolve/{HF_REVISION}/{info.hf_path}")
 
 
 def test_list_checkpoints_family_filter() -> None:
@@ -118,9 +111,7 @@ def test_resolve_short_name_triggers_hf_download(fake_hf_download) -> None:
 
 def test_resolve_short_name_handles_whitespace(fake_hf_download) -> None:
     resolve_checkpoint("  leflur-base ")
-    assert fake_hf_download[0]["filename"] == (
-        KNOWN_CHECKPOINTS["leflur-base"].hf_path
-    )
+    assert fake_hf_download[0]["filename"] == (KNOWN_CHECKPOINTS["leflur-base"].hf_path)
 
 
 # --- Resolver: HF URIs ----------------------------------------------------
@@ -138,9 +129,7 @@ def test_resolve_hf_uri(fake_hf_download) -> None:
 
 
 def test_resolve_https_huggingface_url(fake_hf_download) -> None:
-    resolve_checkpoint(
-        "https://huggingface.co/Sidney-Lisanza/leflur/resolve/main/x/y.ckpt"
-    )
+    resolve_checkpoint("https://huggingface.co/Sidney-Lisanza/leflur/resolve/main/x/y.ckpt")
     assert fake_hf_download == [
         {
             "repo_id": "Sidney-Lisanza/leflur",
@@ -152,9 +141,7 @@ def test_resolve_https_huggingface_url(fake_hf_download) -> None:
 
 def test_resolve_https_blob_url_normalises(fake_hf_download) -> None:
     """``/blob/`` URLs are tolerated and parsed the same way as ``/resolve/``."""
-    resolve_checkpoint(
-        "https://huggingface.co/Sidney-Lisanza/leflur/blob/main/x.ckpt"
-    )
+    resolve_checkpoint("https://huggingface.co/Sidney-Lisanza/leflur/blob/main/x.ckpt")
     assert fake_hf_download[0]["filename"] == "x.ckpt"
 
 
@@ -305,10 +292,8 @@ def test_cli_cache_clear_dry_run(capsys, tmp_path, monkeypatch) -> None:
 
 def test_cheap_typecheck_on_checkpoint_info() -> None:
     """`CheckpointInfo` is frozen + dataclass-shaped (regression for mutation bugs)."""
-    info = CheckpointInfo(
-        short_name="x", hf_path="x.ckpt", description="d"
-    )
-    with pytest.raises(Exception):
+    info = CheckpointInfo(short_name="x", hf_path="x.ckpt", description="d")
+    with pytest.raises(dataclasses.FrozenInstanceError):
         info.short_name = "y"  # type: ignore[misc]
 
 
@@ -333,11 +318,7 @@ def test_install_paired_lg_codec_overrides_rewrites_internal_paths(
     )
 
     # Save & restore original checkpoints for affected codec entries.
-    originals = {
-        name: lg_methods[name].model_config.checkpoint
-        for name in PAIRED_LG_CODECS
-        if name in lg_methods
-    }
+    originals = {name: lg_methods[name].model_config.checkpoint for name in PAIRED_LG_CODECS if name in lg_methods}
     _reset_paired_lg_override_flag()
     try:
         previous = install_paired_lg_codec_overrides()
@@ -345,9 +326,7 @@ def test_install_paired_lg_codec_overrides_rewrites_internal_paths(
         for name, hf_url in PAIRED_LG_CODECS.items():
             if name not in lg_methods:
                 continue
-            assert lg_methods[name].model_config.checkpoint == hf_url, (
-                f"codec {name!r} should now point at {hf_url}"
-            )
+            assert lg_methods[name].model_config.checkpoint == hf_url, f"codec {name!r} should now point at {hf_url}"
 
         # Any codec whose checkpoint changed must show up in the ``previous`` map.
         for name in PAIRED_LG_CODECS:
@@ -380,9 +359,7 @@ def fake_hf_api(monkeypatch):
             calls["repo_info"].append({"repo_id": repo_id, "repo_type": repo_type})
 
         def create_repo(self, repo_id: str, repo_type: str, exist_ok: bool = False):
-            calls["created"].append(
-                {"repo_id": repo_id, "repo_type": repo_type, "exist_ok": exist_ok}
-            )
+            calls["created"].append({"repo_id": repo_id, "repo_type": repo_type, "exist_ok": exist_ok})
 
         def upload_file(
             self,
@@ -420,9 +397,7 @@ def test_upload_checkpoint_dry_run_skips_network(tmp_path, monkeypatch) -> None:
     sentinel = mock.Mock(side_effect=AssertionError("HfApi should not be used"))
     monkeypatch.setattr("huggingface_hub.HfApi", sentinel, raising=True)
 
-    summary = upload_checkpoint(
-        "leflur-ted", source_path=src, dry_run=True
-    )
+    summary = upload_checkpoint("leflur-ted", source_path=src, dry_run=True)
     assert summary["dry_run"] == "True"
     assert summary["repo_id"] == "Sidney-Lisanza/leflur"
     assert summary["hf_path"].startswith("leflur_denovo_ted")
@@ -436,9 +411,7 @@ def test_upload_checkpoint_calls_hf_api(tmp_path, fake_hf_api) -> None:
     src = tmp_path / "fake.ckpt"
     src.write_bytes(b"y" * 4096)
 
-    summary = upload_checkpoint(
-        "leflur-base", source_path=src, token="fake-token"
-    )
+    summary = upload_checkpoint("leflur-base", source_path=src, token="fake-token")
 
     assert summary["commit_url"].startswith("https://")
     assert len(fake_hf_api["uploaded"]) == 1
@@ -475,14 +448,10 @@ def test_upload_checkpoint_lg_codec_target_repo(tmp_path, fake_hf_api) -> None:
     src = tmp_path / "lg.ckpt"
     src.write_bytes(b"z" * 2048)
 
-    summary = upload_checkpoint(
-        "LG Protein Ligand fsq 4375", source_path=src, token="fake-token"
-    )
+    summary = upload_checkpoint("LG Protein Ligand fsq 4375", source_path=src, token="fake-token")
     assert summary["repo_id"] == "Sidney-Lisanza/latent_generator"
     assert fake_hf_api["uploaded"][0]["repo_id"] == "Sidney-Lisanza/latent_generator"
-    assert fake_hf_api["uploaded"][0]["path_in_repo"].startswith(
-        "checkpoints_for_lg/"
-    )
+    assert fake_hf_api["uploaded"][0]["path_in_repo"].startswith("checkpoints_for_lg/")
 
 
 def test_cli_upload_dry_run_all(capsys, tmp_path, monkeypatch) -> None:
@@ -498,9 +467,7 @@ def test_cli_upload_dry_run_all(capsys, tmp_path, monkeypatch) -> None:
 
     from lobster.cmdline.manage_leflur_checkpoints import main
 
-    exit_code = main(
-        ["upload", "--all", "--dry-run", "--source", str(fake_src)]
-    )
+    exit_code = main(["upload", "--all", "--dry-run", "--source", str(fake_src)])
     out = capsys.readouterr().out
     assert exit_code == 0
     for short_name in ("leflur-base", "leflur-ted", "leflur-pl"):
@@ -515,11 +482,7 @@ def test_install_paired_lg_codec_overrides_is_idempotent() -> None:
         install_paired_lg_codec_overrides,
     )
 
-    originals = {
-        name: lg_methods[name].model_config.checkpoint
-        for name in PAIRED_LG_CODECS
-        if name in lg_methods
-    }
+    originals = {name: lg_methods[name].model_config.checkpoint for name in PAIRED_LG_CODECS if name in lg_methods}
     _reset_paired_lg_override_flag()
     try:
         install_paired_lg_codec_overrides()

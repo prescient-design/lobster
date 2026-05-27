@@ -28,6 +28,7 @@ import math
 import pytest
 import torch
 
+
 def _make_pair_with_known_rmsd(
     n: int, per_atom_displacement: float, seed: int = 0
 ) -> tuple[torch.Tensor, torch.Tensor, float]:
@@ -77,18 +78,14 @@ def test_rmsd_is_per_atom_not_per_coordinate() -> None:
     """
     from lobster.metrics import align_and_compute_rmsd
 
-    coords1, coords2, expected = _make_pair_with_known_rmsd(
-        n=64, per_atom_displacement=2.5, seed=42
-    )
+    coords1, coords2, expected = _make_pair_with_known_rmsd(n=64, per_atom_displacement=2.5, seed=42)
     rmsd = align_and_compute_rmsd(coords1, coords2)
 
     assert isinstance(rmsd, float), "expected RMSD to be a Python float"
     # Per-atom RMSD identity: with the +d/-d zero-net displacement pattern,
     # ``mean over atoms of ||delta||^2 = d^2`` so ``sqrt(mean) = d``.
     # Kabsch on n=64 random points can shave ~0.3% off via a small fit.
-    assert rmsd == pytest.approx(expected, rel=0.01), (
-        f"per-atom RMSD broke: got {rmsd:.6f}, expected ≈{expected:.6f}"
-    )
+    assert rmsd == pytest.approx(expected, rel=0.01), f"per-atom RMSD broke: got {rmsd:.6f}, expected ≈{expected:.6f}"
     # And explicitly NOT the per-coordinate form (the historical bug).
     per_coordinate = expected / math.sqrt(3.0)
     assert rmsd > per_coordinate * 1.3, (
@@ -104,17 +101,13 @@ def test_rmsd_scaling_invariant() -> None:
     from lobster.metrics import align_and_compute_rmsd
 
     for d in (0.5, 1.0, 2.0, 5.0):
-        coords1, coords2, expected = _make_pair_with_known_rmsd(
-            n=32, per_atom_displacement=d, seed=7
-        )
+        coords1, coords2, expected = _make_pair_with_known_rmsd(n=32, per_atom_displacement=d, seed=7)
         rmsd = align_and_compute_rmsd(coords1, coords2)
-        assert rmsd == pytest.approx(expected, rel=0.02), (
-            f"RMSD at displacement={d}: got {rmsd}, expected ≈{expected}"
-        )
+        assert rmsd == pytest.approx(expected, rel=0.02), f"RMSD at displacement={d}: got {rmsd}, expected ≈{expected}"
         # Sanity: per-coordinate regime would be ``d/sqrt(3)``.
         assert rmsd > (d / math.sqrt(3.0)) * 1.3, (
             f"RMSD at displacement={d} collapsed toward per-coordinate "
-            f"value {d/math.sqrt(3.0):.3f} — sqrt(3) regression?"
+            f"value {d / math.sqrt(3.0):.3f} — sqrt(3) regression?"
         )
 
 
@@ -127,9 +120,7 @@ def test_rmsd_identical_coords_is_zero() -> None:
     assert align_and_compute_rmsd(coords, coords) == pytest.approx(0.0, abs=1e-5)
     mask = torch.ones(40)
     mask[:10] = 0
-    assert align_and_compute_rmsd(coords, coords, mask=mask) == pytest.approx(
-        0.0, abs=1e-5
-    )
+    assert align_and_compute_rmsd(coords, coords, mask=mask) == pytest.approx(0.0, abs=1e-5)
 
 
 def test_rmsd_empty_mask_returns_zero() -> None:
@@ -152,9 +143,7 @@ def test_rmsd_respects_mask_on_partial_region() -> None:
     # RMSD should be ~0; with mask=last-20 it should be ~3.0 (Kabsch on
     # the half-population can introduce a small rigid-body fit, hence the
     # 0.3Å fuzz).
-    coords1, coords2, _ = _make_pair_with_known_rmsd(
-        n=40, per_atom_displacement=3.0, seed=11
-    )
+    coords1, coords2, _ = _make_pair_with_known_rmsd(n=40, per_atom_displacement=3.0, seed=11)
     coords1_partial = coords2.clone()
     coords1_partial[20:] = coords1[20:]
 
@@ -172,5 +161,5 @@ def test_rmsd_respects_mask_on_partial_region() -> None:
     # (~3/sqrt(3) ≈ 1.73).
     assert rmsd_last > 3.0 / math.sqrt(3.0) + 0.5, (
         f"masked-region RMSD {rmsd_last:.3f} collapsed toward the "
-        f"per-coordinate value {3.0/math.sqrt(3.0):.3f} — sqrt(3) bug?"
+        f"per-coordinate value {3.0 / math.sqrt(3.0):.3f} — sqrt(3) bug?"
     )

@@ -5,7 +5,6 @@ TDD tests for:
 - BondMatrixPredictionHead: Predict bond types from atom features
 """
 
-import pytest
 import torch
 import torch.nn as nn
 
@@ -157,11 +156,10 @@ class TestBondMatrixPredictionHead:
         # Get predicted bond types
         pred_bonds = output.argmax(dim=-1)
 
-        # Diagonal should be zero (no self-bonds)
+        # Diagonal should be valid bond indices (no self-bonds enforcement is
+        # implementation-specific; just sanity-check the diagonal is in-range).
         for b in range(batch_size):
-            diag = pred_bonds[b].diag()
-            # After softmax, diagonal should have highest probability for "no bond" (index 0)
-            # This depends on implementation, but output should be valid
+            assert pred_bonds[b].diag().shape == (num_atoms,)
 
     def test_gradient_flow(self):
         """Test that gradients flow through the module."""
@@ -196,9 +194,11 @@ class TestBondMatrixPredictionHead:
         # Should be able to compute cross-entropy loss
         loss_fn = nn.CrossEntropyLoss()
 
-        # Reshape for cross-entropy: [B*N*N, num_bond_types] and [B*N*N]
-        logits = output.view(-1, num_bond_types)
-        targets = target_bonds.view(-1)
+        # Reshape for cross-entropy: [B*N*N, num_bond_types] and [B*N*N].
+        # Use .reshape() rather than .view() because `output` is the result of
+        # a symmetrize / transpose inside the head and may not be contiguous.
+        logits = output.reshape(-1, num_bond_types)
+        targets = target_bonds.reshape(-1)
 
         loss = loss_fn(logits, targets)
 
@@ -279,12 +279,11 @@ class TestEndToEnd:
         # Compute loss
         loss_fn = nn.CrossEntropyLoss()
         loss = loss_fn(
-            predicted.view(-1, 6),
-            true_bonds.view(-1),
+            predicted.reshape(-1, 6),
+            true_bonds.reshape(-1),
         )
 
         # Should be able to backprop
         loss.backward()
 
         assert not torch.isnan(loss)
-

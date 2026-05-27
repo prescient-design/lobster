@@ -96,9 +96,7 @@ def _load_lightning_module(ckpt_path: Path, device: str):
         if family == "protein_ligand"
         else LeFlurSequenceStructureEncoderLightningModule
     )
-    logger.info(
-        "autoencode: detected family=%s -> %s", family, cls.__name__
-    )
+    logger.info("autoencode: detected family=%s -> %s", family, cls.__name__)
     model = cls.load_from_checkpoint(str(ckpt_path), map_location=device)
     model.eval()
     model.to(device)
@@ -135,8 +133,7 @@ def _expand_protein_ligand_inputs(spec: str) -> list[tuple[str, str, str]]:
     if p.is_dir():
         return find_paired_protein_ligand_files(str(p))
     raise ValueError(
-        f"autoencode protein-ligand input must be a directory of "
-        f"*_protein.pt + *_ligand.pt fixtures, got {spec!r}"
+        f"autoencode protein-ligand input must be a directory of *_protein.pt + *_ligand.pt fixtures, got {spec!r}"
     )
 
 
@@ -172,9 +169,7 @@ def autoencode(cfg: DictConfig) -> None:
     autoencode_cfg = cfg.get("autoencode", {})
     input_spec = autoencode_cfg.get("input")
     if input_spec is None:
-        raise ValueError(
-            "autoencode requires `autoencode.input=<path-or-glob>`."
-        )
+        raise ValueError("autoencode requires `autoencode.input=<path-or-glob>`.")
 
     output_dir = Path(autoencode_cfg.get("output_dir", cfg.output_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -182,9 +177,8 @@ def autoencode(cfg: DictConfig) -> None:
     # The LG-side helpers select their behaviour off a string flag. Use the
     # LeFlur-paired LG codec name from the Lightning module so reuse stays
     # 1:1 with what the model loaded.
-    lg_codec_name = (
-        cfg.model.get("latent_generator_model_name")
-        or ("LG Protein Ligand fsq 4375" if family == "protein_ligand" else "LG full attention")
+    lg_codec_name = cfg.model.get("latent_generator_model_name") or (
+        "LG Protein Ligand fsq 4375" if family == "protein_ligand" else "LG full attention"
     )
 
     save_pdbs = bool(autoencode_cfg.get("save_pdbs", True))

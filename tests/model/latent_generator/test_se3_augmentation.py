@@ -92,9 +92,7 @@ class TestSE3AugmentationProteinLigand:
         assert result.ligand_mask is not None
         assert result.ligand_coords.shape == ligand_coords.shape
 
-    def test_protein_ligand_joint_augmentation(
-        self, protein_coords, protein_mask, ligand_coords, ligand_mask
-    ):
+    def test_protein_ligand_joint_augmentation(self, protein_coords, protein_mask, ligand_coords, ligand_mask):
         """Test SE3 augmentation with both protein and ligand."""
         result = apply_se3_augmentation_protein_ligand(
             protein_coords=protein_coords,
@@ -111,9 +109,7 @@ class TestSE3AugmentationProteinLigand:
         assert result.protein_coords.shape == protein_coords.shape
         assert result.ligand_coords.shape == ligand_coords.shape
 
-    def test_se3_preserves_internal_distances(
-        self, protein_coords, protein_mask, ligand_coords, ligand_mask
-    ):
+    def test_se3_preserves_internal_distances(self, protein_coords, protein_mask, ligand_coords, ligand_mask):
         """Test that SE3 transformation preserves pairwise distances within protein and ligand."""
         result = apply_se3_augmentation_protein_ligand(
             protein_coords=protein_coords,
@@ -127,30 +123,22 @@ class TestSE3AugmentationProteinLigand:
 
         # Flatten protein coords for distance computation
         original_protein_flat = protein_coords.reshape(protein_coords.shape[0], -1, 3)
-        transformed_protein_flat = result.protein_coords.reshape(
-            result.protein_coords.shape[0], -1, 3
-        )
+        transformed_protein_flat = result.protein_coords.reshape(result.protein_coords.shape[0], -1, 3)
 
         # Compute pairwise distances for first few atoms
         n_check = min(10, original_protein_flat.shape[1])
         for b in range(protein_coords.shape[0]):
-            orig_dists = torch.cdist(
-                original_protein_flat[b, :n_check], original_protein_flat[b, :n_check]
-            )
-            trans_dists = torch.cdist(
-                transformed_protein_flat[b, :n_check], transformed_protein_flat[b, :n_check]
-            )
-            assert torch.allclose(
-                orig_dists, trans_dists, atol=1e-5
-            ), "SE3 should preserve pairwise distances"
+            orig_dists = torch.cdist(original_protein_flat[b, :n_check], original_protein_flat[b, :n_check])
+            trans_dists = torch.cdist(transformed_protein_flat[b, :n_check], transformed_protein_flat[b, :n_check])
+            assert torch.allclose(orig_dists, trans_dists, atol=1e-5), "SE3 should preserve pairwise distances"
 
         # Same for ligand
         for b in range(ligand_coords.shape[0]):
             orig_lig_dists = torch.cdist(ligand_coords[b], ligand_coords[b])
             trans_lig_dists = torch.cdist(result.ligand_coords[b], result.ligand_coords[b])
-            assert torch.allclose(
-                orig_lig_dists, trans_lig_dists, atol=1e-5
-            ), "SE3 should preserve ligand pairwise distances"
+            assert torch.allclose(orig_lig_dists, trans_lig_dists, atol=1e-5), (
+                "SE3 should preserve ligand pairwise distances"
+            )
 
     def test_se3_preserves_protein_ligand_relative_distances(
         self, protein_coords, protein_mask, ligand_coords, ligand_mask
@@ -174,13 +162,11 @@ class TestSE3AugmentationProteinLigand:
             # Compute protein-ligand distances
             orig_pl_dists = torch.cdist(original_ca[b], ligand_coords[b])
             trans_pl_dists = torch.cdist(transformed_ca[b], result.ligand_coords[b])
-            assert torch.allclose(
-                orig_pl_dists, trans_pl_dists, atol=1e-4
-            ), "SE3 should preserve protein-ligand distances"
+            assert torch.allclose(orig_pl_dists, trans_pl_dists, atol=1e-4), (
+                "SE3 should preserve protein-ligand distances"
+            )
 
-    def test_kabsch_alignment_recovers_original(
-        self, protein_coords, protein_mask, ligand_coords, ligand_mask
-    ):
+    def test_kabsch_alignment_recovers_original(self, protein_coords, protein_mask, ligand_coords, ligand_mask):
         """Test that Kabsch alignment can recover original structure from transformed."""
         result = apply_se3_augmentation_protein_ligand(
             protein_coords=protein_coords,
@@ -195,9 +181,7 @@ class TestSE3AugmentationProteinLigand:
         # Flatten for Kabsch alignment
         original_flat = protein_coords.reshape(protein_coords.shape[0], -1, 3)
         transformed_flat = result.protein_coords.reshape(result.protein_coords.shape[0], -1, 3)
-        mask_flat = protein_mask.unsqueeze(-1).expand(-1, -1, 4).reshape(
-            protein_mask.shape[0], -1
-        )
+        mask_flat = protein_mask.unsqueeze(-1).expand(-1, -1, 4).reshape(protein_mask.shape[0], -1)
 
         # Align transformed back to original using Kabsch
         aligned = kabsch_torch_batched(transformed_flat, original_flat, mask_flat)
@@ -218,18 +202,16 @@ class TestSE3AugmentationProteinLigand:
             backbone_noise=0.0,
         )
 
-        # Both should be centered at origin after rotation-only
-        original_center = protein_coords.reshape(protein_coords.shape[0], -1, 3).mean(dim=1)
-        transformed_center = result.protein_coords.reshape(
-            result.protein_coords.shape[0], -1, 3
-        ).mean(dim=1)
+        # Transformed protein should be centered at origin after rotation-only
+        # (the augmentation centers first, then rotates, then adds translation = 0).
+        transformed_center = result.protein_coords.reshape(result.protein_coords.shape[0], -1, 3).mean(dim=1)
 
         # Centers should both be near zero (centered first, then rotated)
         # Note: The implementation centers, rotates, then adds translation (0 in this case)
         # So both should have mean near zero
-        assert torch.allclose(
-            transformed_center, torch.zeros_like(transformed_center), atol=1e-4
-        ), "Rotation-only should keep center near origin"
+        assert torch.allclose(transformed_center, torch.zeros_like(transformed_center), atol=1e-4), (
+            "Rotation-only should keep center near origin"
+        )
 
     def test_translation_only(self, protein_coords, protein_mask):
         """Test translation-only transformation."""
@@ -250,9 +232,7 @@ class TestSE3AugmentationProteinLigand:
         for b in range(protein_coords.shape[0]):
             orig_dists = torch.cdist(original_flat[b, :10], original_flat[b, :10])
             trans_dists = torch.cdist(transformed_flat[b, :10], transformed_flat[b, :10])
-            assert torch.allclose(
-                orig_dists, trans_dists, atol=1e-5
-            ), "Translation should preserve distances"
+            assert torch.allclose(orig_dists, trans_dists, atol=1e-5), "Translation should preserve distances"
 
     def test_no_se3(self, protein_coords, protein_mask):
         """Test with SE3 disabled."""
@@ -262,9 +242,9 @@ class TestSE3AugmentationProteinLigand:
             random_se3=False,
         )
 
-        assert torch.allclose(
-            result.protein_coords, protein_coords, atol=1e-6
-        ), "No SE3 should return identical coordinates"
+        assert torch.allclose(result.protein_coords, protein_coords, atol=1e-6), (
+            "No SE3 should return identical coordinates"
+        )
 
     def test_backbone_noise(self, protein_coords, protein_mask):
         """Test backbone noise addition."""
@@ -277,9 +257,9 @@ class TestSE3AugmentationProteinLigand:
         )
 
         # Should be different due to noise
-        assert not torch.allclose(
-            result.protein_coords, protein_coords, atol=1e-6
-        ), "Backbone noise should modify coordinates"
+        assert not torch.allclose(result.protein_coords, protein_coords, atol=1e-6), (
+            "Backbone noise should modify coordinates"
+        )
 
         # But difference should be bounded by noise scale
         diff = (result.protein_coords - protein_coords).abs()
@@ -350,9 +330,7 @@ class TestSE3AugmentationBatched:
 
     def test_structured_coords(self, structured_coords):
         """Test with structured coordinate input [B, L, n_atoms, 3]."""
-        mask = torch.ones(
-            structured_coords.shape[0], structured_coords.shape[1], dtype=torch.bool
-        )
+        mask = torch.ones(structured_coords.shape[0], structured_coords.shape[1], dtype=torch.bool)
         result = apply_se3_augmentation_batched(
             coords=structured_coords,
             mask=mask,
@@ -405,9 +383,9 @@ class TestSE3EquivarianceProperties:
             random_se3=True,
         )
 
-        assert torch.allclose(
-            result1.protein_coords, result2.protein_coords, atol=1e-6
-        ), "Same seed should give same result"
+        assert torch.allclose(result1.protein_coords, result2.protein_coords, atol=1e-6), (
+            "Same seed should give same result"
+        )
 
     def test_different_seeds_give_different_results(self):
         """Test that different seeds give different transformations."""
@@ -428,9 +406,9 @@ class TestSE3EquivarianceProperties:
             random_se3=True,
         )
 
-        assert not torch.allclose(
-            result1.protein_coords, result2.protein_coords, atol=1e-3
-        ), "Different seeds should give different results"
+        assert not torch.allclose(result1.protein_coords, result2.protein_coords, atol=1e-3), (
+            "Different seeds should give different results"
+        )
 
     def test_composition_of_se3_is_se3(self):
         """Test that applying SE3 twice still preserves distances (composition of SE3 is SE3)."""
@@ -458,11 +436,10 @@ class TestSE3EquivarianceProperties:
         for b in range(coords.shape[0]):
             orig_dists = torch.cdist(coords[b], coords[b])
             final_dists = torch.cdist(result2[b], result2[b])
-            assert torch.allclose(
-                orig_dists, final_dists, atol=1e-4, rtol=1e-4
-            ), "Composition of SE3 should preserve distances"
+            assert torch.allclose(orig_dists, final_dists, atol=1e-4, rtol=1e-4), (
+                "Composition of SE3 should preserve distances"
+            )
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

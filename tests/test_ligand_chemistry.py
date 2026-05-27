@@ -340,4 +340,3 @@ class TestBondMatrixFormat:
         for smiles in ["CCO", "c1ccccc1", "CC(=O)O"]:
             _, bond_matrix = smiles_to_graph(smiles)
             assert (bond_matrix.diag() == 0).all(), f"Diagonal not zero for {smiles}"
-

@@ -213,9 +213,7 @@ def inverse_fold(
     uses_33_token_vocab = sequence_logits.shape[-1] == 33
 
     if uses_33_token_vocab:
-        predicted_sequence = convert_lobster_aa_tokenization_to_standard_aa(
-            sequence_logits, device=device
-        ).squeeze(0)
+        predicted_sequence = convert_lobster_aa_tokenization_to_standard_aa(sequence_logits, device=device).squeeze(0)
     else:
         predicted_sequence = sequence_logits.argmax(dim=-1).squeeze(0)
         predicted_sequence[predicted_sequence > 20] = 20
@@ -268,9 +266,7 @@ def fold_with_esmfold(
         mask_bool = protein_mask.bool()
         ref_coords = gt_coords[mask_bool].unsqueeze(0)
 
-        folded_metrics, _ = get_folded_structure_metrics(
-            outputs, ref_coords, [pred_seq_str], mask=None, device=device
-        )
+        folded_metrics, _ = get_folded_structure_metrics(outputs, ref_coords, [pred_seq_str], mask=None, device=device)
 
         def _f(v):
             return v.item() if hasattr(v, "item") else float(v)
@@ -441,11 +437,7 @@ def main():
         logger.error(f"Checkpoint not found: {args.checkpoint}")
         sys.exit(1)
 
-    pt_count = (
-        len(glob(args.data_dir))
-        if "*" in args.data_dir
-        else len(glob(os.path.join(args.data_dir, "*.pt")))
-    )
+    pt_count = len(glob(args.data_dir)) if "*" in args.data_dir else len(glob(os.path.join(args.data_dir, "*.pt")))
     if pt_count == 0:
         logger.error(f"No .pt files found at {args.data_dir}")
         sys.exit(1)
@@ -467,9 +459,7 @@ def main():
         plm_fold.model.to(args.device)
         plm_fold.model.eval()
 
-    samples = load_protein_only_structures(
-        args.data_dir, args.num_samples, max_length, args.device
-    )
+    samples = load_protein_only_structures(args.data_dir, args.num_samples, max_length, args.device)
 
     schedule_seq = INFERENCE_SCHEDULE_MAP[args.inference_schedule_seq]
     schedule_struc = INFERENCE_SCHEDULE_MAP[args.inference_schedule_struc]
@@ -514,25 +504,17 @@ def main():
 
         pred_seq = pred_result["predicted_sequence"]
         aar = compute_aar(pred_seq, gt_seq, protein_mask)
-        pred_seq_str = "".join(
-            [STANDARD_AA[int(s)] if int(s) < 21 else "X" for s in pred_seq.cpu().tolist()]
-        )
+        pred_seq_str = "".join([STANDARD_AA[int(s)] if int(s) < 21 else "X" for s in pred_seq.cpu().tolist()])
 
         esmfold_metrics = {}
         if args.use_esmfold and plm_fold is not None:
-            esmfold_result = fold_with_esmfold(
-                plm_fold, pred_seq_str, gt_coords, protein_mask, args.device, max_length
-            )
+            esmfold_result = fold_with_esmfold(plm_fold, pred_seq_str, gt_coords, protein_mask, args.device, max_length)
             if esmfold_result:
                 esmfold_metrics = esmfold_result
 
         if args.structure_path:
-            gt_seq_str = "".join(
-                [STANDARD_AA[int(s)] if int(s) < 21 else "X" for s in gt_seq.cpu().tolist()]
-            )
-            with open(
-                os.path.join(args.structure_path, f"{pdb_id}_sequences.fasta"), "w"
-            ) as f:
+            gt_seq_str = "".join([STANDARD_AA[int(s)] if int(s) < 21 else "X" for s in gt_seq.cpu().tolist()])
+            with open(os.path.join(args.structure_path, f"{pdb_id}_sequences.fasta"), "w") as f:
                 f.write(f">{pdb_id}_gt\n{gt_seq_str}\n>{pdb_id}_pred\n{pred_seq_str}\n")
             if args.save_gt_structure:
                 writepdb(

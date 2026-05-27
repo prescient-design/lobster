@@ -17,9 +17,7 @@ class TestAnarciNumbering:
     def test_anarci_numbering_basic(self):
         """Test basic ANARCI numbering with a known antibody sequence."""
         # Heavy chain variable region sequence (example)
-        sequences = [
-            "QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"
-        ]
+        sequences = ["QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"]
 
         result = anarci_numbering(sequences)
 
@@ -58,9 +56,7 @@ class TestAnarciNumbering:
 
     def test_anarci_numbering_with_metadata(self):
         """Test ANARCI numbering with metadata return."""
-        sequences = [
-            "QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"
-        ]
+        sequences = ["QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"]
 
         result, metadata = anarci_numbering(sequences, return_metadata=True)
 
@@ -75,9 +71,7 @@ class TestAnarciNumbering:
 
     def test_anarci_numbering_kabat_scheme(self):
         """Test ANARCI numbering with Kabat scheme."""
-        sequences = [
-            "QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"
-        ]
+        sequences = ["QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"]
 
         result = anarci_numbering(sequences, scheme="kabat")
 
@@ -88,9 +82,7 @@ class TestAnarciNumbering:
 
     def test_anarci_numbering_chothia_scheme(self):
         """Test ANARCI numbering with Chothia scheme."""
-        sequences = [
-            "QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"
-        ]
+        sequences = ["QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"]
 
         result = anarci_numbering(sequences, scheme="chothia")
 
@@ -101,9 +93,7 @@ class TestAnarciNumbering:
 
     def test_anarci_numbering_imgt_scheme(self):
         """Test ANARCI numbering with IMGT scheme."""
-        sequences = [
-            "QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"
-        ]
+        sequences = ["QVQLQQSGAELARPGASVKMSCKASGYTFTNYGMNWVRQAPGKGLEWVSAITWNSGHIDY"]
 
         result = anarci_numbering(sequences, scheme="imgt")
 
@@ -232,4 +222,3 @@ class TestGetAlignedKabatSequences:
         assert len(aligned_sequences) == 0
         assert len(v_genes) == 0
         assert len(j_genes) == 0
-

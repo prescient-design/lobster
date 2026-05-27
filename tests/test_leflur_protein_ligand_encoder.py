@@ -9,7 +9,6 @@ TDD tests for:
 
 import pytest
 import torch
-import torch.nn as nn
 
 
 class TestLeFlurProteinLigandEncoderModule:
@@ -370,6 +369,3 @@ class TestBackwardCompatibility:
         assert output["sequence_logits"].shape == (batch_size, seq_len, 33)
         assert output["structure_logits"].shape == (batch_size, seq_len, 4375)
         assert "last_hidden_state" in output
-
-
-

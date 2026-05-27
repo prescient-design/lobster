@@ -48,7 +48,9 @@ def _post_with_retry(
             if resp.status_code >= 400:
                 logger.error(
                     "Pylon %s returned %d: %s",
-                    url, resp.status_code, resp.text[:500],
+                    url,
+                    resp.status_code,
+                    resp.text[:500],
                 )
             resp.raise_for_status()
             return resp.json()
@@ -58,7 +60,11 @@ def _post_with_retry(
                 wait = RETRY_BACKOFF * (attempt + 1)
                 logger.warning(
                     "Pylon request to %s failed (attempt %d/%d): %s. Retrying in %ds...",
-                    url, attempt + 1, max_retries, e, wait,
+                    url,
+                    attempt + 1,
+                    max_retries,
+                    e,
+                    wait,
                 )
                 time.sleep(wait)
             else:
@@ -133,9 +139,7 @@ def call_boltz(
           complex_plddt, complex_iplddt, confidence_score, etc.
         - structure: str (mmCIF content)
     """
-    sequences: list[dict[str, Any]] = [
-        {"protein": {"id": "A", "sequence": sequence, "msa": "empty"}}
-    ]
+    sequences: list[dict[str, Any]] = [{"protein": {"id": "A", "sequence": sequence, "msa": "empty"}}]
     if ligand_smiles is not None:
         sequences.append({"ligand": {"id": "B", "smiles": ligand_smiles}})
 
@@ -296,28 +300,38 @@ def call_ligandmpnn_local(
         os.makedirs(out_folder, exist_ok=True)
 
         cmd = [
-            "python", run_script,
-            "--model_type", model_type,
-            "--pdb_path", pdb_path,
-            "--out_folder", out_folder,
-            "--batch_size", str(batch_size),
-            "--number_of_batches", str(number_of_batches),
-            "--temperature", str(temperature),
-            "--seed", str(seed),
+            "python",
+            run_script,
+            "--model_type",
+            model_type,
+            "--pdb_path",
+            pdb_path,
+            "--out_folder",
+            out_folder,
+            "--batch_size",
+            str(batch_size),
+            "--number_of_batches",
+            str(number_of_batches),
+            "--temperature",
+            str(temperature),
+            "--seed",
+            str(seed),
         ]
 
         env = os.environ.copy()
         env["PYTHONPATH"] = ligandmpnn_path + ":" + env.get("PYTHONPATH", "")
 
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=600, env=env,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            env=env,
             cwd=ligandmpnn_path,
         )
 
         if result.returncode != 0:
-            raise RuntimeError(
-                f"LigandMPNN failed (rc={result.returncode}): {result.stderr[-2000:]}"
-            )
+            raise RuntimeError(f"LigandMPNN failed (rc={result.returncode}): {result.stderr[-2000:]}")
 
         return _parse_ligandmpnn_fasta(out_folder)
 
@@ -447,10 +461,18 @@ def parse_mmcif_to_backbone_coords(mmcif_text: str) -> Tensor:
 
     doc = cif.read_string(mmcif_text)
     block = doc.sole_block()
-    atom_site = block.find(["_atom_site."], [
-        "label_atom_id", "label_seq_id", "Cartn_x", "Cartn_y", "Cartn_z",
-        "label_asym_id", "group_PDB",
-    ])
+    atom_site = block.find(
+        ["_atom_site."],
+        [
+            "label_atom_id",
+            "label_seq_id",
+            "Cartn_x",
+            "Cartn_y",
+            "Cartn_z",
+            "label_asym_id",
+            "group_PDB",
+        ],
+    )
 
     atom_coords: dict[int, dict[str, list[float]]] = {}
     for row in atom_site:
@@ -625,7 +647,6 @@ def ligand_data_to_smiles(
         SMILES string.
     """
     from rdkit import Chem
-    from rdkit.Chem import AllChem
 
     BOND_TYPE_MAP = {
         1: Chem.BondType.SINGLE,
@@ -636,7 +657,21 @@ def ligand_data_to_smiles(
 
     mol = Chem.RWMol()
     for name in atom_names:
-        if len(name) >= 2 and name[:2] in ("Cl", "Br", "Si", "Se", "Fe", "Zn", "Mg", "Ca", "Mn", "Cu", "Co", "Ni", "Bi"):
+        if len(name) >= 2 and name[:2] in (
+            "Cl",
+            "Br",
+            "Si",
+            "Se",
+            "Fe",
+            "Zn",
+            "Mg",
+            "Ca",
+            "Mn",
+            "Cu",
+            "Co",
+            "Ni",
+            "Bi",
+        ):
             elem = name[:2]
         else:
             elem = name[0].upper()

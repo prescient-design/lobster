@@ -61,15 +61,9 @@ def test_console_scripts_registered() -> None:
         data = tomllib.load(fh)
     scripts = data["project"]["scripts"]
     assert scripts.get("lobster_generate") == "lobster.cmdline.generate:generate"
-    assert (
-        scripts.get("lobster_autoencode")
-        == "lobster.cmdline.autoencode:autoencode"
-    )
+    assert scripts.get("lobster_autoencode") == "lobster.cmdline.autoencode:autoencode"
     # Phase 4 entry stays put.
-    assert (
-        scripts.get("lobster_leflur_checkpoints")
-        == "lobster.cmdline.manage_leflur_checkpoints:main"
-    )
+    assert scripts.get("lobster_leflur_checkpoints") == "lobster.cmdline.manage_leflur_checkpoints:main"
 
 
 # --- Hydra compose checks --------------------------------------------------
@@ -84,12 +78,8 @@ def hydra_clean():
 
 PHASE5_CONFIGS_AND_EXPECTED_MODE = {
     "experiment/generate_ligand_conditioned": "ligand_conditioned",
-    "experiment/generate_ligand_conditioned_forward_folding": (
-        "protein_ligand_forward_folding"
-    ),
-    "experiment/generate_ligand_conditioned_inverse_folding": (
-        "protein_ligand_inverse_folding"
-    ),
+    "experiment/generate_ligand_conditioned_forward_folding": ("protein_ligand_forward_folding"),
+    "experiment/generate_ligand_conditioned_inverse_folding": ("protein_ligand_inverse_folding"),
     "experiment/autoencode": None,
     "experiment/autoencode_protein_ligand": None,
 }
@@ -99,9 +89,7 @@ PHASE5_CONFIGS_AND_EXPECTED_MODE = {
 @pytest.mark.parametrize("overlay", ["internal", "public"])
 def test_phase5_configs_compose(hydra_clean, config_name, overlay) -> None:
     """Phase 5 configs compose under both internal and public path overlays."""
-    with initialize_config_module(
-        config_module=REPO_HYDRA_MODULE, version_base=None
-    ):
+    with initialize_config_module(config_module=REPO_HYDRA_MODULE, version_base=None):
         cfg = compose(
             config_name=config_name,
             overrides=[
@@ -115,9 +103,7 @@ def test_phase5_configs_compose(hydra_clean, config_name, overlay) -> None:
         assert "autoencode" in cfg
         assert cfg.model.ckpt_path.startswith("leflur-")
     else:
-        assert cfg.generation.mode == expected_mode, (
-            f"{config_name} should set generation.mode={expected_mode}"
-        )
+        assert cfg.generation.mode == expected_mode, f"{config_name} should set generation.mode={expected_mode}"
         assert cfg.model.ckpt_path == "leflur-pl"
 
 
@@ -143,9 +129,7 @@ def test_generate_dispatcher_has_all_ligand_conditioned_branches() -> None:
             "_generate_protein_ligand_inverse_folding",
         ),
     ):
-        assert f"generation_mode == {mode_str}" in src, (
-            f"generate.py is missing the {mode_str} dispatch branch"
-        )
+        assert f"generation_mode == {mode_str}" in src, f"generate.py is missing the {mode_str} dispatch branch"
         assert helper in src, f"generate.py is missing {helper} dispatch"
 
 
@@ -166,13 +150,9 @@ def test_generate_dispatcher_has_all_ligand_conditioned_branches() -> None:
         ),
     ],
 )
-def test_ligand_conditioned_runners_reject_missing_data_dir(
-    tmp_path, config_cls_name: str, runner_name: str
-) -> None:
+def test_ligand_conditioned_runners_reject_missing_data_dir(tmp_path, config_cls_name: str, runner_name: str) -> None:
     """Every PL runner surfaces a clear ``FileNotFoundError`` for bad data_dir."""
-    runner_mod = importlib.import_module(
-        "lobster.cmdline._ligand_conditioned_runner"
-    )
+    runner_mod = importlib.import_module("lobster.cmdline._ligand_conditioned_runner")
     config_cls = getattr(runner_mod, config_cls_name)
     runner = getattr(runner_mod, runner_name)
 
@@ -191,9 +171,7 @@ def test_ligand_conditioned_run_config_defaults() -> None:
         LigandConditionedRunConfig,
     )
 
-    cfg = LigandConditionedRunConfig(
-        data_dir="/tmp/x", output_dir="/tmp/y"
-    )
+    cfg = LigandConditionedRunConfig(data_dir="/tmp/x", output_dir="/tmp/y")
     assert cfg.length == 100
     assert cfg.num_designs == 10
     assert cfg.nsteps == 200
@@ -206,9 +184,7 @@ def test_protein_ligand_forward_folding_config_defaults() -> None:
         ProteinLigandForwardFoldingRunConfig,
     )
 
-    cfg = ProteinLigandForwardFoldingRunConfig(
-        data_dir="/tmp/x", output_dir="/tmp/y"
-    )
+    cfg = ProteinLigandForwardFoldingRunConfig(data_dir="/tmp/x", output_dir="/tmp/y")
     assert cfg.nsteps == 200
     assert cfg.num_predictions == 1
     assert cfg.best_of_n_metric == "plddt"
@@ -220,9 +196,7 @@ def test_protein_ligand_inverse_folding_config_defaults() -> None:
         ProteinLigandInverseFoldingRunConfig,
     )
 
-    cfg = ProteinLigandInverseFoldingRunConfig(
-        data_dir="/tmp/x", output_dir="/tmp/y"
-    )
+    cfg = ProteinLigandInverseFoldingRunConfig(data_dir="/tmp/x", output_dir="/tmp/y")
     assert cfg.nsteps == 100
     assert cfg.inference_schedule_seq == "LogInferenceSchedule"
     assert cfg.use_se3_augmentation is False

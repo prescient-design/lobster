@@ -4,7 +4,6 @@ import pathlib
 import shutil
 import sys
 from functools import cache
-from typing import List, Optional, Tuple, Union
 
 
 from ._fix_aho_sequences import fix_aho_sequences
@@ -56,7 +55,7 @@ def hmmscan_parent_path():
     raise RuntimeError("unable to find hmmscan executable")
 
 
-def repair_kabat(numbering: List[Tuple[Tuple[str, str], str]], metadata: Optional[dict]) -> str:
+def repair_kabat(numbering: list[tuple[tuple[str, str], str]], metadata: dict | None) -> str:
     if not metadata:
         logging.warning(
             "Lack of metadata will make it possible to make mistakes in HC vs LC Kabat numbering. Checking length"
@@ -96,11 +95,11 @@ def repair_kabat(numbering: List[Tuple[Tuple[str, str], str]], metadata: Optiona
 def anarci_numbering(
     sequences: list[str],
     *,
-    scheme: Optional[str] = None,
+    scheme: str | None = None,
     allow_fix: bool = True,
     return_metadata: bool = False,
     **kwargs,
-) -> Union[List[Optional[str]], Tuple[List[Optional[str]], List[Optional[dict]]]]:
+) -> list[str | None] | tuple[list[str | None], list[dict | None]]:
     """
     Return numbered sequences using ANARCI based on the selected `scheme`.
     For sequences where numbering fails, return None.
@@ -255,8 +254,8 @@ def anarci_numbering(
                 metadata_.extend([None])
 
     # Extract numbered sequences from the output and validate the output
-    numbered_sequences: list[Optional[str]] = [None] * len(sequences)
-    metadata: list[Optional[dict]] = [None] * len(sequences)
+    numbered_sequences: list[str | None] = [None] * len(sequences)
+    metadata: list[dict | None] = [None] * len(sequences)
 
     for (i, _), numbered_entry, metadata_entry in zip(sequences_input, numbered, metadata_):
         if numbered_entry is None or len(numbered_entry) > 1:
@@ -295,8 +294,8 @@ def _sort_alphanumerically(s: list[str]):
 
 
 def get_aligned_kabat_sequences(
-    sequences: list[str], required_kabat_indexes: Optional[set[str]] = None
-) -> Tuple[list[str], List[str], List[Optional[str]], List[Optional[str]]]:
+    sequences: list[str], required_kabat_indexes: set[str] | None = None
+) -> tuple[list[str], list[str], list[str | None], list[str | None]]:
     """
     Get aligned kabat sequences with insertions.
     This function uses ANARCI to number the sequences and then aligns them
