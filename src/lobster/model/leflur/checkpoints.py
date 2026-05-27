@@ -183,7 +183,21 @@ KNOWN_CHECKPOINTS: dict[str, CheckpointInfo] = {
         paired_lg_codec="LG full attention",
         tags=("canonical", "protein-only", "publication"),
         local_source_path=(
-            "/cv/scratch/u/lisanzas/gen_ume_denovo/runs/2026-03-06T15-30-31/epoch=17-step=6937-val_loss=0.8192.ckpt"
+            # Canonical TED-CATH ss-balanced snapshot from training run
+            # 2026-03-14T15-41-36, frozen at 2026-03-18T12-20-59.
+            # md5 cc5c54b32eae137567d257e7b0defe24, size 5_727_801_238 bytes.
+            #
+            # Historical note: the upload that originally populated the HF
+            # blob pointed at an unrelated denovo checkpoint
+            # (`gen_ume_denovo/runs/2026-03-06T15-30-31/epoch=17-step=6937-
+            # val_loss=0.8192.ckpt`, md5 fca4ed5e174de68eb47bc7ced6a02109,
+            # 5_727_801_366 bytes), which silently regressed CAMEO forward
+            # folding TM by ~0.08 (0.667 -> 0.586) since that denovo
+            # snapshot is a sister of the BASE training run and was never
+            # the publication-table checkpoint. Re-uploading from the
+            # correct source restores TM=0.667.
+            "/cv/scratch/u/lisanzas/evaluations/checkpoint_snapshots/"
+            "gen_ume_denovo_ted_cath_ss_balanced_2026-03-14T15-41-36_2026-03-18T12-20-59.ckpt"
         ),
     ),
     "leflur-pl": CheckpointInfo(

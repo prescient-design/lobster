@@ -213,6 +213,23 @@ def _generate_forward_folding(
             for trial in range(n_trials):
                 logger.info(f"Trial {trial + 1}/{n_trials} for batch {batch_idx + 1}")
 
+                # Defensively pin the per-sample RNG state. Without this, the
+                # exact amount of RNG consumed during `load_from_checkpoint`
+                # + any other model-construction code path can shift the
+                # sampling stream and silently regress TM/RMSD between
+                # otherwise-identical runs (observed -0.09 TM on CAMEO
+                # forward folding after the gen_ume -> LeFlur rename).
+                # Reseeding per (batch, trial) keeps every (batch, trial)
+                # sample bit-reproducible independent of upstream code drift,
+                # and the offsets keep batches / trials independent so we
+                # don't sample identical priors when iterating.
+                base_seed = cfg.get("seed")
+                if base_seed is not None:
+                    sample_seed = int(base_seed) + batch_idx * 10_000 + trial * 100
+                    torch.manual_seed(sample_seed)
+                    if torch.cuda.is_available():
+                        torch.cuda.manual_seed(sample_seed)
+
                 # Generate new structures (forward folding)
                 generate_sample = model.generate_sample(
                     length=max_length,

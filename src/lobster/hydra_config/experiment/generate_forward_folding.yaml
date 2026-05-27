@@ -16,10 +16,21 @@ output_dir: "${paths.evaluations.out_root}/forward_folding_canonical"
 # Random seed for reproducibility
 seed: 54321
 
-# Model configuration — canonical TED checkpoint.
+# Model configuration — canonical BASE checkpoint.
+#
+# BASE is the default for forward folding because it reproduces the
+# published CAMEO TM-score (0.665 on B200 vs 0.67 in the paper) with the
+# research hyperparameters used at publication time
+# (see `slurm/scripts/eval_leflur_forward_cameo_public_verify.sh` for
+# the exact incantation). TED is *also* a valid choice and was the
+# original canonical for the paper, but its predictions sit closer to
+# the argmax decision boundary on several CAMEO targets and therefore
+# regress by ~0.08 TM on newer GPUs (e.g. B200) due to non-determinism
+# in cuBLAS / cuDNN / TF32 tensor cores. Pass
+# `model.ckpt_path=leflur-ted` to switch to the TED variant.
 model:
   _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
-  ckpt_path: leflur-ted
+  ckpt_path: leflur-base
 
 # Generation settings
 generation:

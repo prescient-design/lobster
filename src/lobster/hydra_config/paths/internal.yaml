@@ -28,7 +28,12 @@ checkpoints:
   # BASE — `leflur_denovo_last_ckpt_2026-03-11T12-11-53` in Phase 4 naming.
   base: /cv/scratch/u/lisanzas/evaluations/checkpoint_snapshots/gen_ume_denovo_last_2026-03-08T17-09-23_2026-03-11T12-11-53.ckpt
   # TED — `leflur_denovo_ted_cath_ss_balanced_ckpt_2026-03-18T12-20-59`.
-  ted: /cv/scratch/u/lisanzas/gen_ume_denovo/runs/2026-03-06T15-30-31/epoch=17-step=6937-val_loss=0.8192.ckpt
+  # md5 cc5c54b32eae137567d257e7b0defe24. Was previously pointing at an
+  # unrelated `gen_ume_denovo/.../epoch=17-step=6937-val_loss=0.8192.ckpt`
+  # snapshot (md5 fca4ed5e), which silently regressed CAMEO forward
+  # folding TM by ~0.08 vs the publication numbers; the registry +
+  # HF upload were corrected together with this path.
+  ted: /cv/scratch/u/lisanzas/evaluations/checkpoint_snapshots/gen_ume_denovo_ted_cath_ss_balanced_2026-03-14T15-41-36_2026-03-18T12-20-59.ckpt
   # Protein-ligand production checkpoint (used by evaluator + sweep configs).
   # 2026-03-11 no-geom-loss medium variant; reproduces the PoseBusters NO
   # inverse-folding AAR ~0.70 reported in the conference benchmark. The
