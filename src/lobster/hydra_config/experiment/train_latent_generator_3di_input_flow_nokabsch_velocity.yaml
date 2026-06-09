@@ -1,0 +1,41 @@
+# @package _global_
+# Step S -- plain flow with no Kabsch coupling AND velocity prediction.
+# Same as `train_latent_generator_3di_input_flow_nokabsch.yaml` but the
+# moco interpolant is set to `prediction_type: velocity`. The loss
+# `target_type` follows automatically (`_moco_loss` reads it from the
+# interpolant), so the loss is `||v_hat - (x_1 - x_0)||^2` with no
+# `1/(1-t)^2` reweight (Proteina's `target_pred=v` mode).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow_nokabsch_velocity
+
+defaults:
+  - override /data: structure_pdb_with_3di
+  - override /model: latent_generator_3di_input_flow_nokabsch_velocity
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow_nokabsch_velocity-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow_nokabsch_velocity
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

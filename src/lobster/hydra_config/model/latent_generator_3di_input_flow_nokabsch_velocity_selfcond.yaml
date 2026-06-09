@@ -1,0 +1,111 @@
+_target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
+
+# Step U: clone of `latent_generator_3di_input_flow_nokabsch_velocity.yaml`
+# with self-conditioning enabled on both the tokenizer and the decoder.
+# Tests whether the ESMFold2 self-cond borrow (Step F), which was a wash
+# on the data-pred + Kabsch baseline (`flow_selfcond ~= flow` per Step N),
+# pays rent on top of the much-improved velocity-pred baseline that Step S
+# / Step T showed actually USES multi-step ODE integration.
+#
+# Hypothesis: with multi-step actually contributing (n=50 < n=1 in the
+# Step T sampling table for the velocity run), feeding the previous step's
+# velocity prediction as self-cond input should give the model a useful
+# anchor across the trajectory -- which it couldn't get on the data-pred
+# baselines because their multi-step trajectories drift away from the GT
+# (exposure bias).
+
+ckpt_path: null
+
+n_atoms: 3
+num_3di_classes: 20
+
+p_uncond: 0.15
+guidance_scale: 1.0
+n_sampling_steps: 50
+aux_pairwise_l2_weight: 0.01
+
+center_x1: true
+center_every_step: true
+
+coord_scale: 0.1
+
+random_so3_aug: true
+
+sampling_mode: ode
+sc_scale_noise: 0.0
+sc_scale_score: 0.0
+
+autoguidance_model: null
+autoguidance_ratio: 0.0
+
+# Step F + Step U: self-conditioning with the velocity parametrisation.
+# At training, the warm no-grad forward computes a stale x_selfcond
+# (which is now velocity-shaped, not data-shaped, but the decoder's
+# coord_in_proj_selfcond is parametrisation-agnostic since it's a
+# generic linear projection over (B, L, A*3)). At sampling, x_selfcond
+# is the previous step's guided velocity prediction.
+use_self_conditioning: true
+selfcond_train_prob: 0.5
+
+decoder_factory:
+  _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+  decoder2loss_dict:
+    vit_decoder: []
+  decoder_mapping:
+    vit_decoder:
+      _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
+      data_fixed_size: 512
+      n_atoms: 3
+      uvit_n_layers: 6
+      uvit_n_heads: 8
+      uvit_dim_head: 32
+      uvit_position_embedding_type: 'rotary'
+      indexed: false
+      struc_token_dim: 512
+      struc_token_codebook_size: 512
+      encode_ligand: false
+      num_3di_classes: 20
+      time_cond_dim: 128
+      num_registers: 4
+      use_self_conditioning: true
+
+# Step S: drop Kabsch (was train/sample mismatch), keep the moco
+# interpolant in velocity-prediction mode. `_moco_loss` reads
+# target_type from this `prediction_type` so the loss becomes
+# ||v_hat - (x_1 - x_0)||^2 with no `1/(1-t)^2` reweight.
+interpolant:
+  _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
+  _partial_: true
+  prediction_type: velocity
+  sigma: 0.0
+  augmentation_type: null
+  data_scale: 1.0
+
+time_distribution:
+  _target_: bionemo.moco.distributions.time.uniform.UniformTimeDistribution
+  min_t: 0.0
+  max_t: 1.0
+
+prior_distribution:
+  _target_: bionemo.moco.distributions.prior.continuous.gaussian.GaussianPrior
+  mean: 0.0
+  std: 1.0
+  center: false
+
+inference_schedule:
+  _target_: bionemo.moco.schedules.inference_time_schedules.LinearInferenceSchedule
+  nsteps: 50
+
+optim:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 1e-4
+  weight_decay: 0.0
+
+num_warmup_steps: 5000
+num_training_steps: 50000
+
+lr_scheduler:
+  _target_: transformers.get_constant_schedule_with_warmup
+  _partial_: true
+  num_warmup_steps: 5000

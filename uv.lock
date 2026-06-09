@@ -1398,10 +1398,10 @@ name = "icecream"
 version = "2.1.7"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "asttokens", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "colorama", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "executing", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "pygments", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "asttokens", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "executing", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "pygments", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a2/d0/738341f0a3636a8e4bc798b98b9e0594d0de894e85208af43a6a05b9db44/icecream-2.1.7.tar.gz", hash = "sha256:936df053e65ff3c7a219fa79311b32bdae19aad83dd2e23d153ab8864b78acd9", size = 17355, upload-time = "2025-08-17T16:02:12.342Z" }
 wheels = [
@@ -1617,7 +1617,7 @@ name = "jaxtyping"
 version = "0.3.3"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "wadler-lindig", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "wadler-lindig", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/1e/827f9e17b26e21c7d4d934fd1a214284ad05663afedd37c21ed105db366b/jaxtyping-0.3.3.tar.gz", hash = "sha256:8003cfd16ba2ad9b47fdda1d982a575299a81ddfc7997ad0e917c87a0897ea86", size = 45484, upload-time = "2025-10-01T13:46:51.933Z" }
 wheels = [
@@ -1841,8 +1841,12 @@ dependencies = [
     { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "hydra-core", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "hydra-submitit-launcher", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "icecream", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "jaxtyping", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "lightning", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "litdata", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "loguru", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "mini3di", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "onnx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "onnxscript", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
@@ -1854,6 +1858,7 @@ dependencies = [
     { name = "pyarrow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "python-dotenv", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "rdkit", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "rotary-embedding-torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "s3fs", extra = ["boto3"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "scikit-learn", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
     { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
@@ -1990,18 +1995,22 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.33.2" },
     { name = "hydra-core" },
     { name = "hydra-submitit-launcher", specifier = ">=1.2.0" },
+    { name = "icecream" },
     { name = "icecream", marker = "extra == 'struct-cpu'" },
     { name = "icecream", marker = "extra == 'struct-gpu'" },
     { name = "jax", extras = ["cuda"], marker = "extra == 'struct-gpu'" },
+    { name = "jaxtyping" },
     { name = "lightning" },
     { name = "lightning-utilities", marker = "extra == 'struct-cpu'" },
     { name = "lightning-utilities", marker = "extra == 'struct-gpu'" },
     { name = "litdata", specifier = ">=0.2.49" },
+    { name = "loguru" },
     { name = "loguru", marker = "extra == 'struct-cpu'" },
     { name = "loguru", marker = "extra == 'struct-gpu'" },
     { name = "matplotlib", marker = "extra == 'struct-cpu'" },
     { name = "matplotlib", marker = "extra == 'struct-gpu'" },
     { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.0.0" },
+    { name = "mini3di" },
     { name = "mini3di", marker = "extra == 'struct-cpu'" },
     { name = "mini3di", marker = "extra == 'struct-gpu'" },
     { name = "mpmath", marker = "extra == 'struct-cpu'" },
@@ -2025,6 +2034,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "python-levenshtein", marker = "extra == 'mcp'", specifier = ">=0.20.0" },
     { name = "rdkit", specifier = ">=2024.9.4" },
+    { name = "rotary-embedding-torch" },
     { name = "rotary-embedding-torch", marker = "extra == 'flash'" },
     { name = "rotary-embedding-torch", marker = "extra == 'struct-cpu'" },
     { name = "rotary-embedding-torch", marker = "extra == 'struct-gpu'" },
@@ -2356,7 +2366,8 @@ name = "mini3di"
 version = "0.2.1"
 source = { registry = "https://pypi.python.org/simple" }
 dependencies = [
-    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-cpu') or (sys_platform == 'linux' and extra == 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.python.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (sys_platform == 'linux' and extra != 'extra-6-lbster-struct-cpu' and extra != 'extra-6-lbster-struct-gpu') or (extra == 'extra-6-lbster-struct-cpu' and extra == 'extra-6-lbster-struct-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/e4/a478c514aef8759e5e55fb2bed4fd242f19a82ba7d780cc24dd7952b1d72/mini3di-0.2.1.tar.gz", hash = "sha256:dfc4a63aaba175b05e9cc1f260e1bfcd2832ff3235537146a334b6a2179f8a96", size = 18577, upload-time = "2024-09-15T21:48:23.085Z" }
 wheels = [

@@ -1,0 +1,27 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml
+  # Adds `3di_states` (and the renamed `chains` / `mask` fields) to each item.
+  - transform_fn: structure_with_3di_transform.yaml
+  # Pad-aware batch collator that matches what `ViTDecoder.featurize` expects.
+  - collate_fn: collate_fn_backbone.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+
+# Step A output (see `prepper/preprocessing/swissprot_structures/`).
+root: /cv/data/ai4dd/data/prescient-modal/datasets/swissprot/structures_v6/
+path_to_datasets:
+  - /cv/data/ai4dd/data/prescient-modal/datasets/swissprot/structures_v6/
+
+# Match the LG codec's `data_fixed_size: 512`. SwissProt SFT parquet caps
+# sequence length at 800, so ~70% of accessions fit; the rest are random-
+# cropped to 512 by `StructureBackboneTransform` (lossy for those rows).
+max_length: 512
+
+cluster_file: null
+files_to_keep: null
+testing: false
+use_shards: false
+datasets: swissprot_v6
+
+batch_size: 40
+num_workers: 12

@@ -6,3 +6,4 @@ from ._element_decoder import ElementDecoder
 from ._ligand_aux import RgDecoder, SasaDecoder
 from ._seq_decoder import SequenceDecoder
 from ._vit_decoder import ViTDecoder
+from ._vit_decoder_conditional import ViTDecoderConditional

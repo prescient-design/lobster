@@ -1,0 +1,47 @@
+# @package _global_
+# Plain flow-matching 3Di-input experiment with random SO(3) augmentation
+# of `x_1` (Step H aug companion to `train_latent_generator_3di_input_flow.yaml`).
+#
+# Identical to the plain flow experiment in every way EXCEPT:
+#   - the model defaults `random_so3_aug` to true (the model yaml ships
+#     it on now; this experiment relies on that default).
+#   - a distinct wandb project name + logger name so the aug variant
+#     A/Bs cleanly against the pinned no-aug baseline (job 12478043).
+#
+# Run dir / log dir / job name are kept distinct via the matching SLURM
+# script (`slurm/scripts/train_latent_generator_3di_input_flow_aug.sh`),
+# so there is zero collision with the in-flight no-aug run.
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow_aug
+
+defaults:
+  - override /data: structure_pdb_with_3di
+  - override /model: latent_generator_3di_input_flow
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow_aug-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow_aug
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

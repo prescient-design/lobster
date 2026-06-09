@@ -1,0 +1,50 @@
+# @package _global_
+# Flow-matching variant of the 3Di-input Latent Generator (Step E).
+#
+# Same dataset / pipeline as `train_latent_generator_3di_input.yaml`:
+# per-residue Foldseek 3Di state -> learnable embedding + Continuous Flow
+# Matching over the backbone N/CA/C coordinates -> predicted x_1 (clean
+# coordinates).
+#
+# Differences vs. the regression experiment:
+#   - `model: latent_generator_3di_input_flow` (Tokenizer3diInputFlow +
+#     ViTDecoderConditional + bionemo-moco ContinuousFlowMatcher).
+#   - new wandb project so the runs A/B cleanly against the regression
+#     baseline.
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow
+
+defaults:
+  # Same PDB dataset overlay as the deterministic 3Di-input run. The data
+  # file is shared and NOT modified by this experiment.
+  - override /data: structure_pdb_with_3di
+  - override /model: latent_generator_3di_input_flow
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  # Parity with the deterministic 3Di-input run.
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

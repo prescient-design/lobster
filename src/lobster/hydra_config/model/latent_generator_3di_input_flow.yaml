@@ -1,0 +1,109 @@
+_target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
+
+# Read by `lobster.cmdline.train` as `trainer.fit(..., ckpt_path=...)`.
+ckpt_path: null
+
+n_atoms: 3
+num_3di_classes: 20
+
+# CFG / sampling knobs (Proteina-style)
+p_uncond: 0.15
+guidance_scale: 1.0
+n_sampling_steps: 50
+aux_pairwise_l2_weight: 0.01
+
+# Centering (delta #2 from the plan).
+center_x1: true
+center_every_step: true
+
+# Coordinate scaling: Angstrom -> nanometer (Proteina `nm_to_ang_scale=10.0`).
+# Scales centered x_1 by 0.1 so backbone-coord variance matches the unit Gaussian
+# prior; without it the flow degenerates into a 1-shot regressor. Undone at the
+# end of `sample()` so outputs are back in Angstrom.
+coord_scale: 0.1
+
+# Step H: per-step random SO(3) augmentation of `x_1` (train-only).
+# Rotates the GT structure uniformly on SO(3) AFTER CoM centering and
+# BEFORE the Kabsch noise-alignment + interpolation, so the rotated
+# x_1 is what the loss is computed against (no in-loss alignment, no
+# trajectory-frame inconsistency). Val/test pass through unchanged so
+# val/loss stays directly comparable across runs.
+random_so3_aug: true
+
+# Sampling-mode dispatch (delta #4). v1 ships ODE; SDE is exposed by overrides.
+sampling_mode: ode
+sc_scale_noise: 0.0
+sc_scale_score: 0.0
+
+# Autoguidance stub (delta #5). Null on v1 -> pure CFG fast path.
+autoguidance_model: null
+autoguidance_ratio: 0.0
+
+decoder_factory:
+  _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+  decoder2loss_dict:
+    vit_decoder: []
+  decoder_mapping:
+    vit_decoder:
+      _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
+      data_fixed_size: 512
+      n_atoms: 3
+      uvit_n_layers: 6
+      uvit_n_heads: 8
+      uvit_dim_head: 32
+      uvit_position_embedding_type: 'rotary'
+      # `indexed`/`struc_token_codebook_size` are kept for constructor parity with
+      # ViTDecoder; the conditional decoder owns its own embedding lookup so the
+      # underlying `self.net` is built with `indexed=False, codebook_size=struc_token_dim`.
+      indexed: false
+      struc_token_dim: 512
+      struc_token_codebook_size: 512
+      encode_ligand: false
+      num_3di_classes: 20
+      time_cond_dim: 128
+      num_registers: 4
+
+# bionemo-moco components (instantiated via Hydra; the tokenizer composes
+# them into a ContinuousFlowMatcher).
+interpolant:
+  _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
+  _partial_: true
+  prediction_type: data
+  sigma: 0.0
+  augmentation_type: kabsch
+  data_scale: 1.0
+
+time_distribution:
+  _target_: bionemo.moco.distributions.time.uniform.UniformTimeDistribution
+  min_t: 0.0
+  max_t: 1.0
+
+prior_distribution:
+  _target_: bionemo.moco.distributions.prior.continuous.gaussian.GaussianPrior
+  mean: 0.0
+  std: 1.0
+  # We do our own geometric CoM removal in the tokenizer (moco's `center`
+  # operates over dim=-2, which for our `(B, L, A, 3)` is the atom axis;
+  # we want the geometric CoM over all atoms in the protein instead).
+  center: false
+
+inference_schedule:
+  _target_: bionemo.moco.schedules.inference_time_schedules.LinearInferenceSchedule
+  nsteps: 50
+
+optim:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 1e-4
+  weight_decay: 0.0
+
+num_warmup_steps: 5000
+num_training_steps: 50000
+
+# Constant LR after a linear warmup (no decay). `num_training_steps` is
+# intentionally omitted: `get_constant_schedule_with_warmup` does not accept
+# it, and `configure_optimizers` filters scheduler kwargs by signature.
+lr_scheduler:
+  _target_: transformers.get_constant_schedule_with_warmup
+  _partial_: true
+  num_warmup_steps: 5000

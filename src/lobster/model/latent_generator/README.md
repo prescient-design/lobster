@@ -7,6 +7,7 @@ A powerful protein and protein-ligand structure representation learning model fo
   - [Structure Reconstruction Quality on CASP15 Proteins](#structure-reconstruction-quality-on-casp15-proteins)
   - [Ligand Reconstruction Quality](#ligand-reconstruction-quality)
   - [Protein-Ligand Complex Reconstruction Quality](#protein-ligand-complex-reconstruction-quality)
+- [Variants](#variants)
 - [Setup](#setup)
   - [Environment Setup](#environment-setup)
 - [Getting Embeddings and Tokens](#getting-embeddings-and-tokens)
@@ -75,6 +76,33 @@ Comparison of FSQ and SLQ variants on PDBbind complexes. Token counts represent 
 | LG Prot-Lig SLQ | Ligand | 4096 | 4096 | Joint (c) | 3.589 | - | - | - |
 | LG Prot-Lig FSQ | Ligand | 4375 | 4375 | Joint (c) | 1.011 | 0.271 | 0.507 | 3.729 |
 | LG Prot-Lig FSQ | Ligand | 4375 | 15360 | Joint (c) | 0.998 | - | - | - |
+
+## Variants
+
+Two Lightning modules live under
+[`lobster.model.latent_generator.tokenizer`](tokenizer/). They share the
+same Hydra-wired `DecoderFactory` / `LossFactory` building blocks and
+checkpoint format but differ in what the input alphabet is:
+
+| Variant | Input | Pipeline | Quantizer | Use case |
+|---|---|---|---|---|
+| [`TokenizerMulti`](tokenizer/_tokenizer_multi.py) | `coords_res` `(B, L, 3, 3)` | encoder → quantizer → decoder | yes (SLQ / FSQ / …) | Canonical LG: backbone in, discrete token bottleneck, backbone out. Powers all the checkpoints in the "Model Configurations" tables below. |
+| [`Tokenizer3diInput`](tokenizer/_tokenizer_3di_input.py) | `3di_states` `(B, L)` long (20-class Foldseek alphabet, recomputed at data-load time by [`Structure3diTransform`](../../transforms/_structure_transforms.py)) | single decoder pass | no | Minimal 3Di-tokens-in / coords-out auto-encoder. The wrapped `ViTDecoder` is set to `indexed=True` with `struc_token_codebook_size = num_3di_classes + 1 = 21`, so its built-in embedding lookup consumes the 3Di state IDs directly — no separate encoder, no quantizer. Reuses `[l2_loss, pairwise_l2_loss]`. |
+
+The `Tokenizer3diInput` training surface ships with three additive Hydra
+configs ([`model/latent_generator_3di_input.yaml`](../../hydra_config/model/latent_generator_3di_input.yaml),
+[`data/structure_swissprot_with_3di.yaml`](../../hydra_config/data/structure_swissprot_with_3di.yaml),
+[`experiment/train_latent_generator_3di_input.yaml`](../../hydra_config/experiment/train_latent_generator_3di_input.yaml))
+and a first-pass SwissProt training corpus produced by the
+[`swissprot_structures/`](../../../../../prescient/modal/prepper/src/prepper/preprocessing/swissprot_structures/)
+prepper sub-package. See
+`tests/lobster/model/latent_generator/test_tokenizer_3di_input.py`
+for the minimal forward / loss-decrease invariants.
+
+This variant is **not** a substitutable codec for LeFlur today —
+LeFlur expects an LG codec that exposes `encode_structure` returning
+discrete tokens, whereas `Tokenizer3diInput` returns coordinates
+directly. A future LeFlur integration would need a separate path.
 
 ## Setup
 

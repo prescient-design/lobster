@@ -1,0 +1,49 @@
+# @package _global_
+# Self-conditioned flow-matching 3Di-input experiment with random SO(3)
+# augmentation of `x_1` (Step H aug companion to
+# `train_latent_generator_3di_input_flow_selfcond.yaml`).
+#
+# Identical to the self-cond flow experiment in every way EXCEPT:
+#   - the model defaults `random_so3_aug` to true (model yaml default).
+#   - a distinct wandb project name + logger name so this aug variant
+#     A/Bs cleanly against the pinned no-aug self-cond baseline
+#     (job 12531194).
+#
+# Self-conditioning + augmentation are mutually compatible: the warm
+# no-grad forward and the grad forward both consume the same rotated
+# x_t per step, so the self-cond signal stays in-frame (verified in
+# `_dryrun_3di_input_flow_so3_aug_cpu.py`).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow_selfcond_aug
+
+defaults:
+  - override /data: structure_pdb_with_3di
+  - override /model: latent_generator_3di_input_flow_selfcond
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow_selfcond_aug-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow_selfcond_aug
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

@@ -1,0 +1,99 @@
+_target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
+
+# Step S: clone of `latent_generator_3di_input_flow.yaml` with
+# `interpolant.augmentation_type: null` (drop OT/Kabsch coupling). Keeps
+# `random_so3_aug: true` so orientation marginalization actually does work
+# (under Kabsch coupling the alignment absorbs the rotation -- see plan
+# Step S analysis). Same small (S, ~20.6M) architecture so it A/Bs
+# cleanly against the existing plain-flow run.
+
+# Read by `lobster.cmdline.train` as `trainer.fit(..., ckpt_path=...)`.
+ckpt_path: null
+
+n_atoms: 3
+num_3di_classes: 20
+
+# CFG / sampling knobs (Proteina-style)
+p_uncond: 0.15
+guidance_scale: 1.0
+n_sampling_steps: 50
+aux_pairwise_l2_weight: 0.01
+
+center_x1: true
+center_every_step: true
+
+# Coordinate scaling: Angstrom -> nanometer (Proteina `nm_to_ang_scale=10.0`).
+coord_scale: 0.1
+
+# Random SO(3) augmentation on `x_1` (train-only). Now actually does work:
+# Kabsch was previously aligning `x_0` to the rotated `x_1`, absorbing the
+# rotation. With `augmentation_type: null` below, the per-sample coupling is
+# gone and the rotation marginalises the loss as designed.
+random_so3_aug: true
+
+sampling_mode: ode
+sc_scale_noise: 0.0
+sc_scale_score: 0.0
+
+autoguidance_model: null
+autoguidance_ratio: 0.0
+
+decoder_factory:
+  _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+  decoder2loss_dict:
+    vit_decoder: []
+  decoder_mapping:
+    vit_decoder:
+      _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
+      data_fixed_size: 512
+      n_atoms: 3
+      uvit_n_layers: 6
+      uvit_n_heads: 8
+      uvit_dim_head: 32
+      uvit_position_embedding_type: 'rotary'
+      indexed: false
+      struc_token_dim: 512
+      struc_token_codebook_size: 512
+      encode_ligand: false
+      num_3di_classes: 20
+      time_cond_dim: 128
+      num_registers: 4
+
+# bionemo-moco components. Step S: `augmentation_type: null` is the only delta
+# vs. `latent_generator_3di_input_flow.yaml`. Prediction type stays at `data`.
+interpolant:
+  _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
+  _partial_: true
+  prediction_type: data
+  sigma: 0.0
+  augmentation_type: null
+  data_scale: 1.0
+
+time_distribution:
+  _target_: bionemo.moco.distributions.time.uniform.UniformTimeDistribution
+  min_t: 0.0
+  max_t: 1.0
+
+prior_distribution:
+  _target_: bionemo.moco.distributions.prior.continuous.gaussian.GaussianPrior
+  mean: 0.0
+  std: 1.0
+  center: false
+
+inference_schedule:
+  _target_: bionemo.moco.schedules.inference_time_schedules.LinearInferenceSchedule
+  nsteps: 50
+
+optim:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 1e-4
+  weight_decay: 0.0
+
+num_warmup_steps: 5000
+num_training_steps: 50000
+
+lr_scheduler:
+  _target_: transformers.get_constant_schedule_with_warmup
+  _partial_: true
+  num_warmup_steps: 5000
