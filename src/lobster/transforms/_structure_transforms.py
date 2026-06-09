@@ -196,6 +196,42 @@ class ESMEmbeddingTransform(BaseTransform):
         return x
 
 
+class AlternativeSequenceSwapTransform(BaseTransform):
+    """Swap the sequence with a random alternative from `alternative_sequences`.
+
+    De novo synthetic dataset .pt files store multiple passing inverse-folding
+    sequences for the same backbone.  This transform picks one at random every
+    time the sample is loaded, increasing effective sequence diversity without
+    additional disk storage.
+    """
+
+    def __init__(self, **kwargs):
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="struct-gpu (or --extra struct-cpu)")
+        super().__init__(**kwargs)
+
+    def __call__(self, x: dict) -> dict:
+        alt_seqs = x.get("alternative_sequences")
+        if not alt_seqs:
+            return x
+
+        import random
+
+        backbone_len = x["coords_res"].shape[0]
+        alt_seqs_same_len = [s for s in alt_seqs if len(s) == backbone_len]
+        if not alt_seqs_same_len:
+            return x
+
+        alt_seq = random.choice(alt_seqs_same_len)
+        x["sequence"] = torch.tensor(
+            [residue_constants.restype_order_with_x.get(aa, 20) for aa in alt_seq],
+            dtype=x["sequence"].dtype,
+        )
+        x["sequence_str"] = alt_seq
+        return x
+
+
 class AminoAcidTokenizerTransform(BaseTransform):
     def __init__(self, max_length=512, truncation=True, **kwargs):
         import lobster
@@ -589,16 +625,23 @@ class StructureLigandTransform(BaseTransform):
         self.periodic_table = Chem.GetPeriodicTable()
 
     def __call__(self, x: dict) -> dict:
-        # Convert atom names to element indices using our vocabulary
+        # Convert atom names to element indices using the extended vocabulary (25 elements)
         if "atom_names" in x:
-            element_indices = torch.tensor(
-                [
-                    residue_constants.ELEMENT_TO_IDX[atom_name]  # Will raise KeyError if element not in vocab
-                    for atom_name in x["atom_names"]
-                ],
-                dtype=torch.long,
-            )
-            x["element_indices"] = element_indices
+            element_indices = []
+            unknown_elements = set()
+            # UNK token index for unknown elements (better than PAD)
+            unk_idx = residue_constants.ELEMENT_VOCAB_EXTENDED_TO_IDX.get("UNK", 2)
+            for atom_name in x["atom_names"]:
+                # Use ELEMENT_VOCAB_EXTENDED_TO_IDX which includes Se, Fe, Cu, Zn, etc.
+                idx = residue_constants.ELEMENT_VOCAB_EXTENDED_TO_IDX.get(atom_name, unk_idx)
+                if idx == unk_idx and atom_name not in ("UNK", "PAD"):
+                    unknown_elements.add(atom_name)
+                element_indices.append(idx)
+
+            if unknown_elements:
+                logger.warning(f"Unknown elements mapped to UNK: {unknown_elements}")
+
+            x["element_indices"] = torch.tensor(element_indices, dtype=torch.long)
 
         if self.rand_permute_ligand:
             random_order = torch.randperm(x["atom_coords"].shape[0])
@@ -608,6 +651,9 @@ class StructureLigandTransform(BaseTransform):
             x["atom_names"] = [x["atom_names"][i] for i in random_order_list]
             if "element_indices" in x:
                 x["element_indices"] = x["element_indices"][random_order]
+            # Permute bond_matrix: reindex both rows and columns
+            if "bond_matrix" in x:
+                x["bond_matrix"] = x["bond_matrix"][random_order][:, random_order]
 
         return x
 

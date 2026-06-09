@@ -1,0 +1,29 @@
+# ESMFold Baseline Configuration
+# 
+# This configuration runs ESMFold as a baseline for forward folding comparison.
+# ESMFold takes only sequences and predicts structures, comparing against ground truth.
+#
+# Usage: uv run python -m lobster.cmdline.evaluation.esmfold_baseline --config-path "../../hydra_config/experiment" --config-name esmfold_baseline
+
+# Output directory
+output_dir: "./examples/esmfold_baseline_cameo"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Generation settings
+generation:
+  # Input structures - update these paths to your structure files
+  # Examples of different input formats:
+  # Single file: input_structures: "/path/to/structure.pdb"
+  # Directory: input_structures: "/path/to/structure/directory/"
+  # Glob pattern: input_structures: "/path/to/structures/*.pdb"
+  # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
+  input_structures: "/cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed/*.pt" #"/cv/data/ai4dd/data2/lisanzas/multi_flow_data/test_set_filtered_pt/*.pt"
+  
+  # Batch size for processing (process multiple structures at once)
+  batch_size: 5
+  
+  # Maximum length for structures (ESMFold constraint)
+  max_length: 512
+

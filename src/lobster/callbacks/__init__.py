@@ -12,6 +12,13 @@ from ._umap_visualization_callback import UmapVisualizationCallback
 from ._ume_grpo_logging_callback import UmeGrpoLoggingCallback
 from ._structure_decode import StructureDecodeCallback
 from ._unconditional_generation import UnconditionalGenerationCallback
+from ._inverse_folding_callback import InverseFoldingCallback
+from ._forward_folding_callback import ForwardFoldingCallback
+from ._protein_ligand_decode import ProteinLigandDecodeCallback
+from ._protein_ligand_inverse_folding import ProteinLigandInverseFoldingCallback
+from ._protein_ligand_forward_folding import ProteinLigandForwardFoldingCallback
+from ._s3_checkpoint_callback import S3CheckpointBackupCallback
+from ._cg_boltz_eval import CGBoltzEvalCallback
 
 __all__ = [
     "SklearnProbeTaskConfig",
@@ -30,4 +37,13 @@ __all__ = [
     "UmeGrpoLoggingCallback",
     "AuxiliaryTaskWeightScheduler",
     "MultiTaskWeightScheduler",
+    "StructureDecodeCallback",
+    "UnconditionalGenerationCallback",
+    "InverseFoldingCallback",
+    "ForwardFoldingCallback",
+    "ProteinLigandDecodeCallback",
+    "ProteinLigandInverseFoldingCallback",
+    "ProteinLigandForwardFoldingCallback",
+    "S3CheckpointBackupCallback",
+    "CGBoltzEvalCallback",
 ]

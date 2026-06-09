@@ -12,17 +12,26 @@ from tqdm import tqdm
 
 from lobster.constants import Modality, ModalityType
 
-from ._gen_ume_sequence_structure_encoder import AuxiliaryTask, UMESequenceStructureEncoderModule
+from ._leflur_sequence_structure_encoder import AuxiliaryTask, LeFlurSequenceStructureEncoderModule
 
 # latent generator code:
 from lobster.model.latent_generator.cmdline import LatentEncoderDecoder
 from lobster.model.latent_generator.cmdline import methods as latent_generator_methods
 
-# bionemo interpolant code:
-from bionemo.moco.distributions.prior import DiscreteUniformPrior, DiscreteMaskedPrior
-from bionemo.moco.distributions.time import UniformTimeDistribution
-from bionemo.moco.interpolants import DiscreteFlowMatcher
-from bionemo.moco.schedules.inference_time_schedules import (
+# Re-route the LeFlur-paired LG codecs (which by default live behind s3:// or
+# /cv/... paths) to their HuggingFace mirror so external users can sample
+# without internal credentials. Idempotent / safe to call from multiple
+# LeFlur Lightning modules.
+from .checkpoints import install_paired_lg_codec_overrides
+
+install_paired_lg_codec_overrides()
+
+# bionemo interpolant code — imported after install_paired_lg_codec_overrides()
+# so the LG codec path patches are applied before any LG-consuming code runs.
+from bionemo.moco.distributions.prior import DiscreteUniformPrior, DiscreteMaskedPrior  # noqa: E402
+from bionemo.moco.distributions.time import UniformTimeDistribution  # noqa: E402
+from bionemo.moco.interpolants import DiscreteFlowMatcher  # noqa: E402
+from bionemo.moco.schedules.inference_time_schedules import (  # noqa: E402
     LinearInferenceSchedule,
     LogInferenceSchedule,
 )
@@ -31,7 +40,32 @@ from bionemo.moco.schedules.inference_time_schedules import (
 logger = logging.getLogger(__name__)
 
 
-class UMESequenceStructureEncoderLightningModule(LightningModule):
+class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
+    """PyTorch Lightning module for protein-only LeFlur training and inference.
+
+    Wraps :class:`LeFlurSequenceStructureEncoderModule` with the discrete
+    flow-matching interpolant (via ``bionemo.moco``), the paired Latent
+    Generator codec for structure tokenization, and the training /
+    optimization loop. Three of the published canonical checkpoints
+    (``leflur-base``, ``leflur-ted``, plus all of the Tier-2 research
+    variants) are loaded into this module via
+    :meth:`load_from_checkpoint` with a path resolved by
+    :func:`lobster.model.leflur.resolve_checkpoint`.
+
+    The companion :class:`LeFlurProteinLigandLightningModule` extends this
+    surface to also handle protein-ligand complexes; see ``leflur-pl``.
+
+    Inference modes (selected via :func:`lobster.cmdline.generate.generate`):
+
+    * **Unconditional** — sample novel sequences + structures.
+    * **Forward folding** — sequence → structure.
+    * **Inverse folding** — structure → sequence.
+    * **Inpainting** — fill missing residues conditioned on a partial complex.
+
+    See ``docs/leflur/`` for a user-level walkthrough, and
+    :mod:`lobster.cmdline.generate` for the dispatch wiring.
+    """
+
     def __init__(
         self,
         mask_token_id: int,
@@ -52,7 +86,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         ckpt_path: str | None = None,
         # LatentGenerator params
         decode_tokens_during_training: bool = True,
-        latent_generator_model_name: str = "LG 20A seq 3di c6d Aux",
+        latent_generator_model_name: str = "LG full attention",
         # generation params
         prior_distribution_seq: Callable[..., DiscreteUniformPrior] = DiscreteUniformPrior,
         prior_distribution_struc: Callable[..., DiscreteUniformPrior] = DiscreteUniformPrior,
@@ -145,7 +179,7 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         self.padding_index_struc_tokens = self.quantizer.n_tokens + 1
         self.num_struc_classes = self.quantizer.n_tokens + 2
 
-        self.encoder = UMESequenceStructureEncoderModule(
+        self.encoder = LeFlurSequenceStructureEncoderModule(
             auxiliary_tasks=auxiliary_tasks,
             sequence_token_vocab_size=self.vocab_size,
             structure_token_vocab_size=self.num_struc_classes,
@@ -335,6 +369,67 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
         return unmasked_x
 
+    @torch.no_grad()
+    def score_pll(
+        self,
+        sequence_tokens: Tensor,
+        structure_tokens: Tensor,
+        mask: Tensor,
+        residue_index: Tensor | None = None,
+        *,
+        K: int = 32,
+        eps: float = 0.02,
+        seed: int = 0,
+        variants: tuple[str, ...] | None = None,
+    ) -> dict[str, Tensor]:
+        """Compute pseudo-NLL ranking scores for a batch of (seq, struc) pairs.
+
+        Centralized PLL scoring for the protein-only LeFlur checkpoint. See
+        :mod:`lobster.model.leflur._pll_scoring` for the full algorithmic
+        description.
+
+        Parameters
+        ----------
+        sequence_tokens : Tensor ``(B, L)``
+        structure_tokens : Tensor ``(B, L)``
+        mask : Tensor ``(B, L)`` of validity (1) vs padding (0)
+        residue_index : Tensor ``(B, L)`` or ``None``
+            When ``None``, ``torch.arange(L)`` is broadcast over the batch.
+        K : Monte-Carlo draws per modality (default 32).
+        eps : Stratified-t endpoint margin (default 0.02).
+        seed : Base seed; sample ``b`` uses ``seed + b`` so the per-sample
+            scoring is deterministic and order-independent.
+        variants : Subset of
+            :data:`lobster.model.leflur._pll_scoring.PROTEIN_VARIANTS`.
+            ``None`` returns the full default tuple.
+
+        Returns
+        -------
+        dict mapping each requested variant name (and the diagnostic
+        ``seq_score_arllh`` / ``struc_score_arllh`` weighted estimators when
+        ``seq`` / ``struc`` are requested) to a ``(B,)`` float tensor.
+        Lower NLL = higher likelihood; rank by ``argmin``.
+        """
+        from ._pll_scoring import PROTEIN_VARIANTS, score_protein_pll
+
+        was_training = self.training
+        self.eval()
+        try:
+            return score_protein_pll(
+                self,
+                sequence_tokens=sequence_tokens,
+                structure_tokens=structure_tokens,
+                mask=mask,
+                residue_index=residue_index,
+                K=K,
+                eps=eps,
+                seed=seed,
+                variants=variants if variants is not None else PROTEIN_VARIANTS,
+            )
+        finally:
+            if was_training:
+                self.train()
+
     def step(
         self, batch: dict[str, Tensor], batch_idx: int, split: Literal["train", "val"] = "train"
     ) -> dict[str, Tensor]:
@@ -436,6 +531,10 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
         inpainting_mask_sequence: Tensor = None,
         inpainting_mask_structure: Tensor = None,
         asynchronous_sampling: bool = False,
+        sequence_anchor_tokens: Tensor = None,
+        sequence_anchor_mask: Tensor = None,
+        sequence_logit_bias: Tensor | None = None,
+        sequence_logit_bias_steps: int = 10,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -509,8 +608,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
             xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 
-        for dt_seq, dt_struc, t_seq, t_struc in tqdm(
-            zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples"
+        for step_idx, (dt_seq, dt_struc, t_seq, t_struc) in enumerate(
+            tqdm(zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples")
         ):
             t_seq = inference_schedule_seq.pad_time(num_samples, t_seq, device)
             t_struc = inference_schedule_struc.pad_time(num_samples, t_struc, device)
@@ -518,6 +617,8 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
 
             unmasked_x = self.forward(xt, mask, residue_index, conditioning_tensor, timesteps=timesteps)
             unmasked_sequence_tokens = unmasked_x["sequence_logits"]
+            if sequence_logit_bias is not None and step_idx < sequence_logit_bias_steps:
+                unmasked_sequence_tokens = unmasked_sequence_tokens + sequence_logit_bias
             xt_seq_new = self.interpolant_seq.step(
                 unmasked_sequence_tokens,
                 t_seq,
@@ -555,6 +656,10 @@ class UMESequenceStructureEncoderLightningModule(LightningModule):
             else:
                 xt_seq = xt_seq_new
                 xt_struc = xt_struc_new
+
+            # Apply sequence anchors: keep anchored positions fixed (mask=0), update free positions (mask=1)
+            if sequence_anchor_tokens is not None and sequence_anchor_mask is not None:
+                xt_seq = torch.where(sequence_anchor_mask.bool(), xt_seq, sequence_anchor_tokens)
 
             xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 

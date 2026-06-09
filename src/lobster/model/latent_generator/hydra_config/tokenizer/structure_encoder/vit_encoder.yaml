@@ -12,3 +12,5 @@ backbone_noise: 0.30
 concat_sine_pw: true
 encode_ligand: false
 ligand_atom_embedding: false
+use_ligand_bond_embedding: false
+use_extended_element_vocab: false

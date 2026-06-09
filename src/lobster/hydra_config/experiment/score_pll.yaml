@@ -1,0 +1,88 @@
+# @package _global_
+#
+# LeFlur pseudo-log-likelihood (PLL) scoring.
+#
+# Reads a CSV of candidates produced by any of the generation modes (or any
+# custom CSV with `sequence` + `latent_generator_tokens` columns; PL also
+# requires `ligand_atom_tokens` + `ligand_structure_tokens`) and writes an
+# augmented CSV with per-variant pseudo-NLL scores. Lower NLL = higher
+# likelihood; pick by argmin.
+#
+# Typical use cases:
+#   1. Best-of-N ranking: run `generate_unconditional` with num_samples=30,
+#      then run this config on the resulting CSV grouped by `iteration`.
+#   2. Cross-checkpoint ranking: score the same candidates with two different
+#      LeFlur checkpoints to compare model preferences.
+#   3. Pose ranking for ligand-conditioned designs: rank decoys per target by
+#      `joint_protein` (protein quality) or `joint_all` (joint quality).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.generate --config-name experiment/score_pll \
+#       model.ckpt_path=leflur-ted \
+#       generation.candidates_csv=/path/to/sequences_unconditional_*.csv
+#
+#   # Protein-ligand:
+#   uv run python -m lobster.cmdline.generate --config-name experiment/score_pll \
+#       model.ckpt_path=leflur-pl \
+#       model._target_=lobster.model.leflur.LeFlurProteinLigandLightningModule \
+#       generation.candidates_csv=/path/to/sequences_ligand_conditioned_*.csv \
+#       generation.rank_within=target_id
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/score_pll"
+
+seed: 0
+
+# Default to the canonical protein-only LeFlur-TED checkpoint. Override
+# `model.ckpt_path=leflur-pl` and `model._target_` for the protein-ligand
+# variant (see the Usage block above).
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-ted
+
+generation:
+  mode: score_pll
+
+  # Required: path to a CSV with `sequence` (or `original_sequence`) +
+  # `latent_generator_tokens` columns. Override on the CLI.
+  candidates_csv: ???
+
+  # Output CSV path. When null, defaults to
+  # `${output_dir}/pll_scores_<timestamp>.csv`.
+  output_csv: null
+
+  # Monte-Carlo draws per modality. 32 is the conference-paper default;
+  # 16 is acceptable for small-scale screening.
+  K: 32
+
+  # Stratified-t endpoint margin.
+  eps: 0.02
+
+  # Variants to score. null = all variants supported by the model class
+  # (4 for protein-only, 8 for protein-ligand). Override with a list of
+  # variant names to score a subset:
+  #   generation.variants='[joint_protein]'              (paper default)
+  #   generation.variants='[joint_all, joint_true_4]'    (PL paper default)
+  variants: null
+
+  # Optional: column to group by before computing per-variant ranks.
+  # E.g. `iteration` for best-of-N on unconditional output, `input_structure`
+  # for inverse folding, `target_id` for ligand-conditioned. When set, the
+  # output CSV gets per-group `rank_<variant>` integer columns.
+  rank_within: null
+
+  # Skip rows whose sequence length exceeds this.
+  max_length: 512
+
+  # Score only the first N rows (useful for smoke tests). null = all rows.
+  max_samples: null
+
+  log_every: 25
+
+  # ESMFold is not used by this mode; keep disabled.
+  use_esmfold: false
+  save_csv_metrics: false
+  create_plots: false

@@ -1,0 +1,85 @@
+# @package _global_
+
+# Ligand-conditioned protein generation: given a ligand context, design a
+# protein around it and measure self-consistency between the model-decoded
+# structure and the ESMFold prediction of the generated sequence.
+#
+# Usage:
+#   uv run python -m lobster.cmdline.generate \
+#     --config-name experiment/generate_ligand_conditioned \
+#     model.ckpt_path=leflur-pl \
+#     generation.data_dir=/path/to/posebusters_benchmark_no_overlap
+#
+# Defaults / hyperparameters mirror the conference-benchmark ligand-
+# conditioned eval (see scripts/forward_fold_bestofN_pll_ligand.py +
+# evaluate_ligand_conditioned_protein_generation.py). Internal users get
+# the cluster paths for free via `paths/internal.yaml`; external users
+# can switch with `paths=public`.
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/ligand_conditioned"
+
+seed: 1234
+
+model:
+  _target_: lobster.model.leflur.LeFlurProteinLigandLightningModule
+  ckpt_path: leflur-pl
+
+generation:
+  mode: ligand_conditioned
+
+  # Sampling
+  length: 100
+  num_designs: 10
+  num_samples: 100         # use null / -1 to score the full benchmark
+  nsteps: 200
+  batch_size: 1
+  max_length: 512
+  save_csv_metrics: true
+  create_plots: false
+
+  # ESMFold validation
+  use_esmfold: true
+  skip_esmfold: false
+
+  # Data
+  data_dir: "${paths.benchmarks.posebusters_benchmark_no_overlap}"
+
+  # Pocket / contacts
+  pocket_distance_threshold: 5.0
+  ligand_context_mode: "atom_bond_only"  # or "structure_tokens"
+
+  # Temperatures + stochasticities (taken from the conference benchmark)
+  temperature_seq: 0.153
+  temperature_struc: 0.05
+  stochasticity_seq: 20
+  stochasticity_struc: 20
+  temperature_ligand: 0.1
+  stochasticity_ligand: 5
+
+  # Inference schedules per modality
+  inference_schedule_seq: LinearInferenceSchedule
+  inference_schedule_struc: PowerInferenceSchedule
+  inference_schedule_ligand_atom: PowerInferenceSchedule
+  inference_schedule_ligand_struc: LinearInferenceSchedule
+
+  # Save full per-design structures (slower; usually only for inspection)
+  save_structures: false
+
+  # Optional MMFF94 ligand minimization
+  minimize_ligand: false
+  minimize_mode: bonds_and_angles
+  force_field: MMFF94
+  minimize_steps: 500
+
+  # Optional Protenix / Boltz co-folding validation
+  use_protenix: false
+  use_boltz: false
+  raw_data_dir: null
+
+  # Unused for ligand_conditioned mode but kept for shape-compat with
+  # the dispatcher in generate.py.
+  input_structures: null

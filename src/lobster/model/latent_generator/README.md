@@ -4,9 +4,9 @@ A powerful protein and protein-ligand structure representation learning model fo
 
 ## Table of Contents
 - [Performance](#performance)
-  - [Reconstruction Quality on CASP15 Proteins](#reconstruction-quality-on-casp15-proteins)
-  - [Reconstruction Quality with Canonical Pose (Mol Frame)](#reconstruction-quality-with-canonical-pose-mol-frame)
-  - [Fold Prediction Accuracy](#fold-prediction-accuracy)
+  - [Structure Reconstruction Quality on CASP15 Proteins](#structure-reconstruction-quality-on-casp15-proteins)
+  - [Ligand Reconstruction Quality](#ligand-reconstruction-quality)
+  - [Protein-Ligand Complex Reconstruction Quality](#protein-ligand-complex-reconstruction-quality)
 - [Setup](#setup)
   - [Environment Setup](#environment-setup)
 - [Getting Embeddings and Tokens](#getting-embeddings-and-tokens)
@@ -14,80 +14,67 @@ A powerful protein and protein-ligand structure representation learning model fo
   - [Ligand Example](#ligand-example)
   - [Protein-Ligand Complex Example](#protein-ligand-complex-example)
   - [Command-line Example](#command-line-example)
-- [Training](#training)
-  - [Protein-only Training](#protein-only-training)
-  - [Protein+Ligand (Complex) Training](#proteinligand-complex-training)
+  - [Ligand Structure Minimization](#ligand-structure-minimization)
+- [Evaluation](#evaluation)
+  - [Evaluating Reconstruction Quality on CASP15](#evaluating-reconstruction-quality-on-casp15)
 - [Model Configurations](#model-configurations)
-  - [Ligand Models](#ligand-models)
   - [Protein-Ligand Models](#protein-ligand-models)
   - [Protein-Only Models](#protein-only-models)
 
 ## Performance
 
-### Reconstruction Quality on CASP15 Proteins
+### Structure Reconstruction Quality on CASP15 Proteins
 
-We evaluated the reconstruction quality of our models on CASP15 proteins ≤ 512 residues. The table below shows the average RMSD between original and reconstructed structures:
+We evaluated the reconstruction quality of our models on CASP15 proteins (≤ 512 residues). The continuous baseline establishes an upper bound for the ViT architecture.
 
-**Evaluation Set**: CASP15 proteins ≤ 512 residues 
+**Evaluation Set**: CASP15 proteins ≤ 512 residues
 
-| Model | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
-|-------|------------------|--------------|--------------|--------------|
-| LG full attention | 1.707 | 0.643 | 0.839 | 3.434 |
-| LG 10A | 3.698 | 1.756 | 1.952 | 7.664 |
-| LG 20A c6d Aux | 4.395 | 2.671 | 1.678 | 11.306 |
-| LG 20A seq 3di c6d Aux | 4.428 | 1.723 | 2.757 | 8.556 |
-| LG 20A 3di c6d Aux | 4.484 | 2.458 | 2.390 | 11.696 |
-| LG 20A | 4.470 | 3.540 | 1.630 | 12.864 |
-| LG 20A seq 3di c6d 512 Aux | 5.761 | 4.349 | 1.188 | 17.442 |
-| LG 20A seq Aux | 5.449 | 2.862 | 3.063 | 13.342 |
-| LG 20A seq 3di Aux | 6.112 | 3.723 | 2.973 | 17.839 |
-| LG 20A 3di Aux | 7.844 | 4.289 | 3.119 | 16.500 |
+| Model | Quantizer | Size | RMSD (Å) | Std | Min | Max |
+|-------|-----------|------|----------|-----|-----|-----|
+| LG Protein (cont.) | None | - | 0.462 | 0.322 | 0.200 | 1.271 |
+| LG Protein SLQ | SLQ | 256 | 1.647 | 0.535 | 0.979 | 3.189 |
+| LG Prot-Lig SLQ | SLQ | 256 | 1.873 | 1.054 | 0.798 | 5.143 |
+| LG Prot-Lig SLQ | SLQ | 4096 | 3.097 | 2.009 | 1.242 | 8.474 |
+| LG Protein FSQ | FSQ | 240 | 1.848 | 1.194 | 0.483 | 5.419 |
+| LG Prot-Lig FSQ | FSQ | 4375 | 1.260 | 0.632 | 0.651 | 3.117 |
+| LG Prot-Lig FSQ | FSQ | 4375/15360 | 1.418 | 0.810 | 0.748 | 3.396 |
 
-### Reconstruction Quality with Canonical Pose (Mol Frame)
+### Ligand Reconstruction Quality
 
-We also evaluated the models using canonical pose mode, which makes the model invariant to rotations and translations:
+We evaluated ligand reconstruction quality on 30,936 ligand structures from the GEOM dataset. The unified protein-ligand model achieves comparable performance to the specialist ligand-only model, demonstrating the architecture's capacity to handle multimodal distributions within a shared parameter set.
 
-**Evaluation Set**: CASP15 proteins ≤ 512 residues 
+**Evaluation Set**: 30,936 ligands from GEOM dataset
 
-| Model | Average RMSD (Å) | Std RMSD (Å) | Min RMSD (Å) | Max RMSD (Å) |
-|-------|------------------|--------------|--------------|--------------|
-| LG full attention | 1.645 | 0.573 | 0.664 | 2.901 |
-| LG 10A | 4.005 | 2.173 | 1.981 | 9.883 |
-| LG 20A c6d Aux | 4.603 | 3.028 | 1.240 | 12.297 |
-| LG 20A seq 3di c6d Aux | 4.614 | 2.103 | 2.811 | 9.061 |
-| LG 20A 3di c6d Aux | 4.140 | 2.108 | 2.195 | 9.275 |
-| LG 20A | 4.268 | 3.306 | 1.461 | 12.989 |
-| LG 20A seq 3di c6d 512 Aux | 5.445 | 3.963 | 1.568 | 15.305 |
-| LG 20A seq Aux | 5.759 | 3.248 | 2.246 | 16.543 |
-| LG 20A seq 3di Aux | 6.107 | 2.974 | 3.097 | 13.456 |
-| LG 20A 3di Aux | 8.288 | 4.434 | 3.043 | 16.252 |
+| Model | Size | Avg RMSD (Å) | Std | Min | Max |
+|-------|------|--------------|-----|-----|-----|
+| LG Ligand SLQ | 512 | 0.752 | 0.305 | 0.065 | 4.943 |
+| LG Prot-Lig SLQ | 512 | 0.920 | 0.236 | 0.152 | 3.704 |
+| LG Prot-Lig SLQ | 4096 | 1.239 | 0.335 | 0.196 | 4.101 |
+| LG Prot-Lig FSQ | 4375 | 0.395 | 0.059 | 0.179 | 1.784 |
+| LG Prot-Lig FSQ | 15360 | 0.295 | 0.052 | 0.120 | 1.792 |
 
+### Protein-Ligand Complex Reconstruction Quality
 
-### Fold Prediction Accuracy
+Comparison of FSQ and SLQ variants on PDBbind complexes. Token counts represent the specific codebook size for protein and ligand components respectively.
 
-We evaluated the fold prediction accuracy using embeddings from different LatentGenerator models as features for a small MLP trained for protein fold classification:
+**Evaluation Set**: PDBbind complexes
 
-
-| Model | Val Acc Mean | Val Acc Std | Val Acc Min | Val Acc Max |
-|-------|--------------|-------------|-------------|-------------|
-| LG 20A seq 3di c6d Aux PDB | 0.385 | 0.001 | 0.383 | 0.386 |
-| LG 20A seq 3di c6d Aux PDB Pinder | 0.381 | 0.004 | 0.376 | 0.387 |
-| LG 20A seq 3di c6d Aux PDB Pinder Iterative Refine Module | 0.335 | 0.005 | 0.330 | 0.342 |
-| LG 20A seq 3di c6d Aux | 0.313 | 0.004 | 0.310 | 0.319 |
-| LG 20A seq Aux | 0.298 | 0.010 | 0.287 | 0.311 |
-| LG 20A seq 3di Aux | 0.293 | 0.009 | 0.281 | 0.302 |
-| LG 20A 3di c6d Aux | 0.237 | 0.009 | 0.224 | 0.245 |
-| LG 20A c6d Aux | 0.226 | 0.003 | 0.223 | 0.231 |
-| LG full attention | 0.225 | 0.007 | 0.215 | 0.232 |
-| LG 20A 3di Aux | 0.196 | 0.003 | 0.192 | 0.200 |
-| LG 10A | 0.123 | 0.001 | 0.122 | 0.124 |
-| LG 20A | 0.074 | 0.007 | 0.067 | 0.083 |
-
-**Key Findings:**
-- Models trained on PDB datasets achieve the highest fold prediction accuracy
-- Sequence-aware models (with "seq" in the name) consistently outperform structure-only models
-- All models use standard hyperparameters: learning rate 0.0003, dropout 0.4, label smoothing 0.2, weight decay 0.0001
-
+| Model | Metric | Prot Tokens | Lig Tokens | Alignment | Avg RMSD (Å) | Std | Min | Max |
+|-------|--------|-------------|------------|-----------|--------------|-----|-----|-----|
+| LG Prot-Lig SLQ | Ligand | 256 | 512 | Individual | 1.411 | 0.593 | 0.365 | 4.519 |
+| LG Prot-Lig SLQ | Ligand | 4096 | 4096 | Individual | 1.620 | 0.711 | 0.533 | 6.756 |
+| LG Prot-Lig FSQ | Ligand | 4375 | 4375 | Individual | 0.705 | 0.139 | 0.345 | 1.935 |
+| LG Prot-Lig FSQ | Ligand | 4375 | 15360 | Individual | 0.657 | 0.146 | 0.315 | 2.407 |
+| | | | | | | | | |
+| LG Prot-Lig SLQ | Complex | 256 | 512 | Joint | 1.567 | 0.343 | 0.939 | 5.579 |
+| LG Prot-Lig SLQ | Complex | 4096 | 4096 | Joint | 4.680 | 2.962 | 1.415 | 19.173 |
+| LG Prot-Lig FSQ | Complex | 4375 | 4375 | Joint | 1.011 | 0.127 | 0.723 | 2.387 |
+| LG Prot-Lig FSQ | Complex | 4375 | 15360 | Joint | 1.009 | 0.138 | 0.739 | 3.578 |
+| | | | | | | | | |
+| LG Prot-Lig SLQ | Ligand | 256 | 512 | Joint (c) | 2.306 | 0.758 | 0.711 | 5.927 |
+| LG Prot-Lig SLQ | Ligand | 4096 | 4096 | Joint (c) | 3.589 | - | - | - |
+| LG Prot-Lig FSQ | Ligand | 4375 | 4375 | Joint (c) | 1.011 | 0.271 | 0.507 | 3.729 |
+| LG Prot-Lig FSQ | Ligand | 4375 | 15360 | Joint (c) | 0.998 | - | - | - |
 
 ## Setup
 
@@ -112,7 +99,7 @@ from lobster.model.latent_generator.io import writepdb, writepdb_ligand_complex,
 import torch
 
 
-model_name = 'LG 20A seq 3di c6d Aux'
+model_name = 'LG full attention'
 
 # Load model using the ModelInfo dataclass structure
 load_model(
@@ -143,7 +130,7 @@ from lobster.model.latent_generator.cmdline import load_model, encode, decode, m
 from lobster.model.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
-model_name = 'LG Ligand 20A'
+model_name = 'LG Protein Ligand fsq 4375'
 
 # Load model with ligand support using the ModelInfo dataclass structure
 load_model(
@@ -153,7 +140,7 @@ load_model(
     overrides=methods[model_name].model_config.overrides
 )
 
-# Load protein-ligand complex
+# Load ligand only (no protein)
 pdb_data = {"protein_coords": None, "protein_mask": None, "protein_seq": None} 
 ligand_data = load_ligand("src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf")
 pdb_data["ligand_coords"] = ligand_data["atom_coords"]
@@ -161,10 +148,11 @@ pdb_data["ligand_mask"] = ligand_data["mask"]
 pdb_data["ligand_residue_index"] = ligand_data["atom_indices"]
 pdb_data["ligand_atom_names"] = ligand_data["atom_names"]
 pdb_data["ligand_indices"] = ligand_data["atom_indices"]
-# Get tokens for the complex
+
+# Get tokens for the ligand
 tokens, embeddings = encode(pdb_data, return_embeddings=True)
 print(tokens["ligand_tokens"].shape)  # (batch, length_ligand, n_tokens)
-print(embeddings.shape) # (batch, length_protein+length_ligand, embedding_dim) 
+print(embeddings.shape) # (batch, length_ligand, embedding_dim) 
 
 # Decode tokens back to structure
 decoded_outputs = decode(tokens, x_emb=embeddings)
@@ -179,14 +167,17 @@ writepdb_ligand_complex(
 
 ```
 
+### Protein-Ligand Complex Example
 
-### Protein-Ligand Complex Example (warning ligand recon not good yet)
 ```python
 from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
 from lobster.model.latent_generator.io import writepdb_ligand_complex, load_pdb, load_ligand 
 import torch
 
-model_name = 'LG Ligand 20A seq 3di Aux'
+# Choose one of the protein-ligand models:
+# - 'LG Protein Ligand fsq 4375' (4375 tokens for both protein and ligand)
+# - 'LG Protein Ligand fsq 4375 15360' (4375 protein tokens, 15360 ligand tokens)
+model_name = 'LG Protein Ligand fsq 4375'
 
 # Load model with ligand support using the ModelInfo dataclass structure
 load_model(
@@ -204,6 +195,7 @@ pdb_data["ligand_mask"] = ligand_data["mask"]
 pdb_data["ligand_residue_index"] = ligand_data["atom_indices"]
 pdb_data["ligand_atom_names"] = ligand_data["atom_names"]
 pdb_data["ligand_indices"] = ligand_data["atom_indices"]
+
 # Get tokens for the complex
 tokens, embeddings = encode(pdb_data, return_embeddings=True)
 print(tokens["protein_tokens"].shape)  # (batch, length_protein, n_tokens)
@@ -231,155 +223,169 @@ writepdb_ligand_complex(
 ### Command-line Example
 ```bash
 # Get tokens and decode to structure for protein only
-python src/lobster/model/latent_generator/cmdline/inference.py \
-    --model_name 'LG 20A seq 3di c6d Aux' \
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG full attention' \
     --pdb_path src/lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb \
     --decode
 
-# Get tokens and decode to structure for ligand
-python src/lobster/model/latent_generator/cmdline/inference.py \
-    --model_name 'LG Ligand 20A' \
-    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf  \
+# Get tokens and decode to structure for ligand only
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
     --decode
-    
-# Get tokens and decode to structure for protein-ligand
-python src/lobster/model/latent_generator/cmdline/inference.py \
-    --model_name 'LG Ligand 20A seq 3di Aux' \
+
+# Get tokens and decode to structure for protein-ligand complex using LG Protein Ligand fsq 4375
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
     --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
-    --ligand_path latent_generator/example/example_pdbs/4erk_ligand.sdf  \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
+    --decode
+
+# Get tokens and decode using LG Protein Ligand fsq 4375 15360 (higher ligand resolution)
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375 15360' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
     --decode
 
 # Get embeddings (requires Python API)
 ```
 
+### Ligand Structure Minimization
+
+For protein-ligand complexes, you can apply post-decoding geometry correction to improve ligand bond lengths and angles using Open Babel force fields. This is especially useful for improving the quality of decoded ligand structures.
+
+```bash
+# Decode with ligand minimization (bonds and angles correction - recommended)
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
+    --output_pdb decoded_complex.pdb \
+    --decode \
+    --minimize
+
+# Specify output paths explicitly
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/4erk_protein.pdb \
+    --ligand_path src/lobster/model/latent_generator/example/example_pdbs/4erk_ligand.sdf \
+    --output_file_encode encoded_latents.pt \
+    --output_file_decode decoded_outputs.pt \
+    --output_pdb decoded_complex.pdb \
+    --decode \
+    --minimize
+```
+
+#### Minimization Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--minimize` | False | Enable ligand structure minimization after decoding |
+| `--minimize_mode` | `bonds_and_angles` | Minimization strategy (see below) |
+| `--force_field` | `MMFF94` | Force field: `MMFF94`, `MMFF94s`, `UFF`, `GAFF`, `Ghemical` |
+| `--minimize_steps` | `500` | Maximum optimization steps |
+| `--minimize_method` | `cg` | Optimization method: `cg` (conjugate gradients) or `sd` (steepest descent) |
+
+#### Minimization Modes
+
+| Mode | Description |
+|------|-------------|
+| `bonds_and_angles` | **Recommended.** Constrained force field minimization that idealizes both bond lengths and angles while preserving overall structure. |
+| `bonds_only` | Only corrects bond lengths to ideal values, preserving torsion angles. |
+
+#### Example with Custom Minimization Settings
+
+```bash
+# Use UFF force field with bonds_only mode
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG Protein Ligand fsq 4375' \
+    --pdb_path protein.pdb \
+    --ligand_path ligand.sdf \
+    --output_pdb output.pdb \
+    --decode \
+    --minimize \
+    --minimize_mode bonds_only \
+    --force_field UFF
+```
+
+#### CONECT Records
+
+When the ligand SDF file contains bond information, the output PDB will include CONECT records for proper bond visualization in molecular viewers like PyMOL, Chimera, or VMD.
+
 The tokens are discrete representations that can be used for tasks like discrete generation (with LLMs or PLMs) and compact storage of structure information, while embeddings are continuous representations useful for tasks like similarity search, feature extraction, and representation centric tasks.
+
+## Evaluation
+
+### Evaluating Reconstruction Quality on CASP15
+
+The `evaluate_reconstruction.py` script evaluates the reconstruction quality of LatentGenerator models by computing the aligned RMSD between original and reconstructed structures.
+
+#### Basic Usage
+
+Evaluate a single model on a directory of structures:
+
+```bash
+uv run python src/lobster/metrics/evaluate_reconstruction.py \
+    --models "LG full attention" \
+    --data_dir /path/to/casp15/structures/ \
+    --output_file reconstruction_results.json
+```
+
+#### Using Canonical Pose (Mol Frame)
+
+Evaluate with canonical pose mode for rotation/translation invariance:
+
+```bash
+uv run python src/lobster/metrics/evaluate_reconstruction.py \
+    --models "LG full attention" \
+    --data_dir /path/to/casp15/structures/ \
+    --output_file reconstruction_canonical.json \
+    --use_canonical_pose
+```
+
+#### Input File Formats
+
+The evaluation script supports multiple structure file formats:
+- **PDB files** (`.pdb`): Standard protein structure files
+- **SDF files** (`.sdf`): Ligand structure files
+- **PyTorch files** (`.pt`): Pre-processed structure data
+
+#### Performance Metrics
+
+The evaluation reports:
+- **Average RMSD**: Mean reconstruction error across all structures
+- **Std RMSD**: Standard deviation of RMSD values
+- **Min/Max RMSD**: Best and worst reconstruction quality
+- **Success Rate**: Number of successful vs. failed reconstructions
 
 ## Model Configurations
 
-LatentGenerator provides several pre-configured models optimized for different use cases. These configurations include all necessary settings and overrides, making them easy to use without manual configuration.
-
-### Ligand Models
-
-#### LG Ligand 20A
-- **Description**: Ligand only model with 20Å spatial attention
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder
-  - 512 ligand tokens
-- **Use Case**: Ligand analysis and generation
-
-#### LG Ligand 20A 512 1024
-- **Description**: Ligand only model with 20Å spatial attention
-- **Features**:
-  - 512-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder
-  - 1024 ligand tokens
-- **Use Case**: High-dimensional ligand analysis and generation
-
-#### LG Ligand 20A 512 1024 element
-- **Description**: Ligand only model with 20Å spatial attention and element awareness
-- **Features**:
-  - 512-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder with element awareness
-  - 1024 ligand tokens
-- **Use Case**: Element-aware ligand analysis and generation
-
-#### LG Ligand 20A continuous
-- **Description**: Ligand only model with 20Å spatial attention and continuous encoding
-- **Features**:
-  - 512-dim embeddings
-  - 20Å spatial attention
-  - Ligand only decoder
-  - Continuous ligand encoding (no quantization)
-- **Use Case**: Continuous ligand representation learning
+LatentGenerator provides pre-configured models optimized for different use cases. These configurations include all necessary settings and overrides, making them easy to use without manual configuration.
 
 ### Protein-Ligand Models
 
-#### LG Ligand 20A seq 3di Aux
-- **Description**: Protein-ligand model with sequence and 3Di awareness
+#### LG Protein Ligand fsq 4375
+- **Description**: Protein-ligand model with FSQ quantization (4375 tokens)
 - **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence and 3Di decoder
+  - 5-dim embeddings
+  - FSQ quantization
   - Ligand encoding support
-  - 512 ligand tokens
-  - 512 protein tokens
-- **Use Case**: Protein-ligand complex analysis and generation with sequence awareness
+  - 4375 ligand tokens
+  - 4375 protein tokens
+- **Use Case**: Protein-ligand complex analysis and generation with balanced token resolution
+
+#### LG Protein Ligand fsq 4375 15360
+- **Description**: Protein-ligand model with FSQ quantization (4375 protein tokens, 15360 ligand tokens)
+- **Features**:
+  - 5-dim embeddings
+  - FSQ quantization
+  - Ligand encoding support
+  - 15360 ligand tokens (higher resolution for ligands)
+  - 4375 protein tokens
+- **Use Case**: Protein-ligand complex analysis and generation with higher ligand resolution
 
 ### Protein-Only Models
-
-#### LG 20A seq Aux
-- **Description**: Sequence-aware protein model
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence decoder
-  - 256 protein tokens
-- **Use Case**: Protein structure analysis with sequence awareness
-
-#### LG 20A seq 3di c6d Aux
-- **Description**: Sequence, 3Di and C6D-aware protein model
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-- **Use Case**: Advanced protein structure analysis with sequence, 3Di and C6D features
-
-#### LG 20A seq 3di c6d Aux Pinder
-- **Description**: Sequence, 3Di and C6D-aware protein model (Pinder dataset)
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-- **Use Case**: Advanced protein structure analysis trained on Pinder dataset
-
-#### LG 20A seq 3di c6d Aux PDB
-- **Description**: Sequence, 3Di and C6D-aware protein model (PDB dataset)
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-- **Use Case**: Advanced protein structure analysis trained on PDB dataset
-
-#### LG 20A seq 3di c6d Aux PDB Pinder
-- **Description**: Sequence, 3Di and C6D-aware protein model (PDB + Pinder datasets)
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-- **Use Case**: Advanced protein structure analysis trained on combined PDB and Pinder datasets
-
-#### LG 20A seq 3di c6d Aux PDB Pinder Finetune
-- **Description**: Sequence, 3Di and C6D-aware protein model (finetuned on PDB + Pinder)
-- **Features**:
-  - 256-dim embeddings
-  - 20Å spatial attention
-  - Sequence + 3Di + C6D decoder
-  - 256 protein tokens
-- **Use Case**: Finetuned protein structure analysis with sequence, 3Di and C6D features
-
-#### LG 20A
-- **Description**: Basic protein model with 20Å cutoff
-- **Features**:
-  - Standard configuration
-  - 20Å spatial attention
-  - 256 protein tokens
-- **Use Case**: Basic protein structure analysis
-
-#### LG 10A
-- **Description**: Basic protein model with 10Å cutoff
-- **Features**:
-  - Standard configuration
-  - 10Å spatial attention
-  - 256 protein tokens
-- **Use Case**: Local protein structure analysis
 
 #### LG full attention
 - **Description**: Full attention model without spatial masking
@@ -399,7 +405,7 @@ To use any of these models, simply specify the model name when loading. The `met
 from lobster.model.latent_generator.latent_generator.cmdline import load_model, methods
 
 # Load a pre-configured model using the ModelInfo dataclass structure
-model_name = 'LG seq 20A 3di c6d Aux'
+model_name = 'LG full attention'
 load_model(
     methods[model_name].model_config.checkpoint,
     methods[model_name].model_config.config_path,
@@ -427,10 +433,10 @@ load_model(
 Or via command line:
 ```bash
 # Using pre-configured model
-python latent_generator/cmdline/inference.py --model_name 'LG 20A 3di c6d Aux' --pdb_path your_protein.pdb
+uv run python latent_generator/cmdline/inference.py --model_name 'LG full attention' --pdb_path your_protein.pdb
 
 # Using custom checkpoint
-python latent_generator/cmdline/inference.py \
+uv run python latent_generator/cmdline/inference.py \
     --ckpt_path path/to/your/checkpoint.ckpt \
     --cfg_path path/to/config/ \
     --cfg_name config_name \

@@ -5,22 +5,92 @@ from lobster.model.latent_generator.utils import residue_constants
 
 
 def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
-    """Collate fn for batching protein backbone data."""
-    if "protein" and "ligand" in batch[0]:
-        ligand_batch = [bb_dict["ligand"] for bb_dict in batch]
-        batch = [bb_dict["protein"] for bb_dict in batch]
-        # make sure batch is not list of None
-        if batch[0] is not None:
-            protein_present = True
-            batch = collate_fn_backbone(batch)
+    """Collate fn for batching protein backbone data.
+
+    Handles three cases:
+    1. Protein-only samples (from StructureDataset): {"coords_res": ..., "mask": ..., ...}
+    2. Protein+ligand samples (from LigandDataset): {"protein": {...}, "ligand": {...}}
+    3. Ligand-only samples (from LigandDataset with no protein): {"protein": None, "ligand": {...}}
+
+    When mixing different sample types in a batch, creates validity masks to track
+    which samples have valid protein/ligand data. Missing data is padded with zeros
+    to maintain consistent batch dimensions.
+    """
+    # Check if any sample has the nested protein/ligand structure
+    has_nested_structure = any("ligand" in item or "protein" in item for item in batch)
+
+    if has_nested_structure:
+        # Normalize all samples to the nested structure format
+        normalized_batch = []
+        for item in batch:
+            if "ligand" in item or "protein" in item:
+                # Already in nested format
+                normalized_batch.append(item)
+            else:
+                # Protein-only sample from StructureDataset - wrap it
+                normalized_batch.append({"protein": item, "ligand": None})
+
+        # Now process the normalized batch
+        ligand_list = [bb_dict.get("ligand") for bb_dict in normalized_batch]
+        protein_list = [bb_dict.get("protein") for bb_dict in normalized_batch]
+
+        # Create validity masks for mixed batches
+        protein_valid_mask = torch.tensor([p is not None for p in protein_list], dtype=torch.bool)
+        ligand_valid_mask = torch.tensor([l is not None for l in ligand_list], dtype=torch.bool)
+
+        # Get valid samples for determining padding dimensions
+        valid_proteins = [p for p in protein_list if p is not None]
+        valid_ligands = [l for l in ligand_list if l is not None]
+
+        # Create padded protein batch
+        if valid_proteins:
+            # Get max length from valid proteins
+            max_protein_len = max(p["coords_res"].shape[0] for p in valid_proteins)
+
+            # Create dummy protein data for samples without protein
+            dummy_protein = {
+                "coords_res": torch.zeros(max_protein_len, 3, 3),
+                "mask": torch.zeros(max_protein_len),
+                "indices": torch.full((max_protein_len,), -1, dtype=torch.long),
+                "sequence": torch.zeros(max_protein_len, dtype=torch.long),
+                "chains": torch.full((max_protein_len,), -1, dtype=torch.long),
+            }
+
+            # Replace None with dummy data
+            padded_protein_list = [p if p is not None else dummy_protein for p in protein_list]
+            protein_batch = collate_fn_backbone(padded_protein_list)
         else:
-            protein_present = False
-        ligand_batch = collate_fn_ligand(ligand_batch)
-        if protein_present:
-            # combine batch and ligand_batch
-            batch = {**batch, **ligand_batch}
+            protein_batch = {}
+
+        # Create padded ligand batch
+        if valid_ligands:
+            # Get max length from valid ligands
+            max_ligand_len = max(l["atom_coords"].shape[0] for l in valid_ligands)
+
+            # Create dummy ligand data for samples without ligand
+            dummy_ligand = {
+                "atom_coords": torch.zeros(max_ligand_len, 3),
+                "mask": torch.zeros(max_ligand_len),
+                "atom_indices": torch.full((max_ligand_len,), -1, dtype=torch.long),
+            }
+            # Add optional fields if present in valid ligands
+            if "element_indices" in valid_ligands[0]:
+                dummy_ligand["element_indices"] = torch.zeros(max_ligand_len, dtype=torch.long)
+            if "bond_matrix" in valid_ligands[0]:
+                dummy_ligand["bond_matrix"] = torch.zeros(max_ligand_len, max_ligand_len, dtype=torch.long)
+
+            # Replace None with dummy data
+            padded_ligand_list = [l if l is not None else dummy_ligand for l in ligand_list]
+            ligand_batch = collate_fn_ligand(padded_ligand_list)
         else:
-            batch = ligand_batch
+            ligand_batch = {}
+
+        # Combine batches
+        batch = {**protein_batch, **ligand_batch}
+
+        # Add validity masks
+        batch["protein_valid_mask"] = protein_valid_mask
+        batch["ligand_valid_mask"] = ligand_valid_mask
         return batch
 
     max_length = max(bb_dict["coords_res"].shape[0] for bb_dict in batch)
@@ -263,6 +333,7 @@ def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.T
     padded_ligand_mask = []
     padded_ligand_indices = []
     padded_element_indices = []
+    padded_bond_matrices = []
     max_length = max(atom_dict["atom_coords"].shape[0] for atom_dict in batch)
 
     for atom_dict in batch:
@@ -311,6 +382,15 @@ def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.T
                 )
             )
 
+        # Handle bond_matrix if present (shape: [N_atoms, N_atoms])
+        if "bond_matrix" in atom_dict:
+            bond_matrix = atom_dict["bond_matrix"]
+            n_atoms = bond_matrix.shape[0]
+            # Pad bond_matrix to [max_length, max_length]
+            padded_bond = torch.zeros(max_length, max_length, dtype=bond_matrix.dtype)
+            padded_bond[:n_atoms, :n_atoms] = bond_matrix
+            padded_bond_matrices.append(padded_bond)
+
     out = {
         "ligand_coords": torch.stack(padded_ligand_coords, dim=0),
         "ligand_mask": torch.stack(padded_ligand_mask, dim=0),
@@ -319,6 +399,10 @@ def collate_fn_ligand(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.T
 
     if padded_element_indices:
         out["ligand_element_indices"] = torch.stack(padded_element_indices, dim=0)
+
+    # Add bond_matrix to output if present
+    if padded_bond_matrices:
+        out["bond_matrix"] = torch.stack(padded_bond_matrices, dim=0)
 
     # Handle additional properties like radius_of_gyration
     if "radius_of_gyration" in batch[0]:

@@ -1,43 +1,59 @@
-# Example configuration for forward folding (structure generation from input sequences and structures)
-# Forward folding takes input structures and their sequences, then generates new structures
-# Sequences are automatically tokenized using AminoAcidTokenizerTransform
-# Usage: uv run python -m lobster.cmdline.generate --config-path "../hydra_config/experiment" --config-name generate_forward_folding
+# @package _global_
 
-# Output directory
-output_dir: "./examples/generated_forward_folding"
+# Tier-1 forward-folding generation config — reproduces paper
+# Table `forward_folding_cameo` (CAMEO 2022, N=127). Hyperparameters
+# follow the FF row of Appendix `tab:supp_sampling_params_protein`:
+# N=200, τ_seq=0.361, τ_struct=0.220, Stoch_seq=1, Stoch_struct=20,
+# Sched_seq=Log (model default), Sched_struct=Linear (model default).
+#
+# Default checkpoint: `leflur-base`. 
+#
+# Sequences are automatically tokenized via `AminoAcidTokenizerTransform`.
+#
+# Usage: uv run python -m lobster.cmdline.generate \
+#          --config-name experiment/generate_forward_folding paths=public
 
-# Random seed for reproducibility
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/forward_folding_canonical"
+
+# Random seed for reproducibility (matches the published research run).
 seed: 54321
 
-# Model configuration
+# Model configuration 
 model:
-  _target_: lobster.model.gen_ume.UMESequenceStructureEncoderLightningModule
-  ckpt_path: "s3://prescient-lobster/ume/gen_ume/checkpoints/gen-ume-small-PDB-90M.ckpt" 
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-base
 
-# Generation settings
+# Generation parameters — paper FF row of `tab:supp_sampling_params_protein`.
 generation:
   mode: forward_folding
-  nsteps: 100          # More steps for forward folding
-  batch_size: 1        # Process 2 structures at a time
-  n_trials: 1          # Number of trials for best output selection
-  
-  #Generation parameters
-  temperature_seq: 0.2967457760634187    
-  temperature_struc: 0.1102551183666233  
-  stochasticity_seq: 10 
-  stochasticity_struc: 30
-  
-  # Input structures - update these paths to your structure files
-  # Examples of different input formats:
-  # Single file: input_structures: "/path/to/structure.pdb"
-  # Directory: input_structures: "/path/to/structure/directory/"
-  # Glob pattern: input_structures: "/path/to/structures/*.pdb"
-  # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
-  input_structures: "test_data/inv_folding/9jl9.pdb"
-  
+  nsteps: 200             # N=200 (paper FF)
+  batch_size: 1
+  n_trials: 1
+
+  # Paper FF sampling temperatures + stochasticities.
+  temperature_seq: 0.361
+  temperature_struc: 0.220
+  stochasticity_seq: 1
+  stochasticity_struc: 20
+
+  # CAMEO 2022 valid-set is the paper's published forward-folding
+  # benchmark. To run on MultiFlow test instead, override with
+  # `generation.input_structures="${paths.benchmarks.multiflow_test}/*.pt"`.
+  input_structures: "${paths.benchmarks.cameo}/*.pt"
+
   # Maximum length for structures
   max_length: 512
-  
+
   # Not used for forward folding
   length: null
   num_samples: null
+
+  # ESMFold structure validation toggle. Declared here so it can be
+  # flipped via `generation.use_esmfold=true` on the CLI without
+  # needing the `+` add-key prefix; the runner reads it via
+  # `cfg.generation.get("use_esmfold", False)` in any case.
+  use_esmfold: false

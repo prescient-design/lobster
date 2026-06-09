@@ -1,0 +1,35 @@
+# @package _global_
+
+# Protein-only autoencode: encode + decode structures through the LG codec
+# bundled inside a LeFlur protein checkpoint.
+#
+# Usage:
+#   uv run python -m lobster.cmdline.autoencode \
+#     --config-name experiment/autoencode \
+#     autoencode.input=/path/to/structures \
+#     autoencode.output_dir=/tmp/leflur_autoencode
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.evaluations.out_root}/autoencode_protein"
+
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-ted
+  latent_generator_model_name: "LG full attention"
+
+autoencode:
+  # Path or glob: single PDB/CIF/PT file, a directory of structures, or a
+  # glob pattern. Required at the CLI.
+  input: ???
+
+  output_dir: "${output_dir}"
+  output_csv: "autoencode_results.csv"
+
+  save_pdbs: true
+  num_steps: null            # null -> use the codec's default
+  use_canonical_pose: false

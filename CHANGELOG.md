@@ -1,0 +1,303 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added — LeFlur publication release
+
+- **LeFlur model** at `lobster.model.leflur` — a discrete-flow-matching model
+  for protein and protein-ligand design. Replaces the internal `gen_ume`
+  module (a deprecation shim at `lobster.model.gen_ume` preserves the old
+  import paths). Supports five inference modes:
+  - Unconditional generation
+  - Forward folding (sequence → structure)
+  - Inverse folding (structure → sequence)
+  - Ligand-conditioned protein generation
+  - Ligand-conditioned forward / inverse folding
+- **Three canonical checkpoints** on
+  [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur):
+  `leflur-base`, `leflur-ted`, `leflur-pl` (~17 GiB total).
+- **`lobster_generate`** console entry point — Hydra-driven CLI dispatching to
+  all five inference modes via `--config-name experiment/<mode>`.
+- **`lobster_autoencode`** console entry point — round-trip PDB or paired
+  protein-ligand `.pt` files through the Latent Generator codec; auto-detects
+  protein-only vs protein-ligand inputs.
+- **`lobster_leflur_checkpoints`** console entry point — `list / inspect /
+  fetch / cache` subcommands for managing the canonical checkpoint registry.
+- **`lobster_leflur_benchmarks`** console entry point — `list / inspect /
+  fetch / cache / upload / dataset-card` subcommands for managing the
+  canonical benchmark dataset registry. Companion to
+  `lobster_leflur_checkpoints` on the dataset side.
+- **`resolve_checkpoint()`** API — accepts short names, `hf://` URIs, HTTPS
+  URLs, or local paths. Rejects `s3://` with a clear message. Idempotent
+  cache under `$LOBSTER_CACHE` (default `~/.cache/lobster/leflur`).
+- **`resolve_benchmark()` / `fetch_benchmark()`** API — accepts short
+  names (`cameo`, `multiflow_test`, `posebusters_benchmark`,
+  `posebusters_benchmark_no_overlap`), `hf-dataset://owner/repo[/subdir]`
+  URIs, or local directories. Snapshot-downloads from HF into the same
+  `$LOBSTER_CACHE/benchmarks/<name>/` layout that
+  `${paths.benchmarks.<name>}` already interpolates to in
+  `paths/public.yaml`, with HF-side directory nesting flattened on the
+  fly so the publication generate configs run unchanged after fetch.
+- **Four canonical benchmarks** on the dataset side of
+  [`Sidney-Lisanza/leflur`](https://huggingface.co/datasets/Sidney-Lisanza/leflur):
+  `cameo` (127 .pt, 1.9 MiB), `multiflow_test` (449 .pt, 81 MiB),
+  `posebusters_benchmark_no_overlap` (412 .pt = 206 pairs, 10 MiB),
+  `posebusters_benchmark` (856 .pt = 428 pairs, 22 MiB). Together they
+  drive every benchmark row in LeFlur Tables 1–4. The `upload`
+  subcommand strips internal `pdb_path` fields down to basename on
+  publication so the released records carry no Genentech filesystem
+  leakage; pass `--no-sanitize` for a bit-identical upload.
+- **Hydra path overlay** at `lobster/hydra_config/paths/{internal,public}.yaml` —
+  external users get the `public` overlay (HuggingFace + local cache),
+  internal collaborators get `internal` (shared filesystem). All Tier-1
+  experiment configs are enforced (via tests) to interpolate through this
+  overlay rather than hard-coding paths.
+- **Experiment config tiering** at `lobster/hydra_config/experiment/`:
+  - 9 Tier-1 canonical configs (flat at `experiment/`) — the only
+    experiment configs tracked on the publication branch.
+  - Tier 2 (`experiment/research/`, 48 configs), Tier 3
+    (`experiment/legacy/`, 1 config), and the R5 inpainting sweep
+    (`experiment/denovo_r5/`, 32 configs) are kept on disk for internal
+    research workflows but gitignored on the publication branch — they
+    reference `${paths.checkpoints.research_*}` / `${paths.checkpoints.legacy_*}`
+    keys that only resolve under the internal overlay.
+- **`lobster.metrics.protein_ligand`** subpackage — groups three
+  `Evaluator` classes (forward folding, inverse folding, ligand-conditioned
+  generation), two ablation scripts, and the LigandMPNN baseline.
+- **Public user docs** at `docs/leflur/`:
+  - `installation.md` — extras, env vars, HF auth, Foldseek
+  - `quickstart.md` — five-minute walkthroughs of all inference modes
+  - `checkpoints.md` — registry + CLI + paired LG codec auto-resolution
+  - `benchmarks.md` — benchmark dataset registry + CLI + per-table
+    reproduction commands for the four canonical benchmarks
+  - `cli.md` — full reference for the four entry points
+    (`lobster_generate`, `lobster_autoencode`,
+    `lobster_leflur_checkpoints`, `lobster_leflur_benchmarks`)
+- **Test suites** at `tests/lobster/`:
+  - `model/leflur/` — checkpoint resolver, benchmark resolver (52 tests
+    in `test_benchmarks.py` covering registry invariants, HF/local/S3
+    resolution branches, sanitiser correctness on protein + paired
+    protein-ligand records, dataset-card builder, chunked-upload retry
+    logic, CLI subcommand dispatch, and an end-to-end snapshot-flatten
+    contract test against the publication PoseBusters loader), registry
+    invariants, Lightning module load smoke (CPU + GPU variants)
+  - `cmdline/` — Tier-1 dispatch smoke, CLI surface, ligand-conditioned
+    runner config defaults
+  - `metrics/` — RMSD-sqrt(3) regression, MetricsCSVWriter contract
+  - `hydra_config/` — path overlay regression (no internal literals in
+    public-facing configs), tier invariants
+- **Training-reproduction Hydra surface** for the four canonical
+  artifacts — 23 YAMLs comprising the full transitive `defaults:`
+  closure of the training entry points that produced the published
+  checkpoints:
+
+  | Training config | Produces |
+  |---|---|
+  | `experiment/train_gen_ume_denovo.yaml` | `leflur-base` (afdb + pdb), `leflur-ted` (afdb-swissprot + pdb + ted_cath ss-balanced data overlay) |
+  | `experiment/train_gen_ume_protein_ligand_no_geom.yaml` | `leflur-pl` (PDB + SAIR, no geometry loss — the published PoseBusters checkpoint) |
+  | `experiment/train_latent_generator.yaml` | LG full-attention codec (protein-only) |
+  | `experiment/train_latent_generator_protein_ligand_slurm.yaml` | LG protein-ligand FSQ-4375 codec |
+
+  Plus the 19 dependency YAMLs they pull in via Hydra `defaults:`:
+  `model/{leflur, leflur_protein_ligand, latent_generator, latent_generator_ligand}.yaml`;
+  `data/{structure_pdb_afdb_denovo, structure_pdb_afdb_denovo_ted_cath_ss_balanced, structure_ligand_pdb, structure_ligand_pdb_sair_no_geom}.yaml`
+  and `data/transform_fn/structure_backbone_aa_tokenizer_alt_seq_transform.yaml`;
+  10 training callbacks
+  (`backbone_reconstruction`, `cg_boltz_eval`, `forward_folding`,
+  `inverse_folding_cameo`, `latent_generator_defaults`,
+  `leflur_fwd_cameo`, `leflur_protein_ligand`,
+  `protein_ligand_decode`, `protein_ligand_forward_folding`,
+  `protein_ligand_inverse_folding`).
+
+  These are carved out from the bulk untrack of training configs (see
+  Removed below) via explicit `!`-prefixed exceptions in `.gitignore`
+  so external readers can audit and re-run the exact training recipes
+  that produced `leflur-base`, `leflur-ted`, `leflur-pl`, and the two
+  paired LG codecs on
+  [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur) /
+  [`Sidney-Lisanza/latent_generator`](https://huggingface.co/Sidney-Lisanza/latent_generator).
+  Each composes via the canonical entry pattern `python -m
+  lobster.cmdline.train experiment=<name>` against the published
+  Hydra `paths=public` overlay. Every other branch-added training,
+  callback, data, model, and `experiment/train_*` YAML remains
+  gitignored on the publication branch.
+- **Pseudo-NLL ranking as a first-class generation mode** — centralised the
+  Monte-Carlo stratified-`t` pseudo-NLL estimator from the
+  conference-supplement studies into the framework:
+  - `lobster.model.leflur._pll_scoring` — pure helpers
+    (`stratified_t_samples`, `absorbing_corrupt`, `ce_on_masked`,
+    `score_protein_pll`, `score_protein_ligand_pll`) plus the variant
+    constants `PROTEIN_VARIANTS` (4) and `PROTEIN_LIGAND_VARIANTS` (8).
+  - `LeFlurSequenceStructureEncoderLightningModule.score_pll(...)` —
+    protein-only ranker (seq / struc / joint_protein / joint_true_2).
+  - `LeFlurProteinLigandLightningModule.score_pll(...)` — full 4-modality
+    ranker (8 variants including `joint_protein`, `joint_ligand`,
+    `joint_all`, `joint_true_4`).
+  - `generation.mode=score_pll` generation mode + Tier-1 Hydra config
+    `experiment/score_pll.yaml`. Reads any candidates CSV, writes
+    augmented CSV with `pll_<variant>` columns + optional per-group
+    `rank_<variant>` ranks when `generation.rank_within` is set.
+- **Benchmark tables in the LeFlur README** — `src/lobster/model/leflur/README.md`
+  now includes the 6 main-text benchmark tables (inverse / forward folding
+  on CAMEO and PoseBusters, unconditional generation, ligand-conditioned
+  generation) with per-row runnable `lobster_generate` invocations + a
+  dedicated **Best-of-N ranking with pseudo-NLL** section that documents
+  how the `N30 NLL` paper rows reproduce.
+
+### Changed
+
+- **`leflur-pl` repointed** to the `gen_ume_protein_ligand_no_geom_medium`
+  2026-03-11 checkpoint (replacing the earlier 2026-02-11 medium snapshot).
+  The 2/11 weights underperformed by ~25 pp absolute AAR on the PoseBusters
+  no-overlap inverse-folding benchmark (overall 0.45 → 0.70, pocket
+  0.51 → 0.78). The 3/11 no-geom-loss variant is the checkpoint that
+  produced the conference benchmark numbers. The HuggingFace blob at
+  `Sidney-Lisanza/leflur/leflur_protein_ligand.ckpt` and the registered
+  `local_source_path` in `KNOWN_CHECKPOINTS` were both updated in lockstep;
+  internal users running `paths=internal` see the new path via
+  `paths.checkpoints.pl`, external users via `paths=public` get the new
+  weights on next `lobster_generate` invocation (the old cached blob is
+  invalidated when `huggingface_hub` resolves the new commit SHA, or
+  immediately via `lobster_leflur_checkpoints cache --clear`).
+- `lobster/__init__.py` imports `ensure_package` before the subpackages
+  (fixes a latent circular-import in modules that call `ensure_package` at
+  module-import time).
+- `cmdline/__init__.py` now re-exports `generate`, `autoencode`, and
+  `manage_leflur_checkpoints` alongside the existing `train`, `embed`,
+  etc.
+- Lightning module checkpoint loading auto-resolves the paired Latent
+  Generator codec via `install_paired_lg_codec_overrides()` — checkpoints
+  trained against an internal `/cv/...` LG codec are transparently
+  redirected to the public HuggingFace mirror at inference time, with no
+  upstream changes to the `latent_generator` library.
+
+### Removed
+
+- **Accidental resurrection of legacy LinearProbe callback family.** PR
+  #201 ("Update callback evaluations") on `main` migrated the
+  `LinearProbeCallback` framework to a new sklearn-based
+  `SklearnProbeCallback` family
+  (`CalmSklearnProbeCallback`, `MoleculeACESklearnProbeCallback`,
+  `PEERSklearnProbeCallback`, `SklearnProbeCallback`,
+  `SklearnProbeTaskConfig`). The legacy framework's 5 source files
+  (`_linear_probe_callback.py`, `_calm_linear_probe_callback.py`,
+  `_moleculeace_linear_probe_callback.py`,
+  `_peer_evaluation_callback.py`, `_peer_utils.py`) and 3 test files
+  (`test__calm_linear_probe_callback.py`,
+  `test__peer_evaluation_callback.py`,
+  `tests/lobster/evaluation/test_evaluate_model_with_callbacks.py`)
+  were deleted in that PR. Earlier feature commits on
+  `leflur_release` (`dda61d1`, `877b8b0`) accidentally re-introduced
+  all 9 files alongside an `__init__.py` re-export block. None of the
+  re-introduced files are imported by the LeFlur inference surface,
+  and `__init__.py` is now restored to its `origin/main` state with
+  only the LeFlur callback exports appended
+  (`StructureDecodeCallback`, `UnconditionalGenerationCallback`,
+  `InverseFoldingCallback`, `ForwardFoldingCallback`,
+  `ProteinLigandDecodeCallback`,
+  `ProteinLigandInverseFoldingCallback`,
+  `ProteinLigandForwardFoldingCallback`, `S3CheckpointBackupCallback`,
+  `CGBoltzEvalCallback`).
+- **Unused branch-added test fixture** `lobster/callbacks/_test_structure_cropping.py`
+  (added by `dda61d1`, no importers, never referenced).
+- **Off-topic stray edit** to `lobster/metrics/_alphafold2_scores.py`
+  reverted to `origin/main` — a 4-line removal of removed
+  `mk_afdesign_model` kwargs (`use_initial_guess`, `use_initial_atom_pos`,
+  `initial_guess`) that has nothing to do with LeFlur inference; can
+  re-land in a separate PR if the upstream-API-compat fix is needed.
+- Orphaned duplicate evaluators
+  `lobster/metrics/evaluate_protein_ligand_{forward,inverse}_folding.py`
+  (superseded by the cmdline entry-point versions).
+- Stale internal-only docs `src/lobster/model/leflur/CHECKPOINTS.md` and
+  `src/lobster/model/leflur/BOND_MATRIX_LATENT_GENERATOR_PLAN.md`
+  (superseded by `docs/leflur/checkpoints.md` and the code itself; the
+  bond-matrix planning doc was archived under
+  `docs/leflur/research_notes/`).
+- **Standalone argparse evaluation CLIs**
+  `cmdline/evaluation/{evaluate_inverse_folding, evaluate_ligand_conditioned_protein_generation, evaluate_protein_ligand_forward_folding, evaluate_protein_ligand_inverse_folding}.py`.
+  All four were thin wrappers around runners that are already exposed
+  via Hydra modes. The single canonical evaluation entry point is now
+  `lobster_generate generation.mode=<X>` with the matching
+  `experiment/generate_*.yaml` config. Migration:
+
+  | Old standalone | New invocation |
+  |---|---|
+  | `python -m lobster.cmdline.evaluation.evaluate_inverse_folding ...` | `lobster_generate --config-name experiment/generate_inverse_folding ...` |
+  | `python -m lobster.cmdline.evaluation.evaluate_ligand_conditioned_protein_generation ...` | `lobster_generate --config-name experiment/generate_ligand_conditioned ...` |
+  | `python -m lobster.cmdline.evaluation.evaluate_protein_ligand_forward_folding ...` | `lobster_generate --config-name experiment/generate_ligand_conditioned_forward_folding ...` |
+  | `python -m lobster.cmdline.evaluation.evaluate_protein_ligand_inverse_folding ...` | `lobster_generate --config-name experiment/generate_ligand_conditioned_inverse_folding ...` |
+
+  The two competitor baselines `esmfold_baseline.py` (ESMFold forward
+  fold) and `evaluate_ligandmpnn_baseline.py` (LigandMPNN inverse fold)
+  remain available locally but are no longer tracked on the publication
+  branch — they evaluate external tools, not LeFlur.
+- **Training-only Hydra configs added on this branch** — the
+  publication branch added a large bulk of YAMLs on top of `origin/main`
+  for LeFlur / Latent Generator training, training-time callbacks
+  (LeFlur evaluators, protein-ligand decode/forward/inverse callbacks,
+  LG defaults, S3 backup), training data configs (`structure_ligand_*`,
+  `structure_pdb_afdb_*`, swissprot variants, transform_fn variants),
+  model defaults (`model/leflur*.yaml`, `model/latent_generator*.yaml`),
+  generation parameter sub-configs (`generation/`), and dev/training
+  experiment entries (`experiment/train_*`, `experiment/test_gen_ume`).
+  They live on disk for local research workflows and are reachable via
+  `paths=internal`, but are gitignored on the publication branch so the
+  shipped Hydra surface is inference-only:
+  `paths/`, `experiment/{generate_*, autoencode*, esmfold_baseline}.yaml`.
+  **Exception:** the 23-file transitive dependency closure of the
+  four training entry points that produced the canonical checkpoints
+  (`leflur-base`, `leflur-ted`, `leflur-pl`, LG full-attention, LG
+  protein-ligand FSQ-4375) is carved out via `!`-prefixed exceptions
+  in `.gitignore` and is tracked on the publication branch — see the
+  "Training-reproduction Hydra surface" entry under Added.
+  (`experiment/{research,legacy,denovo_r5}/` are kept on disk for
+  internal research but gitignored — see Removed entries below.) The
+  11 Hydra configs the branch had
+  *modified* on top of main (training callbacks + training data configs +
+  `experiment/train_gen_ume.yaml`) were reverted to their `origin/main`
+  state in lockstep so the publication PR no longer touches them.
+  Hydra configs that existed in `origin/main` unchanged — including
+  every other `model/*.yaml`, `data/*.yaml`, `callbacks/*.yaml`,
+  `evaluation/`, `experiment/ume-2/`, top-level `train.yaml` /
+  `finetune.yaml` / `intervene*.yaml` / `evaluate.yaml` / etc. — remain
+  tracked exactly as they are in main.
+- **Tier-2 research + Tier-3 legacy Hydra configs** at
+  `src/lobster/hydra_config/experiment/research/` (48 YAMLs) and
+  `src/lobster/hydra_config/experiment/legacy/` (1 YAML —
+  `generate_unconditional_old.yaml`). The research configs are
+  internal-only sweeps (binder design, denovo CAMEO / RGN2 / multiflow /
+  PoseBusters variants, 90M / 450M / 750M model size ablations, FSQ vs
+  SLQ codec studies, etc.) that exercise
+  `${paths.checkpoints.research_*}` interpolations; the legacy entry is
+  the previous-generation unconditional config referencing
+  `${paths.checkpoints.legacy_450M}`. Both interpolation sets only
+  resolve under the internal overlay. They live on disk for local
+  research workflows and are gitignored on the publication branch. The
+  `test_research_tier_composes` smoke (3 representative compose checks)
+  and the orphan `_research_configs()` / `_legacy_configs()` helpers in
+  `test_paths_overlay.py` were dropped alongside — the publication CI
+  has no signal to recover from configs it doesn't ship. The Tier-1
+  inference compose tests (`test_paths_internal_resolves` /
+  `test_paths_public_resolves`) and tier invariants
+  (`test_tier1_uses_canonical_checkpoint`,
+  `test_no_internal_paths_in_publication_configs`) all remain green.
+- **Optional research-only `_diffusion_loss.py`** at
+  `src/lobster/model/losses/_diffusion_loss.py`. The
+  `DiffusionLoss` / `SimpleMLPAdaLN` / `create_diffusion_loss` exports
+  were only reachable via the (research-only)
+  `use_diffusion_loss_structure=True` Lightning-module flag. No
+  canonical LeFlur checkpoint (`leflur-base`, `leflur-ted`,
+  `leflur-pl`) sets this flag — the protein-ligand checkpoint that
+  drives the published PoseBusters numbers is the `no_geom_medium`
+  variant, which uses the standard discrete flow-matching loss for
+  structure tokens. `lobster/model/losses/__init__.py` is reverted to
+  its `origin/main` state (no diffusion imports); the conditional
+  import inside `LeFlurProteinLigandLightningModule` now targets the
+  underscore module directly and raises a clear `ImportError` with
+  recovery instructions when the optional file is absent. The file
+  itself stays on disk for internal experiments.

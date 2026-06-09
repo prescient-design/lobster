@@ -1,0 +1,89 @@
+# Genentech-internal path overlay for LeFlur inference.
+#
+# Preserves the existing /cv/data/... and /cv/scratch/... layout used by the
+# conference benchmark evaluations so internal runs keep working unchanged.
+# External users should set `paths=public` instead (see paths/public.yaml).
+#
+# This file extends paths/default.yaml's schema (timestamp/root_dir/output_dir
+# remain available for callbacks that interpolate ${paths.output_dir}) with
+# four new inference-only sub-groups: checkpoints, benchmarks, evaluations,
+# binaries. Training data paths are intentionally NOT included here —
+# data/*.yaml configs continue to hold those literals until the training
+# cleanup follow-up.
+
+# --- Existing default.yaml schema (preserved for back-compat with callbacks
+#     and training configs that already reference ${paths.output_dir}) -------
+timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S.%f}
+root_dir: ???
+output_dir: ${paths.root_dir}/${paths.timestamp}
+
+# --- LeFlur inference checkpoints ----------------------------------------
+#
+# Two canonical protein-only checkpoints recommended for publication (BASE
+# and TED) + the production protein-ligand checkpoint + research variants
+# referenced by Tier 2 configs in Phase 6. Phase 4 will mirror these to
+# huggingface.co/Sidney-Lisanza/leflur so external users can swap
+# `paths=public` and pick up the same names.
+checkpoints:
+  # BASE — `leflur_denovo_last_ckpt_2026-03-11T12-11-53` in Phase 4 naming.
+  base: /cv/scratch/u/lisanzas/evaluations/checkpoint_snapshots/gen_ume_denovo_last_2026-03-08T17-09-23_2026-03-11T12-11-53.ckpt
+  # TED — `leflur_denovo_ted_cath_ss_balanced_ckpt_2026-03-18T12-20-59`.
+  # md5 cc5c54b32eae137567d257e7b0defe24. Was previously pointing at an
+  # unrelated `gen_ume_denovo/.../epoch=17-step=6937-val_loss=0.8192.ckpt`
+  # snapshot (md5 fca4ed5e), which silently regressed CAMEO forward
+  # folding TM by ~0.08 vs the publication numbers; the registry +
+  # HF upload were corrected together with this path.
+  ted: /cv/scratch/u/lisanzas/evaluations/checkpoint_snapshots/gen_ume_denovo_ted_cath_ss_balanced_2026-03-14T15-41-36_2026-03-18T12-20-59.ckpt
+  # Protein-ligand production checkpoint (used by evaluator + sweep configs).
+  # 2026-03-11 no-geom-loss medium variant; reproduces the PoseBusters NO
+  # inverse-folding AAR ~0.70 reported in the conference benchmark. The
+  # earlier 2026-02-11 medium snapshot underperforms by ~25 pp on AAR and is
+  # retained on disk for ablations but no longer the canonical PL ckpt.
+  pl: /cv/scratch/u/lisanzas/gen_ume_protein_ligand_no_geom_medium/runs/2026-03-11T13-22-20/last.ckpt
+  # Research variants — keyed by training-run date so the mapping back to
+  # the original run dir stays obvious.
+  research_2025_11_07: /cv/data/ai4dd/data2/ume/gen_ume/runs//2025-11-07T13-19-11/last.ckpt
+  research_2025_11_14: /cv/data/ai4dd/data2/ume/gen_ume/runs//2025-11-14T02-28-45/last.ckpt
+  research_2025_11_17: /cv/data/ai4dd/data2/ume/gen_ume/runs//2025-11-17T20-31-05/last.ckpt
+  research_2026_01_04: /cv/data/ai4dd/data2/lisanzas/gen_ume/runs//2026-01-04T19-10-12/last.ckpt
+  # Legacy pcluster checkpoint still referenced by a couple of older configs.
+  legacy_450M: /cv/home/lisanzas/from_pcluster/scratch/Develop/lobster/checkpoint_450M/last.ckpt
+
+# --- Eval-benchmark input directories ------------------------------------
+#
+# Pre-processed *.pt fixtures consumed as `input_structures` by forward/
+# inverse folding generate configs.
+benchmarks:
+  cameo: /cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed
+  multiflow_test: /cv/data/ai4dd/data2/lisanzas/multi_flow_data/test_set_filtered_pt
+  rgn2_denovo: /cv/scratch/u/lisanzas/rgn2_dataset/processed_pt_denovo
+  rgn2_orphan: /cv/scratch/u/lisanzas/rgn2_dataset/processed_pt_orphan
+  posebusters_benchmark: /cv/home/lisanzas/lobster/data/posebusters/processed/posebusters_benchmark
+  posebusters_benchmark_no_overlap: /cv/home/lisanzas/lobster/data/posebusters/processed/posebusters_benchmark_no_overlap
+
+# --- Per-evaluation output dirs ------------------------------------------
+#
+# Generate configs build their `output_dir` as
+# `${paths.evaluations.out_root}/<eval_name>` so a single overlay swap moves
+# all outputs.
+evaluations:
+  out_root: /cv/scratch/u/lisanzas/evaluations
+
+# --- Tool binaries pulled in at sample time ------------------------------
+binaries:
+  foldseek_bin: /cv/home/lisanzas/lobster/src/lobster/metrics/foldseek/bin
+
+# --- Bundled example inputs ----------------------------------------------
+#
+# In-repo example structures used by quickstart configs. Internal users
+# keep the existing pcluster snapshot for back-compat with research scripts;
+# external users get the same files via the tracked `example_pdbs/` dir
+# bundled with the source distribution (see paths/public.yaml).
+examples:
+  binder_template: /cv/home/lisanzas/lobster/src/lobster/model/latent_generator/example/example_pdbs/tfr_bdr_6rwv.pdb
+  # Inpainting reference template — historically a pcluster-only fixture.
+  # External users must supply their own input PDB via the CLI override
+  # `generation.input_structures=/path/to/ref.pdb`; ${oc.env:LOBSTER_EXAMPLE_INPAINT_PDB}
+  # gives Genentech runs a single env-var knob to flip back to the original
+  # pcluster snapshot when needed.
+  inpaint_template: ${oc.env:LOBSTER_EXAMPLE_INPAINT_PDB,/cv/home/lisanzas/from_pcluster/scratch/Develop/lobster/denovo_data/1728_8jyr_HL_A_ref.pdb}

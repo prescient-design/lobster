@@ -73,7 +73,7 @@ class AuxiliaryTask:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
 
-class UMESequenceStructureEncoderModule(nn.Module):
+class LeFlurSequenceStructureEncoderModule(nn.Module):
     def __init__(
         self,
         auxiliary_tasks: list[AuxiliaryTask] | None = None,
@@ -129,8 +129,8 @@ class UMESequenceStructureEncoderModule(nn.Module):
     @classmethod
     def load_from_checkpoint(
         cls, checkpoint_path: str, *, device: str | None = None, cache_dir: str | None = None, **kwargs
-    ) -> "UMESequenceStructureEncoderModule":
-        """Utility function to load state_dict and hyper_parameters from UMESequenceStructureEncoderLightningModule checkpoint."""
+    ) -> "LeFlurSequenceStructureEncoderModule":
+        """Utility function to load state_dict and hyper_parameters from LeFlurSequenceStructureEncoderLightningModule checkpoint."""
 
         device = device or get_device()
 

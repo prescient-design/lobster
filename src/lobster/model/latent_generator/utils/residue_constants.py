@@ -753,6 +753,54 @@ AB_CHAIN_DICT = {"H": 0, "L": 1, "A": 2, "B": 3, "C": 4, "D": 5, "E": 6, "F": 7,
 ELEMENT_VOCAB = ["PAD", "B", "Bi", "Br", "C", "Cl", "F", "H", "I", "N", "O", "P", "S", "Si"]
 ELEMENT_TO_IDX = {elem: idx for idx, elem in enumerate(ELEMENT_VOCAB)}
 
+# Extended element vocabulary for drug-like molecules (25 tokens)
+# Covers ~99.9% of drug-like molecules with special tokens for masking and unknown elements
+ELEMENT_VOCAB_EXTENDED = [
+    # Special tokens
+    "PAD",  # 0: Padding token
+    "MASK",  # 1: Mask token for masked language modeling
+    "UNK",  # 2: Unknown element
+    # Common organic elements (highest frequency in drugs)
+    "C",  # 3: Carbon
+    "N",  # 4: Nitrogen
+    "O",  # 5: Oxygen
+    "S",  # 6: Sulfur
+    "P",  # 7: Phosphorus
+    "F",  # 8: Fluorine
+    "Cl",  # 9: Chlorine
+    "Br",  # 10: Bromine
+    "I",  # 11: Iodine
+    # Common metal/metalloid in drugs
+    "B",  # 12: Boron (boronic acids in drugs)
+    "Si",  # 13: Silicon (silanes, silanols)
+    "Se",  # 14: Selenium (selenocysteine analogs)
+    "As",  # 15: Arsenic (rare, but exists in some drugs)
+    # Metals found in coordination complexes and some drugs
+    "Zn",  # 16: Zinc
+    "Fe",  # 17: Iron
+    "Cu",  # 18: Copper
+    "Mg",  # 19: Magnesium
+    "Ca",  # 20: Calcium
+    "Na",  # 21: Sodium
+    "K",  # 22: Potassium
+    # Additional elements occasionally found in bioactive molecules
+    "Bi",  # 23: Bismuth (bismuth subsalicylate)
+    "H",  # 24: Hydrogen (explicit H, rare in our representation)
+]
+ELEMENT_VOCAB_EXTENDED_TO_IDX = {elem: idx for idx, elem in enumerate(ELEMENT_VOCAB_EXTENDED)}
+
+# Bond types for bond matrix representation
+# 0: no bond, 1: single, 2: double, 3: triple, 4: aromatic, 5: unknown/other
+BOND_TYPES = {
+    "NONE": 0,
+    "SINGLE": 1,
+    "DOUBLE": 2,
+    "TRIPLE": 3,
+    "AROMATIC": 4,
+    "OTHER": 5,
+}
+NUM_BOND_TYPES = len(BOND_TYPES)
+
 
 # from funcbind
 

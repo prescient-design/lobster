@@ -33,6 +33,7 @@ image credit: Amy Wang
 - [Citations](#citations)
 - [Install instructions](#install)
 - [Models](#main-models)
+  - LeFlur (protein + protein-ligand generation) — see [`docs/leflur/`](docs/leflur/)
 - [Notebooks](#notebooks)
 - [MCP Server](#mcp-integration)
 - [Training and inference](#training)
@@ -126,6 +127,31 @@ uv run lobster_train data.path_to_fasta="test_data/query.fasta"
 
 
 ## Main models you should use <a name="main-models"></a>
+
+### LeFlur (protein + protein-ligand generation)
+
+LeFlur is a discrete-flow-matching model for protein and protein-ligand
+design. A single set of checkpoints supports unconditional generation,
+forward folding, inverse folding, and ligand-conditioned variants of all
+three.
+
+| Checkpoint | Family | Purpose | HuggingFace |
+|---|---|---|---|
+| `leflur-base` | protein | de-novo unconditional generation | [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur) |
+| `leflur-ted` | protein | TED-CATH SS-balanced — recommended for publication tables | [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur) |
+| `leflur-pl` | protein-ligand | all ligand-conditioned generation + protein-ligand folding | [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur) |
+
+```bash
+uv sync --extra mgm --extra struct-gpu       # or struct-cpu
+export HF_TOKEN=hf_xxx
+uv run lobster_generate --config-name experiment/generate_unconditional \
+    paths=public generation.num_samples=10 output_dir=./out/uncond
+```
+
+See [`docs/leflur/`](docs/leflur/) for installation, quickstarts for all
+five inference modes, checkpoint management, and CLI reference. The
+module itself is documented at
+[`src/lobster/model/leflur/`](src/lobster/model/leflur/).
 
 ### Pretrained Models
 

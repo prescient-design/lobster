@@ -1,0 +1,11 @@
+protein_ligand_decode:
+  _target_: lobster.callbacks._protein_ligand_decode.ProteinLigandDecodeCallback
+  structure_path: "${paths.output_dir}/structures/"
+  save_every_n: 1000
+  save_separate: true
+  # Ligand minimization options
+  minimize_ligand: false
+  minimize_mode: "bonds_and_angles"  # "bonds_only" or "bonds_and_angles"
+  force_field: "MMFF94"
+  minimize_steps: 500
+
