@@ -1,9 +1,21 @@
 # @package _global_
 
-# Example configuration for inverse folding (sequence design for given structures)
-# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/generate_inverse_folding
-
-# Output directory
+# Tier-1 inverse-folding generation config — reproduces paper
+# Table `inverse_folding_cameo` (CAMEO 2022, N=127). Hyperparameters
+# follow the IF row of Appendix `tab:supp_sampling_params_protein`:
+# N=100, τ_seq=0.150, τ_struct=0.418, Stoch_seq=10, Stoch_struct=50,
+# Sched_seq=Log (model default), Sched_struct=Linear (model default).
+#
+# (Note: the inverse-folding runner only updates sequence tokens —
+# structure tokens are kept fixed at the input — so the τ_struct /
+# Stoch_struct knobs do not affect the output. They are listed here
+# for parity with the paper appendix table only; the seq-side knobs
+# are what produce the published metrics.)
+#
+# Default checkpoint: `leflur-ted` (the paper's published 470M SLQ model).
+#
+# Usage: uv run python -m lobster.cmdline.generate \
+#          --config-name experiment/generate_inverse_folding paths=public
 
 defaults:
   - /paths: internal
@@ -11,7 +23,7 @@ defaults:
 
 output_dir: "${paths.evaluations.out_root}/inverse_folding_canonical"
 
-# Random seed for reproducibility
+# Random seed for reproducibility (matches the published research run).
 seed: 54321
 
 # Model configuration — canonical TED checkpoint.
@@ -19,35 +31,33 @@ model:
   _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
   ckpt_path: leflur-ted
 
-# Generation settings
+# Generation parameters — paper IF row of `tab:supp_sampling_params_protein`.
 generation:
   mode: inverse_folding
-  nsteps: 200          # Fewer steps for inverse folding
-  batch_size: 1        # Process 1 structures at a time
-  n_trials: 1          # Number of trials for best output selection
-  
-  #Generation parameters
-  temperature_seq: 0.16423763902324678    
-  temperature_struc: 1.0  
-  stochasticity_seq: 20 
-  stochasticity_struc: 10
+  nsteps: 100             # N=100 (paper IF)
+  batch_size: 1
+  n_trials: 1
+
+  # Paper IF sampling temperatures + stochasticities.
+  temperature_seq: 0.150
+  temperature_struc: 0.418
+  stochasticity_seq: 10
+  stochasticity_struc: 50
 
   enable_sequence_token_check: true
-  sequence_token_check_retries: 500
+  sequence_token_check_retries: 100
 
   n_designs_per_structure: 1  # Number of designs to generate per structure
-  # Input structures - update these paths to your PDB files
-  # Examples of different input formats:
-  # Single file: input_structures: "/path/to/structure.pdb"
-  # Directory: input_structures: "/path/to/pdb/directory/"
-  # Glob pattern: input_structures: "/path/to/structures/*.pdb"
-  # List of files: input_structures: ["/path/to/file1.pdb", "/path/to/file2.pdb"]
-  input_structures: "${paths.benchmarks.multiflow_test}/*.pt"
 
-  # Enable ESMFold validation
+  # CAMEO 2022 valid-set is the paper's published inverse-folding
+  # benchmark. To run on MultiFlow test instead, override with
+  # `generation.input_structures="${paths.benchmarks.multiflow_test}/*.pt"`.
+  input_structures: "${paths.benchmarks.cameo}/*.pt"
+
+  # ESMFold validation produces the published TM-score / pLDDT / RMSD metrics.
   use_esmfold: true
   max_length: 512
-  
+
   # Not used for inverse folding
   length: null
   num_samples: null

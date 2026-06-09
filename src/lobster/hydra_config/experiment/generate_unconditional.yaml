@@ -1,10 +1,30 @@
 # @package _global_
 
-# Example configuration for unconditional generation
-# Purpose: Improve ESMFold validation metrics through structure-sequence consistency
-# Usage: uv run python -m lobster.cmdline.generate --config-name experiment/generate_unconditional
-
-# Output directory
+# Tier-1 unconditional generation config — reproduces the paper's
+# **LeFlur-p-val** row (Pass=75.8, AvgTM=0.895, H/S/C=69.1/7.0/24.0,
+# Clusters=288) of paper Table `unconditional_ablation`. Hyperparameters
+# follow the LeFlur-p-val row of Appendix
+# `tab:supp_sampling_params_protein` (Sampling Hyperparameters):
+# N=400, τ_seq=0.273, τ_struct=0.316, Stoch_seq=20, Stoch_struct=60,
+# Sched_seq=Log, Sched_struct=Power, plus +1.0 valine logit bias for the
+# first 25 steps.
+#
+# Default checkpoint: `leflur-ted` (the paper's published 470M SLQ model).
+#
+# Other variants of the same model live in the same paper appendix:
+#
+#   * LeFlur-p (no val bias):           Stoch_seq=10, Stoch_struct=10,
+#                                       sequence_logit_bias=null,
+#                                       Pass=84.8, AvgTM=0.937, Clusters=301.
+#   * LeFlur-p-val-sr8 (TM cutoff 0.833): set generation.enable_self_reflection=true
+#                                       generation.self_reflection.quality_control.min_tm_score_forward=0.833
+#                                       (Pass=81.8, Clusters=310)
+#   * LeFlur-p-val-sr9 (TM cutoff 0.9):  set generation.enable_self_reflection=true
+#                                       generation.self_reflection.quality_control.min_tm_score_forward=0.9
+#                                       (Pass=85.2, Clusters=312)
+#
+# Usage: uv run python -m lobster.cmdline.generate \
+#          --config-name experiment/generate_unconditional paths=public
 
 defaults:
   - /paths: internal
@@ -12,75 +32,95 @@ defaults:
 
 output_dir: "${paths.evaluations.out_root}/unconditional_canonical"
 
-# Random seed for reproducibility
+# Random seed for reproducibility (matches the published research run).
 seed: 12345
 
-# Model configuration — canonical TED checkpoint.
+# Model configuration — canonical TED checkpoint (paper LeFlur-p / -val).
 model:
   _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
   ckpt_path: leflur-ted
 
-# Generation parameters
+# Generation parameters — paper LeFlur-p-val row of
+# `tab:supp_sampling_params_protein` (App. Sampling Hyperparameters).
 generation:
   mode: unconditional
   length: [100, 200, 300, 400, 500]
-  num_samples: 10
-  nsteps: 1000
+  num_samples: 100        # paper used 100 designs per length (Table 1 ablation)
+  nsteps: 400             # N=400 in paper appendix table
   batch_size: 1
   save_csv_metrics: true
   create_plots: true
   asynchronous_sampling: false
-  
-  # Unconditional generation parameters
-  temperature_seq: 0.4579796403264936   
-  temperature_struc: 0.35751879409731435  
-  stochasticity_seq: 30 
-  stochasticity_struc: 70
-  
-  # Enable self-reflection refinement (improves ESMFold metrics)
-  enable_self_reflection: true
-  
-  # Self-reflection pipeline parameters
-  # These control the refinement stages to improve structure-sequence consistency
+
+  # Paper LeFlur-p-val sampling temperatures + stochasticities.
+  # The base LeFlur-p row (Pass=84.8) uses Stoch_seq=10, Stoch_struct=10
+  # with the same temperatures and no val logit bias; flip those three
+  # knobs together if you want the headline base number instead.
+  temperature_seq: 0.273
+  temperature_struc: 0.316
+  stochasticity_seq: 20
+  stochasticity_struc: 60
+
+  # Paper appendix says Sched_seq=Log, Sched_struct=Power for UG.
+  # (FF / IF use Linear for struct; UG is the only mode using Power.)
+  inference_schedule_seq: "LogInferenceSchedule"
+  inference_schedule_struc: "PowerInferenceSchedule"
+
+  # Per-amino-acid logit bias — paper LeFlur-p-val: +1.0 on valine,
+  # applied for the first 25 sampling steps. Set to null + steps=0 to
+  # reproduce the LeFlur-p (no-val) base row.
+  sequence_logit_bias: {V: 1.0}
+  sequence_logit_bias_steps: 25
+
+  # Sequence-token quality control during the iterative loop.
+  enable_sequence_token_check: true
+  sequence_token_check_retries: 100
+
+  # Self-reflection refinement is OFF for the headline LeFlur-p / -val
+  # rows. Flip to true (and tune `quality_control.min_tm_score_forward`)
+  # to reproduce the -sr8 / -sr9 rows of paper Table 1.
+  enable_self_reflection: false
+
+  # Self-reflection sub-pipeline parameters — only consulted when
+  # enable_self_reflection=true. Values mirror the paper FF/IF rows so
+  # the SR refinement protocol matches the standalone forward/inverse
+  # benchmarks (see App. tab:supp_sampling_params_protein).
   self_reflection:
-    # ESMFold validation for measuring improvement (optional, default: false)
-    use_esmfold_validation: false           # Enable ESMFold validation within self-reflection pipeline
-    
+    use_esmfold_validation: false
+
     forward_folding:
-      nsteps: 100
-      temperature_seq: 0.2967457760634187
-      temperature_struc: 0.1102551183666233
-      stochasticity_seq: 10
-      stochasticity_struc: 30
-    
-    inverse_folding:
       nsteps: 200
-      temperature_seq: 0.16423763902324678
-      temperature_struc: 1.0
-      stochasticity_seq: 20
-      stochasticity_struc: 10
-    
-    # Quality control: Retry iterations if metrics don't meet thresholds
+      temperature_seq: 0.361
+      temperature_struc: 0.220
+      stochasticity_seq: 1
+      stochasticity_struc: 20
+
+    inverse_folding:
+      nsteps: 100
+      temperature_seq: 0.150
+      temperature_struc: 0.418
+      stochasticity_seq: 10
+      stochasticity_struc: 50
+
     quality_control:
-      enable_tm_threshold: true              # Enable TM-score quality control
-      min_tm_score_forward: 0.8334123066155882              # Minimum TM-score between unconditional and forward-folded structures
-      enable_min_percent_identity_threshold: true # Enable minimum percent identity quality control
-      min_percent_identity: 50             # Minimum percent identity between initial and refined sequences (%)
-      enable_max_percent_identity_threshold: true # Enable maximum percent identity quality control
-      max_percent_identity: 100             # Maximum percent identity - if too high, structure is too unique (%)
-      enable_sequence_token_check: true      # Enable check for invalid sequence tokens (mask/unknown amino acids)
-      max_retries: 100                        # Maximum retry attempts per iteration
-  
-  # Enable ESMFold validation (required to measure improvement)
+      enable_tm_threshold: true
+      min_tm_score_forward: 0.833              # SR8; bump to 0.9 for SR9
+      enable_min_percent_identity_threshold: true
+      min_percent_identity: 50
+      enable_max_percent_identity_threshold: true
+      max_percent_identity: 100
+      enable_sequence_token_check: true
+      max_retries: 100
+
+  # ESMFold validation produces the published Pass / AvgTM metrics.
   use_esmfold: true
   max_length: 512
 
-  # Foldseek Diversity Analysis (structural clustering)
-  calculate_foldseek_diversity: true  # Enable/disable diversity calculation
+  # Foldseek diversity (Cluster count column in Table 1).
+  calculate_foldseek_diversity: true
   foldseek_bin_path: "${paths.binaries.foldseek_bin}"
-  foldseek_tmscore_threshold: 0.5  # TM-score threshold for Foldseek clustering
-  rmsd_threshold_for_diversity: 2.0  # Only cluster structures with RMSD < this threshold
-  
+  foldseek_tmscore_threshold: 0.5
+  rmsd_threshold_for_diversity: 2.0
+
   # Not used for unconditional generation
   input_structures: null
-
