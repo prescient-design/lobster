@@ -1,0 +1,55 @@
+# @package _global_
+# Step V -- velocity_selfcond distillation onto PDB + AFDB + synthetic.
+#
+# Resume from `flow_nokabsch_velocity_selfcond` val-best
+# (epoch=1503-step=82720, val_loss=0.5378 on PDB-only val) -- which was
+# the family leader in the Phase 6 inference sweep at 13.99 A Kabsch /
+# 19.0% 3DR on the held-out PDB val. Switch the data mix to the wider
+# UME training set (PDB + AFDB SwissProt + De Novo + TED + CATH) so
+# the model sees a much broader fold distribution; validation moves to
+# the AFDB CAMEO held-out set, so val_loss is NOT directly comparable
+# to the prior 0.5378 number -- treat the first val cycle as the new
+# baseline for this run.
+#
+# Same model config as the `_selfcond` baseline (Tokenizer3diInputFlow,
+# self-cond on, selfcond_train_prob=0.5, no Kabsch loss). LR is left at
+# the model-config default (1e-4); the run was still training cleanly
+# before we resumed (no val-loss climb), so no warmup-style soft
+# restart is needed. If gradients spike on the new data, kill and
+# re-launch with `+callbacks.lr_override_on_resume._target_=...
+# +callbacks.lr_override_on_resume.lr=5e-5` overrides on the slurm
+# script (see `_resume.sh` for the pattern).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distill
+
+defaults:
+  - override /data: structure_pdb_afdb_denovo_ted_cath_with_3di
+  - override /model: latent_generator_3di_input_flow_nokabsch_velocity_selfcond
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distill-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distill
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

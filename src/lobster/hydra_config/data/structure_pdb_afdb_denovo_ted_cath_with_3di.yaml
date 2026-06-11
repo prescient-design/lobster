@@ -1,0 +1,64 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml
+  # IMPORTANT: structure_with_3di_transform = structure_backbone_transform
+  # + structure_3di_transform, so batches carry both the LG-renamed
+  # `coords_res`/`mask`/`indices` AND the per-residue `3di_states`
+  # produced by mini3di on the input backbone. The
+  # `structure_backbone_aa_tokenizer_alt_seq_transform` used by the
+  # AA-token UME variant of this dataset does NOT produce 3di_states.
+  - transform_fn: structure_with_3di_transform.yaml
+  # NOTE: `collate_fn_backbone` (NOT `..._binder_target`). The
+  # binder-target variant runs `BinderTargetTransform` which builds a
+  # fresh feature dict and silently drops `3di_states`. Same choice as
+  # `structure_pdb_with_3di.yaml` and `structure_swissprot_with_3di.yaml`.
+  - collate_fn: collate_fn_backbone.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+root: /cv/data/ai4dd/data2/lisanzas/
+
+# Same dataset list as `structure_pdb_afdb_denovo_ted_cath.yaml` (the
+# AA-token UME training mix). Switched to the 3Di transform/collate so
+# the encoder side of `Tokenizer3diInputFlow*` gets its expected
+# `3di_states` feature.
+# - PDB train: 280k structures (clustered at 40% seq identity)
+# - AFDB SwissProt train: 220k structures from AlphaFold DB
+# - De Novo: 772k synthetic structures from 4 generative models x 5 lengths
+# - TED: 6k structures from novel/high-symmetry AlphaFold domains (4,323 clusters)
+# - CATH: 27k structures from CATH S40 experimental domains (4,702 clusters)
+# - Validation: AFDB CAMEO set
+# - Test: AFDB multiflow set
+path_to_datasets: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/train_processed",
+  "/cv/scratch/u/lisanzas/denovo_dataset/ume_dataset/train_processed_pt",
+  "/cv/scratch/u/lisanzas/ted_ume_dataset/ume_dataset/train_processed_pt",
+  "/cv/scratch/u/lisanzas/cath_dataset/ume_dataset/train_processed_pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/test_multiflow_processed"
+]
+max_length: 512
+
+cluster_file_list: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/pdb_swissprot_clusters.pt",
+  "/cv/scratch/u/lisanzas/denovo_dataset/ume_dataset/denovo_clusters.pt",
+  "/cv/scratch/u/lisanzas/ted_ume_dataset/ume_dataset/ted_clusters.pt",
+  "/cv/scratch/u/lisanzas/cath_dataset/ume_dataset/cath_clusters.pt",
+  null,
+  null
+]
+
+files_to_keep: null
+files_to_keep_list: [null, null, null, null, null, null, null]
+testing: false
+use_shards: false
+datasets: pdb_afdb_denovo_ted_cath_with_3di
+balance_datasets: true
+
+# Match `structure_pdb_with_3di.yaml`. The AA-token UME variant uses
+# batch_size=100, but the velocity_selfcond model carries an extra
+# previous-step prediction tensor (selfcond_train_prob=0.5) that
+# roughly doubles activation memory; the existing selfcond run was
+# tuned at batch_size=40 on B200, so we hold that here for safety.
+batch_size: 40
+num_workers: 12
