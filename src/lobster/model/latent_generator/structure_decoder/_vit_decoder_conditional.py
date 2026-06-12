@@ -74,6 +74,34 @@ class ViTDecoderConditional(BaseDecoder):
         ``self.coord_in_proj_selfcond`` (zero-initialised) so the caller
         can pass ``x_selfcond`` (the previous denoised estimate) in
         addition to ``xt``. Default ``False``.
+    enable_distogram : bool
+        When ``True``, add a Proteina-style auxiliary distogram head that
+        consumes the U-ViT's final per-token features ``(B, L, D)``,
+        builds outer-product pair features ``(B, L, L, 2D)``, and
+        projects to ``(B, L, L, num_dist_buckets)`` logits via a small
+        MLP. The decoder's ``forward`` then returns a dict with both
+        ``protein_coords`` and ``distogram_logits`` so the tokenizer can
+        attach a cross-entropy loss against bucketised Cα–Cα distances
+        from the ground truth. Default ``False``.
+    num_dist_buckets : int
+        Number of distogram bins (only used when ``enable_distogram=True``).
+        Default ``64`` (AF2/OpenFold convention).
+    pair_hidden_dim : int
+        Hidden width of the distogram MLP (only used when
+        ``enable_distogram=True``). Default ``128``.
+    enable_3di_head : bool
+        When ``True``, add an auxiliary 3Di-token classification head:
+        ``(B, L, D)`` per-token features -> ``Linear(D, H) -> ReLU ->
+        Linear(H, num_3di_classes)`` -> ``(B, L, num_3di_classes)`` logits.
+        The tokenizer attaches cross-entropy against the GROUND TRUTH 3Di
+        tokens (``batch["3di_states"]``, pre-CFG-dropout). On cond samples
+        the task is near-trivial (residual skip carries the input 3Di
+        embedding through), but on the ``p_uncond`` (and per-residue-
+        masked) samples the head must predict 3Di from coord+time
+        context alone -- a meaningful regulariser. Default ``False``.
+    three_di_hidden_dim : int
+        Hidden width of the 3Di MLP (only used when ``enable_3di_head=True``).
+        Default ``256``.
     """
 
     def __init__(
@@ -100,6 +128,11 @@ class ViTDecoderConditional(BaseDecoder):
         num_registers: int = 0,
         register_init_scale: float = 0.05,
         use_self_conditioning: bool = False,
+        enable_distogram: bool = False,
+        num_dist_buckets: int = 64,
+        pair_hidden_dim: int = 128,
+        enable_3di_head: bool = False,
+        three_di_hidden_dim: int = 256,
         *args,
         **kwargs,
     ):
@@ -118,6 +151,11 @@ class ViTDecoderConditional(BaseDecoder):
         self.num_registers = num_registers
         self.struc_token_dim = struc_token_dim
         self.use_self_conditioning = use_self_conditioning
+        self.enable_distogram = enable_distogram
+        self.num_dist_buckets = int(num_dist_buckets)
+        self.pair_hidden_dim = int(pair_hidden_dim)
+        self.enable_3di_head = enable_3di_head
+        self.three_di_hidden_dim = int(three_di_hidden_dim)
 
         self.struc_token_embedding = nn.Embedding(num_3di_classes + 1, struc_token_dim)
         self.coord_in_proj = nn.Linear(n_atoms * 3, struc_token_dim)
@@ -138,6 +176,44 @@ class ViTDecoderConditional(BaseDecoder):
             self.registers = nn.Parameter(torch.randn(num_registers, struc_token_dim) * register_init_scale)
         else:
             self.register_parameter("registers", None)
+
+        if enable_distogram:
+            # Outer-product pair features (B, L, L, 2D) -> (B, L, L, K) logits.
+            # Final layer zero-init so a fresh model contributes no
+            # gradient to the backbone via this head until training carves
+            # out a useful signal -- matches the self-conditioning init
+            # convention above.
+            pair_in = 2 * struc_token_dim
+            pair_final = nn.Linear(self.pair_hidden_dim, self.num_dist_buckets)
+            nn.init.zeros_(pair_final.weight)
+            nn.init.zeros_(pair_final.bias)
+            self.distogram_head = nn.Sequential(
+                nn.Linear(pair_in, self.pair_hidden_dim),
+                nn.ReLU(),
+                pair_final,
+            )
+        else:
+            self.distogram_head = None
+
+        if enable_3di_head:
+            # Per-token features -> (D, H, num_3di_classes) classifier over
+            # the 20 valid 3Di states. Final layer zero-init so a resumed
+            # ckpt is byte-identical on the first step (same convention as
+            # self-cond and distogram heads). num_3di_classes here is the
+            # legal-vocab size; the null/pad index lives at
+            # `num_3di_classes` in the tokenizer's targets and is masked
+            # out via `ignore_index` in the loss, so the head only needs
+            # to score the legal 20 classes.
+            three_di_final = nn.Linear(self.three_di_hidden_dim, num_3di_classes)
+            nn.init.zeros_(three_di_final.weight)
+            nn.init.zeros_(three_di_final.bias)
+            self.three_di_head = nn.Sequential(
+                nn.Linear(struc_token_dim, self.three_di_hidden_dim),
+                nn.ReLU(),
+                three_di_final,
+            )
+        else:
+            self.three_di_head = None
 
         self.net = TimeCondUViTDecoder(
             struc_token_codebook_size=struc_token_dim,
@@ -217,12 +293,39 @@ class ViTDecoderConditional(BaseDecoder):
 
         t_emb = self.time_embedder(time_cond)
 
+        need_features = self.enable_distogram or self.enable_3di_head
         out = self.net(
             x_emb,
             time_cond=t_emb,
             seq_mask=seq_mask,
             residue_index=residue_index,
+            return_features=need_features,
         )
+
+        if need_features:
+            # `out` is guaranteed to be a dict when return_features=True.
+            features = out["features"]  # (B, L_total, D), still includes register prefix
+            if self.num_registers > 0:
+                features = features[:, self.num_registers :]
+            B, L, D = features.shape
+        else:
+            features = None
+            B = L = D = None  # type: ignore[assignment]
+
+        if self.enable_distogram:
+            # Outer-product pair features then small MLP -> per-pair logits.
+            f_i = features.unsqueeze(2).expand(B, L, L, D)
+            f_j = features.unsqueeze(1).expand(B, L, L, D)
+            pair_in = torch.cat([f_i, f_j], dim=-1)
+            distogram_logits = self.distogram_head(pair_in)  # (B, L, L, K)
+        else:
+            distogram_logits = None
+
+        if self.enable_3di_head:
+            # Per-token classifier: (B, L, D) -> (B, L, num_3di_classes).
+            three_di_logits = self.three_di_head(features)
+        else:
+            three_di_logits = None
 
         if isinstance(out, dict):
             if "protein_coords_refinement" in out:
@@ -239,7 +342,12 @@ class ViTDecoderConditional(BaseDecoder):
                 if seq_mask_trim is not None:
                     emb = emb * expand(seq_mask_trim, emb)
                     emb_refinement = emb_refinement * expand(seq_mask_trim, emb_refinement)
-                return {"protein_coords": emb, "protein_coords_refinement": emb_refinement}
+                ret = {"protein_coords": emb, "protein_coords_refinement": emb_refinement}
+                if distogram_logits is not None:
+                    ret["distogram_logits"] = distogram_logits
+                if three_di_logits is not None:
+                    ret["three_di_logits"] = three_di_logits
+                return ret
             emb = out.get("protein_coords", out)
         else:
             emb = out
@@ -254,4 +362,12 @@ class ViTDecoderConditional(BaseDecoder):
         if seq_mask_trim is not None:
             emb = emb * expand(seq_mask_trim, emb)
 
+        if distogram_logits is not None or three_di_logits is not None:
+            # Wrap into a dict so the tokenizer can read all heads.
+            ret = {"protein_coords": emb}
+            if distogram_logits is not None:
+                ret["distogram_logits"] = distogram_logits
+            if three_di_logits is not None:
+                ret["three_di_logits"] = three_di_logits
+            return ret
         return emb

@@ -923,6 +923,7 @@ class TimeCondUViTDecoder(nn.Module):
         residue_index=None,
         ligand_quant=None,
         ligand_mask=None,
+        return_features=False,
         **kwargs,
     ):
         # Check if ligand has actual data (not just empty tensor)
@@ -959,6 +960,12 @@ class TimeCondUViTDecoder(nn.Module):
 
         x = self.ffn(x_out)
 
+        # Stash the per-token transformer features (post-skip, post-FFN) so
+        # downstream heads (e.g. a distogram pair head living in the wrapper
+        # decoder) can read them. Shape: (B, L_total, D); when ligand data is
+        # present this still includes the ligand suffix.
+        features_for_aux = x
+
         if has_ligand_data:
             if x_quant is not None:
                 ligand_x = x[:, L:, :]
@@ -989,6 +996,14 @@ class TimeCondUViTDecoder(nn.Module):
                 out["protein_coords_refinement"] = x_refinement
             else:
                 out = {"protein_coords": x, "protein_coords_refinement": x_refinement}
+
+        if return_features:
+            # Caller wants per-token features for an auxiliary head (e.g. distogram).
+            # Return as a dict so downstream can read both `protein_coords` and
+            # `features` without breaking the existing tensor-or-dict contract.
+            if not isinstance(out, dict):
+                out = {"protein_coords": out}
+            out["features"] = features_for_aux
 
         return out
 

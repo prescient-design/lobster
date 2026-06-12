@@ -1,32 +1,20 @@
-"""Phase 6 -- re-apply Phase 3c SDE winner to LATEST val-best ckpts.
+"""Phase 7 -- Phase 3c SDE winner on each run's `last.ckpt` (companion to Phase 6).
 
-Phase 5b (yesterday) ran the Phase 3c winner (init=1.0, min_t=0.0) across
-the velocity family on both `last.ckpt` and the lowest-val-loss ckpt.
-That established `best_val` as the right read across the family
-(`base/best_val` recovered from `last`'s 20.49 A to 14.22 A).
+Phase 6 evaluated each run's lowest-val-loss ckpt at the Phase 3c SDE
+winner config (init=1.0, min_t=0.0). This script does the same eval at
+each run's `last.ckpt` -- the most-recent training step -- so we can
+read off (best, last) pairs and see whether each run is still
+improving past its val minimum, has plateaued, or has overshot.
 
-Phase 6 re-runs the SAME config on whatever val-best ckpt is on disk
-*now* -- the small-net runs have been training for another ~24 h and
-should have a new minimum, e.g.:
+For `flow_nokabsch_velocity_base` the latest run dir on disk is the
+RESUME run launched at 2026-06-11T02-54-55 (lr=8e-5, callback-driven
+LR override on top of the val-best snapshot). Its `last.ckpt` therefore
+reflects ~13 h of post-resume training -- a useful read on whether
+8e-5 is moving the model in the right direction.
 
-    flow_nokabsch                e1577 v=0.6376  ->  e2092 v=0.6336
-    flow_nokabsch_velocity       e1916 v=0.5384  ->  e2241 v=0.5373
-    flow_nokabsch_velocity_selfcond e1410 v=0.5556 -> e1661 v=0.5442
-    flow_nokabsch_velocity_mask3di  e1057 v=0.6166 -> e1236 v=0.6045
-    flow_nokabsch_velocity_base_selfcond e51  v=?  -> e136  v=0.7755
+Output: `.compare_runs/inference_sweep_velocity/phase7_last_ckpt.json`
 
-The base run's val-best is unchanged from Phase 5b (the resume
-relaunch hasn't passed a val cycle yet); it's included only as a sanity
-check that the harness reproduces the 14.22 A number.
-
-Skipped: re-sweeping init x min_t -- Phase 4's (0.5, 0.1) tune
-transferred to the small-net family but regressed `base` (+3.6 A in
-Phase 5), so we treat that pair as non-portable and stick with the
-Phase 3c defaults.
-
-Output: `.compare_runs/inference_sweep_velocity/phase6_latest_best_val.json`
-
-    uv run python scripts/_diag_inference_apply_winner_velocity_family_phase6.py
+    uv run python scripts/_diag_inference_apply_winner_velocity_family_phase7_last.py
 """
 
 from __future__ import annotations
@@ -54,44 +42,41 @@ from compare_3di_input_runs import (
 from lobster.model.latent_generator.utils.mini3di import Encoder, calculate_cb
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("apply_winner_phase6")
+log = logging.getLogger("apply_winner_phase7_last")
 
+# (display_name, experiment_name) -- the run-dir per `name` is auto-resolved
+# to the most-recently-modified `runs/<timestamp>/` directory. For `base`
+# that resolves to the resume run (2026-06-11T02-54-55), whose `last.ckpt`
+# is the lr=8e-5 post-resume tip.
+#
+# `selfcond_distill` resumed from `selfcond` val-best e1503 onto the wider
+# UME mix; its in-run val_loss is on AFDB CAMEO, but here we evaluate on
+# the same PDB val batch as the rest of the family by composing the
+# `selfcond` experiment cfg (the model architecture is identical so the
+# distill ckpt loads cleanly). Run `--only` to filter to a subset.
 RUNS = [
     ("flow_nokabsch",
-     "train_latent_generator_3di_input_flow_nokabsch",
-     "latent_generator_3di_input_flow_nokabsch/runs/2026-06-07T20-44-24"),
+     "train_latent_generator_3di_input_flow_nokabsch"),
     ("flow_nokabsch_velocity",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity",
-     "latent_generator_3di_input_flow_nokabsch_velocity/runs/2026-06-07T20-54-26"),
+     "train_latent_generator_3di_input_flow_nokabsch_velocity"),
     ("flow_nokabsch_velocity_selfcond",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond",
-     "latent_generator_3di_input_flow_nokabsch_velocity_selfcond/runs/2026-06-08T19-40-54"),
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond"),
     ("flow_nokabsch_velocity_mask3di",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity_mask3di",
-     "latent_generator_3di_input_flow_nokabsch_velocity_mask3di/runs/2026-06-09T00-06-30"),
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_mask3di"),
     ("flow_nokabsch_velocity_base",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity_base",
-     "latent_generator_3di_input_flow_nokabsch_velocity_base/runs/2026-06-08T19-25-48"),
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_base"),
     ("flow_nokabsch_velocity_base_selfcond",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity_base_selfcond",
-     "latent_generator_3di_input_flow_nokabsch_velocity_base_selfcond/runs/2026-06-10T11-58-16"),
-    # Distill resumed from selfcond e1503 onto wider UME mix; its in-run
-    # val_loss is on AFDB CAMEO (NOT comparable to PDB val_loss column),
-    # but we use the selfcond experiment cfg below so the val LOADER is
-    # the same PDB batch as the rest of the family.
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_base_selfcond"),
     ("flow_nokabsch_velocity_selfcond_distill",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond",
-     "latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distill/runs/2026-06-11T03-53-16"),
-    # Distogram + distogram_3di need their own experiment cfgs (extra heads
-    # in the model arch). For these we want the run_dir to auto-resolve to
-    # the latest training run; we don't hardcode it here. Phase 6 picks
-    # `_best_val_loss_ckpt(SCRATCH/rd)`, so we pass the latest run dir.
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond"),
+    # Distogram + distogram_3di have extra heads (pair head, 3Di-token head)
+    # so they MUST use their own experiment cfgs -- the selfcond cfg has no
+    # `enable_distogram` / `enable_3di_head` flags and a strict ckpt load
+    # would fail on the missing keys.
     ("flow_nokabsch_velocity_selfcond_distogram",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram",
-     None),  # rd resolved in main() below to most-recent runs/<ts>
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram"),
     ("flow_nokabsch_velocity_selfcond_distogram_3di",
-     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram_3di",
-     None),
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram_3di"),
 ]
 SCRATCH = Path("/cv/scratch/u/lisanzas")
 OUT_DIR = Path("/cv/home/lisanzas/lobster/.compare_runs/inference_sweep_velocity")
@@ -124,12 +109,15 @@ class _KabChampion:
       - ``champion.ckpt``       the actual Lightning ckpt (copied from source)
       - ``champion_model_cfg.yaml``  resolved Hydra ``cfg.model`` so an inference
         script can rebuild the matching model class without the experiment cfg
-      - ``champion_eval_record.json``  full eval payload (per-protein arrays etc.)
+      - ``champion_eval_record.json``  full eval payload (per-protein arrays,
+        elapsed time, chunk_size, n_proteins, etc.) for later inspection
 
-    Persistence: on ``__init__`` we read ``champion.json`` if it exists and
-    seed ``best_kab`` from it; ``maybe_save`` only overwrites when the new
-    Kab is strictly lower. Phase 6 (best_val) and phase 7 (last) can share
-    one ``save_dir`` to track the global champion across both ckpt tags.
+    Persistence semantics: on ``__init__`` we read ``champion.json`` if it
+    exists and seed the in-memory ``best_kab`` from it; subsequent calls
+    to ``maybe_save`` only overwrite when the new Kab is strictly lower.
+    Because both phase 6 (best_val) and phase 7 (last) can share the same
+    save_dir, the champion across an entire eval session is the lowest
+    Kab over BOTH phases combined.
     """
 
     def __init__(self, save_dir: Path | None) -> None:
@@ -177,8 +165,13 @@ class _KabChampion:
             "[champion] NEW: %s/%s kab=%.4f (prev best %.4f) -> %s",
             run_name, ckpt_tag, kab, self.best_kab, self.save_dir,
         )
+        # Copy ckpt (resolves symlinks).
         shutil.copy(Path(ckpt_src).resolve(), self.save_dir / "champion.ckpt")
+        # Save the model cfg so inference can reconstruct the network without
+        # needing the experiment overrides. `cfg.model` is the resolved
+        # `Tokenizer3diInputFlow` config (target + decoder_factory + ...).
         OmegaConf.save(cfg.model, self.save_dir / "champion_model_cfg.yaml")
+        # Compact meta.
         meta = {
             "run_name": run_name,
             "ckpt_tag": ckpt_tag,
@@ -259,13 +252,17 @@ def _eval_chunk(model, raw_chunk, *, kwargs, device) -> tuple[np.ndarray, np.nda
 
 @torch.no_grad()
 def _eval_one(model, raw, *, label, kwargs, device, chunk_size: int) -> dict:
-    """Iterate ``raw`` in chunks of ``chunk_size`` proteins, call the model
-    on each chunk, aggregate per-protein Kabsch / 3Di-recovery arrays.
+    """Iterate ``raw`` (the full 30-protein val batch) in chunks of
+    ``chunk_size`` proteins, call the model on each chunk, and aggregate
+    per-protein Kabsch / 3Di-recovery arrays.
 
-    Seed is reset to ``SEED`` at the start of each chunk so cross-variant
-    numbers are noise-comparable for the SAME ``chunk_size``. Numbers from
-    different ``chunk_size`` values are NOT byte-comparable across the
-    family (different RNG draws drive sampling).
+    The seed is reset to ``SEED`` at the start of each chunk so that
+    chunk-i's noise is determined only by ``chunk_size`` (not by which
+    chunk_idx within the run); this keeps cross-variant numbers
+    noise-comparable for the SAME ``chunk_size``. Numbers from different
+    chunk_size values are NOT byte-comparable -- different RNG draws
+    drive sampling. Variants needing bs<30 (distogram heads) thus must
+    be compared against bs<30 numbers from the rest of the family.
     """
     N = raw["mask"].shape[0]
     kab_all: list[np.ndarray] = []
@@ -330,21 +327,23 @@ def main() -> None:
         help=("If set, copy the lowest-Kabsch ckpt seen during this eval "
               "(across all variants in RUNS) into this directory along "
               "with the resolved model cfg and a `champion.json` meta blob. "
-              "State persists across runs and across Phase 6/7 if both "
-              "scripts share the same dir -- only overwrites when a new "
-              "ckpt strictly beats the existing champion's Kabsch."),
+              "State persists across runs: re-running the script with the "
+              "same dir reads the existing champion.json and only "
+              "overwrites if a new variant beats it on Kab. Phase 6 and "
+              "Phase 7 can share the same dir to track the global champion "
+              "across both `last` and `best_val` checkpoints."),
     )
     args = parser.parse_args()
     champion = _KabChampion(Path(args.save_best_kab_dir) if args.save_best_kab_dir else None)
 
     if args.only is not None:
         keep = [s.strip() for s in args.only.split(",") if s.strip()]
-        runs = [r for r in RUNS if any(k in r[0] for k in keep)]
+        runs = [(n, e) for (n, e) in RUNS if any(k in n for k in keep)]
         if not runs:
             log.error("--only=%s matched no runs in RUNS; valid: %s",
-                      args.only, [r[0] for r in RUNS])
+                      args.only, [n for n, _ in RUNS])
             return
-        log.info("--only=%s -> %d run(s): %s", args.only, len(runs), [r[0] for r in runs])
+        log.info("--only=%s -> %d run(s): %s", args.only, len(runs), [n for n, _ in runs])
     else:
         runs = list(RUNS)
 
@@ -355,8 +354,9 @@ def main() -> None:
     torch.manual_seed(SEED)
 
     val_pt = "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/validation.pt"
-    # Loader gives all 30 val proteins in one batch; chunking happens
-    # inside `_eval_one` based on `--batch-size` (the model-side size).
+    # Keep loader at 32 (val.pt has 30 proteins; this returns them all in
+    # one batch). `args.batch_size` is the MODEL-side chunk inside
+    # `_eval_one` -- separate knob, only constrains GPU memory.
     overrides = [
         "data.batch_size=32", "data.num_workers=0",
         f"data.path_to_datasets=[{val_pt},{val_pt},{val_pt}]",
@@ -372,28 +372,28 @@ def main() -> None:
              len(lengths), min(lengths), int(np.median(lengths)), max(lengths))
 
     results: list[dict] = []
-    for name, exp, rd in runs:
-        if rd is None:
-            # Auto-resolve to the most-recently-modified runs/<timestamp>/
-            # under the conventional scratch directory for this run name.
-            runs_root = SCRATCH / f"latent_generator_3di_input_{name}/runs"
-            try:
-                run_dir = max((p for p in runs_root.iterdir() if p.is_dir()),
-                              key=lambda p: p.stat().st_mtime)
-            except (FileNotFoundError, ValueError):
-                log.warning("[%s] no runs/ dir under %s -- skipping", name, runs_root)
-                continue
-        else:
-            run_dir = SCRATCH / rd
-        best_ckpt, best_val = _best_val_loss_ckpt(run_dir)
-        if best_ckpt is None or not best_ckpt.exists():
-            log.warning("[%s] no val-best ckpt -- skipping", name)
+    for name, exp in runs:
+        # Auto-resolve to the most-recently-modified runs/<timestamp>/.
+        # For the base run this picks up the resume run dir.
+        runs_root = SCRATCH / f"latent_generator_3di_input_{name}/runs"
+        try:
+            run_dir = max((p for p in runs_root.iterdir() if p.is_dir()),
+                          key=lambda p: p.stat().st_mtime)
+        except (FileNotFoundError, ValueError):
+            log.warning("[%s] no runs/ dir -- skipping", name)
             continue
-        log.info("[%s] best=%s (val_loss=%s)", name, best_ckpt.name, best_val)
+
+        last_ckpt = run_dir / "last.ckpt"
+        if not last_ckpt.exists():
+            log.warning("[%s] %s/last.ckpt missing -- skipping", name, run_dir.name)
+            continue
+        log.info("[%s] run_dir=%s last.ckpt mtime=%s",
+                 name, run_dir.name, time.strftime("%Y-%m-%d %H:%M:%S",
+                                                  time.localtime(last_ckpt.stat().st_mtime)))
 
         cfg = _compose_cfg(exp, overrides)
         try:
-            model = _load_model(cfg, best_ckpt, device)
+            model = _load_model(cfg, last_ckpt, device)
         except Exception as e:
             log.warning("[%s] failed to load: %s", name, e)
             continue
@@ -401,12 +401,12 @@ def main() -> None:
         try:
             res = _eval_one(
                 model, raw,
-                label=f"{name}/best_val",
+                label=f"{name}/last",
                 kwargs=dict(WINNER),
                 device=device,
                 chunk_size=int(args.batch_size),
             )
-        except torch.cuda.OutOfMemoryError:
+        except torch.cuda.OutOfMemoryError as e:
             log.warning("[%s] OOM at chunk_size=%d -- skipping (try smaller --batch-size)",
                         name, int(args.batch_size))
             del model
@@ -414,16 +414,16 @@ def main() -> None:
                 torch.cuda.empty_cache()
             continue
         res["run"] = name
-        res["ckpt_path"] = str(best_ckpt)
-        res["ckpt_val_loss"] = best_val
-        res["ckpt_name"] = best_ckpt.name
+        res["ckpt_path"] = str(last_ckpt)
+        res["ckpt_mtime"] = time.strftime("%Y-%m-%d %H:%M:%S",
+                                          time.localtime(last_ckpt.stat().st_mtime))
+        res["run_dir"] = run_dir.name
         results.append(res)
 
         champion.maybe_save(
-            ckpt_src=best_ckpt, cfg=cfg,
-            run_name=name, ckpt_tag="best_val",
+            ckpt_src=last_ckpt, cfg=cfg,
+            run_name=name, ckpt_tag="last",
             eval_record=res, run_dir_name=run_dir.name,
-            ckpt_val_loss=best_val,
         )
 
         del model
@@ -436,21 +436,19 @@ def main() -> None:
         "lengths_min_med_max": [int(min(lengths)), int(np.median(lengths)), int(max(lengths))],
         "results": results,
     }
-    out_path = OUT_DIR / "phase6_latest_best_val.json"
+    out_path = OUT_DIR / "phase7_last_ckpt.json"
     out_path.write_text(json.dumps(payload, indent=2))
     log.info("Wrote %s", out_path)
 
     print("\n" + "=" * 92)
-    print("Phase 6 -- Phase 3c SDE winner (init=1.0, min_t=0.0) on LATEST val-best ckpt per run")
+    print("Phase 7 -- Phase 3c SDE winner (init=1.0, min_t=0.0) on `last.ckpt` per run")
     print("=" * 92)
-    print(f"{'run':>40} | {'ckpt (epoch=N-step=M)':>28} | {'val_loss':>9} | {'Kab (A)':>8} | {'3DR (%)':>7}")
+    print(f"{'run':>40} | {'run_dir':>20} | {'last.ckpt mtime':>19} | {'Kab (A)':>8} | {'3DR (%)':>7}")
     print("-" * 110)
     for r in results:
         kab = "nan" if np.isnan(r["kabsch_mean"]) else f"{r['kabsch_mean']:.2f}"
         rec = "nan" if np.isnan(r["three_di_recovery_mean"]) else f"{100*r['three_di_recovery_mean']:.1f}%"
-        vl = "-" if r["ckpt_val_loss"] is None else f"{r['ckpt_val_loss']:.4f}"
-        ckpt_short = r["ckpt_name"].replace("-val_loss=", "/v=").replace(".ckpt", "")
-        print(f"{r['run']:>40} | {ckpt_short:>28} | {vl:>9} | {kab:>8} | {rec:>7}")
+        print(f"{r['run']:>40} | {r['run_dir']:>20} | {r['ckpt_mtime']:>19} | {kab:>8} | {rec:>7}")
 
 
 if __name__ == "__main__":

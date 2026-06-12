@@ -1,0 +1,130 @@
+_target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
+
+# Step X -- velocity + self-cond + Proteina-style distogram aux loss
+# + 3Di-token classification aux loss.
+#
+# Same backbone as `flow_nokabsch_velocity_selfcond` plus TWO auxiliary
+# heads on the U-ViT's per-token features:
+#
+# 1. Distogram pair head (K=64 buckets in [0, 22 A], t > 0.5 gate,
+#    weight 0.25). See `..._distogram.yaml`.
+#
+# 2. 3Di classification head: per-token (B, L, D) -> (B, L, 20) logits,
+#    cross-entropy against the GROUND TRUTH 3Di tokens
+#    (`batch["3di_states"]`, pre-CFG-dropout). On cond samples the
+#    residual skip carries the input 3Di embedding through the network,
+#    so the head can learn the trivial inverse quickly. The meaningful
+#    learning signal comes from the `p_uncond` (=0.15) fraction where
+#    the 3Di input is null'd: the head must predict 3Di from coord +
+#    time context alone. No time gate by default (the head should learn
+#    even at noisy t since the GT tokens are time-invariant).
+#
+# Both head's final layers are zero-init, so a fresh model is byte-
+# identical to selfcond on the first training step and the heads only
+# contribute gradient as the optimizer carves out useful signal.
+
+ckpt_path: null
+
+n_atoms: 3
+num_3di_classes: 20
+
+p_uncond: 0.15
+guidance_scale: 1.0
+n_sampling_steps: 50
+aux_pairwise_l2_weight: 0.01
+
+# Distogram aux: gated to the clean-end half (model can't predict pair
+# geometry when the input is mostly noise).
+aux_distogram_weight: 0.25
+aux_distogram_t_lim: 0.5
+num_dist_buckets: 64
+max_dist_a: 22.0
+
+# 3Di-token CE aux: no time gate (-1.0). The targets are time-invariant
+# (the GT 3Di tokens are the same regardless of where t is on the
+# trajectory), so unlike the distogram we let the head learn at all t.
+# Weight is small (0.05) so the cond-branch trivial inverse can't hijack
+# the backbone gradients.
+aux_3di_ce_weight: 0.05
+aux_3di_t_lim: -1.0
+
+center_x1: true
+center_every_step: true
+
+coord_scale: 0.1
+
+random_so3_aug: true
+
+sampling_mode: ode
+sc_scale_noise: 0.0
+sc_scale_score: 0.0
+
+autoguidance_model: null
+autoguidance_ratio: 0.0
+
+use_self_conditioning: true
+selfcond_train_prob: 0.5
+
+decoder_factory:
+  _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+  decoder2loss_dict:
+    vit_decoder: []
+  decoder_mapping:
+    vit_decoder:
+      _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
+      data_fixed_size: 512
+      n_atoms: 3
+      uvit_n_layers: 6
+      uvit_n_heads: 8
+      uvit_dim_head: 32
+      uvit_position_embedding_type: 'rotary'
+      indexed: false
+      struc_token_dim: 512
+      struc_token_codebook_size: 512
+      encode_ligand: false
+      num_3di_classes: 20
+      time_cond_dim: 128
+      num_registers: 4
+      use_self_conditioning: true
+      enable_distogram: true
+      num_dist_buckets: 64
+      pair_hidden_dim: 128
+      enable_3di_head: true
+      three_di_hidden_dim: 256
+
+interpolant:
+  _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
+  _partial_: true
+  prediction_type: velocity
+  sigma: 0.0
+  augmentation_type: null
+  data_scale: 1.0
+
+time_distribution:
+  _target_: bionemo.moco.distributions.time.uniform.UniformTimeDistribution
+  min_t: 0.0
+  max_t: 1.0
+
+prior_distribution:
+  _target_: bionemo.moco.distributions.prior.continuous.gaussian.GaussianPrior
+  mean: 0.0
+  std: 1.0
+  center: false
+
+inference_schedule:
+  _target_: bionemo.moco.schedules.inference_time_schedules.LinearInferenceSchedule
+  nsteps: 50
+
+optim:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 1e-4
+  weight_decay: 0.0
+
+num_warmup_steps: 5000
+num_training_steps: 50000
+
+lr_scheduler:
+  _target_: transformers.get_constant_schedule_with_warmup
+  _partial_: true
+  num_warmup_steps: 5000

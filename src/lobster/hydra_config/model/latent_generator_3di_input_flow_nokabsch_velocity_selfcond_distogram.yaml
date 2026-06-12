@@ -1,0 +1,118 @@
+_target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
+
+# Step W -- velocity + self-cond + Proteina-style distogram aux loss.
+#
+# Same backbone as `flow_nokabsch_velocity_selfcond` (Step U) plus a
+# pair head on the U-ViT's per-token features that produces logits over
+# K=64 distance buckets in [0, 22 A]. At training time we add a
+# cross-entropy term on bucketised GT Cα-Cα distances, gated by
+# (t > aux_distogram_t_lim=0.5) and weighted by aux_distogram_weight=0.25.
+# Pair-head final layer is zero-init, so a fresh model is byte-identical
+# to selfcond on the first training step and the head only contributes
+# gradient as it carves out a useful signal.
+#
+# Bucket choice (K=64, max=22 A) is the AF2 / OpenFold convention.
+# mini3di operates on closest-neighbor pairs (Cα distances cluster
+# 4-15 A) -- 22 A covers that range at fine resolution AND adds the
+# medium-range (15-22 A) where mini3di is blind, so the distogram
+# earns its keep as complementary supervision.
+
+ckpt_path: null
+
+n_atoms: 3
+num_3di_classes: 20
+
+p_uncond: 0.15
+guidance_scale: 1.0
+n_sampling_steps: 50
+aux_pairwise_l2_weight: 0.01
+
+# Step W: distogram aux loss config. Active only when t > t_lim (clean-end
+# half of the trajectory, where the model can actually predict pair
+# geometry); zero contribution otherwise.
+aux_distogram_weight: 0.25
+aux_distogram_t_lim: 0.5
+num_dist_buckets: 64
+max_dist_a: 22.0
+
+center_x1: true
+center_every_step: true
+
+coord_scale: 0.1
+
+random_so3_aug: true
+
+sampling_mode: ode
+sc_scale_noise: 0.0
+sc_scale_score: 0.0
+
+autoguidance_model: null
+autoguidance_ratio: 0.0
+
+use_self_conditioning: true
+selfcond_train_prob: 0.5
+
+decoder_factory:
+  _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+  decoder2loss_dict:
+    vit_decoder: []
+  decoder_mapping:
+    vit_decoder:
+      _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
+      data_fixed_size: 512
+      n_atoms: 3
+      uvit_n_layers: 6
+      uvit_n_heads: 8
+      uvit_dim_head: 32
+      uvit_position_embedding_type: 'rotary'
+      indexed: false
+      struc_token_dim: 512
+      struc_token_codebook_size: 512
+      encode_ligand: false
+      num_3di_classes: 20
+      time_cond_dim: 128
+      num_registers: 4
+      use_self_conditioning: true
+      # Step W: turn on the pair head + distogram logits in the decoder.
+      # Final-layer zero-init means the resumed selfcond ckpt is
+      # byte-identical on the first train step.
+      enable_distogram: true
+      num_dist_buckets: 64
+      pair_hidden_dim: 128
+
+interpolant:
+  _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
+  _partial_: true
+  prediction_type: velocity
+  sigma: 0.0
+  augmentation_type: null
+  data_scale: 1.0
+
+time_distribution:
+  _target_: bionemo.moco.distributions.time.uniform.UniformTimeDistribution
+  min_t: 0.0
+  max_t: 1.0
+
+prior_distribution:
+  _target_: bionemo.moco.distributions.prior.continuous.gaussian.GaussianPrior
+  mean: 0.0
+  std: 1.0
+  center: false
+
+inference_schedule:
+  _target_: bionemo.moco.schedules.inference_time_schedules.LinearInferenceSchedule
+  nsteps: 50
+
+optim:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 1e-4
+  weight_decay: 0.0
+
+num_warmup_steps: 5000
+num_training_steps: 50000
+
+lr_scheduler:
+  _target_: transformers.get_constant_schedule_with_warmup
+  _partial_: true
+  num_warmup_steps: 5000

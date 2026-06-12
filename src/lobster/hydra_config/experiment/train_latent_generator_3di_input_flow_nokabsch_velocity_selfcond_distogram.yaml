@@ -1,0 +1,46 @@
+# @package _global_
+# Step W -- velocity + self-cond + Proteina-style distogram aux loss
+# (from-scratch variant; the resume-into-distogram path needs an
+# `on_load_checkpoint` hook to tolerate missing pair-head keys, which
+# is not yet wired).
+#
+# Same architecture as `flow_nokabsch_velocity_selfcond` plus a small
+# pair head on the U-ViT's per-token features producing distance-bucket
+# logits. Aux loss is cross-entropy on bucketised GT Cα-Cα distances,
+# gated by t > 0.5 and weighted by 0.25. Bucket range K=64 / max=22 A
+# (AF2 / OpenFold convention; covers mini3di's nearest-partner range
+# of 4-15 A and adds the medium-range 15-22 A that mini3di is blind to).
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram
+
+defaults:
+  - override /data: structure_pdb_with_3di
+  - override /model: latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

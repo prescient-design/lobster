@@ -68,6 +68,7 @@ import hydra
 import lightning.pytorch as pl
 import omegaconf
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 from bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching import (
@@ -132,6 +133,84 @@ def _pairwise_l2(pred: Tensor, target: Tensor, seq_mask: Tensor) -> Tensor:
     return (diff.sum(dim=(1, 2)) / denom).mean()
 
 
+def _split_decoder_output(out) -> tuple[Tensor, Tensor | None, Tensor | None]:
+    """Pull `protein_coords` and optional aux-head logits out of a decoder
+    output. Backwards-compat: bare-Tensor decoders return ``(coords, None, None)``.
+    Returns ``(coords, distogram_logits, three_di_logits)``.
+    """
+    if isinstance(out, dict):
+        return (
+            out["protein_coords"],
+            out.get("distogram_logits", None),
+            out.get("three_di_logits", None),
+        )
+    return out, None, None
+
+
+def _distogram_ce(
+    distogram_logits: Tensor,
+    target_ca_dists: Tensor,
+    seq_mask: Tensor,
+    *,
+    num_dist_buckets: int,
+    max_dist_scaled: float,
+) -> Tensor:
+    """Per-sample distogram cross-entropy on bucketised Cα-Cα distances.
+
+    Mirrors Proteina's `compute_auxiliary_loss` distogram branch
+    (proteinfoundation/proteinflow/proteina.py:~261). Differences:
+
+    * Pair logits come from an outer-product MLP head over single-track
+      features (we have no pair-track transformer); Proteina has a
+      dedicated AF-style pair head.
+    * 4D spatial cross-entropy instead of flatten-to-2D + 1D CE; values
+      are bit-identical, this version avoids the temporary
+      ``view(B*L*L, K)`` allocation.
+
+    Parameters
+    ----------
+    distogram_logits : Tensor
+        Shape ``(B, L, L, K)``.
+    target_ca_dists : Tensor
+        Shape ``(B, L, L)`` -- pairwise Cα-Cα distances of the GROUND TRUTH,
+        in the same scaled coord space the model produces (so that
+        ``max_dist_scaled`` is also in scaled units).
+    seq_mask : Tensor
+        ``(B, L)``; 1 = valid residue.
+    num_dist_buckets : int
+    max_dist_scaled : float
+        Upper bin edge in scaled units (``max_dist_a * coord_scale``).
+
+    Returns
+    -------
+    Tensor
+        Shape ``(B,)`` -- masked-mean cross-entropy per sample.
+    """
+    B, L, _, K = distogram_logits.shape
+    pair_mask = seq_mask.unsqueeze(-1) * seq_mask.unsqueeze(-2)
+    # Proteina zeroes `gt_pair_dists` by `pair_mask` BEFORE bucketize so
+    # that padding pairs land in bucket 0 deterministically -- safer than
+    # relying on the upstream centering invariant for zero-padding.
+    target_ca_dists = target_ca_dists * pair_mask
+    boundaries = torch.linspace(
+        0.0,
+        max_dist_scaled,
+        num_dist_buckets - 1,
+        device=distogram_logits.device,
+        dtype=target_ca_dists.dtype,
+    )
+    gt_bucket = torch.bucketize(target_ca_dists, boundaries)  # (B, L, L), long
+    # F.cross_entropy expects (B, K, ...) -- channels-first -- for spatial CE.
+    per_pair_ce = F.cross_entropy(
+        distogram_logits.permute(0, 3, 1, 2),  # (B, K, L, L)
+        gt_bucket,
+        reduction="none",
+    )  # (B, L, L)
+    masked = per_pair_ce * pair_mask
+    denom = pair_mask.sum(dim=(1, 2)).clamp_min(1.0)
+    return masked.sum(dim=(1, 2)) / denom
+
+
 class Tokenizer3diInputFlow(pl.LightningModule):
     """3Di-conditioned flow-matching backbone-coord generator."""
 
@@ -150,6 +229,12 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         guidance_scale: float = 1.0,
         n_sampling_steps: int = 50,
         aux_pairwise_l2_weight: float = 0.01,
+        aux_distogram_weight: float = 0.0,
+        aux_distogram_t_lim: float = 0.5,
+        num_dist_buckets: int = 64,
+        max_dist_a: float = 22.0,
+        aux_3di_ce_weight: float = 0.0,
+        aux_3di_t_lim: float = -1.0,
         sampling_mode: Literal["ode", "sde"] = "ode",
         sc_scale_noise: float = 0.0,
         sc_scale_score: float = 0.0,
@@ -235,6 +320,13 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         self.guidance_scale = guidance_scale
         self.n_sampling_steps = n_sampling_steps
         self.aux_pairwise_l2_weight = aux_pairwise_l2_weight
+        self.aux_distogram_weight = float(aux_distogram_weight)
+        self.aux_distogram_t_lim = float(aux_distogram_t_lim)
+        self.num_dist_buckets = int(num_dist_buckets)
+        self.max_dist_a = float(max_dist_a)
+        self.aux_3di_ce_weight = float(aux_3di_ce_weight)
+        # `aux_3di_t_lim < 0` -> no time gate; otherwise (t > t_lim) per-sample.
+        self.aux_3di_t_lim = float(aux_3di_t_lim)
         self.sampling_mode = sampling_mode
         self.sc_scale_noise = sc_scale_noise
         self.sc_scale_score = sc_scale_score
@@ -571,7 +663,7 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         x_selfcond = None
         if self.use_self_conditioning and split == "train" and torch.rand((), device=device) < self.selfcond_train_prob:
             with torch.no_grad():
-                model_pred_prev = decoder(
+                prev_out = decoder(
                     states_in,
                     seq_mask,
                     residue_index=residue_index,
@@ -579,6 +671,9 @@ class Tokenizer3diInputFlow(pl.LightningModule):
                     time_cond=t,
                     x_selfcond=None,
                 )
+                # Decoder may return a dict if a distogram head is enabled;
+                # only the coords are used for self-conditioning.
+                model_pred_prev, _, _ = _split_decoder_output(prev_out)
                 x_selfcond = (
                     self.flow_matcher.process_data_prediction(
                         model_pred_prev.reshape(B, L * A, D),
@@ -589,7 +684,7 @@ class Tokenizer3diInputFlow(pl.LightningModule):
                     .detach()
                 )
 
-        model_pred = decoder(
+        decoder_out = decoder(
             states_in,
             seq_mask,
             residue_index=residue_index,
@@ -597,6 +692,7 @@ class Tokenizer3diInputFlow(pl.LightningModule):
             time_cond=t,
             x_selfcond=x_selfcond,
         )
+        model_pred, distogram_logits, three_di_logits = _split_decoder_output(decoder_out)
 
         # Data-space view of the model output, used for the aux pairwise
         # loss and the `x_recon` returned to BackboneReconstruction. No-op
@@ -612,15 +708,77 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         aux_loss = _pairwise_l2(x_1_hat_data, x_1, seq_mask)
         total_loss = fm_loss + self.aux_pairwise_l2_weight * aux_loss
 
-        self.log_dict(
-            {
-                f"{split}_loss": total_loss,
-                f"{split}_fm_loss": fm_loss,
-                f"{split}_aux_pairwise_l2": aux_loss,
-            },
-            batch_size=B,
-            sync_dist=True,
-        )
+        log_payload = {
+            f"{split}_loss": total_loss,
+            f"{split}_fm_loss": fm_loss,
+            f"{split}_aux_pairwise_l2": aux_loss,
+        }
+
+        # Proteina-style distogram aux loss: cross-entropy on bucketised
+        # GT Cα-Cα distances against the pair head's logits. Active only
+        # when `t > aux_distogram_t_lim` (per-sample gate) and when the
+        # decoder actually emits a distogram. `x_1` is in the scaled coord
+        # space (`coord_scale` applied), so we bucket on a scaled bin edge.
+        if self.aux_distogram_weight > 0.0 and distogram_logits is not None:
+            gt_ca = x_1[:, :, 1, :]  # (B, L, 3) -- Cα at atom index 1
+            gt_dists = torch.cdist(gt_ca, gt_ca, p=2)  # (B, L, L)
+            max_dist_scaled = self.max_dist_a * self.coord_scale
+            distogram_per_sample = _distogram_ce(
+                distogram_logits,
+                gt_dists,
+                seq_mask,
+                num_dist_buckets=self.num_dist_buckets,
+                max_dist_scaled=max_dist_scaled,
+            )  # (B,)
+            t_gate = (t.detach().flatten() > self.aux_distogram_t_lim).to(distogram_per_sample.dtype)
+            distogram_loss = (distogram_per_sample * t_gate).mean()
+            distogram_loss_no_gate = distogram_per_sample.mean()
+            total_loss = total_loss + self.aux_distogram_weight * distogram_loss
+            log_payload[f"{split}_aux_distogram"] = distogram_loss
+            log_payload[f"{split}_aux_distogram_no_gate"] = distogram_loss_no_gate
+            # Reassign to surface the updated total in logs.
+            log_payload[f"{split}_loss"] = total_loss
+
+        # 3Di-token classification aux loss: cross-entropy from per-token
+        # features back to the GT 3Di tokens. Targets are the PRE-CFG-dropout
+        # tokens from `featurize` (`states`), so the head is supervised on
+        # the original 3Di sequence even on samples whose decoder INPUT was
+        # null'd via `p_uncond` -- those samples are exactly where the head
+        # has to learn coord+time -> 3Di without the input-embedding skip
+        # carrying the answer. `ignore_index=num_3di_classes` masks padding
+        # / null targets out of the CE.
+        if self.aux_3di_ce_weight > 0.0 and three_di_logits is not None:
+            per_token_ce = F.cross_entropy(
+                three_di_logits.permute(0, 2, 1),  # (B, K=20, L) for spatial CE
+                states.long(),  # (B, L), targets in [0, 19] or num_3di_classes for pad
+                reduction="none",
+                ignore_index=self.num_3di_classes,
+            )  # (B, L); zeros at ignore positions
+            mask_valid = (states != self.num_3di_classes).to(per_token_ce.dtype) * seq_mask
+            per_sample_ce = per_token_ce * mask_valid
+            denom = mask_valid.sum(dim=1).clamp_min(1.0)
+            per_sample_3di_ce = per_sample_ce.sum(dim=1) / denom  # (B,)
+            if self.aux_3di_t_lim >= 0.0:
+                t_gate_3di = (t.detach().flatten() > self.aux_3di_t_lim).to(per_sample_3di_ce.dtype)
+                three_di_loss = (per_sample_3di_ce * t_gate_3di).mean()
+            else:
+                three_di_loss = per_sample_3di_ce.mean()
+            three_di_loss_no_gate = per_sample_3di_ce.mean()
+            total_loss = total_loss + self.aux_3di_ce_weight * three_di_loss
+            # Mean per-token accuracy of the 3Di head, averaged over valid
+            # positions only -- cheap diagnostic to see if the head is
+            # actually solving the trivial cond-branch problem.
+            with torch.no_grad():
+                pred_3di = three_di_logits.argmax(dim=-1)  # (B, L)
+                correct = (pred_3di == states) & (mask_valid > 0)
+                acc_denom = mask_valid.sum().clamp_min(1.0)
+                three_di_acc = correct.to(per_sample_3di_ce.dtype).sum() / acc_denom
+            log_payload[f"{split}_aux_3di_ce"] = three_di_loss
+            log_payload[f"{split}_aux_3di_ce_no_gate"] = three_di_loss_no_gate
+            log_payload[f"{split}_aux_3di_acc"] = three_di_acc
+            log_payload[f"{split}_loss"] = total_loss
+
+        self.log_dict(log_payload, batch_size=B, sync_dist=True)
 
         if self.automatic_optimization is False:
             self.manual_backward(total_loss)
@@ -639,6 +797,51 @@ class Tokenizer3diInputFlow(pl.LightningModule):
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
         return self._single_step(batch, split="val")
+
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        """Tolerate ckpts saved before new auxiliary heads were added.
+
+        Lightning's `Trainer.fit(ckpt_path=...)` calls
+        `pl_module.load_state_dict(state, strict=True)` by default. When
+        we resume an older ckpt into a variant that adds a new head
+        (e.g. `decoder.distogram_head.*`), the saved state_dict is
+        MISSING those keys and the strict load raises. This hook patches
+        `state_dict` in place:
+
+        - Missing keys get filled from the just-instantiated model's
+          state_dict, so the new head starts at its init values
+          (zero-init final layer for the distogram head; default init
+          for the hidden layer and any future heads).
+        - Unexpected keys are dropped with a warning -- reserved for
+          future arch shrinks; never fired by the current code path.
+
+        Both branches are silent at the Lightning level after this hook;
+        the subsequent strict load only sees keys that match.
+        """
+        state = checkpoint.get("state_dict")
+        if not isinstance(state, dict):
+            return
+        own_state = self.state_dict()
+        missing = [k for k in own_state if k not in state]
+        extra = [k for k in state if k not in own_state]
+        if missing:
+            logger.warning(
+                "ckpt is missing %d key(s); filling from current init (first 5: %s%s)",
+                len(missing),
+                missing[:5],
+                " ..." if len(missing) > 5 else "",
+            )
+            for k in missing:
+                state[k] = own_state[k].clone()
+        if extra:
+            logger.warning(
+                "ckpt has %d unexpected key(s); dropping (first 5: %s%s)",
+                len(extra),
+                extra[:5],
+                " ..." if len(extra) > 5 else "",
+            )
+            for k in extra:
+                del state[k]
 
     def configure_optimizers(self):
         optimizer = self.optim_factory(params=self.parameters())
@@ -805,32 +1008,38 @@ class Tokenizer3diInputFlow(pl.LightningModule):
             t_batch = sched.pad_time(B, float(t_scalar.item()), device=device)
             dt_batch = torch.full((B,), float(dt_scalar.item()), device=device)
 
-            x1_cond = decoder(
-                states,
-                seq_mask,
-                residue_index=residue_index,
-                xt=x_t,
-                time_cond=t_batch,
-                x_selfcond=x_selfcond,
-            )
-
-            if use_cfg:
-                x1_null = decoder(
-                    null_states,
+            x1_cond, _, _ = _split_decoder_output(
+                decoder(
+                    states,
                     seq_mask,
                     residue_index=residue_index,
                     xt=x_t,
                     time_cond=t_batch,
                     x_selfcond=x_selfcond,
                 )
-                if ag_model is not None and ag_ratio != 0.0:
-                    x1_ag = ag_model(
-                        states,
+            )
+
+            if use_cfg:
+                x1_null, _, _ = _split_decoder_output(
+                    decoder(
+                        null_states,
                         seq_mask,
                         residue_index=residue_index,
                         xt=x_t,
                         time_cond=t_batch,
                         x_selfcond=x_selfcond,
+                    )
+                )
+                if ag_model is not None and ag_ratio != 0.0:
+                    x1_ag, _, _ = _split_decoder_output(
+                        ag_model(
+                            states,
+                            seq_mask,
+                            residue_index=residue_index,
+                            xt=x_t,
+                            time_cond=t_batch,
+                            x_selfcond=x_selfcond,
+                        )
                     )
                     x1_pred = w * x1_cond + (1.0 - w) * (ag_ratio * x1_ag + (1.0 - ag_ratio) * x1_null)
                 else:
