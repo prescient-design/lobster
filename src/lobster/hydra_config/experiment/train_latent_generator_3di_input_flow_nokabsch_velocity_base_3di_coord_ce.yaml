@@ -1,0 +1,37 @@
+# @package _global_
+# Step Y2 -- BASE velocity + differentiable-mini3di CE-from-coords aux.
+# Resume from r3 Kab champion. See the model yaml for rationale.
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce
+
+defaults:
+  - override /data: structure_pdb_with_3di
+  - override /model: latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

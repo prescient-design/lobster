@@ -1,0 +1,123 @@
+_target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
+
+# Step Y2 -- BASE velocity (no self-cond) + differentiable mini3di
+# CE-from-coords aux loss.
+#
+# Same architecture as `flow_nokabsch_velocity_base` (768d/12L/12h,
+# time_cond_dim=256, ~110M params, no self-conditioning). Resume from
+# the round-3 family Kab champion (`base/last`, captured at
+# `/cv/scratch/u/lisanzas/champion_3di_flow_velocity/champion.ckpt`,
+# Kab=13.25 A / 3DR=20.94% on the 30-protein PDB val) and add the
+# differentiable mini3di pipeline as an auxiliary loss on the predicted
+# Cα coords.
+#
+# This is the BASE-size sibling of the `selfcond_3di_coord_ce` variant
+# launched in parallel; they answer different questions:
+#   * `selfcond_3di_coord_ce`: does the new loss help the small
+#     20M-param backbone push past the 14 A Kab plateau?
+#   * `base_3di_coord_ce` (this): does the new loss help the 110M-param
+#     base model already at 13.25 A push further, or does the bigger
+#     model already capture enough geometry that the aux is redundant?
+#
+# Loss config: same as the small variant (weight=0.10, t_lim=0.5,
+# temperature=1.0). See the small variant's yaml for the rationale.
+#
+# Resume mechanics: the champion ckpt has FULL Lightning state from the
+# 8e-5 resume run, but lr=8e-5 is what diverged in round 4. Use the
+# `LrOverrideOnResume` callback (added via Hydra in the slurm script)
+# to drop to 5e-5 -- same LR as the parallel `base_resume` job which
+# is also restarting from the champion to recover from the divergence.
+# `Tokenizer3diInputFlow.on_load_checkpoint` fills missing
+# `mini3di_torch.*` keys from init (frozen Foldseek weights, so init
+# == "trained" here -- there's no other source).
+
+ckpt_path: null
+
+n_atoms: 3
+num_3di_classes: 20
+
+p_uncond: 0.15
+guidance_scale: 1.0
+n_sampling_steps: 50
+aux_pairwise_l2_weight: 0.01
+
+# Step Y2: differentiable mini3di pipeline on predicted Cα coords.
+aux_3di_coord_ce_weight: 0.10
+aux_3di_coord_ce_t_lim: 0.5
+aux_3di_coord_ce_temperature: 1.0
+
+center_x1: true
+center_every_step: true
+
+coord_scale: 0.1
+
+random_so3_aug: true
+
+sampling_mode: ode
+sc_scale_noise: 0.0
+sc_scale_score: 0.0
+
+autoguidance_model: null
+autoguidance_ratio: 0.0
+
+use_self_conditioning: false
+selfcond_train_prob: 0.5
+
+decoder_factory:
+  _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+  decoder2loss_dict:
+    vit_decoder: []
+  decoder_mapping:
+    vit_decoder:
+      _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
+      data_fixed_size: 512
+      n_atoms: 3
+      uvit_n_layers: 12
+      uvit_n_heads: 12
+      uvit_dim_head: 64
+      uvit_position_embedding_type: 'rotary'
+      indexed: false
+      struc_token_dim: 768
+      struc_token_codebook_size: 768
+      encode_ligand: false
+      num_3di_classes: 20
+      time_cond_dim: 256
+      num_registers: 4
+      use_self_conditioning: false
+
+interpolant:
+  _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
+  _partial_: true
+  prediction_type: velocity
+  sigma: 0.0
+  augmentation_type: null
+  data_scale: 1.0
+
+time_distribution:
+  _target_: bionemo.moco.distributions.time.uniform.UniformTimeDistribution
+  min_t: 0.0
+  max_t: 1.0
+
+prior_distribution:
+  _target_: bionemo.moco.distributions.prior.continuous.gaussian.GaussianPrior
+  mean: 0.0
+  std: 1.0
+  center: false
+
+inference_schedule:
+  _target_: bionemo.moco.schedules.inference_time_schedules.LinearInferenceSchedule
+  nsteps: 50
+
+optim:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 1e-4
+  weight_decay: 0.0
+
+num_warmup_steps: 5000
+num_training_steps: 50000
+
+lr_scheduler:
+  _target_: transformers.get_constant_schedule_with_warmup
+  _partial_: true
+  num_warmup_steps: 5000

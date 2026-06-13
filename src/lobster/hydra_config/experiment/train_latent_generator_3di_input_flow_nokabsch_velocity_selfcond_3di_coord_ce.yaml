@@ -1,0 +1,50 @@
+# @package _global_
+# Step Y -- velocity + self-cond + differentiable-mini3di CE-from-coords aux.
+#
+# Resume from `flow_nokabsch_velocity_selfcond` val-best e1503 (PDB val
+# 0.5378, the Phase 6 family leader at the time the experiment was
+# launched). Adds an aux loss that runs the predicted Cα geometry
+# through a torch port of mini3di and CEs against the GT 3Di tokens
+# (with the partner index frozen from GT, which sidesteps mini3di's
+# argmin and bit-for-bit reproduces the eval encoder; see
+# `scripts/_diag_test_mini3di_torch_equivalence.py`).
+#
+# Resume mechanics: the selfcond ckpt has no `mini3di_torch.*` keys.
+# The `Tokenizer3diInputFlow.on_load_checkpoint` hook (added in the
+# Step W refactor) fills missing keys from init values, which is fine
+# here since the mini3di buffers are FROZEN Foldseek weights -- they
+# don't have a "trained" version we'd want to restore from elsewhere.
+#
+# Usage:
+#   uv run python -m lobster.cmdline.train +experiment=train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_3di_coord_ce
+
+defaults:
+  - override /data: structure_pdb_with_3di
+  - override /model: latent_generator_3di_input_flow_nokabsch_velocity_selfcond_3di_coord_ce
+  - override /callbacks: latent_generator_flow_defaults.yaml
+
+compile: false
+
+logger:
+  name: latent_generator_3di_input_flow_nokabsch_velocity_selfcond_3di_coord_ce-dec_${model.decoder_factory.decoder_mapping.vit_decoder.struc_token_dim}_${data.datasets}_${paths.timestamp}
+  project: lobster_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_3di_coord_ce
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: -1
+  val_check_interval: null
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 16
+  devices: auto
+  num_sanity_val_steps: 0

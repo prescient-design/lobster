@@ -137,6 +137,14 @@ def main() -> None:
               "Default 4 is safe for 110M-param `base` on a 22 GB A10G; "
               "raise on bigger GPUs or smaller models for speed."),
     )
+    parser.add_argument(
+        "--n-samples", default=1, type=int,
+        help=("Best-of-N sampling: per protein, draw N independent samples "
+              "(seed = SEED + sample_idx), keep the one with lowest "
+              "Kabsch RMSD vs GT. Wall-clock scales N x; memory unchanged "
+              "(samples drawn sequentially within each chunk). Default 1 "
+              "(single-sample, same as before)."),
+    )
     args = parser.parse_args()
 
     champion_dir = Path(args.champion_dir)
@@ -188,68 +196,153 @@ def main() -> None:
         _dump_gt_pdb(gt_dir, i, int(lengths[i]),
                      gt_c[i].cpu(), m, raw["3di_states"][i])
 
-    # Sample in chunks of args.batch_size.
+    # Sample in chunks of args.batch_size; for each chunk do best-of-N
+    # sampling (N=args.n_samples). Per protein keep the lowest-Kabsch
+    # sample's coords, predicted 3Di tokens, and the corresponding 3DR.
     chunk = int(args.batch_size)
+    n_samples = int(args.n_samples)
     sample_dir = out_dir / "champion"
-    log.info("sampling %d proteins in chunks of %d -> %s", N, chunk, sample_dir)
-    kab_per: list[float] = []
-    rec_per: list[float] = []
-    pred_3di_per: list[list[int]] = []
+    log.info("sampling %d proteins in chunks of %d, best-of-%d -> %s",
+             N, chunk, n_samples, sample_dir)
+    # Final per-protein records (length N, ordered by global protein index).
+    best_kab_per: list[float] = []          # lowest Kab seen for each protein
+    best_rec_per: list[float] = []          # 3DR of THAT lowest-Kab sample
+    pred_3di_per: list[list[int]] = []      # predicted 3Di tokens of THAT sample
+    kab_samples_per: list[list[float]] = []  # per-protein per-sample Kabs
+    rec_samples_per: list[list[float]] = []  # per-protein per-sample 3DR
     input_3di_cpu = raw["3di_states"]
     mask_full = raw["mask"]
 
     for start in range(0, N, chunk):
         end = min(start + chunk, N)
+        n_in_chunk = end - start
         raw_chunk = {k: v[start:end] for k, v in raw.items()}
         states, seq_mask, residue_index = model.featurize(
             {k: raw_chunk[k].to(device) for k in ["3di_states", "mask", "indices"]}
         )
         gt_c_chunk = _center(raw_chunk["coords_res"].to(device).to(torch.get_default_dtype()), seq_mask)
-        torch.manual_seed(SEED)  # reset per-chunk for cross-script reproducibility
-        samp = model.sample(
-            states=states, seq_mask=seq_mask, residue_index=residue_index,
-            **WINNER_KWARGS,
-        )
-        if not torch.isfinite(samp).all().item():
-            raise RuntimeError(f"non-finite sample at chunk start={start}")
-        aligned = _kabsch_align(_center(samp, seq_mask), gt_c_chunk, seq_mask)
-        kab = _rmsd(aligned, gt_c_chunk, seq_mask).cpu().numpy()
 
-        for j in range(end - start):
+        # Per-chunk accumulators across the N samples. We track per-sample
+        # Kabsch (cheap, vectorised) for every draw, but only encode 3Di
+        # ONCE per protein -- on the per-protein-best-Kab aligned coords --
+        # since `mini3di.Encoder.encode_atoms` is a slow Python pipeline.
+        chunk_best_kab = np.full(n_in_chunk, np.inf, dtype=np.float64)
+        chunk_best_aligned = torch.zeros_like(gt_c_chunk)
+        chunk_kab_samples = np.full((n_in_chunk, n_samples), np.nan, dtype=np.float64)
+
+        for s in range(n_samples):
+            # Vary seed per sample so the N draws are independent. Same seed
+            # offset across chunks so cross-protein samples remain comparable.
+            torch.manual_seed(SEED + s)
+            samp = model.sample(
+                states=states, seq_mask=seq_mask, residue_index=residue_index,
+                **WINNER_KWARGS,
+            )
+            if not torch.isfinite(samp).all().item():
+                log.warning("non-finite sample at chunk start=%d sample=%d -- skipping",
+                            start, s)
+                continue
+            aligned = _kabsch_align(_center(samp, seq_mask), gt_c_chunk, seq_mask)
+            kab = _rmsd(aligned, gt_c_chunk, seq_mask).cpu().numpy()
+            chunk_kab_samples[:, s] = kab
+            for j in range(n_in_chunk):
+                if np.isfinite(kab[j]) and kab[j] < chunk_best_kab[j]:
+                    chunk_best_kab[j] = float(kab[j])
+                    chunk_best_aligned[j] = aligned[j]
+            log.debug("  chunk start=%d sample=%d kab_mean=%.2f", start, s, float(np.nanmean(kab)))
+
+        # Write the per-protein-BEST sample PDB and gather record fields.
+        for j in range(n_in_chunk):
             global_i = start + j
             L = int(lengths[global_i])
             m = mask_full[global_i].bool()
-            tokens_3di = _dump_sample_pdb(sample_dir, global_i, L, aligned[j].cpu(), m)
+            # Use the helper to write the best aligned coords + re-encode 3Di
+            # (matches the single-sample path's PDB convention).
+            tokens_3di = _dump_sample_pdb(sample_dir, global_i, L,
+                                          chunk_best_aligned[j].cpu(), m)
             pred_3di_per.append([int(x) for x in tokens_3di])
-            kab_per.append(float(kab[j]))
+            best_kab_per.append(float(chunk_best_kab[j]))
             gt_3di = input_3di_cpu[global_i][m].numpy().astype(np.int64)
-            rec = float((tokens_3di == gt_3di).mean()) if tokens_3di.size == gt_3di.size and tokens_3di.size > 0 else float("nan")
-            rec_per.append(rec)
-            log.info("  [%2d/%d] L=%d kab=%.2f A 3DR=%s",
-                     global_i + 1, N, L, kab[j],
-                     "nan" if np.isnan(rec) else f"{100*rec:.1f}%")
+            rec = (float((tokens_3di == gt_3di).mean())
+                   if tokens_3di.size == gt_3di.size and tokens_3di.size > 0
+                   else float("nan"))
+            best_rec_per.append(rec)
+            kab_samples_per.append([None if not np.isfinite(v) else float(v)
+                                    for v in chunk_kab_samples[j].tolist()])
+            # Per-sample 3DR is not computed (mini3di encode is slow); we
+            # only encode 3Di on the best-Kab sample. Keep the field for
+            # schema parity but fill with None.
+            rec_samples_per.append([None] * n_samples)
+            samples_kab_str = (
+                f" mean={np.nanmean(chunk_kab_samples[j]):.2f}/std={np.nanstd(chunk_kab_samples[j]):.2f}"
+                if n_samples > 1 else ""
+            )
+            log.info("  [%2d/%d] L=%d best_kab=%.2f A 3DR=%s%s",
+                     global_i + 1, N, L, float(chunk_best_kab[j]),
+                     "nan" if np.isnan(rec) else f"{100*rec:.1f}%",
+                     samples_kab_str)
 
-    valid_rec = [v for v in rec_per if not np.isnan(v)]
-    valid_kab = [v for v in kab_per if not np.isnan(v)]
-    mean_rec = float(np.mean(valid_rec)) if valid_rec else float("nan")
-    mean_kab = float(np.mean(valid_kab)) if valid_kab else float("nan")
-    log.info("CHAMPION (re-sampled): kab=%.2f A  3DR=%.1f%%", mean_kab, 100.0 * mean_rec)
+        # Tee out per-sample chunk-level summary so progress is visible.
+        if n_samples > 1:
+            mean_per_sample = np.nanmean(chunk_kab_samples, axis=0)
+            best_per_sample = np.nanmin(chunk_kab_samples, axis=0)
+            log.info("    chunk %d-%d kab_mean_per_sample=%s best_per_sample=%s",
+                     start, end - 1,
+                     [f"{v:.2f}" for v in mean_per_sample],
+                     [f"{v:.2f}" for v in best_per_sample])
+    # Aggregate over proteins. With n_samples=1 these collapse to the
+    # single-sample numbers (`best_*` == `*`), so this code path is the
+    # same shape as before for backwards-compat.
+    valid_best_rec = [v for v in best_rec_per if not np.isnan(v)]
+    valid_best_kab = [v for v in best_kab_per if not np.isnan(v)]
+    mean_best_rec = float(np.mean(valid_best_rec)) if valid_best_rec else float("nan")
+    mean_best_kab = float(np.mean(valid_best_kab)) if valid_best_kab else float("nan")
+
+    # First-sample ("single-sample baseline") Kab so we can read off the
+    # best-of-N improvement directly from logs. (Per-sample 3DR is not
+    # computed -- it would require encoding 3Di on N x N_proteins coords;
+    # 3DR is reported only for the per-protein-best-Kab sample.)
+    first_sample_kabs = [s[0] if (s and s[0] is not None) else None for s in kab_samples_per]
+    valid_first_kabs = [v for v in first_sample_kabs if v is not None]
+    mean_first_kab = float(np.mean(valid_first_kabs)) if valid_first_kabs else float("nan")
+
+    if n_samples > 1:
+        log.info(
+            "CHAMPION best-of-%d: kab=%.2f A  3DR=%.1f%%   (single-sample baseline kab=%.2f A; improvement %.2f A)",
+            n_samples, mean_best_kab, 100.0 * mean_best_rec,
+            mean_first_kab, mean_first_kab - mean_best_kab,
+        )
+    else:
+        log.info("CHAMPION (re-sampled): kab=%.2f A  3DR=%.1f%%",
+                 mean_best_kab, 100.0 * mean_best_rec)
 
     manifest = {
         "champion_meta": meta,
         "kwargs": WINNER_KWARGS,
         "seed": SEED,
         "chunk_size": chunk,
+        "n_samples": n_samples,
         "n_proteins": N,
-        "summary": {"kabsch_mean": mean_kab, "three_di_recovery_mean": mean_rec},
+        "summary": {
+            "best_of_n_kabsch_mean": mean_best_kab,
+            "best_of_n_three_di_recovery_mean": mean_best_rec,
+            "single_sample_kabsch_mean": mean_first_kab,
+            # legacy keys (alias to best-of-N, which is the dumped PDB):
+            "kabsch_mean": mean_best_kab,
+            "three_di_recovery_mean": mean_best_rec,
+        },
         "per_protein": [
             {
                 "idx": i,
                 "length": int(lengths[i]),
-                "kabsch_rmsd": kab_per[i],
-                "three_di_recovery": (None if np.isnan(rec_per[i]) else rec_per[i]),
+                "kabsch_rmsd": best_kab_per[i],          # best-of-N
+                "three_di_recovery": (
+                    None if np.isnan(best_rec_per[i]) else best_rec_per[i]
+                ),
+                "kab_per_sample": kab_samples_per[i],    # length n_samples
+                "three_di_recovery_per_sample": rec_samples_per[i],
                 "input_3di": input_3di_cpu[i][mask_full[i].bool()].numpy().astype(int).tolist(),
-                "predicted_3di": pred_3di_per[i],
+                "predicted_3di": pred_3di_per[i],        # 3Di of the best-Kab sample
             }
             for i in range(N)
         ],

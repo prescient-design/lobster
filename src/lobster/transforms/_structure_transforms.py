@@ -671,12 +671,28 @@ class Structure3diTransform(BaseTransform):
         Ca, Cb, N, C = calculate_cb(x)
         out = self.encoder.encode_atoms(Ca, Cb, N, C)
         sequence_3di = self.encoder.build_sequence(out["states"])
+        # Also compute the per-residue partner index from the virtual
+        # centers. Used by the differentiable mini3di loss
+        # (`Tokenizer3diInputFlow.aux_3di_coord_ce_weight`) which freezes
+        # the partner identity from GT and only flows gradient through
+        # the geometry + VAE -- argmin over the virtual-center distance
+        # matrix is non-differentiable, so it has to come from here.
+        # The recompute of `vc` is cheap (one cross / normalize / two
+        # 3-D rotations per residue) compared to the VAE forward we
+        # already paid for above.
+        fe = self.encoder.feature_encoder
+        vc = fe.vc_encoder.encode_atoms(Ca, Cb, N, C)
+        partner_index = fe.partner_index_encoder._find_residue_partners(vc)
+
         x["3di_states"] = out["states"].data
         x["3di_descriptors"] = out["descriptors"].data
         x["3di_sequence"] = sequence_3di
+        x["3di_partner_index"] = partner_index
         # turm to tensors from numpy arrays
-        x["3di_states"] = torch.tensor(x["3di_states"], device=x["coords_res"].device)
-        x["3di_descriptors"] = torch.tensor(x["3di_descriptors"], device=x["coords_res"].device)
+        device = x["coords_res"].device
+        x["3di_states"] = torch.tensor(x["3di_states"], device=device)
+        x["3di_descriptors"] = torch.tensor(x["3di_descriptors"], device=device)
+        x["3di_partner_index"] = torch.tensor(x["3di_partner_index"], device=device, dtype=torch.long)
 
         return x
 

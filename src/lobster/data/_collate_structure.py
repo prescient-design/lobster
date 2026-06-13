@@ -102,6 +102,8 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     if "3di_states" in batch[0]:
         padded_3di_states = []
         padded_3di_descriptors = []
+    if "3di_partner_index" in batch[0]:
+        padded_3di_partner_index = []
 
     if "c6d" in batch[0]:
         padded_c6d = []
@@ -245,6 +247,21 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
                 )
             )
 
+        if "3di_partner_index" in batch[0]:
+            # Right-pad with zeros (a sentinel residue index that
+            # downstream consumers will mask out via seq_mask). Same
+            # convention used for `3di_states` above.
+            pi = bb_dict["3di_partner_index"]
+            padded_3di_partner_index.append(
+                torch.cat(
+                    [
+                        pi,
+                        torch.zeros(max_length - pi.shape[0], *pi.shape[1:], dtype=pi.dtype),
+                    ],
+                    dim=0,
+                )
+            )
+
         if "c6d" in batch[0]:
             # Pad c6d from [L, L, 4] to [max_len, max_len, 4]
             c6d = bb_dict["c6d"]
@@ -300,6 +317,8 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     if "3di_states" in batch[0]:
         out["3di_states"] = torch.stack(padded_3di_states, dim=0)
         out["3di_descriptors"] = torch.stack(padded_3di_descriptors, dim=0)
+    if "3di_partner_index" in batch[0]:
+        out["3di_partner_index"] = torch.stack(padded_3di_partner_index, dim=0)
 
     if "c6d" in batch[0]:
         out["c6d"] = torch.stack(padded_c6d, dim=0)

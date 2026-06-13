@@ -81,6 +81,7 @@ from bionemo.moco.schedules.inference_time_schedules import (
 )
 
 from lobster.model.latent_generator.structure_decoder import DecoderFactory
+from lobster.model.latent_generator.utils.mini3di._torch_encoder import MiniThreeDiEncoderTorch
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +236,9 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         max_dist_a: float = 22.0,
         aux_3di_ce_weight: float = 0.0,
         aux_3di_t_lim: float = -1.0,
+        aux_3di_coord_ce_weight: float = 0.0,
+        aux_3di_coord_ce_t_lim: float = -1.0,
+        aux_3di_coord_ce_temperature: float = 1.0,
         sampling_mode: Literal["ode", "sde"] = "ode",
         sc_scale_noise: float = 0.0,
         sc_scale_score: float = 0.0,
@@ -327,6 +331,18 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         self.aux_3di_ce_weight = float(aux_3di_ce_weight)
         # `aux_3di_t_lim < 0` -> no time gate; otherwise (t > t_lim) per-sample.
         self.aux_3di_t_lim = float(aux_3di_t_lim)
+        self.aux_3di_coord_ce_weight = float(aux_3di_coord_ce_weight)
+        self.aux_3di_coord_ce_t_lim = float(aux_3di_coord_ce_t_lim)
+        self.aux_3di_coord_ce_temperature = float(aux_3di_coord_ce_temperature)
+        if self.aux_3di_coord_ce_weight > 0.0:
+            # Frozen Foldseek VAE Dense weights + 3Di centroids registered
+            # as buffers, so the module follows the parent's `.to(device)`
+            # without adding trainable parameters. Built eagerly so the
+            # buffers move with the module on `.cuda()`/Lightning device
+            # transfer; lazy build inside `_single_step` would miss that.
+            self.mini3di_torch = MiniThreeDiEncoderTorch()
+        else:
+            self.mini3di_torch = None
         self.sampling_mode = sampling_mode
         self.sc_scale_noise = sc_scale_noise
         self.sc_scale_score = sc_scale_score
@@ -776,6 +792,101 @@ class Tokenizer3diInputFlow(pl.LightningModule):
             log_payload[f"{split}_aux_3di_ce"] = three_di_loss
             log_payload[f"{split}_aux_3di_ce_no_gate"] = three_di_loss_no_gate
             log_payload[f"{split}_aux_3di_acc"] = three_di_acc
+            log_payload[f"{split}_loss"] = total_loss
+
+        # 3Di-CE-FROM-COORDS aux loss: encode the predicted Cα geometry
+        # through the (frozen) Foldseek mini3di pipeline and CE against
+        # the GT 3Di tokens. Differentiable wrt Cα coords, so this term
+        # directly shapes the coord head -- distinct from the per-token
+        # `aux_3di_ce_weight` head which shapes the U-ViT features and
+        # has a trivial cond-branch path through the input-embedding
+        # skip. We freeze the partner-index from GT (computed once by
+        # `Structure3diTransform` and surfaced in `batch["3di_partner_index"]`)
+        # so the non-differentiable argmin over virtual-center distances
+        # is sidestepped.
+        if self.aux_3di_coord_ce_weight > 0.0 and self.mini3di_torch is not None and "3di_partner_index" in batch:
+            gt_partner_index = batch["3di_partner_index"].to(device=device, dtype=torch.long)  # (B, L)
+            gt_3di = states.long()  # (B, L), pre-CFG-dropout, num_3di_classes at pad
+            # mini3di operates on Angstrom-scale coords (the Foldseek
+            # VAE was trained on raw distances in A); our internal
+            # `x_1_hat_data` is in scaled space (multiplied by
+            # coord_scale, so 0.1 A i.e. nm-ish units). Un-scale before
+            # encoding so the descriptor distances land in the model's
+            # training distribution.
+            ca_pred_a = x_1_hat_data[:, :, 1, :] / self.coord_scale  # (B, L, 3)
+
+            # Per-sample loop: the descriptor pipeline uses
+            # `index_select(0, J)` which is per-chain; vectorising via
+            # `torch.gather` is doable but the per-sample cost is small
+            # (a couple of small matmuls + the VAE forward), so the
+            # loop stays simple here. The eager loop also keeps the
+            # autograd graph clean: each sample's CE is summed into the
+            # batch loss before backward is called.
+            per_sample_3di_coord_ce = []
+            for b in range(B):
+                Lb = int(seq_mask[b].sum().item())
+                if Lb < 3:
+                    per_sample_3di_coord_ce.append(torch.zeros((), device=device, dtype=ca_pred_a.dtype))
+                    continue
+                ca_b = ca_pred_a[b, :Lb]  # (Lb, 3)
+                pi_b = gt_partner_index[b, :Lb]  # (Lb,) long, J in [1, Lb-2]
+                gt_b = gt_3di[b, :Lb]  # (Lb,) long
+                # The torch encoder's `compute_descriptors` uses J-1 / J / J+1
+                # which assumes J in [1, Lb-2]. The numpy `_find_residue_partners`
+                # always satisfies this for the unpadded chain length we passed
+                # at transform time, so `pi_b` is safe over [:Lb].
+                logits_b = self.mini3di_torch(
+                    ca_b,
+                    partner_index=pi_b,
+                    temperature=self.aux_3di_coord_ce_temperature,
+                )  # (Lb, num_3di_classes=20)
+                ce_b = F.cross_entropy(
+                    logits_b,
+                    gt_b,
+                    reduction="mean",
+                    ignore_index=self.num_3di_classes,
+                )
+                per_sample_3di_coord_ce.append(ce_b)
+            per_sample_3di_coord_ce_t = torch.stack(per_sample_3di_coord_ce)  # (B,)
+            if self.aux_3di_coord_ce_t_lim >= 0.0:
+                t_gate_coord = (t.detach().flatten() > self.aux_3di_coord_ce_t_lim).to(per_sample_3di_coord_ce_t.dtype)
+                three_di_coord_loss = (per_sample_3di_coord_ce_t * t_gate_coord).mean()
+            else:
+                three_di_coord_loss = per_sample_3di_coord_ce_t.mean()
+            three_di_coord_loss_no_gate = per_sample_3di_coord_ce_t.mean()
+            total_loss = total_loss + self.aux_3di_coord_ce_weight * three_di_coord_loss
+            # Diagnostic: argmax accuracy of the predicted-coords-derived
+            # 3Di tokens vs GT, averaged over valid positions across the
+            # batch. Recovery climbs slowly while Kabsch is bad and
+            # surges as the geometry locks in -- a more sensitive signal
+            # than the loss for "is the prediction structural yet?".
+            with torch.no_grad():
+                acc_num = 0.0
+                acc_den = 0.0
+                for b in range(B):
+                    Lb = int(seq_mask[b].sum().item())
+                    if Lb < 3:
+                        continue
+                    ca_b = ca_pred_a[b, :Lb]
+                    pi_b = gt_partner_index[b, :Lb]
+                    logits_b = self.mini3di_torch(
+                        ca_b,
+                        partner_index=pi_b,
+                        temperature=self.aux_3di_coord_ce_temperature,
+                    )
+                    pred_b = logits_b.argmax(dim=-1)
+                    gt_b = gt_3di[b, :Lb]
+                    valid_b = gt_b != self.num_3di_classes
+                    acc_num += (pred_b[valid_b] == gt_b[valid_b]).sum().item()
+                    acc_den += valid_b.sum().item()
+                three_di_coord_acc = (
+                    torch.tensor(acc_num / max(acc_den, 1.0), device=device)
+                    if acc_den > 0
+                    else torch.zeros((), device=device)
+                )
+            log_payload[f"{split}_aux_3di_coord_ce"] = three_di_coord_loss
+            log_payload[f"{split}_aux_3di_coord_ce_no_gate"] = three_di_coord_loss_no_gate
+            log_payload[f"{split}_aux_3di_coord_acc"] = three_di_coord_acc
             log_payload[f"{split}_loss"] = total_loss
 
         self.log_dict(log_payload, batch_size=B, sync_dist=True)
