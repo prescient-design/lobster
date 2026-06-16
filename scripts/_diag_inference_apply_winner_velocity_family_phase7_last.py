@@ -77,6 +77,25 @@ RUNS = [
      "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram"),
     ("flow_nokabsch_velocity_selfcond_distogram_3di",
      "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram_3di"),
+    # 3Di-CE-from-coords variants (Step Y/Y2): same model arch as selfcond
+    # / base respectively, but with `aux_3di_coord_ce_weight>0` the ckpt
+    # state_dict includes `mini3di_torch.*` buffers that the parent cfg
+    # has no slot for. Use their own experiment cfgs.
+    ("flow_nokabsch_velocity_selfcond_3di_coord_ce",
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_3di_coord_ce"),
+    ("flow_nokabsch_velocity_base_3di_coord_ce",
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce"),
+    # Step Y2-W: same arch as base_3di_coord_ce but aux_3di_coord_ce_weight=0.5
+    # (5x). Ckpt state_dict matches because the model class is identical;
+    # only the loss config differs (which is irrelevant at inference).
+    ("flow_nokabsch_velocity_base_3di_coord_ce_w0p5",
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_w0p5"),
+    # Step Y3: identical model arch to base_3di_coord_ce; resumed from
+    # the prior 3Di-CE champion to re-fit the input embedding against
+    # corrected 3Di tokens. Improves val Kab + 3DR substantially at the
+    # same compute budget (8.45 A / 65% vs the prior 13.11 A / 21%).
+    ("flow_nokabsch_velocity_base_3di_coord_ce_correct_cb",
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_correct_cb"),
 ]
 SCRATCH = Path("/cv/scratch/u/lisanzas")
 OUT_DIR = Path("/cv/home/lisanzas/lobster/.compare_runs/inference_sweep_velocity")

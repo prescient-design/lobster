@@ -92,6 +92,19 @@ RUNS = [
     ("flow_nokabsch_velocity_selfcond_distogram_3di",
      "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_distogram_3di",
      None),
+    # 3Di-CE-from-coords variants (Step Y/Y2): own experiment cfg required
+    # because the ckpt state_dict carries `mini3di_torch.*` buffers when
+    # `aux_3di_coord_ce_weight>0`.
+    ("flow_nokabsch_velocity_selfcond_3di_coord_ce",
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_selfcond_3di_coord_ce",
+     None),
+    ("flow_nokabsch_velocity_base_3di_coord_ce",
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce",
+     None),
+    # Step Y2-W: weight=0.5 sibling of base_3di_coord_ce. Same arch.
+    ("flow_nokabsch_velocity_base_3di_coord_ce_w0p5",
+     "train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_w0p5",
+     None),
 ]
 SCRATCH = Path("/cv/scratch/u/lisanzas")
 OUT_DIR = Path("/cv/home/lisanzas/lobster/.compare_runs/inference_sweep_velocity")
