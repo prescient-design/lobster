@@ -88,6 +88,7 @@ checkpoint format but differ in what the input alphabet is:
 |---|---|---|---|---|
 | [`TokenizerMulti`](tokenizer/_tokenizer_multi.py) | `coords_res` `(B, L, 3, 3)` | encoder → quantizer → decoder | yes (SLQ / FSQ / …) | Canonical LG: backbone in, discrete token bottleneck, backbone out. Powers all the checkpoints in the "Model Configurations" tables below. |
 | [`Tokenizer3diInput`](tokenizer/_tokenizer_3di_input.py) | `3di_states` `(B, L)` long (20-class Foldseek alphabet, recomputed at data-load time by [`Structure3diTransform`](../../transforms/_structure_transforms.py)) | single decoder pass | no | Minimal 3Di-tokens-in / coords-out auto-encoder. The wrapped `ViTDecoder` is set to `indexed=True` with `struc_token_codebook_size = num_3di_classes + 1 = 21`, so its built-in embedding lookup consumes the 3Di state IDs directly — no separate encoder, no quantizer. Reuses `[l2_loss, pairwise_l2_loss]`. |
+| [`Tokenizer3diInputFlow`](tokenizer/_tokenizer_3di_input_flow.py) | `3di_states` `(B, L)` long (same Foldseek 20-state alphabet) | flow-matching SDE sampler over a learned U-ViT velocity field, conditioned on the 3Di tokens | no (3Di tokens themselves are the discrete bottleneck) | Generative reconstruction of backbone coords from a model-agnostic 3Di string. Trained as continuous flow matching with classifier-free guidance and an auxiliary differentiable mini3di CE-from-coords loss. Inference uses a 200-step power-2 SDE schedule at guidance scale `w=2.0` (the published "WINNER_W2" recipe). Published checkpoint: [`LG 3Di Flow Decoder`](#lg-3di-flow-decoder) below. |
 
 The `Tokenizer3diInput` training surface ships with three additive Hydra
 configs ([`model/latent_generator_3di_input.yaml`](../../hydra_config/model/latent_generator_3di_input.yaml),
@@ -422,6 +423,66 @@ LatentGenerator provides pre-configured models optimized for different use cases
   - Full attention (no spatial masking)
   - 256 protein tokens
 - **Use Case**: Global protein structure analysis
+
+#### LG 3Di Flow Decoder
+- **Description**: 3Di-conditioned flow-matching backbone decoder. Reconstructs N/Cα/C coordinates from per-residue Foldseek 3Di tokens via a 200-step power-2 SDE trajectory with classifier-free guidance (`w=2.0`).
+- **Features**:
+  - U-ViT 768d / 12L / 12h (~110M params)
+  - Velocity-prediction continuous flow matching
+  - Foldseek 3Di alphabet input (20 states)
+  - No encoder, no quantizer — pure decoder
+  - Backed by [`Tokenizer3diInputFlow`](tokenizer/_tokenizer_3di_input_flow.py) (separate class from `TokenizerMulti`)
+- **Checkpoint**: [`Sidney-Lisanza/latent_generator/checkpoints_for_lg/LG_3Di_Flow_Decoder.ckpt`](https://huggingface.co/Sidney-Lisanza/latent_generator/blob/main/checkpoints_for_lg/LG_3Di_Flow_Decoder.ckpt) (~1.3 GB; metadata sidecar at `LG_3Di_Flow_Decoder.json`)
+- **Reference metrics** (see paper appendix "3Di-flow decoder reconstruction"):
+  - 30-protein PDB val (T=200, w=2.0): Kab = 6.55 Å, 3Di Recovery = 76.5%
+  - CASP15 (n=20, L≤512), single-shot: Kab = 9.40 Å, 3DR = 73.5%, TM = 0.644
+  - CASP15 (n=20), best-of-10 (AAR-pick): Kab = 7.91 Å, 3DR = 78.4%, TM = 0.701
+  - ProstT5 test (n=390, L≤512), single-shot: Kab = 11.99 Å, 3DR = 83.0%, TM = 0.531
+- **Use Case**: Reconstruct backbone structure from a model-agnostic 3Di string (e.g. ProstT5 outputs, Foldseek searches). Note that 3Di tokens specify *local* geometry only; many distinct global folds map to the same 3Di string, so reconstruction quality is fundamentally bounded by the alphabet — see paper for the trade-off.
+
+##### Quick-start CLI
+
+The model is wired into the existing `inference.py` driver, so the
+invocation matches every other LG variant:
+
+```bash
+# Reconstruct a single PDB through the encode → decode round-trip.
+# The first call downloads ~1.3 GB into ~/.cache/lobster.
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG 3Di Flow Decoder' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb \
+    --output_pdb decoded.pdb \
+    --decode
+```
+
+Internally: `Structure3diTransform` derives the 3Di tokens from the
+input PDB, the published U-ViT decoder integrates a 200-step SDE
+trajectory at `w=2.0`, and the resulting backbone is written to
+`--output_pdb`. Sampling takes ~5 s / protein on an A10G at L≈100.
+
+##### Python API
+
+```python
+from lobster.model.latent_generator.cmdline import (
+    decode, encode, load_model, methods,
+)
+from lobster.model.latent_generator.io import load_pdb, writepdb
+
+mc = methods["LG 3Di Flow Decoder"].model_config
+load_model(
+    mc.checkpoint, mc.config_path, mc.config_name,
+    overrides=mc.overrides, model_class=mc.model_class,
+)
+
+pdb_data = load_pdb("src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb")
+# encode is a no-op for the 3Di flow decoder -- it returns pdb_data
+# (and an empty embeddings tensor) to match the LG-codec API shape.
+latents, _embeddings = encode(pdb_data, return_embeddings=True)
+# decode runs Structure3diTransform internally and integrates the
+# 200-step SDE trajectory. Returns (coords (B, L, 3, 3), None).
+coords, _seq = decode(latents)
+writepdb("decoded.pdb", coords[0], pdb_data["sequence"][0])
+```
 
 ## Loading Models
 
