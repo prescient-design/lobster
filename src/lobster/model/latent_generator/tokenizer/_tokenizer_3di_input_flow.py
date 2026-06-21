@@ -1,28 +1,22 @@
 """Latent Generator variant -- 3Di tokens in, backbone coordinates out via flow matching.
 
-Sibling of :class:`Tokenizer3diInput`. The deterministic L2-regression
-variant is left UNTOUCHED so the live SLURM job can preempt/resume
-mid-build without state_dict drift; this module is only ever wired in
-via ``model/latent_generator_3di_input_flow.yaml``.
-
 Pipeline
 --------
 
-1. Featurize 3Di tokens (same as :class:`Tokenizer3diInput`).
+1. Featurize 3Di tokens via the per-sample ``Structure3diTransform``.
 2. CoM-center ``x_1`` (geometric centering over all backbone atoms), then
-   scale by ``coord_scale`` (Proteina convention: Angstrom -> nanometer,
-   factor ``0.1``) so the data variance matches the unit-variance Gaussian
+   scale by ``coord_scale`` (default Angstrom -> nanometer, factor
+   ``0.1``) so the data variance matches the unit-variance Gaussian
    prior. The scaling is undone at the end of :meth:`sample`.
 3. **Train-only:** if ``random_so3_aug`` is enabled, apply a per-sample
    uniform random SO(3) rotation to ``x_1`` (centered, so the CoM stays
-   at the origin). Proteina-style data augmentation. All downstream
-   tensors (``x_t`` and the loss target) consume the **rotated** ``x_1``
-   by construction, so the loss is computed in the augmented frame
-   (no separate alignment of ``x_1_hat`` to ``x_1`` is needed). At
-   val/test time this step is a no-op so ``val/loss`` stays directly
-   comparable across runs.
+   at the origin). All downstream tensors (``x_t`` and the loss target)
+   consume the **rotated** ``x_1`` by construction, so the loss is
+   computed in the augmented frame (no separate alignment of
+   ``x_1_hat`` to ``x_1`` is needed). At val/test time this step is a
+   no-op so ``val/loss`` stays directly comparable across runs.
 4. Sample noise ``x_0`` from :class:`GaussianPrior` and CoM-center it
-   (Proteina-style zero-CoM noise prior).
+   (zero-CoM noise prior).
 5. Optionally apply :class:`KabschAugmentation` (Kabsch SE(3) alignment
    of ``x_0`` to ``x_1`` per sample) to keep the per-sample
    interpolation path SE(3)-equivariant under data augmentation.
@@ -34,11 +28,10 @@ Pipeline
 8. Decoder predicts ``x_1_hat = f(states, x_t, t)``.
 9. Loss = ``flow_matcher.loss(model_pred, target, t, x_t, target_type=...)``
    where ``target_type`` is taken from the moco interpolant's
-   ``prediction_type`` (Step S):
+   ``prediction_type``:
 
-   - ``DATA``: target = ``x_1``, with Proteina's ``1/(1-t)^2`` reweight.
-   - ``VELOCITY``: target = ``x_1 - x_0``, no reweight (Proteina's
-     ``target_pred=v`` mode).
+   - ``DATA``: target = ``x_1``, with the standard ``1/(1-t)^2`` reweight.
+   - ``VELOCITY``: target = ``x_1 - x_0``, no reweight.
 
    Plus ``aux_pairwise_l2_weight`` * pairwise L2 on the data-space
    prediction (``process_data_prediction(model_pred, x_t, t)``).
@@ -55,8 +48,6 @@ ODE (Euler) by default; SDE (score-stochastic) when ``sampling_mode='sde'``.
 kwargs so an autoguidance checkpoint can be dropped in later without
 code changes.
 """
-
-from __future__ import annotations
 
 import functools
 import inspect
@@ -85,10 +76,9 @@ from lobster.model.latent_generator.utils.mini3di._torch_encoder import MiniThre
 
 logger = logging.getLogger(__name__)
 
-# Standard Foldseek 3Di alphabet (20 states). Pad index follows the same
-# convention as Tokenizer3diInput: one past the legal range. The CFG-null
-# class reuses this same index (so the wrapped decoder's embedding table
-# stays at num_3di_classes + 1 rows).
+# Standard Foldseek 3Di alphabet (20 states). Pad index is one past the
+# legal range. The CFG-null class reuses this same index (so the wrapped
+# decoder's embedding table stays at num_3di_classes + 1 rows).
 NUM_3DI_CLASSES = 20
 
 
@@ -158,15 +148,10 @@ def _distogram_ce(
 ) -> Tensor:
     """Per-sample distogram cross-entropy on bucketised Cα-Cα distances.
 
-    Mirrors Proteina's `compute_auxiliary_loss` distogram branch
-    (proteinfoundation/proteinflow/proteina.py:~261). Differences:
-
-    * Pair logits come from an outer-product MLP head over single-track
-      features (we have no pair-track transformer); Proteina has a
-      dedicated AF-style pair head.
-    * 4D spatial cross-entropy instead of flatten-to-2D + 1D CE; values
-      are bit-identical, this version avoids the temporary
-      ``view(B*L*L, K)`` allocation.
+    Pair logits come from an outer-product MLP head over single-track
+    features. Implementation uses 4D spatial cross-entropy directly (no
+    flatten-to-2D + 1D CE) to avoid the temporary ``view(B*L*L, K)``
+    allocation -- values are bit-identical to the flattened form.
 
     Parameters
     ----------
@@ -189,9 +174,9 @@ def _distogram_ce(
     """
     B, L, _, K = distogram_logits.shape
     pair_mask = seq_mask.unsqueeze(-1) * seq_mask.unsqueeze(-2)
-    # Proteina zeroes `gt_pair_dists` by `pair_mask` BEFORE bucketize so
-    # that padding pairs land in bucket 0 deterministically -- safer than
-    # relying on the upstream centering invariant for zero-padding.
+    # Zero `gt_pair_dists` by `pair_mask` BEFORE bucketize so that padding
+    # pairs land in bucket 0 deterministically -- safer than relying on
+    # upstream centering invariants to zero them.
     target_ca_dists = target_ca_dists * pair_mask
     boundaries = torch.linspace(
         0.0,
@@ -362,12 +347,12 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         # skip it), so this flag no longer gates the `sample()` loop.
         self.center_every_step = center_every_step
         # Coordinate scale factor applied to x_1 before flow matching (and undone
-        # at the end of `sample()`). Proteina works in **nanometers** (Angstrom / 10,
-        # `nm_to_ang_scale=10.0` in their `coors_utils`), so that backbone-coordinate
-        # variance (~tens of Angstrom) matches the unit-variance Gaussian prior.
-        # Without this the prior noise is negligible vs. the signal and the flow
-        # degenerates into a 1-shot regressor. Set `coord_scale=0.1` in the flow
-        # YAMLs (Angstrom -> nm); default 1.0 keeps old checkpoints byte-identical.
+        # at the end of `sample()`). We work in nanometers (Angstrom / 10) so
+        # that backbone-coordinate variance (~tens of Angstrom) matches the
+        # unit-variance Gaussian prior. Without this the prior noise is
+        # negligible vs. the signal and the flow degenerates into a 1-shot
+        # regressor. Set `coord_scale=0.1` in the flow YAMLs (Angstrom -> nm);
+        # default 1.0 keeps old checkpoints byte-identical.
         self.coord_scale = coord_scale
         self.random_so3_aug = random_so3_aug
         self.autoguidance_model = autoguidance_model
@@ -493,8 +478,8 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         zero-CoM Gaussian prior used for ``x_0``: any added translation
         would just be removed at the next centering step (and the
         Kabsch noise-alignment step would still align ``x_0`` to the
-        translated ``x_1``). Proteina's "SE(3) augmentation" is in
-        practice SO(3) for the same reason.
+        translated ``x_1``). So nominally-SE(3) augmentation is
+        effectively SO(3)-only here.
 
         Why train-only?
         ---------------
@@ -604,11 +589,9 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         ``prediction_type`` so the velocity variant is a pure YAML flip:
 
         - ``prediction_type=DATA``: target=``x_1``, ``target_type=DATA``.
-          moco applies the ``1/(1-t)^2`` reweight (Proteina's data-pred
-          recipe).
+          moco applies the ``1/(1-t)^2`` reweight.
         - ``prediction_type=VELOCITY``: target=``x_1 - x_0``,
-          ``target_type=VELOCITY``. moco does NOT apply the reweight
-          (Proteina's ``target_pred=v`` recipe).
+          ``target_type=VELOCITY``. moco does NOT apply the reweight.
 
         Reshapes to ``(B, L*A, D)`` so moco's ``mask.unsqueeze(-1)``
         broadcasts correctly over the atom axis.
@@ -617,7 +600,7 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         flat_mask = seq_mask.unsqueeze(-1).expand(-1, -1, A).reshape(B, L * A).to(x_1.dtype)
         # `calculate_target` returns x_1 for DATA, x_1 - x_0 for VELOCITY.
         # Match `target_type` to the interpolant's `prediction_type` so the
-        # natural Proteina-style pairing is the default for both runs.
+        # natural pairing is the default for both runs.
         target = self.flow_matcher.calculate_target(x_1, x_0)
         target_type = self.flow_matcher.prediction_type
         per_sample = self.flow_matcher.loss(
@@ -640,7 +623,7 @@ class Tokenizer3diInputFlow(pl.LightningModule):
         if self.center_x1:
             x_1 = _center_geometric(x_1, seq_mask, self.n_atoms)
 
-        # Scale to the prior's units (Proteina: Angstrom -> nm, factor 0.1) so the
+        # Scale to the prior's units (Angstrom -> nm, factor 0.1) so the
         # flow is well-conditioned (data std ~ unit Gaussian). Applied after
         # centering; commutes with the SO(3) rotation below. All downstream tensors
         # (x_0 prior, x_t, the loss target, the decoder I/O) live in this scaled space.
@@ -740,7 +723,7 @@ class Tokenizer3diInputFlow(pl.LightningModule):
             f"{split}_aux_pairwise_l2": aux_loss,
         }
 
-        # Proteina-style distogram aux loss: cross-entropy on bucketised
+        # Distogram aux loss: cross-entropy on bucketised
         # GT Cα-Cα distances against the pair head's logits. Active only
         # when `t > aux_distogram_t_lim` (per-sample gate) and when the
         # decoder actually emits a distogram. `x_1` is in the scaled coord
@@ -1055,8 +1038,8 @@ class Tokenizer3diInputFlow(pl.LightningModule):
             :meth:`ContinuousFlowMatcher.step_score_stochastic`). Ignored
             when ``sampling_mode='ode'``.
         autoguidance_model, autoguidance_ratio
-            Optional Proteina-style autoguidance hook. When both are
-            null (the default) the sampling path is pure CFG; when a
+            Optional autoguidance hook. When both are null (the default)
+            the sampling path is pure CFG; when a
             ``nn.Module`` is supplied, its prediction is blended into
             the guided combine as
             ``v_guided = w * v_cond + (1-w) * (ag_r * v_ag + (1-ag_r) * v_null)``.
@@ -1228,8 +1211,7 @@ class Tokenizer3diInputFlow(pl.LightningModule):
             # Always re-center intermediate states. This is a CoM-free geometric
             # flow (prior is centered, x_1 is centered, the target field is
             # CoM-free), so any CoM drift injected by a non-CoM-free x1_pred or by
-            # the SDE noise is spurious and must be removed every step -- matching
-            # La-Proteina, which centers bb_ca at every integration step. Done with
+            # the SDE noise is spurious and must be removed every step. Done with
             # our geometric CoM (over all atoms) since `center=False` is passed to
             # moco above (moco's `center=True` would average over the atom axis).
             x_t = _center_geometric(x_t, seq_mask, self.n_atoms)

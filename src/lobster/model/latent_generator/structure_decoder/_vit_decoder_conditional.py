@@ -19,8 +19,8 @@ Surface differences vs. :class:`ViTDecoder`:
   to ``(B, 1, time_cond_dim)`` and is forwarded into the U-ViT, which already
   threads time through its FiLM-gated TimeCondAttention / TimeCondFeedForward
   blocks.
-- ``num_registers`` learnable prefix tokens (Proteina-style attention sinks)
-  are optionally prepended before the transformer and stripped after the
+- ``num_registers`` learnable prefix tokens (attention sinks) are
+  optionally prepended before the transformer and stripped after the
   output projection. Default ``0`` (off).
 - ``use_self_conditioning`` adds a second coord input projection
   ``self.coord_in_proj_selfcond`` whose weights are zero-initialised. When
@@ -32,8 +32,6 @@ Surface differences vs. :class:`ViTDecoder`:
   carve it out. Mirrors the ESMFold2 self-conditioning trick analysed
   in the Step F section of the plan.
 """
-
-from __future__ import annotations
 
 import torch
 from torch import Tensor, nn
@@ -66,17 +64,18 @@ class ViTDecoderConditional(BaseDecoder):
         built with the same dim so the gating layers see a vector of this size.
     num_registers : int
         Number of learnable prefix tokens prepended before the transformer
-        (Proteina-style attention sinks). Default ``0`` (off).
+        (attention sinks). Default ``0`` (off).
     register_init_scale : float
-        Init scale for ``self.registers`` (Proteina uses ``randn(...) / 20``).
+        Init scale for ``self.registers``. Small (``randn(...) / 20``) so
+        registers don't dominate signal at init.
     use_self_conditioning : bool
         When ``True``, build a second coord input projection
         ``self.coord_in_proj_selfcond`` (zero-initialised) so the caller
         can pass ``x_selfcond`` (the previous denoised estimate) in
         addition to ``xt``. Default ``False``.
     enable_distogram : bool
-        When ``True``, add a Proteina-style auxiliary distogram head that
-        consumes the U-ViT's final per-token features ``(B, L, D)``,
+        When ``True``, add an auxiliary distogram head that consumes the
+        U-ViT's final per-token features ``(B, L, D)``,
         builds outer-product pair features ``(B, L, L, 2D)``, and
         projects to ``(B, L, L, num_dist_buckets)`` logits via a small
         MLP. The decoder's ``forward`` then returns a dict with both
