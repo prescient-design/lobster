@@ -1,21 +1,19 @@
 _target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
 
-# Step W -- velocity + self-cond + Proteina-style distogram aux loss.
+# Ablation -- weight=0 sibling of `base_3di_coord_ce`.
 #
-# Same backbone as `flow_nokabsch_velocity_selfcond` (Step U) plus a
-# pair head on the U-ViT's per-token features that produces logits over
-# K=64 distance buckets in [0, 22 A]. At training time we add a
-# cross-entropy term on bucketised GT Cα-Cα distances, gated by
-# (t > aux_distogram_t_lim=0.5) and weighted by aux_distogram_weight=0.25.
-# Pair-head final layer is zero-init, so a fresh model is byte-identical
-# to selfcond on the first training step and the head only contributes
-# gradient as it carves out a useful signal.
+# Same architecture and config as the weight=0.10 base_3di_coord_ce
+# variant, except `aux_3di_coord_ce_weight=0` so the differentiable
+# mini3di CE-from-coords loss applies *no* gradient pressure on the
+# coord head. The diagnostic (CE + argmax accuracy) is still tracked
+# via the new `track_aux_3di_coord_ce=true` flag, so wandb panels
+# stay populated and we can compare against the weight=0.10 champion
+# without re-instrumenting metrics.
 #
-# Bucket choice (K=64, max=22 A) is the AF2 / OpenFold convention.
-# mini3di operates on closest-neighbor pairs (Cα distances cluster
-# 4-15 A) -- 22 A covers that range at fine resolution AND adds the
-# medium-range (15-22 A) where mini3di is blind, so the distogram
-# earns its keep as complementary supervision.
+# Resume target: a `flow_nokabsch_velocity_base` checkpoint that
+# predates the coord-CE loss entirely, so this run reflects "what
+# would the BASE backbone do if we never added the coord-CE loss but
+# kept training". Pinned in the slurm launcher (CKPT_RESUME).
 
 ckpt_path: null
 
@@ -27,13 +25,12 @@ guidance_scale: 1.0
 n_sampling_steps: 50
 aux_pairwise_l2_weight: 0.01
 
-# Step W: distogram aux loss config. Active only when t > t_lim (clean-end
-# half of the trajectory, where the model can actually predict pair
-# geometry); zero contribution otherwise.
-aux_distogram_weight: 0.25
-aux_distogram_t_lim: 0.5
-num_dist_buckets: 64
-max_dist_a: 22.0
+# Ablation: weight=0 disables the gradient. `track_aux_3di_coord_ce`
+# keeps the diagnostic alive (computed under no_grad, logged each step).
+aux_3di_coord_ce_weight: 0.0
+aux_3di_coord_ce_t_lim: 0.5
+aux_3di_coord_ce_temperature: 1.0
+track_aux_3di_coord_ce: true
 
 center_x1: true
 center_every_step: true
@@ -49,7 +46,7 @@ sc_scale_score: 0.0
 autoguidance_model: null
 autoguidance_ratio: 0.0
 
-use_self_conditioning: true
+use_self_conditioning: false
 selfcond_train_prob: 0.5
 
 decoder_factory:
@@ -61,24 +58,18 @@ decoder_factory:
       _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
       data_fixed_size: 512
       n_atoms: 3
-      uvit_n_layers: 6
-      uvit_n_heads: 8
-      uvit_dim_head: 32
+      uvit_n_layers: 12
+      uvit_n_heads: 12
+      uvit_dim_head: 64
       uvit_position_embedding_type: 'rotary'
       indexed: false
-      struc_token_dim: 512
-      struc_token_codebook_size: 512
+      struc_token_dim: 768
+      struc_token_codebook_size: 768
       encode_ligand: false
       num_3di_classes: 20
-      time_cond_dim: 128
+      time_cond_dim: 256
       num_registers: 4
-      use_self_conditioning: true
-      # Step W: turn on the pair head + distogram logits in the decoder.
-      # Final-layer zero-init means the resumed selfcond ckpt is
-      # byte-identical on the first train step.
-      enable_distogram: true
-      num_dist_buckets: 64
-      pair_hidden_dim: 128
+      use_self_conditioning: false
 
 interpolant:
   _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
