@@ -433,7 +433,7 @@ LatentGenerator provides pre-configured models optimized for different use cases
   - No encoder, no quantizer — pure decoder
   - Backed by [`Tokenizer3diInputFlow`](tokenizer/_tokenizer_3di_input_flow.py) (separate class from `TokenizerMulti`)
 - **Checkpoint**: [`Sidney-Lisanza/latent_generator/checkpoints_for_lg/LG_3Di_Flow_Decoder.ckpt`](https://huggingface.co/Sidney-Lisanza/latent_generator/blob/main/checkpoints_for_lg/LG_3Di_Flow_Decoder.ckpt) (~1.3 GB; metadata sidecar at `LG_3Di_Flow_Decoder.json`)
-- **Reference metrics** (see paper appendix "3Di-flow decoder reconstruction"):
+- **Reference metrics** (see Appendix "3Di-flow decoder reconstruction" of [LeFlur, Lisanza et al. 2026](https://openreview.net/forum?id=z5EwGneX36)):
   - 30-protein PDB val (T=200, w=2.0): Kab = 6.55 Å, 3Di Recovery = 76.5%
   - CASP15 (n=20, L≤512), single-shot: Kab = 9.40 Å, 3DR = 73.5%, TM = 0.644
   - CASP15 (n=20), best-of-10 (AAR-pick): Kab = 7.91 Å, 3DR = 78.4%, TM = 0.701
@@ -541,3 +541,19 @@ The inference system supports multiple checkpoint sources:
 - **Hugging Face**: `https://huggingface.co/user/repo/resolve/main/checkpoint.ckpt`
 
 The system will automatically download and cache checkpoints from remote sources.
+
+## Citation
+
+If you use LatentGenerator (or LeFlur, which builds on it) in your work, please cite:
+
+> Sidney L. Lisanza, Karina Zadorozhny, Frederic A. Dreyer, and Kyunghyun Cho. **LeFlur: A Biomolecular Design Model with Latent Structure Tokens.** *The 2026 Workshop on Generative and Agentic AI for Biology*, 2026. <https://openreview.net/forum?id=z5EwGneX36>
+
+```bibtex
+@inproceedings{lisanza2026leflur,
+  title     = {{LeFlur}: A Biomolecular Design Model with Latent Structure Tokens},
+  author    = {Lisanza, Sidney L. and Zadorozhny, Karina and Dreyer, Frederic A. and Cho, Kyunghyun},
+  booktitle = {The 2026 Workshop on Generative and Agentic AI for Biology},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=z5EwGneX36}
+}
+```
