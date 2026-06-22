@@ -30,15 +30,43 @@ We evaluated the reconstruction quality of our models on CASP15 proteins (≤ 51
 
 **Evaluation Set**: CASP15 proteins ≤ 512 residues
 
-| Model | Quantizer | Size | RMSD (Å) | Std | Min | Max |
-|-------|-----------|------|----------|-----|-----|-----|
-| LG Protein (cont.) | None | - | 0.462 | 0.322 | 0.200 | 1.271 |
-| LG Protein SLQ | SLQ | 256 | 1.647 | 0.535 | 0.979 | 3.189 |
-| LG Prot-Lig SLQ | SLQ | 256 | 1.873 | 1.054 | 0.798 | 5.143 |
-| LG Prot-Lig SLQ | SLQ | 4096 | 3.097 | 2.009 | 1.242 | 8.474 |
-| LG Protein FSQ | FSQ | 240 | 1.848 | 1.194 | 0.483 | 5.419 |
-| LG Prot-Lig FSQ | FSQ | 4375 | 1.260 | 0.632 | 0.651 | 3.117 |
-| LG Prot-Lig FSQ | FSQ | 4375/15360 | 1.418 | 0.810 | 0.748 | 3.396 |
+| Model | Quantizer | Size | RMSD (Å) | Std | Min | Max | 3Di AAR (%)‡ |
+|-------|-----------|------|----------|-----|-----|-----|---|
+| LG Protein (cont.) | None | - | 0.462 | 0.322 | 0.200 | 1.271 | -- |
+| LG Protein SLQ (full attn) | SLQ | 256 | 1.647 | 0.535 | 0.979 | 3.189 | 61.8 ± 12.1 |
+| LG Prot-Lig SLQ | SLQ | 256 | 1.873 | 1.054 | 0.798 | 5.143 | -- |
+| LG Prot-Lig SLQ | SLQ | 4096 | 3.097 | 2.009 | 1.242 | 8.474 | -- |
+| LG Protein FSQ | FSQ | 240 | 1.848 | 1.194 | 0.483 | 5.419 | -- |
+| LG Prot-Lig FSQ | FSQ | 4375 | 1.260 | 0.632 | 0.651 | 3.117 | 50.8 ± 11.1 |
+| LG Prot-Lig FSQ | FSQ | 4375/15360 | 1.418 | 0.810 | 0.748 | 3.396 | 51.4 ± 11.6 |
+| LG 3Di Flow Decoder† | 3Di (Foldseek) | 20 | 13.171 | 11.111 | 1.242 | 47.637 | **75.3 ± 9.8** |
+
+† Generative flow-matching decoder conditioned on Foldseek's
+model-agnostic 20-state 3Di alphabet (no learned encoder, no
+quantizer). All other rows are joint encoder-decoder autoencoders
+that see ground-truth coordinates during encoding. The 3Di alphabet
+specifies *local* geometry only, so many globally-distinct backbones
+are consistent with the same 3Di string -- reconstruction quality is
+fundamentally bounded by the alphabet (best case ~1.2 Å, comparable
+to the LG codecs; worst case dominated by chains where local
+descriptors underspecify the global fold). Same 30-protein CASP15
+set, same 26 successful / 4 failed split as the LG codec rows above.
+
+‡ 3Di token recovery: the percentage of per-residue Foldseek 3Di
+tokens that match the GT 3Di tokens after passing the *reconstructed*
+coordinates through mini3di. Both prediction and GT are derived from
+the same backbone-only mini3di pipeline, so this column is unaffected
+by the input alphabet (3Di tokens vs learned codecs) -- it's purely a
+function of how well each method's reconstructed coordinates preserve
+the local-descriptor signature that Foldseek uses for clustering. The
+LG codecs minimize coord RMSD and recover 50-62% of the 3Di tokens;
+the 3Di Flow Decoder is *trained* with a mini3di CE-from-coords
+auxiliary loss and achieves the highest AAR despite worst Kab. This
+is the structural-vs-token trade-off the paper's "3Di-flow decoder
+reconstruction" appendix analyses. The "--" entries weren't
+re-evaluated under this protocol; only the four populated rows were
+re-run with the canonical ``evaluate_reconstruction.py`` plus a
+follow-up mini3di pass.
 
 ### Ligand Reconstruction Quality
 
@@ -87,23 +115,21 @@ checkpoint format but differ in what the input alphabet is:
 | Variant | Input | Pipeline | Quantizer | Use case |
 |---|---|---|---|---|
 | [`TokenizerMulti`](tokenizer/_tokenizer_multi.py) | `coords_res` `(B, L, 3, 3)` | encoder → quantizer → decoder | yes (SLQ / FSQ / …) | Canonical LG: backbone in, discrete token bottleneck, backbone out. Powers all the checkpoints in the "Model Configurations" tables below. |
-| [`Tokenizer3diInput`](tokenizer/_tokenizer_3di_input.py) | `3di_states` `(B, L)` long (20-class Foldseek alphabet, recomputed at data-load time by [`Structure3diTransform`](../../transforms/_structure_transforms.py)) | single decoder pass | no | Minimal 3Di-tokens-in / coords-out auto-encoder. The wrapped `ViTDecoder` is set to `indexed=True` with `struc_token_codebook_size = num_3di_classes + 1 = 21`, so its built-in embedding lookup consumes the 3Di state IDs directly — no separate encoder, no quantizer. Reuses `[l2_loss, pairwise_l2_loss]`. |
-| [`Tokenizer3diInputFlow`](tokenizer/_tokenizer_3di_input_flow.py) | `3di_states` `(B, L)` long (same Foldseek 20-state alphabet) | flow-matching SDE sampler over a learned U-ViT velocity field, conditioned on the 3Di tokens | no (3Di tokens themselves are the discrete bottleneck) | Generative reconstruction of backbone coords from a model-agnostic 3Di string. Trained as continuous flow matching with classifier-free guidance and an auxiliary differentiable mini3di CE-from-coords loss. Inference uses a 200-step power-2 SDE schedule at guidance scale `w=2.0` (the published "WINNER_W2" recipe). Published checkpoint: [`LG 3Di Flow Decoder`](#lg-3di-flow-decoder) below. |
+| [`Tokenizer3diInputFlow`](tokenizer/_tokenizer_3di_input_flow.py) | `3di_states` `(B, L)` long (Foldseek 20-state alphabet, recomputed at data-load time by [`Structure3diTransform`](../../transforms/_structure_transforms.py)) | flow-matching SDE sampler over a learned U-ViT velocity field, conditioned on the 3Di tokens | no (3Di tokens themselves are the discrete bottleneck) | Generative reconstruction of backbone coords from a model-agnostic 3Di string. Trained as continuous flow matching with classifier-free guidance and an auxiliary differentiable mini3di CE-from-coords loss. Inference uses a 200-step power-2 SDE schedule at guidance scale `w=2.0` (the published "WINNER_W2" recipe). Published checkpoint: [`LG 3Di Flow Decoder`](#lg-3di-flow-decoder) below. |
 
-The `Tokenizer3diInput` training surface ships with three additive Hydra
-configs ([`model/latent_generator_3di_input.yaml`](../../hydra_config/model/latent_generator_3di_input.yaml),
-[`data/structure_swissprot_with_3di.yaml`](../../hydra_config/data/structure_swissprot_with_3di.yaml),
-[`experiment/train_latent_generator_3di_input.yaml`](../../hydra_config/experiment/train_latent_generator_3di_input.yaml))
-and a first-pass SwissProt training corpus produced by the
-[`swissprot_structures/`](../../../../../prescient/modal/prepper/src/prepper/preprocessing/swissprot_structures/)
-prepper sub-package. See
-`tests/lobster/model/latent_generator/test_tokenizer_3di_input.py`
-for the minimal forward / loss-decrease invariants.
+The `Tokenizer3diInputFlow` training surface ships with one model yaml
+family + matching experiment yamls under
+[`hydra_config/model/`](../../hydra_config/model/) and
+[`hydra_config/experiment/`](../../hydra_config/experiment/) — see the
+files matching `latent_generator_3di_input_flow_nokabsch_velocity_base*.yaml`
+and the corresponding `train_*` experiments. The data side reuses
+[`data/structure_pdb_with_3di.yaml`](../../hydra_config/data/structure_pdb_with_3di.yaml).
 
 This variant is **not** a substitutable codec for LeFlur today —
 LeFlur expects an LG codec that exposes `encode_structure` returning
-discrete tokens, whereas `Tokenizer3diInput` returns coordinates
-directly. A future LeFlur integration would need a separate path.
+discrete tokens, whereas `Tokenizer3diInputFlow` returns coordinates
+directly via flow-matching sampling. A future LeFlur integration would
+need a separate path.
 
 ## Setup
 
