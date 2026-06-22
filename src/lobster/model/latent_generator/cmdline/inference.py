@@ -932,17 +932,22 @@ class LatentEncoderDecoder:
         if self.model is None:
             raise ValueError("Model not loaded. Call load_model first.")
 
-        # 3Di flow decoder has no encoder. The "encoded form" is just
-        # the input dict carrying coords_res/mask/indices -- decode()
-        # will compute the 3Di tokens from it on demand. We surface
-        # this by returning the input dict unchanged, paired with an
-        # empty embeddings tensor so the existing main() call site
-        # `pdb_latents, pdb_embeddings = encode(...)` keeps working.
+        # 3Di flow decoder has no learned encoder, so the "encoded
+        # form" is just the per-residue Foldseek 3Di tokens.
+        # `Structure3diTransform` derives them from the input
+        # backbone here; `decode` then consumes them directly and
+        # samples coords without re-deriving anything. Returns
+        # ``({"3di_states", "mask", "indices"}, embeddings_or_None)``
+        # to match the LG-codec encode signature.
         if self.model_class == "Tokenizer3diInputFlow":
-            empty_emb = torch.empty(0, device=self.device) if return_embeddings else None
+            tokens = self._encode_3di_flow(inputs)
             if return_embeddings:
-                return inputs, empty_emb
-            return inputs
+                # The encoded form has no continuous embedding (3Di
+                # tokens themselves are the bottleneck); return an
+                # empty tensor to keep the (latents, embeddings)
+                # return shape stable across model_class branches.
+                return tokens, torch.empty(0, device=self.device)
+            return tokens
 
         if self.model.quantizer is None:
             discrete = False
@@ -1046,17 +1051,21 @@ class LatentEncoderDecoder:
 
         return decoded_structure, decoded_sequence
 
-    def _decode_3di_flow(self, pdb_data: dict, **_unused_kwargs) -> tuple[torch.Tensor, None]:
-        """3Di-flow code path: 3Di tokens + (mask, indices) -> backbone coords.
+    def _encode_3di_flow(self, pdb_data: dict) -> dict:
+        """3Di-flow encode path: backbone coords -> per-residue 3Di tokens.
 
-        Mirrors the LG-codec ``decode`` protein-only return shape so the
-        existing ``main()`` writepdb branch handles us without changes:
-        returns ``(coords (B, L, 3, 3) tensor, None)``.
+        Runs :class:`Structure3diTransform` once on each protein in the
+        input batch and returns the canonical 3Di-flow latent dict
+        (``{"3di_states", "mask", "indices"}``) that
+        :meth:`_decode_3di_flow` consumes verbatim. Decoupling the
+        transform from `decode` lets callers persist / reuse the
+        tokens (e.g. write them to disk via ``--output_file_encode``)
+        without re-running the transform on every decode call.
         """
         from lobster.transforms._structure_transforms import Structure3diTransform
 
         if not isinstance(pdb_data, dict) or "coords_res" not in pdb_data:
-            raise ValueError("3Di flow decoder expects a `pdb_data` dict with `coords_res`; got " + str(type(pdb_data)))
+            raise ValueError("3Di flow encoder expects a `pdb_data` dict with `coords_res`; got " + str(type(pdb_data)))
 
         coords = pdb_data["coords_res"]
         if coords.dim() == 3:
@@ -1082,15 +1091,42 @@ class LatentEncoderDecoder:
             td = transform({"coords_res": coords[b, :Lb]})
             three_di[b, :Lb] = td["3di_states"].long()
 
-        device = self.device
+        return {
+            "3di_states": three_di.to(self.device),
+            "mask": mask.to(self.device).float(),
+            "indices": indices.to(self.device).long(),
+        }
+
+    def _decode_3di_flow(self, latents: dict, **_unused_kwargs) -> tuple[torch.Tensor, None]:
+        """3Di-flow code path: 3Di tokens (+ mask, indices) -> backbone coords.
+
+        Consumes the dict produced by :meth:`_encode_3di_flow` (the
+        ``{"3di_states", "mask", "indices"}`` triple) and integrates a
+        200-step SDE flow trajectory at guidance ``w=2.0``. Mirrors the
+        LG-codec protein-only return shape so the existing ``main()``
+        writepdb branch handles us without changes:
+        ``(coords (B, L, 3, 3) tensor, None)``.
+        """
+        if not isinstance(latents, dict) or "3di_states" not in latents:
+            raise ValueError(
+                "3Di flow decoder expects an encoded dict with `3di_states`; "
+                "did you skip the `encode(...)` step? Got " + str(type(latents))
+            )
+        states_in = latents["3di_states"].to(self.device).long()
+        mask = latents.get("mask")
+        if mask is None:
+            mask = torch.ones_like(states_in, dtype=torch.float32)
+        mask = mask.to(self.device).float()
+        indices = latents.get("indices")
+        if indices is None:
+            indices = torch.arange(states_in.shape[1], device=self.device).unsqueeze(0).expand(states_in.shape[0], -1)
+        indices = indices.to(self.device).long()
+
         states, seq_mask, residue_index = self.model.featurize(
-            {
-                "3di_states": three_di.to(device),
-                "mask": mask.to(device).float(),
-                "indices": indices.to(device).long(),
-            }
+            {"3di_states": states_in, "mask": mask, "indices": indices}
         )
 
+        B, L = states_in.shape
         py_logger.info("3Di flow decode: B=%d, L=%d, sampling with WINNER_W2 recipe", B, L)
         with torch.no_grad():
             samp = self.model.sample(

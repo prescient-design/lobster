@@ -195,11 +195,15 @@ load_model(
 )
 
 pdb_data = load_pdb("src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb")
-# `encode` is a no-op for the 3Di flow decoder -- it returns pdb_data
-# (and an empty embeddings tensor) to match the LG-codec API shape.
+# `encode` derives per-residue Foldseek 3Di tokens from the backbone
+# via `Structure3diTransform`. Returns the canonical encoded dict
+# `{"3di_states", "mask", "indices"}` -- the only thing `decode`
+# consumes -- so you can persist/reuse it without re-tokenizing.
+# There's no learned encoder, so no continuous embeddings: the
+# returned `_embeddings` tensor is empty.
 latents, _embeddings = encode(pdb_data, return_embeddings=True)
-# `decode` runs Structure3diTransform internally and integrates a
-# 200-step SDE flow trajectory at guidance scale w=2.0. Returns
+# `decode` consumes the 3Di tokens and integrates a 200-step SDE
+# flow trajectory at guidance scale w=2.0. Returns
 # (coords (B, L, 3, 3), None) -- no separate sequence head.
 coords, _seq = decode(latents)
 writepdb("decoded.pdb", coords[0], pdb_data["sequence"][0])
