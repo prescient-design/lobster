@@ -12,6 +12,7 @@ A powerful protein and protein-ligand structure representation learning model fo
   - [Environment Setup](#environment-setup)
 - [Getting Embeddings and Tokens](#getting-embeddings-and-tokens)
   - [Protein Example](#protein-example)
+  - [3Di Flow Decoder Example](#3di-flow-decoder-example)
   - [Ligand Example](#ligand-example)
   - [Protein-Ligand Complex Example](#protein-ligand-complex-example)
   - [Command-line Example](#command-line-example)
@@ -179,6 +180,31 @@ writepdb("decoded.pdb", decoded_outputs[0], seq[0])
 
 ```
 
+### 3Di Flow Decoder Example
+
+```python
+from lobster.model.latent_generator.cmdline import (
+    decode, encode, load_model, methods,
+)
+from lobster.model.latent_generator.io import load_pdb, writepdb
+
+mc = methods["LG 3Di Flow Decoder"].model_config
+load_model(
+    mc.checkpoint, mc.config_path, mc.config_name,
+    overrides=mc.overrides, model_class=mc.model_class,
+)
+
+pdb_data = load_pdb("src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb")
+# `encode` is a no-op for the 3Di flow decoder -- it returns pdb_data
+# (and an empty embeddings tensor) to match the LG-codec API shape.
+latents, _embeddings = encode(pdb_data, return_embeddings=True)
+# `decode` runs Structure3diTransform internally and integrates a
+# 200-step SDE flow trajectory at guidance scale w=2.0. Returns
+# (coords (B, L, 3, 3), None) -- no separate sequence head.
+coords, _seq = decode(latents)
+writepdb("decoded.pdb", coords[0], pdb_data["sequence"][0])
+```
+
 ### Ligand Example
 ```python
 from lobster.model.latent_generator.cmdline import load_model, encode, decode, methods
@@ -281,6 +307,16 @@ writepdb_ligand_complex(
 uv run python src/lobster/model/latent_generator/cmdline/inference.py \
     --model_name 'LG full attention' \
     --pdb_path src/lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb \
+    --decode
+
+# Reconstruct a backbone from Foldseek 3Di tokens via the flow-matching
+# decoder (downloads ~1.3 GB into ~/.cache/lobster on first call).
+# Sampling integrates a 200-step SDE trajectory at guidance w=2.0;
+# ~5 s / protein on an A10G at L~100.
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG 3Di Flow Decoder' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb \
+    --output_pdb decoded.pdb \
     --decode
 
 # Get tokens and decode to structure for ligand only
@@ -465,50 +501,7 @@ LatentGenerator provides pre-configured models optimized for different use cases
   - CASP15 (n=20), best-of-10 (AAR-pick): Kab = 7.91 Å, 3DR = 78.4%, TM = 0.701
   - ProstT5 test (n=390, L≤512), single-shot: Kab = 11.99 Å, 3DR = 83.0%, TM = 0.531
 - **Use Case**: Reconstruct backbone structure from a model-agnostic 3Di string (e.g. ProstT5 outputs, Foldseek searches). Note that 3Di tokens specify *local* geometry only; many distinct global folds map to the same 3Di string, so reconstruction quality is fundamentally bounded by the alphabet — see paper for the trade-off.
-
-##### Quick-start CLI
-
-The model is wired into the existing `inference.py` driver, so the
-invocation matches every other LG variant:
-
-```bash
-# Reconstruct a single PDB through the encode → decode round-trip.
-# The first call downloads ~1.3 GB into ~/.cache/lobster.
-uv run python src/lobster/model/latent_generator/cmdline/inference.py \
-    --model_name 'LG 3Di Flow Decoder' \
-    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb \
-    --output_pdb decoded.pdb \
-    --decode
-```
-
-Internally: `Structure3diTransform` derives the 3Di tokens from the
-input PDB, the published U-ViT decoder integrates a 200-step SDE
-trajectory at `w=2.0`, and the resulting backbone is written to
-`--output_pdb`. Sampling takes ~5 s / protein on an A10G at L≈100.
-
-##### Python API
-
-```python
-from lobster.model.latent_generator.cmdline import (
-    decode, encode, load_model, methods,
-)
-from lobster.model.latent_generator.io import load_pdb, writepdb
-
-mc = methods["LG 3Di Flow Decoder"].model_config
-load_model(
-    mc.checkpoint, mc.config_path, mc.config_name,
-    overrides=mc.overrides, model_class=mc.model_class,
-)
-
-pdb_data = load_pdb("src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb")
-# encode is a no-op for the 3Di flow decoder -- it returns pdb_data
-# (and an empty embeddings tensor) to match the LG-codec API shape.
-latents, _embeddings = encode(pdb_data, return_embeddings=True)
-# decode runs Structure3diTransform internally and integrates the
-# 200-step SDE trajectory. Returns (coords (B, L, 3, 3), None).
-coords, _seq = decode(latents)
-writepdb("decoded.pdb", coords[0], pdb_data["sequence"][0])
-```
+- **Usage**: see the [3Di Flow Decoder Python example](#3di-flow-decoder-example) and the third command in the [Command-line Example](#command-line-example) block above — the model is wired into the same `inference.py` driver as every other LG variant.
 
 ## Loading Models
 
