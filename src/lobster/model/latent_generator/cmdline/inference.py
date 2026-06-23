@@ -721,6 +721,13 @@ def instantiate_dict_cfg(cfg: DictConfig | None, verbose=False):
 
 OmegaConf.register_new_resolver("format", format_resolver, replace=True)
 
+# Foldseek 3Di alphabet: position-encoded mapping from letter -> token ID
+# used by the LG 3Di Flow Decoder. Kept here at module scope so the
+# `--token_string` CLI dispatch can build the encoded dict without
+# pulling in the per-protein Structure3diTransform.
+_FOLDSEEK_3DI_LETTERS = "ACDEFGHIKLMNPQRSTVWYX"
+_FOLDSEEK_3DI_TO_ID = {c: i for i, c in enumerate(_FOLDSEEK_3DI_LETTERS)}
+
 
 def load_config(config_path: str, config_name: str, overrides: list[str] | None = None) -> DictConfig:
     # Check if Hydra is already initialized
@@ -1317,6 +1324,26 @@ LG full attention
     parser.add_argument("--ligand_path", type=str, help="Path to a sdf file to encode")
     parser.add_argument("--decode", action="store_true", help="Decode latents back to original inputs")
     parser.add_argument("--decode_latents", type=str, help="Path to latents to decode")
+    parser.add_argument(
+        "--token_string",
+        type=str,
+        help=(
+            "Decode-only entry point: a literal token string to project to a "
+            "backbone via the loaded model. Alphabet depends on --model_name:\n"
+            "  * `LG 3Di Flow Decoder`: Foldseek 3Di letter string drawn from\n"
+            "    ACDEFGHIKLMNPQRSTVWYX. Any character outside that alphabet is\n"
+            "    silently stripped (with a warning listing what was dropped).\n"
+            "  * Any LG codec (TokenizerMulti): comma-separated integer token\n"
+            "    IDs in [0, codebook_size). One-hot expanded internally.\n"
+            "Mutually exclusive with --pdb_path / --ligand_path / "
+            "--decode_latents -- this path skips encode entirely."
+        ),
+    )
+    parser.add_argument(
+        "--token_string_file",
+        type=str,
+        help="Same payload as --token_string but read from a file (useful for long strings).",
+    )
     parser.add_argument("--batch_file", type=str, help="Path to a batch file to encode")
     parser.add_argument(
         "--output_file_encode", type=str, default="encoded_latents.pt", help="Path to save encoded outputs"
@@ -1408,6 +1435,104 @@ LG full attention
     else:
         raise ValueError(f"Model name {args.model_name} not found. Please choose from {list(methods.keys())}")
     py_logger.info("Model loaded successfully")
+
+    # --- Token-string decode-only path ---
+    # When the caller supplies `--token_string` (or `--token_string_file`),
+    # skip the encode-from-PDB pipeline entirely: parse the raw token
+    # alphabet ourselves, build the encoded payload `decode` expects, and
+    # go straight to writepdb. Mutually exclusive with PDB/ligand inputs.
+    token_payload = args.token_string
+    if token_payload is None and args.token_string_file:
+        token_payload = Path(args.token_string_file).read_text()
+    if token_payload is not None:
+        if args.pdb_path or args.ligand_path or args.decode_latents:
+            raise ValueError("--token_string is mutually exclusive with --pdb_path / --ligand_path / --decode_latents.")
+        if encoder_decoder.model_class == "Tokenizer3diInputFlow":
+            raw = token_payload
+            kept_chars: list[str] = []
+            dropped: list[str] = []
+            for ch in raw:
+                if ch in _FOLDSEEK_3DI_TO_ID:
+                    kept_chars.append(ch)
+                else:
+                    dropped.append(ch)
+            if dropped:
+                # Summarise stripped characters as (char, count) pairs so the
+                # warning is informative even when the input has thousands
+                # of bogus residues.
+                from collections import Counter
+
+                summary = ", ".join(f"{c!r}x{n}" for c, n in Counter(dropped).most_common())
+                py_logger.warning(
+                    "Stripped %d character(s) not in the Foldseek 3Di alphabet (%s): %s",
+                    len(dropped),
+                    _FOLDSEEK_3DI_LETTERS,
+                    summary,
+                )
+            cleaned = "".join(kept_chars)
+            if len(cleaned) < 3:
+                raise ValueError(
+                    f"After stripping illegal characters, only {len(cleaned)} 3Di residues remain (need >=3)."
+                )
+            ids = torch.tensor([_FOLDSEEK_3DI_TO_ID[c] for c in cleaned], dtype=torch.long)
+            L = ids.shape[0]
+            py_logger.info("Decoding %d 3Di residues from token string", L)
+            encoded = {
+                "3di_states": ids.unsqueeze(0),  # (1, L)
+                "mask": torch.ones(1, L, dtype=torch.float32),
+                "indices": torch.arange(L, dtype=torch.long).unsqueeze(0),
+            }
+            decoded_outputs, _ = decode(encoded)
+            seq = torch.zeros(L, dtype=torch.long)
+            out_pdb = args.output_pdb or f"{args.output_file_decode.split('.')[0]}_token_string_decoded.pdb"
+            writepdb(out_pdb, decoded_outputs[0].cpu(), seq)
+            torch.save(decoded_outputs, args.output_file_decode)
+            py_logger.info("PDB structure saved to %s", out_pdb)
+            py_logger.info("Decoded coords saved to %s", args.output_file_decode)
+            return
+
+        # LG codec path: parse as comma-separated integer token IDs and
+        # build a one-hot protein_tokens tensor. The model's `decode` then
+        # handles it the same way it would the output of `encode(...)`.
+        if encoder_decoder.model is None:
+            raise ValueError("Model not loaded -- cannot infer codebook size for LG-codec token-string decode.")
+        try:
+            ids = [int(x) for x in token_payload.replace("\n", ",").split(",") if x.strip()]
+        except ValueError as exc:
+            raise ValueError(
+                "LG-codec --token_string expects comma-separated integer token IDs (got non-integer entries)."
+            ) from exc
+        if not ids:
+            raise ValueError("LG-codec --token_string parsed to zero tokens.")
+        # Codebook size lives on the tokenizer's quantizer; fall back to
+        # the maximum ID + 1 if we can't discover it.
+        codebook_size = None
+        try:
+            codebook_size = int(encoder_decoder.model.quantizer.num_codes)
+        except AttributeError:
+            pass
+        if codebook_size is None or codebook_size <= max(ids):
+            codebook_size = max(ids) + 1
+        L = len(ids)
+        py_logger.info("Decoding %d LG codec tokens (codebook_size=%d) from token string", L, codebook_size)
+        ids_t = torch.tensor(ids, dtype=torch.long).unsqueeze(0)
+        one_hot = torch.nn.functional.one_hot(ids_t, num_classes=codebook_size).float()
+        decoded_outputs, sequence_outputs = decode({"protein_tokens": one_hot})
+        if isinstance(decoded_outputs, dict) and "protein_coords" in decoded_outputs:
+            coords = decoded_outputs["protein_coords"][0]
+        else:
+            coords = decoded_outputs[0]
+        if sequence_outputs is not None:
+            seq = sequence_outputs.argmax(dim=-1)[0]
+            seq[seq == 22] = 21
+        else:
+            seq = torch.zeros(coords.shape[0], dtype=torch.long)
+        out_pdb = args.output_pdb or f"{args.output_file_decode.split('.')[0]}_token_string_decoded.pdb"
+        writepdb(out_pdb, coords.cpu(), seq.cpu())
+        torch.save(decoded_outputs, args.output_file_decode)
+        py_logger.info("PDB structure saved to %s", out_pdb)
+        py_logger.info("Decoded coords saved to %s", args.output_file_decode)
+        return
 
     # encode pdb
     if (args.pdb_path and os.path.exists(args.pdb_path)) or (args.ligand_path and os.path.exists(args.ligand_path)):
