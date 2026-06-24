@@ -533,6 +533,20 @@ class Atom14ToBackboneTransform(BaseTransform):
             x["mask"] = (atom14_mask[:, :3].sum(dim=-1) == 3).to(atom14.dtype)
         else:
             x["mask"] = torch.ones(atom14.shape[0], dtype=atom14.dtype)
+        # Synthesize a `name` (string) from `pdb_path` when present. The
+        # downstream collate (`collate_fn_backbone`) only branches on
+        # `"name" in batch[0]`, but if ANY item in the batch lacks `name`
+        # while another has it the collate raises KeyError. PDB monomer
+        # items always carry `name`; pinder items carry `pdb_path` (stem
+        # of the original PDB file) -- map that here so mixed batches
+        # collate cleanly.
+        if "name" not in x:
+            if "pdb_path" in x and isinstance(x["pdb_path"], str):
+                import os
+
+                x["name"] = os.path.splitext(os.path.basename(x["pdb_path"]))[0]
+            else:
+                x["name"] = ""
         # Cleanup -- atom14_* are large and not consumed downstream.
         for k in ("atom14_coords", "atom14_mask"):
             x.pop(k, None)
