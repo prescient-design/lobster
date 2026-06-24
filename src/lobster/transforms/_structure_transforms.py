@@ -487,6 +487,58 @@ class StructureComplexTransform(BaseTransform):
         return x
 
 
+class Atom14ToBackboneTransform(BaseTransform):
+    """Normalize an atom-14-representation entry into the 3-atom backbone shape.
+
+    Some processed datasets (Pinder ``pinder_atom14``) store coordinates as
+    ``atom14_coords`` of shape ``(L, 14, 3)`` with an ``atom14_mask`` of shape
+    ``(L, 14)``. The LG StructureBackboneTransform + collate downstream
+    expect ``coords_res`` of shape ``(L, 3, 3)`` for N/CA/C plus a per-residue
+    ``mask`` of shape ``(L,)``. This transform bridges the two:
+
+      * ``atom14_coords[:, :3, :]`` -> ``coords_res``  (atom14 indices 0/1/2
+        are N/CA/C in the openfold convention used everywhere else in the
+        codebase, verified empirically against pinder_atom14).
+      * ``atom14_mask[:, :3].all(dim=-1)`` -> ``mask``
+        (a residue is "real" only if all three backbone atoms are present).
+      * Drops the now-unused ``atom14_*`` keys so the downstream transform
+        doesn't trip on the larger tensors.
+
+    Idempotent: when ``coords_res`` is already present the call is a no-op,
+    so this transform can sit at the head of a chain that mixes datasets
+    in different schemas (PDB monomers + Pinder dimers) without affecting
+    the PDB path.
+    """
+
+    def __init__(self, **kwargs):
+        import lobster
+
+        lobster.ensure_package("torch_geometric", group="struct-gpu (or --extra struct-cpu)")
+        logger.info("Atom14ToBackboneTransform")
+
+    def __call__(self, x: dict) -> dict:
+        if "coords_res" in x:
+            # Already in the 3-atom backbone shape (e.g. PDB monomer .pt).
+            return x
+        if "atom14_coords" not in x:
+            raise KeyError(
+                "Atom14ToBackboneTransform expects either `coords_res` or "
+                "`atom14_coords` in the input dict; saw keys: " + str(list(x.keys()))
+            )
+        atom14 = x["atom14_coords"]  # (L, 14, 3)
+        atom14_mask = x.get("atom14_mask")  # (L, 14) or None
+        x["coords_res"] = atom14[:, :3, :].contiguous()  # (L, 3, 3) N/CA/C
+        if atom14_mask is not None:
+            # Real residue iff all three backbone atoms present.
+            x["mask"] = (atom14_mask[:, :3].sum(dim=-1) == 3).to(atom14.dtype)
+        else:
+            x["mask"] = torch.ones(atom14.shape[0], dtype=atom14.dtype)
+        # Cleanup -- atom14_* are large and not consumed downstream.
+        for k in ("atom14_coords", "atom14_mask"):
+            x.pop(k, None)
+        return x
+
+
 class StructureBackboneTransform(BaseTransform):
     def __init__(self, max_length=512, **kwargs):
         import lobster
