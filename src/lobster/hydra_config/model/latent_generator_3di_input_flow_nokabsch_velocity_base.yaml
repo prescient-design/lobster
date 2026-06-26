@@ -1,0 +1,119 @@
+_target_: lobster.model.latent_generator.tokenizer.Tokenizer3diInputFlow
+
+# Step U: BASE-size sibling of `latent_generator_3di_input_flow_nokabsch_velocity.yaml`.
+# Same Step S recipe (drop Kabsch, keep SO(3) aug, velocity prediction)
+# at the BASE scale: 768d / 12L / 12h * 64dh = 768 inner attn dim,
+# time_cond_dim=256 (matches ESMFold2's `fourier_dim=256` at `c_token=768`).
+# ~110.6 M params (cf. the small variant at 20.6 M).
+#
+# Differs from the existing `flow_base` (data-pred + Kabsch) on the same
+# axes that `flow_nokabsch_velocity` differs from `flow`:
+#   - `interpolant.augmentation_type: null`     (was kabsch)
+#   - `interpolant.prediction_type: velocity`   (was data)
+#   - `random_so3_aug: true`                    (now actually does work)
+#
+# LR: kept at 1e-4 (matches small velocity run for clean A/B). The user
+# explicitly noted BASE may diverge at 1e-4; if so, override with
+# `model.optim.lr=8e-5` (or smaller) on the slurm script and re-launch.
+# The existing `flow_base` was originally launched at 8e-5 (muP-scaled
+# from 1e-4 for the 1.5x width jump) before Step Q flattened all runs
+# to 1e-4. Re-introducing 8e-5 here is a one-flag fix.
+
+ckpt_path: null
+
+n_atoms: 3
+num_3di_classes: 20
+
+p_uncond: 0.15
+guidance_scale: 1.0
+n_sampling_steps: 50
+aux_pairwise_l2_weight: 0.01
+
+center_x1: true
+center_every_step: true
+
+coord_scale: 0.1
+
+random_so3_aug: true
+
+sampling_mode: ode
+sc_scale_noise: 0.0
+sc_scale_score: 0.0
+
+autoguidance_model: null
+autoguidance_ratio: 0.0
+
+# Step U keeps self-cond OFF on BASE for the same reason Step G did:
+# isolate the scale axis. If both the small + selfcond run AND this
+# BASE run pay rent independently, queue a follow-up `flow_nokabsch_
+# velocity_base_selfcond` (Step U+).
+use_self_conditioning: false
+selfcond_train_prob: 0.5
+
+decoder_factory:
+  _target_: lobster.model.latent_generator.structure_decoder.DecoderFactory.from_mapping
+  decoder2loss_dict:
+    vit_decoder: []
+  decoder_mapping:
+    vit_decoder:
+      _target_: lobster.model.latent_generator.structure_decoder.ViTDecoderConditional
+      data_fixed_size: 512
+      n_atoms: 3
+      # BASE knobs: 768d / 12L / 12h * 64dh = 768 inner attn dim.
+      # Matches ESMFold2 `c_token=768`, `token_num_blocks=12`.
+      uvit_n_layers: 12
+      uvit_n_heads: 12
+      uvit_dim_head: 64
+      uvit_position_embedding_type: 'rotary'
+      indexed: false
+      struc_token_dim: 768
+      struc_token_codebook_size: 768
+      encode_ligand: false
+      num_3di_classes: 20
+      # BASE bumps `time_cond_dim` 128 -> 256 to match ESMFold2's
+      # `fourier_dim=256` at `c_token=768`. The FiLM modulations grow
+      # linearly with this dim, so the BASE param count is ~110.6 M
+      # (vs. the prediction-table figure of 98.7 M with time_cond_dim=128).
+      time_cond_dim: 256
+      num_registers: 4
+      use_self_conditioning: false
+
+interpolant:
+  _target_: bionemo.moco.interpolants.continuous_time.continuous.continuous_flow_matching.ContinuousFlowMatcher
+  _partial_: true
+  prediction_type: velocity
+  sigma: 0.0
+  augmentation_type: null
+  data_scale: 1.0
+
+time_distribution:
+  _target_: bionemo.moco.distributions.time.uniform.UniformTimeDistribution
+  min_t: 0.0
+  max_t: 1.0
+
+prior_distribution:
+  _target_: bionemo.moco.distributions.prior.continuous.gaussian.GaussianPrior
+  mean: 0.0
+  std: 1.0
+  center: false
+
+inference_schedule:
+  _target_: bionemo.moco.schedules.inference_time_schedules.LinearInferenceSchedule
+  nsteps: 50
+
+optim:
+  _target_: torch.optim.Adam
+  _partial_: true
+  # User-requested: keep the small velocity run's lr=1e-4 for a clean
+  # A/B against `flow_nokabsch_velocity`. BASE may diverge at this LR;
+  # if so, override `+model.optim.lr=8e-5` on the slurm launcher.
+  lr: 1e-4
+  weight_decay: 0.0
+
+num_warmup_steps: 5000
+num_training_steps: 50000
+
+lr_scheduler:
+  _target_: transformers.get_constant_schedule_with_warmup
+  _partial_: true
+  num_warmup_steps: 5000

@@ -1,4 +1,6 @@
 # lightning module training script
+import functools
+import inspect
 import logging
 
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -559,17 +561,29 @@ class TokenizerMulti(pl.LightningModule):
         """Configure the optimizer and learning rate scheduler."""
         optimizer = self.optim_factory(params=self.parameters())
 
-        out = {"optimizer": optimizer}
-
-        # Pass num_warmup_steps and num_training_steps to the lr_scheduler factory
-        out["lr_scheduler"] = {
-            "scheduler": self.lr_scheduler(
-                optimizer=optimizer, num_warmup_steps=self.num_warmup_steps, num_training_steps=self.num_training_steps
-            ),
-            "interval": "step",
+        # Only forward the kwargs the configured scheduler actually accepts.
+        # `get_cosine_schedule_with_warmup` wants `num_training_steps` (decays
+        # to 0 over that horizon), but `get_constant_schedule_with_warmup`
+        # (warmup -> flat LR) takes only `num_warmup_steps` and raises on the
+        # extra kwarg. Filtering here lets both share one code path / yaml shape
+        # -- mirrors the equivalent fix in
+        # `Tokenizer3diInputFlow.configure_optimizers`.
+        scheduler_kwargs = {
+            "num_warmup_steps": self.num_warmup_steps,
+            "num_training_steps": self.num_training_steps,
         }
+        scheduler_fn = self.lr_scheduler.func if isinstance(self.lr_scheduler, functools.partial) else self.lr_scheduler
+        try:
+            accepted = set(inspect.signature(scheduler_fn).parameters)
+            scheduler_kwargs = {k: v for k, v in scheduler_kwargs.items() if k in accepted}
+        except (TypeError, ValueError):
+            pass
 
-        return out
+        scheduler = self.lr_scheduler(optimizer=optimizer, **scheduler_kwargs)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
+        }
 
     def predict_step(self, batch, batch_idx):
         """prediction step of the model."""

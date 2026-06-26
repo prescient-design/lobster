@@ -13,4 +13,5 @@ from ._losses import (
     SequenceCCELoss,
     TokenizerLoss,
 )
+from ._tokenizer_3di_input_flow import Tokenizer3diInputFlow
 from ._tokenizer_multi import TokenizerMulti

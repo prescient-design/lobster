@@ -1,0 +1,2 @@
+structure_3di_transform:
+  _target_: lobster.transforms._structure_transforms.Structure3diTransform

@@ -321,6 +321,21 @@ live under [`lobster.metrics.protein_ligand`](../../metrics/protein_ligand/).
 
 ## Citation
 
-If you use LeFlur in your research, please cite the LBSTER codebase (see the
-[top-level README](../../../../README.md#citations)). A LeFlur-specific paper
-citation will be added here on publication.
+If you use LeFlur (or its LatentGenerator structure tokenizer) in your work,
+please cite:
+
+> Sidney L. Lisanza, Karina Zadorozhny, Frederic A. Dreyer, and Kyunghyun Cho. **LeFlur: A Biomolecular Design Model with Latent Structure Tokens.** *The 2026 Workshop on Generative and Agentic AI for Biology*, 2026. <https://openreview.net/forum?id=z5EwGneX36>
+
+```bibtex
+@inproceedings{lisanza2026leflur,
+  title     = {{LeFlur}: A Biomolecular Design Model with Latent Structure Tokens},
+  author    = {Lisanza, Sidney L. and Zadorozhny, Karina and Dreyer, Frederic A. and Cho, Kyunghyun},
+  booktitle = {The 2026 Workshop on Generative and Agentic AI for Biology},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=z5EwGneX36}
+}
+```
+
+You may also want to cite the LBSTER codebase that LeFlur ships through;
+see [`README.md#citations`](../../../../README.md#citations) at the repo
+root.

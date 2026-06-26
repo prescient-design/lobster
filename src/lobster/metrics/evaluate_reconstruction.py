@@ -930,11 +930,13 @@ def evaluate_models_on_directory(
 
         # Load the current model
         logger.info(f"Loading model: {model_name}")
+        mc = methods[model_name].model_config
         load_model(
-            methods[model_name].model_config.checkpoint,
-            methods[model_name].model_config.config_path,
-            methods[model_name].model_config.config_name,
-            overrides=methods[model_name].model_config.overrides,
+            mc.checkpoint,
+            mc.config_path,
+            mc.config_name,
+            overrides=mc.overrides,
+            model_class=mc.model_class,
         )
         logger.info(f"Model {model_name} loaded successfully")
 

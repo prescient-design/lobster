@@ -19,6 +19,7 @@ from ._protein_ligand_inverse_folding import ProteinLigandInverseFoldingCallback
 from ._protein_ligand_forward_folding import ProteinLigandForwardFoldingCallback
 from ._s3_checkpoint_callback import S3CheckpointBackupCallback
 from ._cg_boltz_eval import CGBoltzEvalCallback
+from ._lr_override_on_resume import LrOverrideOnResume
 
 __all__ = [
     "SklearnProbeTaskConfig",
@@ -46,4 +47,5 @@ __all__ = [
     "ProteinLigandForwardFoldingCallback",
     "S3CheckpointBackupCallback",
     "CGBoltzEvalCallback",
+    "LrOverrideOnResume",
 ]

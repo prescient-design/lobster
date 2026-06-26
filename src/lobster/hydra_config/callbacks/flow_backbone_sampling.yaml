@@ -1,0 +1,6 @@
+flow_backbone_sampling:
+  _target_: lobster.model.latent_generator.callbacks.FlowBackboneSampling
+  structure_path: "${paths.output_dir}/structures"
+  sampling_step_counts: [1, 5, 50]
+  save_every_n: 5000
+  max_samples_per_call: 4

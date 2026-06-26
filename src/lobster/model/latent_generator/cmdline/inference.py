@@ -6,6 +6,7 @@ import os
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import boto3
@@ -33,6 +34,13 @@ class ModelConfig:
     config_path: str
     config_name: str
     overrides: list[str]
+    # Optional override for the model class. Defaults to "TokenizerMulti"
+    # (the LG codec autoencoder) which the existing pipeline expects.
+    # Set to "Tokenizer3diInputFlow" for the 3Di-conditioned flow decoder
+    # — it doesn't have an encoder/quantizer pair and decodes via SDE
+    # flow-matching sampling instead, so load_model + decode dispatch
+    # to a different code path.
+    model_class: str = "TokenizerMulti"
 
 
 @dataclass
@@ -611,6 +619,43 @@ methods = {
             overrides=[],
         ),
     ),
+    "LG 3Di Flow Decoder": ModelInfo(
+        description=(
+            "3Di-conditioned flow-matching backbone decoder. Reconstructs "
+            "N/Cα/C coordinates from per-residue Foldseek 3Di tokens via a "
+            "200-step power-2 SDE trajectory. CFG scale w=2.0."
+        ),
+        features=[
+            "U-ViT 768d / 12L / 12h (~110M params)",
+            "Velocity-prediction continuous flow matching",
+            "Foldseek 3Di alphabet input (20 states)",
+            "No encoder, no quantizer -- pure decoder",
+            "Tokenizer3diInputFlow (separate class from TokenizerMulti)",
+        ],
+        model_config=ModelConfig(
+            checkpoint="https://huggingface.co/Sidney-Lisanza/latent_generator/resolve/main/checkpoints_for_lg/LG_3Di_Flow_Decoder.ckpt",
+            # Hydra config below points at the project-wide hydra tree
+            # (`src/lobster/hydra_config/`) instead of the LG-internal one,
+            # because Tokenizer3diInputFlow's architecture/dependency yaml
+            # (`latent_generator_3di_input_flow_nokabsch_velocity_base`)
+            # lives there. `config_path` is resolved relative to this
+            # file via the special "@project" prefix handled by load_model.
+            config_path="@project",
+            config_name="latent_generator_3di_input_flow_nokabsch_velocity_base",
+            # Match the published checkpoint's training config. The base
+            # yaml doesn't carry these keys, so the `+` prefix tells
+            # hydra to add (not override) them. Setting either weight>0
+            # or `track_aux_3di_coord_ce=true` causes the constructor to
+            # build the frozen mini3di buffers so the state_dict's
+            # `mini3di_torch.*` keys land cleanly.
+            overrides=[
+                "+aux_3di_coord_ce_weight=0.1",
+                "+aux_3di_coord_ce_t_lim=0.5",
+                "+aux_3di_coord_ce_temperature=1.0",
+            ],
+            model_class="Tokenizer3diInputFlow",
+        ),
+    ),
     "LG full attention 2": ModelInfo(
         description="Full attention model without spatial masking",
         features=["Standard configuration", "Full attention (no spatial masking)", "256 protein tokens"],
@@ -676,6 +721,13 @@ def instantiate_dict_cfg(cfg: DictConfig | None, verbose=False):
 
 OmegaConf.register_new_resolver("format", format_resolver, replace=True)
 
+# Foldseek 3Di alphabet: position-encoded mapping from letter -> token ID
+# used by the LG 3Di Flow Decoder. Kept here at module scope so the
+# `--token_string` CLI dispatch can build the encoded dict without
+# pulling in the per-protein Structure3diTransform.
+_FOLDSEEK_3DI_LETTERS = "ACDEFGHIKLMNPQRSTVWYX"
+_FOLDSEEK_3DI_TO_ID = {c: i for i, c in enumerate(_FOLDSEEK_3DI_LETTERS)}
+
 
 def load_config(config_path: str, config_name: str, overrides: list[str] | None = None) -> DictConfig:
     # Check if Hydra is already initialized
@@ -697,16 +749,37 @@ class LatentEncoderDecoder:
 
     def __init__(self):
         self.model = None
+        # Set by `load_model` so `encode` / `decode` know which code
+        # path to take. Defaults to the canonical TokenizerMulti
+        # autoencoder; "Tokenizer3diInputFlow" routes through the
+        # SDE flow-matching decoder instead.
+        self.model_class = "TokenizerMulti"
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def load_model(
-        self, checkpoint_path: str, cfg_path: str, cfg_name: str, overrides: list[str] | None = None
+        self,
+        checkpoint_path: str,
+        cfg_path: str,
+        cfg_name: str,
+        overrides: list[str] | None = None,
+        model_class: str = "TokenizerMulti",
     ) -> None:
-        """Load a TokenizerMulti model from a checkpoint path.
+        """Load a model from a checkpoint path.
 
         Args:
             checkpoint_path: Path to the model checkpoint
-            config_path: Optional path to the model configuration file
+            cfg_path: Path to the model configuration tree (relative to
+                this file). The literal "@project" routes to the
+                project-wide ``src/lobster/hydra_config/`` tree --
+                used by the 3Di flow decoder whose architecture yaml
+                lives there.
+            cfg_name: Hydra config name. For TokenizerMulti this is
+                ``train_multi``; for Tokenizer3diInputFlow it's the
+                model yaml itself (e.g.
+                ``latent_generator_3di_input_flow_nokabsch_velocity_base``).
+            overrides: Hydra-style key=value overrides applied at compose.
+            model_class: ``"TokenizerMulti"`` (default, LG autoencoder)
+                or ``"Tokenizer3diInputFlow"`` (3Di flow decoder).
         """
         if checkpoint_path.startswith("s3://"):
             # Handle S3 path
@@ -754,6 +827,15 @@ class LatentEncoderDecoder:
 
         py_logger.info(f"Loading model from {checkpoint_path}")
 
+        # 3Di flow decoder: separate model class with no encoder/quantizer.
+        # Doesn't go through `train_multi.yaml`'s tokenizer factory; instead
+        # we hydra-compose the project-wide model yaml directly and load
+        # the state_dict over an instantiated module.
+        if model_class == "Tokenizer3diInputFlow":
+            self._load_3di_flow_model(checkpoint_path, cfg_path, cfg_name, overrides)
+            self.model_class = "Tokenizer3diInputFlow"
+            return
+
         cfg = load_config(cfg_path, cfg_name, overrides)
 
         # If config path is provided, load the model with the config
@@ -778,6 +860,64 @@ class LatentEncoderDecoder:
         self.model = self.model.to(self.device)
         py_logger.info(f"Model loaded successfully and moved to {self.device}")
 
+    # Published inference recipe for the 3Di flow decoder. Same as
+    # WINNER_W2 in the eval scripts and in the metadata sidecar shipped
+    # alongside the HuggingFace ckpt.
+    _WINNER_W2_3DI_FLOW = {
+        "n_steps": 200,
+        "sampling_mode": "sde",
+        "schedule_type": "power",
+        "schedule_exponent": 2.0,
+        "guidance_scale": 2.0,
+        "sc_scale_noise": 0.3,
+        "sc_scale_score": 1.0,
+        "gt_mode": "us",
+        "gt_p": 1.0,
+        "t_lim_ode": 0.99,
+        "init_temperature": 1.0,
+        "min_t": 0.0,
+    }
+
+    def _load_3di_flow_model(
+        self,
+        checkpoint_path: str,
+        cfg_path: str,
+        cfg_name: str,
+        overrides: list[str] | None,
+    ) -> None:
+        """Hydra-compose the project-wide 3Di-flow model yaml + load state.
+
+        The 3Di flow decoder's architecture yaml lives under the project's
+        `src/lobster/hydra_config/model/` tree (not the LG-internal
+        `cmdline/hydra_config/`), so we route via `@project` here.
+        """
+        import lobster  # noqa: F401  -- ensures package is importable
+
+        if cfg_path == "@project":
+            # Resolve to <repo_root>/src/lobster/hydra_config absolute.
+            project_cfg_dir = Path(__file__).resolve().parents[3] / "hydra_config"
+            if not project_cfg_dir.is_dir():
+                raise FileNotFoundError(f"Could not find project hydra_config dir at {project_cfg_dir}")
+            with hydra.initialize_config_dir(config_dir=str(project_cfg_dir / "model"), version_base=None):
+                cfg = hydra.compose(config_name=cfg_name, overrides=list(overrides or []))
+        else:
+            cfg = load_config(cfg_path, cfg_name, overrides)
+
+        # `cfg` here is the model node directly (no `tokenizer.` wrapper).
+        if "ckpt_path" in cfg:
+            cfg.ckpt_path = None
+        py_logger.info(f"Instantiating {cfg._target_}")
+        model = hydra.utils.instantiate(cfg, _recursive_=False)
+        state = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        sd = state.get("state_dict", state)
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        if missing:
+            py_logger.warning("load_state_dict missing %d keys (e.g. %s)", len(missing), missing[:3])
+        if unexpected:
+            py_logger.warning("load_state_dict unexpected %d keys (e.g. %s)", len(unexpected), unexpected[:3])
+        self.model = model.to(self.device).eval()
+        py_logger.info(f"3Di flow decoder loaded successfully on {self.device}")
+
     def encode(
         self,
         inputs: torch.Tensor | dict[str, Any],
@@ -798,6 +938,23 @@ class LatentEncoderDecoder:
         """
         if self.model is None:
             raise ValueError("Model not loaded. Call load_model first.")
+
+        # 3Di flow decoder has no learned encoder, so the "encoded
+        # form" is just the per-residue Foldseek 3Di tokens.
+        # `Structure3diTransform` derives them from the input
+        # backbone here; `decode` then consumes them directly and
+        # samples coords without re-deriving anything. Returns
+        # ``({"3di_states", "mask", "indices"}, embeddings_or_None)``
+        # to match the LG-codec encode signature.
+        if self.model_class == "Tokenizer3diInputFlow":
+            tokens = self._encode_3di_flow(inputs)
+            if return_embeddings:
+                # The encoded form has no continuous embedding (3Di
+                # tokens themselves are the bottleneck); return an
+                # empty tensor to keep the (latents, embeddings)
+                # return shape stable across model_class branches.
+                return tokens, torch.empty(0, device=self.device)
+            return tokens
 
         if self.model.quantizer is None:
             discrete = False
@@ -873,6 +1030,13 @@ class LatentEncoderDecoder:
         if self.model is None:
             raise ValueError("Model not loaded. Call load_model first.")
 
+        # 3Di flow decoder: the "latents" passed in are actually the
+        # `pdb_data` dict carrying ``coords_res`` + ``mask`` + ``indices``
+        # (since `encode` is a no-op for this model). We compute the 3Di
+        # tokens via Structure3diTransform here and call `model.sample`.
+        if self.model_class == "Tokenizer3diInputFlow":
+            return self._decode_3di_flow(latents, **kwargs)
+
         # Move latents to device
         if isinstance(latents, dict):
             latents = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in latents.items()}
@@ -893,6 +1057,92 @@ class LatentEncoderDecoder:
             decoded_sequence = None
 
         return decoded_structure, decoded_sequence
+
+    def _encode_3di_flow(self, pdb_data: dict) -> dict:
+        """3Di-flow encode path: backbone coords -> per-residue 3Di tokens.
+
+        Runs :class:`Structure3diTransform` once on each protein in the
+        input batch and returns the canonical 3Di-flow latent dict
+        (``{"3di_states", "mask", "indices"}``) that
+        :meth:`_decode_3di_flow` consumes verbatim. Decoupling the
+        transform from `decode` lets callers persist / reuse the
+        tokens (e.g. write them to disk via ``--output_file_encode``)
+        without re-running the transform on every decode call.
+        """
+        from lobster.transforms._structure_transforms import Structure3diTransform
+
+        if not isinstance(pdb_data, dict) or "coords_res" not in pdb_data:
+            raise ValueError("3Di flow encoder expects a `pdb_data` dict with `coords_res`; got " + str(type(pdb_data)))
+
+        coords = pdb_data["coords_res"]
+        if coords.dim() == 3:
+            coords = coords.unsqueeze(0)
+        B, L = coords.shape[0], coords.shape[1]
+        mask = pdb_data.get("mask")
+        if mask is None:
+            mask = torch.ones(B, L, dtype=torch.float32)
+        if mask.dim() == 1:
+            mask = mask.unsqueeze(0)
+        indices = pdb_data.get("indices")
+        if indices is None:
+            indices = torch.arange(L).unsqueeze(0).expand(B, -1)
+        if indices.dim() == 1:
+            indices = indices.unsqueeze(0)
+
+        transform = Structure3diTransform()
+        three_di = torch.full((B, L), 20, dtype=torch.long)
+        for b in range(B):
+            Lb = int(mask[b].sum().item())
+            if Lb < 3:
+                continue
+            td = transform({"coords_res": coords[b, :Lb]})
+            three_di[b, :Lb] = td["3di_states"].long()
+
+        return {
+            "3di_states": three_di.to(self.device),
+            "mask": mask.to(self.device).float(),
+            "indices": indices.to(self.device).long(),
+        }
+
+    def _decode_3di_flow(self, latents: dict, **_unused_kwargs) -> tuple[torch.Tensor, None]:
+        """3Di-flow code path: 3Di tokens (+ mask, indices) -> backbone coords.
+
+        Consumes the dict produced by :meth:`_encode_3di_flow` (the
+        ``{"3di_states", "mask", "indices"}`` triple) and integrates a
+        200-step SDE flow trajectory at guidance ``w=2.0``. Mirrors the
+        LG-codec protein-only return shape so the existing ``main()``
+        writepdb branch handles us without changes:
+        ``(coords (B, L, 3, 3) tensor, None)``.
+        """
+        if not isinstance(latents, dict) or "3di_states" not in latents:
+            raise ValueError(
+                "3Di flow decoder expects an encoded dict with `3di_states`; "
+                "did you skip the `encode(...)` step? Got " + str(type(latents))
+            )
+        states_in = latents["3di_states"].to(self.device).long()
+        mask = latents.get("mask")
+        if mask is None:
+            mask = torch.ones_like(states_in, dtype=torch.float32)
+        mask = mask.to(self.device).float()
+        indices = latents.get("indices")
+        if indices is None:
+            indices = torch.arange(states_in.shape[1], device=self.device).unsqueeze(0).expand(states_in.shape[0], -1)
+        indices = indices.to(self.device).long()
+
+        states, seq_mask, residue_index = self.model.featurize(
+            {"3di_states": states_in, "mask": mask, "indices": indices}
+        )
+
+        B, L = states_in.shape
+        py_logger.info("3Di flow decode: B=%d, L=%d, sampling with WINNER_W2 recipe", B, L)
+        with torch.no_grad():
+            samp = self.model.sample(
+                states=states,
+                seq_mask=seq_mask,
+                residue_index=residue_index,
+                **self._WINNER_W2_3DI_FLOW,
+            )
+        return (samp.detach(), None)
 
 
 # Create a global instance for easy importing
@@ -1074,6 +1324,26 @@ LG full attention
     parser.add_argument("--ligand_path", type=str, help="Path to a sdf file to encode")
     parser.add_argument("--decode", action="store_true", help="Decode latents back to original inputs")
     parser.add_argument("--decode_latents", type=str, help="Path to latents to decode")
+    parser.add_argument(
+        "--token_string",
+        type=str,
+        help=(
+            "Decode-only entry point: a literal token string to project to a "
+            "backbone via the loaded model. Alphabet depends on --model_name:\n"
+            "  * `LG 3Di Flow Decoder`: Foldseek 3Di letter string drawn from\n"
+            "    ACDEFGHIKLMNPQRSTVWYX. Any character outside that alphabet is\n"
+            "    silently stripped (with a warning listing what was dropped).\n"
+            "  * Any LG codec (TokenizerMulti): comma-separated integer token\n"
+            "    IDs in [0, codebook_size). One-hot expanded internally.\n"
+            "Mutually exclusive with --pdb_path / --ligand_path / "
+            "--decode_latents -- this path skips encode entirely."
+        ),
+    )
+    parser.add_argument(
+        "--token_string_file",
+        type=str,
+        help="Same payload as --token_string but read from a file (useful for long strings).",
+    )
     parser.add_argument("--batch_file", type=str, help="Path to a batch file to encode")
     parser.add_argument(
         "--output_file_encode", type=str, default="encoded_latents.pt", help="Path to save encoded outputs"
@@ -1151,11 +1421,13 @@ LG full attention
         )
 
     if args.model_name in methods:
+        mc = methods[args.model_name].model_config
         load_model(
-            methods[args.model_name].model_config.checkpoint,
-            methods[args.model_name].model_config.config_path,
-            methods[args.model_name].model_config.config_name,
-            overrides=methods[args.model_name].model_config.overrides,
+            mc.checkpoint,
+            mc.config_path,
+            mc.config_name,
+            overrides=mc.overrides,
+            model_class=mc.model_class,
         )
     elif args.ckpt_path and args.cfg_path:
         py_logger.info(f"Loading model from {args.ckpt_path}")
@@ -1163,6 +1435,104 @@ LG full attention
     else:
         raise ValueError(f"Model name {args.model_name} not found. Please choose from {list(methods.keys())}")
     py_logger.info("Model loaded successfully")
+
+    # --- Token-string decode-only path ---
+    # When the caller supplies `--token_string` (or `--token_string_file`),
+    # skip the encode-from-PDB pipeline entirely: parse the raw token
+    # alphabet ourselves, build the encoded payload `decode` expects, and
+    # go straight to writepdb. Mutually exclusive with PDB/ligand inputs.
+    token_payload = args.token_string
+    if token_payload is None and args.token_string_file:
+        token_payload = Path(args.token_string_file).read_text()
+    if token_payload is not None:
+        if args.pdb_path or args.ligand_path or args.decode_latents:
+            raise ValueError("--token_string is mutually exclusive with --pdb_path / --ligand_path / --decode_latents.")
+        if encoder_decoder.model_class == "Tokenizer3diInputFlow":
+            raw = token_payload
+            kept_chars: list[str] = []
+            dropped: list[str] = []
+            for ch in raw:
+                if ch in _FOLDSEEK_3DI_TO_ID:
+                    kept_chars.append(ch)
+                else:
+                    dropped.append(ch)
+            if dropped:
+                # Summarise stripped characters as (char, count) pairs so the
+                # warning is informative even when the input has thousands
+                # of bogus residues.
+                from collections import Counter
+
+                summary = ", ".join(f"{c!r}x{n}" for c, n in Counter(dropped).most_common())
+                py_logger.warning(
+                    "Stripped %d character(s) not in the Foldseek 3Di alphabet (%s): %s",
+                    len(dropped),
+                    _FOLDSEEK_3DI_LETTERS,
+                    summary,
+                )
+            cleaned = "".join(kept_chars)
+            if len(cleaned) < 3:
+                raise ValueError(
+                    f"After stripping illegal characters, only {len(cleaned)} 3Di residues remain (need >=3)."
+                )
+            ids = torch.tensor([_FOLDSEEK_3DI_TO_ID[c] for c in cleaned], dtype=torch.long)
+            L = ids.shape[0]
+            py_logger.info("Decoding %d 3Di residues from token string", L)
+            encoded = {
+                "3di_states": ids.unsqueeze(0),  # (1, L)
+                "mask": torch.ones(1, L, dtype=torch.float32),
+                "indices": torch.arange(L, dtype=torch.long).unsqueeze(0),
+            }
+            decoded_outputs, _ = decode(encoded)
+            seq = torch.zeros(L, dtype=torch.long)
+            out_pdb = args.output_pdb or f"{args.output_file_decode.split('.')[0]}_token_string_decoded.pdb"
+            writepdb(out_pdb, decoded_outputs[0].cpu(), seq)
+            torch.save(decoded_outputs, args.output_file_decode)
+            py_logger.info("PDB structure saved to %s", out_pdb)
+            py_logger.info("Decoded coords saved to %s", args.output_file_decode)
+            return
+
+        # LG codec path: parse as comma-separated integer token IDs and
+        # build a one-hot protein_tokens tensor. The model's `decode` then
+        # handles it the same way it would the output of `encode(...)`.
+        if encoder_decoder.model is None:
+            raise ValueError("Model not loaded -- cannot infer codebook size for LG-codec token-string decode.")
+        try:
+            ids = [int(x) for x in token_payload.replace("\n", ",").split(",") if x.strip()]
+        except ValueError as exc:
+            raise ValueError(
+                "LG-codec --token_string expects comma-separated integer token IDs (got non-integer entries)."
+            ) from exc
+        if not ids:
+            raise ValueError("LG-codec --token_string parsed to zero tokens.")
+        # Codebook size lives on the tokenizer's quantizer; fall back to
+        # the maximum ID + 1 if we can't discover it.
+        codebook_size = None
+        try:
+            codebook_size = int(encoder_decoder.model.quantizer.num_codes)
+        except AttributeError:
+            pass
+        if codebook_size is None or codebook_size <= max(ids):
+            codebook_size = max(ids) + 1
+        L = len(ids)
+        py_logger.info("Decoding %d LG codec tokens (codebook_size=%d) from token string", L, codebook_size)
+        ids_t = torch.tensor(ids, dtype=torch.long).unsqueeze(0)
+        one_hot = torch.nn.functional.one_hot(ids_t, num_classes=codebook_size).float()
+        decoded_outputs, sequence_outputs = decode({"protein_tokens": one_hot})
+        if isinstance(decoded_outputs, dict) and "protein_coords" in decoded_outputs:
+            coords = decoded_outputs["protein_coords"][0]
+        else:
+            coords = decoded_outputs[0]
+        if sequence_outputs is not None:
+            seq = sequence_outputs.argmax(dim=-1)[0]
+            seq[seq == 22] = 21
+        else:
+            seq = torch.zeros(coords.shape[0], dtype=torch.long)
+        out_pdb = args.output_pdb or f"{args.output_file_decode.split('.')[0]}_token_string_decoded.pdb"
+        writepdb(out_pdb, coords.cpu(), seq.cpu())
+        torch.save(decoded_outputs, args.output_file_decode)
+        py_logger.info("PDB structure saved to %s", out_pdb)
+        py_logger.info("Decoded coords saved to %s", args.output_file_decode)
+        return
 
     # encode pdb
     if (args.pdb_path and os.path.exists(args.pdb_path)) or (args.ligand_path and os.path.exists(args.ligand_path)):

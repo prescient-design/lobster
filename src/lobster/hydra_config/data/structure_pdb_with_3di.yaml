@@ -1,0 +1,32 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml
+  # IMPORTANT: structure_with_3di_transform = structure_backbone_transform + structure_3di_transform
+  # so batches carry both `coords_res`/`mask`/`indices` (LG-renamed) AND `3di_states`.
+  - transform_fn: structure_with_3di_transform.yaml
+  # NOTE: `collate_fn_backbone` (NOT `..._binder_target`). The binder-target
+  # variant runs `BinderTargetTransform`, which constructs a fresh feature
+  # dict and silently drops the `3di_states` key that `Tokenizer3diInput.
+  # featurize` reads. Matches the choice in `structure_swissprot_with_3di.yaml`.
+  - collate_fn: collate_fn_backbone.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+
+# Local equivalents of the original `/data2/lisanzas/latent_generator_files/...` paths
+# used by `structure_pdb.yaml`. `/data2` does not exist on this machine; the actual
+# files live under `/cv/data/ai4dd/data2/lisanzas/...`.
+root: /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/
+
+path_to_datasets:
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/validation.pt
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/test.pt
+
+max_length: 512
+cluster_file: /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt
+files_to_keep: null
+testing: false
+use_shards: false
+datasets: pdb_with_3di
+
+batch_size: 40
+num_workers: 12

@@ -44,6 +44,11 @@ dependencies = [
     "hydra-submitit-launcher>=1.2.0",
     "rdkit>=2024.9.4",
     "openbabel-wheel>=3.1.1",  # For ligand structure minimization
+    "loguru",                  # imported across lobster.callbacks / cmdline / metrics
+    "mini3di",                 # Structure3diTransform (3Di state encoder)
+    "rotary-embedding-torch",  # ViTEncoder / ViTDecoder rotary position embedding
+    "icecream",                # StructureDataset debug printing
+    "jaxtyping",               # type hints used throughout lobster.model.latent_generator
 ]
 
 [build-system]

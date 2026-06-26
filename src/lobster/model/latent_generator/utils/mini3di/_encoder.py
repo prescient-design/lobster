@@ -304,13 +304,21 @@ class PartnerIndexEncoder(_BaseEncoder["ArrayN[numpy.int64]"]):
 
 
 def calculate_cb(batch):
-    """
-    Calculate the Cb coordinates for a batch of structures.
+    """Calculate the Cb coordinates for a batch of backbone structures.
+
+    Expects ``batch["coords_res"]`` of shape ``(..., L, 3, 3)`` where the
+    second-to-last axis indexes the (N, CA, C) backbone atoms and the last
+    axis is xyz. Returns ``(Ca, Cb, N, C)`` numpy arrays of shape
+    ``(..., L, 3)`` each.
+
+    Cb is computed via the standard bond-geometry approximation:
+        Cb = -0.58273431 (b × c) + 0.56802827 b − 0.54067466 c + Ca
+    where b = Ca − N and c = C − Ca.
     """
     coords = batch["coords_res"]
-    N = coords[..., 0]
-    Ca = coords[..., 1]
-    C = coords[..., 2]
+    N = coords[..., 0, :]
+    Ca = coords[..., 1, :]
+    C = coords[..., 2, :]
 
     b = Ca - N
     c = C - Ca

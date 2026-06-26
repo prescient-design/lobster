@@ -80,6 +80,18 @@ For the `cb-lbster` code base cite: [Concept Bottleneck Language Models for Prot
 
 ```
 
+For LeFlur and LatentGenerator cite: [LeFlur: A Biomolecular Design Model with Latent Structure Tokens](https://openreview.net/forum?id=z5EwGneX36)
+```bibtex
+@inproceedings{lisanza2026leflur,
+  title     = {{LeFlur}: A Biomolecular Design Model with Latent Structure Tokens},
+  author    = {Lisanza, Sidney L. and Zadorozhny, Karina and Dreyer, Frederic A. and Cho, Kyunghyun},
+  booktitle = {The 2026 Workshop on Generative and Agentic AI for Biology},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=z5EwGneX36}
+}
+
+```
+
 ## Install <a name="install"></a>
 Install [uv](https://github.com/astral-sh/uv) and run
 

@@ -342,6 +342,48 @@ docs/leflur/research_notes/
 !/src/lobster/hydra_config/model/leflur.yaml
 !/src/lobster/hydra_config/model/leflur_protein_ligand.yaml
 
+# --- 3Di-input flow-matching training surface ---
+# We track ONLY the active production training family that powers the
+# published `LG 3Di Flow Decoder` checkpoint and the active w=0
+# ablation. Everything else (selfcond / mask3di / aug / overfit / etc.)
+# was research scaffolding and has been removed.
+#
+# Data + transforms (shared by every flow variant we still maintain):
+!/src/lobster/hydra_config/data/structure_pdb_with_3di.yaml
+!/src/lobster/hydra_config/data/transform_fn/structure_3di_transform.yaml
+!/src/lobster/hydra_config/callbacks/flow_backbone_sampling.yaml
+!/src/lobster/hydra_config/callbacks/latent_generator_flow_defaults.yaml
+
+# Model yamls -- BASE velocity backbone (architecture pinned for the HF
+# inference loader) plus the two ablation siblings actively training:
+!/src/lobster/hydra_config/model/latent_generator_3di_input_flow_nokabsch_velocity_base.yaml
+!/src/lobster/hydra_config/model/latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce.yaml
+!/src/lobster/hydra_config/model/latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_w0.yaml
+
+# Experiment yamls -- one per active training run (`base` is the
+# parentless seed used for resumes; `correct_cb` is the active
+# 3Di-CE-from-coords run; `w0` is the weight=0 ablation).
+!/src/lobster/hydra_config/experiment/train_latent_generator_3di_input_flow_nokabsch_velocity_base.yaml
+!/src/lobster/hydra_config/experiment/train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce.yaml
+!/src/lobster/hydra_config/experiment/train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_correct_cb.yaml
+!/src/lobster/hydra_config/experiment/train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_w0.yaml
+
+# SLURM launchers for the active runs (`*.sh` is globally gitignored at
+# line ~68 above; these are explicit re-includes).
+!/slurm/scripts/train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_correct_cb.sh
+!/slurm/scripts/train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_w0.sh
+
+# Single-example overfit visualization dir (GT + sampled backbone PDBs).
+/overfit_viz/
+
+# SNR noise-ladder diagnostic outputs (PDB ladder + plot).
+/snr_noise_ladder/
+
+# CPU dry-run scratch dir (tiny copies of validation.pt renamed train/val/test
+# so the precomputed-splits path works without touching the read-only
+# /cv/data mount). Created by tests/lobster/hydra_config/_dryrun_3di_input_cpu.py.
+/.dryrun_3di_input_data/
+
 # Tier-2 research + Tier-3 legacy generate configs (kept on disk for
 # internal research workflows; not part of the publication inference
 # surface).

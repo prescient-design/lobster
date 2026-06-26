@@ -312,8 +312,27 @@ class StructureDataset(Dataset):
             self.__dict__["root"] = str(root)  # Ensure root is set
             logger.info("Initialization complete (bypassed PyG overhead)")
         else:
-            # Normal PyG initialization for small datasets
-            super().__init__(root, transform, pre_transform)
+            # Normal PyG initialization for small datasets.
+            # In DDP, PyG's _process() races to read/write `pre_transform.pt` and
+            # `pre_filter.pt` under `root`. Concurrent torch.save from one rank +
+            # torch.load from another can leave readers seeing a partial file,
+            # surfacing as: "<path>/pre_transform.pt is a zip archive (did you
+            # mean to use torch.jit.load()?)". We avoid this by letting rank 0
+            # initialize first (writing/validating the cache), then barriering,
+            # then letting the remaining ranks proceed against the now-stable
+            # cache. Falls back to plain init when distributed isn't up.
+            import torch.distributed as dist
+
+            if dist.is_available() and dist.is_initialized():
+                rank = dist.get_rank()
+                if rank == 0:
+                    super().__init__(root, transform, pre_transform)
+                dist.barrier()
+                if rank != 0:
+                    super().__init__(root, transform, pre_transform)
+                dist.barrier()
+            else:
+                super().__init__(root, transform, pre_transform)
 
     @property
     def raw_dir(self) -> str:

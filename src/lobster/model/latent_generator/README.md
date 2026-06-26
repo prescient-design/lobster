@@ -7,10 +7,12 @@ A powerful protein and protein-ligand structure representation learning model fo
   - [Structure Reconstruction Quality on CASP15 Proteins](#structure-reconstruction-quality-on-casp15-proteins)
   - [Ligand Reconstruction Quality](#ligand-reconstruction-quality)
   - [Protein-Ligand Complex Reconstruction Quality](#protein-ligand-complex-reconstruction-quality)
+- [Variants](#variants)
 - [Setup](#setup)
   - [Environment Setup](#environment-setup)
 - [Getting Embeddings and Tokens](#getting-embeddings-and-tokens)
   - [Protein Example](#protein-example)
+  - [3Di Flow Decoder Example](#3di-flow-decoder-example)
   - [Ligand Example](#ligand-example)
   - [Protein-Ligand Complex Example](#protein-ligand-complex-example)
   - [Command-line Example](#command-line-example)
@@ -29,15 +31,43 @@ We evaluated the reconstruction quality of our models on CASP15 proteins (≤ 51
 
 **Evaluation Set**: CASP15 proteins ≤ 512 residues
 
-| Model | Quantizer | Size | RMSD (Å) | Std | Min | Max |
-|-------|-----------|------|----------|-----|-----|-----|
-| LG Protein (cont.) | None | - | 0.462 | 0.322 | 0.200 | 1.271 |
-| LG Protein SLQ | SLQ | 256 | 1.647 | 0.535 | 0.979 | 3.189 |
-| LG Prot-Lig SLQ | SLQ | 256 | 1.873 | 1.054 | 0.798 | 5.143 |
-| LG Prot-Lig SLQ | SLQ | 4096 | 3.097 | 2.009 | 1.242 | 8.474 |
-| LG Protein FSQ | FSQ | 240 | 1.848 | 1.194 | 0.483 | 5.419 |
-| LG Prot-Lig FSQ | FSQ | 4375 | 1.260 | 0.632 | 0.651 | 3.117 |
-| LG Prot-Lig FSQ | FSQ | 4375/15360 | 1.418 | 0.810 | 0.748 | 3.396 |
+| Model | Quantizer | Size | RMSD (Å) | Std | Min | Max | 3Di AAR (%)‡ |
+|-------|-----------|------|----------|-----|-----|-----|---|
+| LG Protein (cont.) | None | - | 0.462 | 0.322 | 0.200 | 1.271 | -- |
+| LG Protein SLQ (full attn) | SLQ | 256 | 1.647 | 0.535 | 0.979 | 3.189 | 61.8 ± 12.1 |
+| LG Prot-Lig SLQ | SLQ | 256 | 1.873 | 1.054 | 0.798 | 5.143 | -- |
+| LG Prot-Lig SLQ | SLQ | 4096 | 3.097 | 2.009 | 1.242 | 8.474 | -- |
+| LG Protein FSQ | FSQ | 240 | 1.848 | 1.194 | 0.483 | 5.419 | -- |
+| LG Prot-Lig FSQ | FSQ | 4375 | 1.260 | 0.632 | 0.651 | 3.117 | 50.8 ± 11.1 |
+| LG Prot-Lig FSQ | FSQ | 4375/15360 | 1.418 | 0.810 | 0.748 | 3.396 | 51.4 ± 11.6 |
+| LG 3Di Flow Decoder† | 3Di (Foldseek) | 20 | 13.171 | 11.111 | 1.242 | 47.637 | **75.3 ± 9.8** |
+
+† Generative flow-matching decoder conditioned on Foldseek's
+model-agnostic 20-state 3Di alphabet (no learned encoder, no
+quantizer). All other rows are joint encoder-decoder autoencoders
+that see ground-truth coordinates during encoding. The 3Di alphabet
+specifies *local* geometry only, so many globally-distinct backbones
+are consistent with the same 3Di string -- reconstruction quality is
+fundamentally bounded by the alphabet (best case ~1.2 Å, comparable
+to the LG codecs; worst case dominated by chains where local
+descriptors underspecify the global fold). Same 30-protein CASP15
+set, same 26 successful / 4 failed split as the LG codec rows above.
+
+‡ 3Di token recovery: the percentage of per-residue Foldseek 3Di
+tokens that match the GT 3Di tokens after passing the *reconstructed*
+coordinates through mini3di. Both prediction and GT are derived from
+the same backbone-only mini3di pipeline, so this column is unaffected
+by the input alphabet (3Di tokens vs learned codecs) -- it's purely a
+function of how well each method's reconstructed coordinates preserve
+the local-descriptor signature that Foldseek uses for clustering. The
+LG codecs minimize coord RMSD and recover 50-62% of the 3Di tokens;
+the 3Di Flow Decoder is *trained* with a mini3di CE-from-coords
+auxiliary loss and achieves the highest AAR despite worst Kab. This
+is the structural-vs-token trade-off the paper's "3Di-flow decoder
+reconstruction" appendix analyses. The "--" entries weren't
+re-evaluated under this protocol; only the four populated rows were
+re-run with the canonical ``evaluate_reconstruction.py`` plus a
+follow-up mini3di pass.
 
 ### Ligand Reconstruction Quality
 
@@ -75,6 +105,32 @@ Comparison of FSQ and SLQ variants on PDBbind complexes. Token counts represent 
 | LG Prot-Lig SLQ | Ligand | 4096 | 4096 | Joint (c) | 3.589 | - | - | - |
 | LG Prot-Lig FSQ | Ligand | 4375 | 4375 | Joint (c) | 1.011 | 0.271 | 0.507 | 3.729 |
 | LG Prot-Lig FSQ | Ligand | 4375 | 15360 | Joint (c) | 0.998 | - | - | - |
+
+## Variants
+
+Two Lightning modules live under
+[`lobster.model.latent_generator.tokenizer`](tokenizer/). They share the
+same Hydra-wired `DecoderFactory` / `LossFactory` building blocks and
+checkpoint format but differ in what the input alphabet is:
+
+| Variant | Input | Pipeline | Quantizer | Use case |
+|---|---|---|---|---|
+| [`TokenizerMulti`](tokenizer/_tokenizer_multi.py) | `coords_res` `(B, L, 3, 3)` | encoder → quantizer → decoder | yes (SLQ / FSQ / …) | Canonical LG: backbone in, discrete token bottleneck, backbone out. Powers all the checkpoints in the "Model Configurations" tables below. |
+| [`Tokenizer3diInputFlow`](tokenizer/_tokenizer_3di_input_flow.py) | `3di_states` `(B, L)` long (Foldseek 20-state alphabet, recomputed at data-load time by [`Structure3diTransform`](../../transforms/_structure_transforms.py)) | flow-matching SDE sampler over a learned U-ViT velocity field, conditioned on the 3Di tokens | no (3Di tokens themselves are the discrete bottleneck) | Generative reconstruction of backbone coords from a model-agnostic 3Di string. Trained as continuous flow matching with classifier-free guidance and an auxiliary differentiable mini3di CE-from-coords loss. Inference uses a 200-step power-2 SDE schedule at guidance scale `w=2.0` (the published "WINNER_W2" recipe). Published checkpoint: [`LG 3Di Flow Decoder`](#lg-3di-flow-decoder) below. |
+
+The `Tokenizer3diInputFlow` training surface ships with one model yaml
+family + matching experiment yamls under
+[`hydra_config/model/`](../../hydra_config/model/) and
+[`hydra_config/experiment/`](../../hydra_config/experiment/) — see the
+files matching `latent_generator_3di_input_flow_nokabsch_velocity_base*.yaml`
+and the corresponding `train_*` experiments. The data side reuses
+[`data/structure_pdb_with_3di.yaml`](../../hydra_config/data/structure_pdb_with_3di.yaml).
+
+This variant is **not** a substitutable codec for LeFlur today —
+LeFlur expects an LG codec that exposes `encode_structure` returning
+discrete tokens, whereas `Tokenizer3diInputFlow` returns coordinates
+directly via flow-matching sampling. A future LeFlur integration would
+need a separate path.
 
 ## Setup
 
@@ -122,6 +178,35 @@ decoded_outputs = decode(tokens, x_emb=embeddings)
 seq = torch.zeros(decoded_outputs[0].shape[1], dtype=torch.long)[None]
 writepdb("decoded.pdb", decoded_outputs[0], seq[0])
 
+```
+
+### 3Di Flow Decoder Example
+
+```python
+from lobster.model.latent_generator.cmdline import (
+    decode, encode, load_model, methods,
+)
+from lobster.model.latent_generator.io import load_pdb, writepdb
+
+mc = methods["LG 3Di Flow Decoder"].model_config
+load_model(
+    mc.checkpoint, mc.config_path, mc.config_name,
+    overrides=mc.overrides, model_class=mc.model_class,
+)
+
+pdb_data = load_pdb("src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb")
+# `encode` derives per-residue Foldseek 3Di tokens from the backbone
+# via `Structure3diTransform`. Returns the canonical encoded dict
+# `{"3di_states", "mask", "indices"}` -- the only thing `decode`
+# consumes -- so you can persist/reuse it without re-tokenizing.
+# There's no learned encoder, so no continuous embeddings: the
+# returned `_embeddings` tensor is empty.
+latents, _embeddings = encode(pdb_data, return_embeddings=True)
+# `decode` consumes the 3Di tokens and integrates a 200-step SDE
+# flow trajectory at guidance scale w=2.0. Returns
+# (coords (B, L, 3, 3), None) -- no separate sequence head.
+coords, _seq = decode(latents)
+writepdb("decoded.pdb", coords[0], pdb_data["sequence"][0])
 ```
 
 ### Ligand Example
@@ -226,6 +311,16 @@ writepdb_ligand_complex(
 uv run python src/lobster/model/latent_generator/cmdline/inference.py \
     --model_name 'LG full attention' \
     --pdb_path src/lobster/model/latent_generator/example/example_pdbs/7kdr_protein.pdb \
+    --decode
+
+# Reconstruct a backbone from Foldseek 3Di tokens via the flow-matching
+# decoder (downloads ~1.3 GB into ~/.cache/lobster on first call).
+# Sampling integrates a 200-step SDE trajectory at guidance w=2.0;
+# ~5 s / protein on an A10G at L~100.
+uv run python src/lobster/model/latent_generator/cmdline/inference.py \
+    --model_name 'LG 3Di Flow Decoder' \
+    --pdb_path src/lobster/model/latent_generator/example/example_pdbs/efhand.pdb \
+    --output_pdb decoded.pdb \
     --decode
 
 # Get tokens and decode to structure for ligand only
@@ -395,6 +490,23 @@ LatentGenerator provides pre-configured models optimized for different use cases
   - 256 protein tokens
 - **Use Case**: Global protein structure analysis
 
+#### LG 3Di Flow Decoder
+- **Description**: 3Di-conditioned flow-matching backbone decoder. Reconstructs N/Cα/C coordinates from per-residue Foldseek 3Di tokens via a 200-step power-2 SDE trajectory with classifier-free guidance (`w=2.0`).
+- **Features**:
+  - U-ViT 768d / 12L / 12h (~110M params)
+  - Velocity-prediction continuous flow matching
+  - Foldseek 3Di alphabet input (20 states)
+  - No encoder, no quantizer — pure decoder
+  - Backed by [`Tokenizer3diInputFlow`](tokenizer/_tokenizer_3di_input_flow.py) (separate class from `TokenizerMulti`)
+- **Checkpoint**: [`Sidney-Lisanza/latent_generator/checkpoints_for_lg/LG_3Di_Flow_Decoder.ckpt`](https://huggingface.co/Sidney-Lisanza/latent_generator/blob/main/checkpoints_for_lg/LG_3Di_Flow_Decoder.ckpt) (~1.3 GB; metadata sidecar at `LG_3Di_Flow_Decoder.json`)
+- **Reference metrics** (see Appendix "3Di-flow decoder reconstruction" of [LeFlur, Lisanza et al. 2026](https://openreview.net/forum?id=z5EwGneX36)):
+  - 30-protein PDB val (T=200, w=2.0): Kab = 6.55 Å, 3Di Recovery = 76.5%
+  - CASP15 (n=20, L≤512), single-shot: Kab = 9.40 Å, 3DR = 73.5%, TM = 0.644
+  - CASP15 (n=20), best-of-10 (AAR-pick): Kab = 7.91 Å, 3DR = 78.4%, TM = 0.701
+  - ProstT5 test (n=390, L≤512), single-shot: Kab = 11.99 Å, 3DR = 83.0%, TM = 0.531
+- **Use Case**: Reconstruct backbone structure from a model-agnostic 3Di string (e.g. ProstT5 outputs, Foldseek searches). Note that 3Di tokens specify *local* geometry only; many distinct global folds map to the same 3Di string, so reconstruction quality is fundamentally bounded by the alphabet — see paper for the trade-off.
+- **Usage**: see the [3Di Flow Decoder Python example](#3di-flow-decoder-example) and the third command in the [Command-line Example](#command-line-example) block above — the model is wired into the same `inference.py` driver as every other LG variant.
+
 ## Loading Models
 
 ### Using Pre-configured Models
@@ -452,3 +564,19 @@ The inference system supports multiple checkpoint sources:
 - **Hugging Face**: `https://huggingface.co/user/repo/resolve/main/checkpoint.ckpt`
 
 The system will automatically download and cache checkpoints from remote sources.
+
+## Citation
+
+If you use LatentGenerator (or LeFlur, which builds on it) in your work, please cite:
+
+> Sidney L. Lisanza, Karina Zadorozhny, Frederic A. Dreyer, and Kyunghyun Cho. **LeFlur: A Biomolecular Design Model with Latent Structure Tokens.** *The 2026 Workshop on Generative and Agentic AI for Biology*, 2026. <https://openreview.net/forum?id=z5EwGneX36>
+
+```bibtex
+@inproceedings{lisanza2026leflur,
+  title     = {{LeFlur}: A Biomolecular Design Model with Latent Structure Tokens},
+  author    = {Lisanza, Sidney L. and Zadorozhny, Karina and Dreyer, Frederic A. and Cho, Kyunghyun},
+  booktitle = {The 2026 Workshop on Generative and Agentic AI for Biology},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=z5EwGneX36}
+}
+```
