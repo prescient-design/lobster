@@ -23,6 +23,7 @@ from lobster.cmdline._ligand_conditioned_runner import (
 
 # Per-mode generation pipelines. See lobster.cmdline.generate_modes.
 from lobster.cmdline.generate_modes._binders import _generate_binders
+from lobster.cmdline.generate_modes._dimer_forward_folding import _generate_dimer_forward_folding
 from lobster.cmdline.generate_modes._forward_folding import _generate_forward_folding
 from lobster.cmdline.generate_modes._inpainting import _generate_inpainting
 from lobster.cmdline.generate_modes._inverse_folding import _generate_inverse_folding
@@ -138,6 +139,8 @@ def generate(cfg: DictConfig) -> None:
         _generate_inverse_folding(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     elif generation_mode == "forward_folding":
         _generate_forward_folding(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
+    elif generation_mode == "dimer_forward_folding":
+        _generate_dimer_forward_folding(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     elif generation_mode == "inpainting":
         _generate_inpainting(model, cfg, device, output_dir, plm_fold, csv_writer, plotter)
     elif generation_mode == "binder_design":

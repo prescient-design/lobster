@@ -1,0 +1,9 @@
+# Tiny wrapper around `RemapChainIdsForEmbedding` (Commit C). Lives as its
+# own yaml so a transform chain can place it AFTER
+# `StructureBackboneTransform` (which may slice multi-chain inputs down to
+# a single chain when L > max_length) but BEFORE the AA tokenizer
+# transform. Composing yamls choose this position by listing it in their
+# `defaults` block.
+chain_ids_for_embedding_remap:
+  _target_: lobster.transforms._structure_transforms.RemapChainIdsForEmbedding
+  max_num_chains: 2

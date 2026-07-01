@@ -1,0 +1,51 @@
+# Transform chain for the leflur+Pinder+chain-id-embedding+epitope finetune.
+#
+# IDENTICAL to `atom14_then_structure_backbone_aa_tokenizer_alt_seq_chain_remap_transform.yaml`
+# except `structure_backbone_transform.yaml` is swapped for
+# `structure_complex_transform.yaml`. This is the only meaningful diff
+# vs the prior chainembed transform chain:
+#
+#   * `StructureComplexTransform` ADDS two keys to every batch:
+#       - `epitope_tensor`  -- per-residue {0,1} marking the interface
+#                              residues of the non-paratope chain (dimers).
+#                              For monomers and post-crop monomer-equivalent
+#                              inputs, this tensor is all-zero.
+#       - `paratope_tensor` -- same, but for the paratope chain.
+#     The leflur LightningModule's `get_gen_gt_and_conditioning_tensor`
+#     uses `batch["epitope_tensor"]` to populate `conditioning_tensor`
+#     when `cond_percentage > 0`, gating the encoder's
+#     `conditioning_embedding` layer on the interface signal.
+#
+#   * `StructureBackboneTransform` does NOT compute these. So the prior
+#     chainembed transform chain silently disabled epitope conditioning
+#     because the `if "epitope_tensor" in batch` guard in
+#     `get_gen_gt_and_conditioning_tensor` was always False -- the model
+#     was being trained with `conditioning_tensor = 0` regardless of
+#     `cond_percentage`.
+#
+# Application order (insertion order in the resulting transform dict):
+#   1. atom14_to_backbone_transform     -- Pinder atom14 -> backbone (no-op on monomers).
+#   2. structure_alt_seq_swap_transform -- alt-sequence swap.
+#   3. structure_complex_transform      -- backbone normalisation + length crop
+#                                          + epitope_tensor / paratope_tensor on
+#                                          multi-chain inputs (interface residues
+#                                          @ 10A CA-CA, randomly assigns one
+#                                          chain as the paratope per sample).
+#   4. chain_ids_for_embedding_remap    -- remap raw `chains` -> per-residue
+#                                          embedding indices. Runs AFTER the
+#                                          complex transform so that
+#                                          chain-cropped (now-monomer-equivalent)
+#                                          inputs collapse to all-zero remap,
+#                                          matching the encoder's padding_idx=0.
+#   5. structure_amino_acid_tokenizer_transform
+defaults:
+  - _self_
+  - structure_alt_seq_swap_transform.yaml
+  # interface-anchored crop strategy (random paratope, balanced chain split,
+  # 100% of GT interface residues preserved) — see StructureComplexTransform.
+  - structure_complex_transform_interface_anchored.yaml
+  - structure_chain_remap_transform.yaml
+  - structure_amino_acid_tokenizer_transform.yaml
+
+atom14_to_backbone_transform:
+  _target_: lobster.transforms._structure_transforms.Atom14ToBackboneTransform

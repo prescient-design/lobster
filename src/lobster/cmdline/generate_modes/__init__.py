@@ -7,6 +7,8 @@ Each module here implements one generation mode dispatched from
   (+ self-reflection helpers)
 - :mod:`._inverse_folding` — sequence generation conditioned on a fixed structure
 - :mod:`._forward_folding` — structure prediction conditioned on a fixed sequence
+- :mod:`._dimer_forward_folding` — multi-chain forward folding (chain_ids +
+  optional epitope conditioning) with per-chain AND complex-level scoring
 - :mod:`._inpainting` — masked redesign within a fixed structural scaffold
 - :mod:`._binders` — binder design against a target chain
 
@@ -17,6 +19,7 @@ duplicated here.
 """
 
 from ._binders import _generate_binders
+from ._dimer_forward_folding import _generate_dimer_forward_folding
 from ._forward_folding import _generate_forward_folding
 from ._inpainting import _generate_inpainting
 from ._inverse_folding import _generate_inverse_folding
@@ -25,6 +28,7 @@ from ._unconditional import _generate_unconditional
 
 __all__ = [
     "_generate_binders",
+    "_generate_dimer_forward_folding",
     "_generate_forward_folding",
     "_generate_inpainting",
     "_generate_inverse_folding",

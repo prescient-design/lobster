@@ -1,0 +1,30 @@
+# Complex-aware inverse folding callback on Pinder val dimers. Takes the
+# full dimer structure as input, designs sequences for the whole complex,
+# refolds via ESMFold (monomer per chain), and reports the standard
+# inverse-folding metrics (aar / TM / etc.) under the
+# `inverse_folding_pinder_val` namespace.
+#
+# No epitope conditioning needed -- inverse folding has the full structure
+# as input, so the hotspot signal is redundant. We just need the chain-id
+# channel so the model treats the input as multi-chain.
+ComplexInverseFolding:
+  _target_: lobster.callbacks._inverse_folding_callback.InverseFoldingCallback
+  structure_path: ${paths.output_dir}/structures/
+  save_every_n: 20000
+  dataset_name: "pinder_val"
+  dataset_path: "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/val_pdb_processed/"
+  length: 200
+  num_samples: 50
+  use_plm_fold: true
+  max_length: 512
+  use_hf_datasets: false
+  cache_dir: null
+  nsteps: 100
+  temperature_seq: 0.5
+  temperature_struc: 1.0
+  stochasticity_seq: 20
+  stochasticity_struc: 20
+  # Complex-aware
+  use_chain_ids: true
+  max_length_filter: 512
+  min_chains: 2

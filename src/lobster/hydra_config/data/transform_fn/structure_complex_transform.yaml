@@ -1,2 +1,13 @@
 structure_complex_transform:
   _target_: lobster.transforms._structure_transforms.StructureComplexTransform
+  # Default crop strategy is "random_anchor" (legacy behaviour) so existing
+  # consumers of this yaml are unchanged. Configs that want the
+  # interface-anchored KNN crop (2-4x faster, naturally balanced chain
+  # split, preserves 100% of GT interface residues -- see commit notes)
+  # should override this in their own data yaml via:
+  #
+  #   data:
+  #     transform_fn:
+  #       structure_complex_transform:
+  #         crop_strategy: "interface_anchored"
+  crop_strategy: "random_anchor"

@@ -11,7 +11,11 @@ from lobster.model.latent_generator.utils.residue_constants import (
 )
 from lobster.metrics import get_folded_structure_metrics, calculate_percent_identity
 from lobster.data._coord_structure_datamodule import StructureLightningDataModule
-from lobster.transforms._structure_transforms import StructureBackboneTransform
+from lobster.transforms._structure_transforms import (
+    Atom14ToBackboneTransform,
+    StructureBackboneTransform,
+    StructureComplexTransform,
+)
 import tqdm
 from lobster.model import LobsterPLMFold
 from torch.utils.data import DataLoader
@@ -37,6 +41,14 @@ class InverseFoldingCallback(lightning.Callback):
         temperature_struc: float = 1.0,
         stochasticity_seq: int = 20,
         stochasticity_struc: int = 20,
+        # Complex-aware extensions. Inverse folding for dimers needs the
+        # chain-id channel so the model knows the structure is multi-chain
+        # rather than one fused chain. No epitope conditioning here --
+        # inverse folding gives the FULL structure as input, so the model
+        # doesn't need a hotspot hint.
+        use_chain_ids: bool = False,
+        max_length_filter: int | None = None,
+        min_chains: int = 1,
     ):
         self.structure_path = structure_path
         self.save_every_n = save_every_n
@@ -59,6 +71,10 @@ class InverseFoldingCallback(lightning.Callback):
         self.temperature_struc = temperature_struc
         self.stochasticity_seq = stochasticity_seq
         self.stochasticity_struc = stochasticity_struc
+        # Complex-aware (see __init__ docstring above).
+        self.use_chain_ids = use_chain_ids
+        self.max_length_filter = max_length_filter
+        self.min_chains = min_chains
 
         # Auto-generate metric prefix if not provided
         self.metric_prefix = metric_prefix or f"inverse_folding_{self.dataset_name}"
@@ -125,15 +141,29 @@ class InverseFoldingCallback(lightning.Callback):
         for pt_path in dataset_paths:
             logger.info(f"Loading structures from {pt_path}")
             structure_data = torch.load(pt_path, map_location="cpu")
+            # Pinder pt files are atom14; convert to backbone-3 first
+            # (no-op on CATH/CAMEO backbone-3 inputs).
+            if "atom14_coords" in structure_data:
+                structure_data = self._atom14_to_backbone(structure_data)
 
-            # Apply StructureBackboneTransform to ensure consistent format
+            # Apply the structure transform (StructureBackbone or
+            # StructureComplex per the chain-aware flag).
             structure_data = self.structure_transform(structure_data)
 
-            # Filter by minimum length and valid sequences
-            if structure_data["coords_res"].shape[0] >= 30:
-                percent_unknown = (structure_data["sequence"] == 20).sum().float() / structure_data["sequence"].shape[0]
-                if percent_unknown <= 0.1:  # Less than 10% unknown
-                    structures.append(structure_data)
+            # Length filter (e.g. dimers <= 512 for in-distribution eval).
+            L = structure_data["coords_res"].shape[0]
+            if L < 30:
+                continue
+            if self.max_length_filter is not None and L > self.max_length_filter:
+                continue
+            chains_t = structure_data.get("chains")
+            if chains_t is not None and self.min_chains > 1:
+                if int(torch.unique(chains_t).numel()) < self.min_chains:
+                    continue
+            percent_unknown = (structure_data["sequence"] == 20).sum().float() / structure_data["sequence"].shape[0]
+            if percent_unknown > 0.1:
+                continue
+            structures.append(structure_data)
 
             # Limit total structures for efficiency
             if len(structures) >= self.num_samples * 3:  # Load 3x more than needed
@@ -190,7 +220,17 @@ class InverseFoldingCallback(lightning.Callback):
             logger.info(
                 f"Loading structures from .pt files for inverse folding evaluation (dataset: {self.dataset_name})"
             )
-            self.structure_transform = StructureBackboneTransform(max_length=self.max_length)
+            # ComplexTransform when chain-aware (populates the `chains`
+            # tensor and keeps multi-chain inputs as dimers via the
+            # interface-anchored crop); BackboneTransform otherwise
+            # (matches the legacy CATH single-chain pipeline).
+            if self.use_chain_ids:
+                self.structure_transform = StructureComplexTransform(
+                    max_length=self.max_length, crop_strategy="interface_anchored"
+                )
+            else:
+                self.structure_transform = StructureBackboneTransform(max_length=self.max_length)
+            self._atom14_to_backbone = Atom14ToBackboneTransform()
             self.loaded_structures = self._load_structures_from_pt_files()
             logger.info(f"Loaded {len(self.loaded_structures)} structures for evaluation")
         else:
@@ -436,6 +476,8 @@ class InverseFoldingCallback(lightning.Callback):
             coords_res = torch.zeros((B, max_length, 3, 3), device=device)
             mask = torch.zeros((B, max_length), device=device)
             indices = torch.zeros((B, max_length), dtype=torch.long, device=device)
+            chain_ids = torch.zeros((B, max_length), dtype=torch.long, device=device)
+            any_chain_signal = False
 
             # Fill batch tensors
             for i, structure in enumerate(batch_structures):
@@ -444,6 +486,17 @@ class InverseFoldingCallback(lightning.Callback):
                 coords_res[i, :L] = structure["coords_res"].to(device)
                 mask[i, :L] = structure["mask"].to(device)
                 indices[i, :L] = structure["indices"].to(device)
+                # Complex-aware: build per-residue chain-id signal,
+                # mirroring `RemapChainIdsForEmbedding` (chain_idx_0 -> 1,
+                # chain_idx_1 -> 2). Monomers leave chain_ids as zeros
+                # (dead embedding row at padding_idx=0).
+                if self.use_chain_ids and "chains" in structure:
+                    raw_chains = structure["chains"]
+                    uniques = sorted(torch.unique(raw_chains).tolist())[:2]
+                    for cls, raw in enumerate(uniques, start=1):
+                        chain_ids[i, :L][raw_chains == raw] = cls
+                    if len(uniques) > 1:
+                        any_chain_signal = True
 
             mask_orig = mask.clone()
 
@@ -454,6 +507,9 @@ class InverseFoldingCallback(lightning.Callback):
 
             # Generate sequences (inverse folding)
             logger.info(f"Generating sequences for batch {batch_start}-{batch_end} ({B} samples)...")
+            # Complex-aware: pass chain_ids only when configured AND at
+            # least one sample in the batch carries a multi-chain signal.
+            chain_ids_arg = chain_ids if (self.use_chain_ids and any_chain_signal) else None
             generate_sample = model.generate_sample(
                 length=max_length,
                 num_samples=B,
@@ -466,6 +522,7 @@ class InverseFoldingCallback(lightning.Callback):
                 input_structure_coords=coords_res,
                 input_mask=mask,
                 input_indices=indices,
+                chain_ids=chain_ids_arg,
             )
             decoded_x = model.decode_structure(generate_sample, mask)
 

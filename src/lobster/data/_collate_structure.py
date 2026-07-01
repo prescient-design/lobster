@@ -124,6 +124,9 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         padded_epitope_tensor = []
         padded_paratope_tensor = []
 
+    if "chain_ids_for_embedding" in batch[0]:
+        padded_chain_ids_for_embedding = []
+
     for bb_dict in batch:
         coords_res = bb_dict["coords_res"]
         mask = bb_dict["mask"]
@@ -178,6 +181,20 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
                 dim=0,
             )
         )
+        if "chain_ids_for_embedding" in batch[0]:
+            cie = bb_dict["chain_ids_for_embedding"]
+            padded_chain_ids_for_embedding.append(
+                torch.cat(
+                    [
+                        cie,
+                        # Pad with 0 -- the encoder's nn.Embedding is created
+                        # with `padding_idx=0` so padding positions contribute
+                        # a fixed zero vector and are excluded from gradient.
+                        torch.zeros(max_length - cie.shape[0], dtype=cie.dtype),
+                    ],
+                    dim=0,
+                )
+            )
         if "epitope_tensor" in batch[0]:
             padded_epitope_tensor.append(
                 torch.cat(
@@ -314,6 +331,8 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         "sequence": torch.stack(padded_sequence, dim=0),
         "chains": torch.stack(padded_chains, dim=0),
     }
+    if "chain_ids_for_embedding" in batch[0]:
+        out["chain_ids_for_embedding"] = torch.stack(padded_chain_ids_for_embedding, dim=0)
     if "3di_states" in batch[0]:
         out["3di_states"] = torch.stack(padded_3di_states, dim=0)
         out["3di_descriptors"] = torch.stack(padded_3di_descriptors, dim=0)
@@ -341,7 +360,14 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
         out["epitope_tensor"] = torch.stack(padded_epitope_tensor, dim=0)
         out["paratope_tensor"] = torch.stack(padded_paratope_tensor, dim=0)
     if "name" in batch[0]:
-        out["name"] = [bb_dict["name"] for bb_dict in batch]
+        # Heterogeneous batches: when the train mix combines datasets
+        # produced by different preprocessing passes (e.g. the leflur-p
+        # mix's PDB/AFDB/denovo have a `name` key, the Pinder atom14
+        # train set does not), batch[0] may carry the key while a later
+        # item does not. ``.get`` keeps the collate non-fatal -- the
+        # `name` list ends up sparse (None entries for samples that
+        # lack the key) which is purely informational downstream.
+        out["name"] = [bb_dict.get("name") for bb_dict in batch]
 
     return out
 

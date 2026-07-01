@@ -1,0 +1,61 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml
+  # Custom transform chain: prepends `Atom14ToBackboneTransform` (no-op
+  # for PDB monomers, normalises Pinder atom14 -> 3-atom backbone) in
+  # front of the regular backbone + AA-tokenizer transforms so the
+  # mixed (PDB monomer + Pinder dimer) batches share one collate path.
+  - transform_fn: atom14_then_structure_backbone_aa_tokenizer_transform.yaml
+  - collate_fn: collate_fn_backbone_binder_target.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+
+# Concat of (a) PDB monomer splits and (b) Pinder dimer splits, both
+# already pre-processed to the LG datamodule's expected schema. The
+# StructureDataset code accepts either a single `.pt` (PDB) or a
+# directory of loose per-protein `.pt` files (Pinder atom14). For
+# Pinder we use the train/val/test dirs directly -- the datamodule
+# auto-detects by `path.endswith('.pt')`.
+root: /cv/data/ai4dd/data2/lisanzas/latent_generator_files/  # informational only
+path_to_datasets:
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/train_pdb_processed/
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/validation.pt
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/val_pdb_processed/
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/test.pt
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/test_pdb_processed/
+
+# Doubled from 512 to admit the long-tail Pinder dimers (median L=470,
+# p90=969, max 2703). Per the pinder distribution: 1024 covers ~78% of
+# the test split; we accept dropping the 22% L>1024 tail as a finetune
+# scope choice (extending further is mostly a memory budget question).
+max_length: 1024
+
+# Per-dataset cluster files (parallel to `path_to_datasets`). PDB uses
+# its seqid40 cluster file; Pinder has none on this cluster so we pass
+# `null` and accept that minority-upsampling may oversample large
+# Pinder clusters -- acceptable for a short decoder-only finetune.
+cluster_file: null
+cluster_file_list:
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt
+  - null
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt
+  - null
+  - /cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters.pt
+  - null
+
+files_to_keep: null
+files_to_keep_list: [null, null, null, null, null, null]
+
+testing: false
+use_shards: false
+datasets: pdb_pinder_max1024
+
+# Lower batch size for L=1024: attention is O(L^2) so 4x more memory
+# than L=512. Original PDB-only setup used batch_size=40 at L=512 on
+# 80GB A100/B200. With freeze_encoder=true the encoder backward pass
+# is skipped, but the decoder still does full backprop. Setting
+# batch_size=12 keeps a ~6-8 GB working set; the slurm script bumps
+# `accumulate_grad_batches` to 32 to preserve an effective batch
+# size of 384 (vs the prior 640).
+batch_size: 12
+num_workers: 8

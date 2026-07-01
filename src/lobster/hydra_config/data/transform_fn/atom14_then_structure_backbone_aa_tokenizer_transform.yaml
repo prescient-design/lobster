@@ -1,0 +1,22 @@
+# Transform composition for mixed PDB + Pinder data.
+#
+# `atom14_to_backbone_transform` runs first: it normalises the
+# Pinder atom-14 .pt schema (`atom14_coords` + `atom14_mask`) into
+# the 3-atom backbone shape (`coords_res` + `mask`) the downstream
+# transforms + collate expect. It's a no-op for PDB monomer .pt
+# files (which already carry `coords_res`), so a single transform
+# chain can mix both datasets.
+#
+# Defaults below contribute the regular backbone + AA-tokenizer
+# transforms that the original `structure_backbone_aa_tokenizer_transform`
+# yaml provides. `_self_` is FIRST so the atom14 normaliser is the
+# first key inserted into the transform dict (Python dict iteration
+# order is insertion order; the datamodule applies transforms in that
+# order via `transforms.values()`).
+defaults:
+  - _self_
+  - structure_backbone_transform.yaml
+  - structure_amino_acid_tokenizer_transform.yaml
+
+atom14_to_backbone_transform:
+  _target_: lobster.transforms._structure_transforms.Atom14ToBackboneTransform

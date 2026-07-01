@@ -84,6 +84,13 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         sequence_token_pad_token_id: int = 1,
         structure_token_pad_token_id: int = 257,
         conditioning_input_dim: int = 1,
+        # Per-residue chain-id embedding. `max_num_chains + 1` rows: class 0
+        # is reserved as `padding_idx` (frozen at zero, no gradient). Classes
+        # 1..max_num_chains carry learned chain-identity signal for dimers /
+        # higher-order complexes. Defaults to 2 chains (Pinder dimers). Set
+        # `max_num_chains=0` to disable (no layer instantiated) for back-
+        # compatibility with checkpoints that never had chain embedding.
+        max_num_chains: int = 2,
         **neobert_kwargs,
     ) -> None:
         super().__init__()
@@ -120,6 +127,18 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
             structure_token_vocab_size, self.neobert.config.hidden_size, padding_idx=structure_token_pad_token_id
         )
         self.conditioning_embedding = nn.Linear(conditioning_input_dim, self.neobert.config.hidden_size, bias=False)
+        # Per-residue chain-id embedding (additive into the conditioning path).
+        # Disabled (None) when max_num_chains == 0 so legacy leflur-base style
+        # checkpoints can still instantiate this class unchanged.
+        self.max_num_chains = max_num_chains
+        if max_num_chains > 0:
+            self.chain_embedding = nn.Embedding(
+                num_embeddings=max_num_chains + 1,
+                embedding_dim=self.neobert.config.hidden_size,
+                padding_idx=0,
+            )
+        else:
+            self.chain_embedding = None
         self.combine_embedding = nn.Linear(self.neobert.config.hidden_size * 3, self.neobert.config.hidden_size)
 
         # output for sequence and structure tokens
@@ -163,6 +182,7 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         position_ids: Tensor,
         attention_mask: Tensor,
         conditioning_tensor: Tensor | None = None,
+        chain_ids: Tensor | None = None,
         return_auxiliary_tasks: bool = False,
         timesteps: Tensor | None = None,
         **kwargs,
@@ -170,6 +190,14 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         sequence_output = self.sequence_embedding(sequence_input_ids)
         structure_output = self.structure_embedding(structure_input_ids)
         conditioning_output = self.conditioning_embedding(conditioning_tensor)
+        # Additive chain-id signal -- a second conditioning channel on top
+        # of the binary epitope one (`conditioning_tensor`). For monomer
+        # batches (or any time chain_ids is missing / all-zero) the embedding
+        # contributes a zero vector per residue because `padding_idx=0` pins
+        # row 0 at zero and excludes it from gradient. So this is a no-op on
+        # monomers and active only on multi-chain inputs.
+        if self.chain_embedding is not None and chain_ids is not None:
+            conditioning_output = conditioning_output + self.chain_embedding(chain_ids.long())
         combined_output = self.combine_embedding(
             torch.cat([sequence_output, structure_output, conditioning_output], dim=-1)
         )

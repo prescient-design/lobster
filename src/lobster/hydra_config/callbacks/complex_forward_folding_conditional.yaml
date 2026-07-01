@@ -1,0 +1,29 @@
+# Complex-aware forward folding callback on Pinder val dimers WITH epitope
+# conditioning. The structure transform on the loaded structures populates
+# `epitope_tensor` (interface residues on the non-paratope chain) which the
+# callback feeds to `generate_sample(conditioning_tensor_override=...)`.
+#
+# Together with `complex_forward_folding_unconditional.yaml` this isolates
+# the lift from epitope conditioning during training.
+ComplexForwardFoldingConditional:
+  _target_: lobster.callbacks._forward_folding_callback.ForwardFoldingCallback
+  structure_path: ${paths.output_dir}/structures/
+  cameo_data_path: "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/val_pdb_processed/*.pt"
+  save_every_n: 20000
+  num_samples: 50
+  max_length: 512
+  nsteps: 200
+  # batch_size=1 => native-length generation, no intra-batch padding (which
+  # corrupts flow-matching geometry even when masked). See forward_folding.yaml.
+  batch_size: 1
+  temperature_seq: 0.3610371899835548
+  temperature_struc: 0.2195534567490864
+  stochasticity_seq: 1
+  stochasticity_struc: 20
+  cache_dir: null
+  # Complex-aware switches
+  use_chain_ids: true
+  use_epitope_conditioning: true    # cond_tensor = epitope_tensor per sample
+  metric_prefix: "forward_folding_pinder_cond"
+  max_length_filter: 512
+  min_chains: 2

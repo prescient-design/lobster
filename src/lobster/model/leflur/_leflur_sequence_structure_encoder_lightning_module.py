@@ -96,8 +96,25 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         inference_schedule: Callable[..., LinearInferenceSchedule] = LinearInferenceSchedule,
         use_masked_prior: bool = True,
         inverse_folding: bool = False,
+        # Per-residue epitope conditioning. The training loop drops the
+        # conditioning Bernoulli-style at this rate per example (CFG-style
+        # classifier-free guidance training). Default 0.0 preserves the
+        # pre-existing unconditional behaviour bit-for-bit; set >0 only
+        # for finetunes on data that emits `epitope_tensor`
+        # (e.g. Pinder dimers through `BinderTargetTransform`).
+        cond_percentage: float = 0.0,
+        # Fresh-finetune-from-pretrained knobs. These are NOT used inside
+        # __init__ — they're consumed by `cmdline/train.py` AFTER model
+        # instantiation. Declared here purely so Hydra can pass them
+        # through `model.pretrained_ckpt=...` without raising on an
+        # unexpected kwarg, and so they get saved into the checkpoint's
+        # `hyper_parameters` block for reproducibility.
+        pretrained_ckpt: str | None = None,
+        zero_init_conditioning_on_load: bool = False,
+        zero_init_chain_embedding_on_load: bool = False,
     ):
         self.save_hyperparameters()
+        self.cond_percentage = cond_percentage
 
         super().__init__()
 
@@ -348,6 +365,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         residue_index: Tensor,
         conditioning_tensor: Tensor,
         timesteps: dict[str, Tensor] | None = None,
+        chain_ids: Tensor | None = None,
     ) -> dict[str, Tensor]:
         """Forward pass of the model, for inference."""
         if timesteps is not None:
@@ -363,6 +381,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             position_ids=residue_index,
             attention_mask=mask,
             conditioning_tensor=conditioning_tensor,
+            chain_ids=chain_ids,
             timesteps=timesteps,
             return_auxiliary_tasks=False,
         )
@@ -446,14 +465,23 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # prep the input
         with torch.no_grad():
             x_gt, conditioning_tensor, mask, residue_index, conditioning = self.get_gen_gt_and_conditioning_tensor(
-                batch
+                batch, cond_percentage=self.cond_percentage
             )
 
         timesteps = self.get_timesteps(batch)
         x_t = self.interpolate_tokens(x_gt, timesteps)
 
+        # Per-residue chain-id signal (Commit C). Pulled directly from the
+        # batch -- the upstream `RemapChainIdsForEmbedding` transform writes
+        # this key only when the transform yaml requests it AND the data
+        # actually has chain info. When absent the encoder's chain_embedding
+        # short-circuits to a zero contribution (padding_idx=0 + None guard).
+        chain_ids = batch.get("chain_ids_for_embedding")
+
         # gen tokens
-        unmasked_x = self.forward(x_t, mask, residue_index, conditioning_tensor, timesteps=timesteps)
+        unmasked_x = self.forward(
+            x_t, mask, residue_index, conditioning_tensor, timesteps=timesteps, chain_ids=chain_ids
+        )
 
         total_loss, loss_dict = self.apply_interpolant_loss(
             split, x_gt, unmasked_x, mask, total_loss, loss_dict, timesteps
@@ -471,6 +499,14 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             decoder_gt = None
             decoded_x = None
 
+        # With multiple val DataLoaders Lightning's _Metadata equality
+        # includes ``dataloader_idx``, so logging the same key from
+        # different dataloaders with ``add_dataloader_idx=False`` raises
+        # ``MisconfigurationException: ... twice in validation_step with
+        # different arguments``. Letting Lightning auto-suffix to
+        # ``val_loss/dataloader_idx_N`` avoids that; the cleaner semantic
+        # names (``val_loss_cameo``, ``val_loss_pinder_val``) are emitted
+        # explicitly in ``validation_step`` from a fresh log call.
         self.log_dict({f"{split}_loss": total_loss, **loss_dict}, batch_size=x_gt["sequence_tokens"].shape[0])
 
         return {
@@ -487,8 +523,26 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
         return self.step(batch, batch_idx, "train")
 
-    def validation_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        return self.step(batch, batch_idx, "val")
+    def validation_step(self, batch: dict[str, Tensor], batch_idx: int, dataloader_idx: int = 0) -> Tensor:
+        out = self.step(batch, batch_idx, "val")
+        # Per-source breakdown: when the datamodule splits val into
+        # multiple DataLoaders (e.g. CAMEO monomers + Pinder dimers),
+        # emit a clean per-source key so ModelCheckpoint can monitor a
+        # single dataset (``val_loss_cameo``, ``val_loss_pinder_val``).
+        # ``add_dataloader_idx=False`` is safe here because each
+        # dataloader logs a DIFFERENT key (unique source name), so
+        # Lightning's per-key metadata check doesn't collide.
+        dm = getattr(getattr(self, "trainer", None), "datamodule", None)
+        names = getattr(dm, "_val_source_names", None) if dm is not None else None
+        if names and 0 <= dataloader_idx < len(names):
+            self.log(
+                f"val_loss_{names[dataloader_idx]}",
+                out["loss"],
+                sync_dist=True,
+                add_dataloader_idx=False,
+                batch_size=batch["sequence"].shape[0],
+            )
+        return out
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
@@ -535,6 +589,17 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         sequence_anchor_mask: Tensor = None,
         sequence_logit_bias: Tensor | None = None,
         sequence_logit_bias_steps: int = 10,
+        # Per-residue chain-id signal for the encoder's chain_embedding
+        # layer (Commit C). Shape (num_samples, length), long. None or
+        # all-zero disables the chain channel (padding_idx=0 -> embedding
+        # contributes 0). Required for any meaningful dimer-aware inference
+        # on a model trained with `max_num_chains > 0`.
+        chain_ids: Tensor | None = None,
+        # Per-residue epitope/conditioning input for the encoder's
+        # `conditioning_embedding` layer. Shape (num_samples, length, 1),
+        # float in {0, 1}. None falls back to the all-zero default (no
+        # conditioning, matches unconditional leflur-base behaviour).
+        conditioning_tensor_override: Tensor | None = None,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -558,6 +623,14 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         mask = torch.ones((num_samples, length), device=device)
         residue_index = torch.arange(length, device=device)
         conditioning_tensor = torch.zeros((num_samples, length, 1), device=device)
+        # Caller-provided overrides (Commit C wiring + epitope eval). The
+        # all-zero defaults above match the historical unconditional
+        # generation path; overrides activate the trained chain_embedding
+        # and conditioning_embedding signals at inference time.
+        if conditioning_tensor_override is not None:
+            conditioning_tensor = conditioning_tensor_override.to(device)
+        if chain_ids is not None:
+            chain_ids = chain_ids.to(device)
         if inverse_folding:
             if input_structure_coords is not None:
                 x_quant, x_quant_emb, mask = self.encode_structure(
@@ -615,7 +688,9 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             t_struc = inference_schedule_struc.pad_time(num_samples, t_struc, device)
             timesteps = {"sequence_tokens": t_seq, "structure_tokens": t_struc}
 
-            unmasked_x = self.forward(xt, mask, residue_index, conditioning_tensor, timesteps=timesteps)
+            unmasked_x = self.forward(
+                xt, mask, residue_index, conditioning_tensor, timesteps=timesteps, chain_ids=chain_ids
+            )
             unmasked_sequence_tokens = unmasked_x["sequence_logits"]
             if sequence_logit_bias is not None and step_idx < sequence_logit_bias_steps:
                 unmasked_sequence_tokens = unmasked_sequence_tokens + sequence_logit_bias

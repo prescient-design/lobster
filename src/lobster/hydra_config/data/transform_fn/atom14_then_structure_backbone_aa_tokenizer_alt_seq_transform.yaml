@@ -1,0 +1,26 @@
+# Transform composition for mixed (PDB+AFDB+denovo+TED+CATH monomers) +
+# Pinder dimers data — the leflur-p data mix plus Pinder.
+#
+# Mirrors `atom14_then_structure_backbone_aa_tokenizer_transform.yaml`
+# but adds the `structure_alt_seq_swap_transform` that the leflur-p
+# baseline `structure_backbone_aa_tokenizer_alt_seq_transform` chain
+# includes (random alt-sequence swap, used by leflur-p training).
+#
+# Order (insertion = application order via `transforms.values()`):
+#   1. atom14_to_backbone_transform  — Pinder atom14 -> 3-atom backbone
+#      (no-op for PDB/AFDB/denovo/TED/CATH which already carry `coords_res`).
+#   2. structure_alt_seq_swap_transform  — alt-sequence swap.
+#   3. structure_backbone_transform.
+#   4. structure_amino_acid_tokenizer_transform.
+#
+# `_self_` is FIRST in defaults so the atom14 normaliser is the first key
+# inserted into the transform dict (Python dict iteration order = insertion
+# order).
+defaults:
+  - _self_
+  - structure_alt_seq_swap_transform.yaml
+  - structure_backbone_transform.yaml
+  - structure_amino_acid_tokenizer_transform.yaml
+
+atom14_to_backbone_transform:
+  _target_: lobster.transforms._structure_transforms.Atom14ToBackboneTransform

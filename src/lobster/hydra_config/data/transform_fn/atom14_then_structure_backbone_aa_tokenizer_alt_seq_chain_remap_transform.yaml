@@ -1,0 +1,30 @@
+# Transform chain for the leflur+Pinder+chain-id-embedding finetune
+# (Commit C / Exp C).
+#
+# Application order (insertion order in the resulting transform dict):
+#   1. atom14_to_backbone_transform     -- Pinder atom14 -> backbone (no-op on monomers).
+#   2. structure_alt_seq_swap_transform -- alt-sequence swap.
+#   3. structure_backbone_transform     -- backbone normalisation + length crop
+#                                          (may slice multi-chain inputs down to
+#                                          a single chain when L>max_length).
+#   4. chain_ids_for_embedding_remap    -- remap raw `chains` -> per-residue
+#                                          embedding indices. Runs AFTER the
+#                                          backbone transform so that
+#                                          chain-cropped inputs collapse to
+#                                          all-zero (monomer-equivalent)
+#                                          remap, matching what the encoder's
+#                                          padding_idx=0 expects.
+#   5. structure_amino_acid_tokenizer_transform
+#
+# `_self_` is FIRST in defaults so `atom14_to_backbone_transform` (the only
+# key in `_self_`) is the first key inserted. Subsequent defaults files
+# extend the dict in order, giving us 2-3-4-5 above.
+defaults:
+  - _self_
+  - structure_alt_seq_swap_transform.yaml
+  - structure_backbone_transform.yaml
+  - structure_chain_remap_transform.yaml
+  - structure_amino_acid_tokenizer_transform.yaml
+
+atom14_to_backbone_transform:
+  _target_: lobster.transforms._structure_transforms.Atom14ToBackboneTransform

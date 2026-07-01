@@ -1,0 +1,7 @@
+# Wrapper around `structure_complex_transform` that defaults
+# crop_strategy="interface_anchored". Same class instance, just a different
+# default so the new leflur+pinder+complex pipeline picks up the better
+# crop without having to override at the experiment level.
+structure_complex_transform:
+  _target_: lobster.transforms._structure_transforms.StructureComplexTransform
+  crop_strategy: "interface_anchored"

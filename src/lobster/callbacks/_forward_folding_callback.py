@@ -10,7 +10,12 @@ from lobster.model.latent_generator.utils.residue_constants import (
     restype_order_with_x_inv,
 )
 from lobster.metrics import align_and_compute_rmsd
-from lobster.transforms._structure_transforms import StructureBackboneTransform, AminoAcidTokenizerTransform
+from lobster.transforms._structure_transforms import (
+    AminoAcidTokenizerTransform,
+    Atom14ToBackboneTransform,
+    StructureBackboneTransform,
+    StructureComplexTransform,
+)
 from tmtools import tm_align
 import tqdm
 
@@ -40,6 +45,12 @@ class ForwardFoldingCallback(lightning.Callback):
         stochasticity_seq: int = 1,
         stochasticity_struc: int = 20,
         cache_dir: str | None = None,
+        # Complex-aware extensions (Pinder dimer val sets):
+        use_chain_ids: bool = False,
+        use_epitope_conditioning: bool = False,
+        metric_prefix: str | None = None,
+        max_length_filter: int | None = None,
+        min_chains: int = 1,
     ):
         """Initialize forward folding callback.
 
@@ -69,6 +80,37 @@ class ForwardFoldingCallback(lightning.Callback):
         self.stochasticity_seq = stochasticity_seq
         self.stochasticity_struc = stochasticity_struc
         self.cache_dir = cache_dir
+        # Complex-aware extensions. Default-off keeps single-chain CAMEO
+        # callers (the historical caller) bit-identical to the prior
+        # behaviour.
+        #
+        # use_chain_ids: build per-residue chain_ids tensor from each
+        #   structure's `chains` field (remapped via the
+        #   `RemapChainIdsForEmbedding` convention: chain_idx_0 -> 1,
+        #   chain_idx_1 -> 2, monomers -> 0 / dead embedding) and pass
+        #   it to ``generate_sample(chain_ids=...)``. Required for any
+        #   dimer-aware forward folding on a model trained with
+        #   `max_num_chains > 0`.
+        #
+        # use_epitope_conditioning: use each structure's `epitope_tensor`
+        #   (populated by `StructureComplexTransform`) as the
+        #   `conditioning_tensor_override` for `generate_sample`. Pair
+        #   with `use_chain_ids=True` and a Pinder val set when the
+        #   training pipeline learns epitope conditioning.
+        #
+        # metric_prefix: namespace the W&B keys to disambiguate multiple
+        #   forward-folding callbacks in the same run (e.g.
+        #   "forward_folding_pinder_cond" vs ..._uncond).
+        #
+        # max_length_filter / min_chains: post-load filters applied to
+        #   structures. Useful for restricting a complex-callback to
+        #   "dimers with L <= 512 only" so the eval respects the same
+        #   crop boundary as training.
+        self.use_chain_ids = use_chain_ids
+        self.use_epitope_conditioning = use_epitope_conditioning
+        self.metric_prefix = metric_prefix or "forward_folding"
+        self.max_length_filter = max_length_filter
+        self.min_chains = min_chains
         self.cameo_structures = None
         self.tokenizer_transform = None
         self.structure_transform = None
@@ -102,14 +144,29 @@ class ForwardFoldingCallback(lightning.Callback):
             logger.info(f"Loading structures from {pt_path}")
             structure_data = torch.load(pt_path, map_location="cpu")
 
-            # Apply StructureBackboneTransform to ensure consistent format
+            # Pinder pt files are atom14; convert to backbone-3 first.
+            if "atom14_coords" in structure_data:
+                structure_data = self._atom14_to_backbone(structure_data)
+            # Apply the structure transform (StructureBackbone or
+            # StructureComplex per init).
             structure_data = self.structure_transform(structure_data)
 
-            # Filter by minimum length and valid sequences
-            if structure_data["coords_res"].shape[0] >= 30:
-                percent_unknown = (structure_data["sequence"] == 20).sum().float() / structure_data["sequence"].shape[0]
-                if percent_unknown <= 0.1:  # Less than 10% unknown
-                    structures.append(structure_data)
+            # Length filter (e.g. dimers <= 512 for in-distribution eval).
+            L = structure_data["coords_res"].shape[0]
+            if L < 30:
+                continue
+            if self.max_length_filter is not None and L > self.max_length_filter:
+                continue
+            # Chain count filter (e.g. dimers only).
+            chains_t = structure_data.get("chains")
+            if chains_t is not None and self.min_chains > 1:
+                if int(torch.unique(chains_t).numel()) < self.min_chains:
+                    continue
+            # Sequence quality filter (drop structures with > 10% UNK).
+            percent_unknown = (structure_data["sequence"] == 20).sum().float() / structure_data["sequence"].shape[0]
+            if percent_unknown > 0.1:
+                continue
+            structures.append(structure_data)
 
             # Limit total structures for efficiency
             if len(structures) >= self.num_samples * 3:  # Load 3x more than needed
@@ -124,14 +181,32 @@ class ForwardFoldingCallback(lightning.Callback):
         if trainer.global_rank != 0:
             return
 
-        # Initialize transforms
-        self.structure_transform = StructureBackboneTransform(max_length=self.max_length)
+        # Initialize transforms. When chain_ids or epitope conditioning is
+        # requested we MUST use `StructureComplexTransform` (with the
+        # interface-anchored crop) so each batch carries the per-residue
+        # `chains` + `epitope_tensor` keys that downstream needs. For the
+        # historical monomer-CAMEO callback we keep the lighter
+        # `StructureBackboneTransform` to avoid changing baseline runs.
+        if self.use_chain_ids or self.use_epitope_conditioning:
+            self.structure_transform = StructureComplexTransform(
+                max_length=self.max_length, crop_strategy="interface_anchored"
+            )
+        else:
+            self.structure_transform = StructureBackboneTransform(max_length=self.max_length)
+        # Apply atom14 -> backbone before the transforms (Pinder is stored
+        # as atom14; CAMEO is stored as backbone-3). Putting this in front
+        # is a no-op for backbone-3 inputs.
+        self._atom14_to_backbone = Atom14ToBackboneTransform()
         self.tokenizer_transform = AminoAcidTokenizerTransform(max_length=self.max_length)
 
-        # Load CAMEO structures directly
+        # Load structures directly
         self.cameo_structures = self._load_cameo_structures()
 
-        logger.info(f"Loaded {len(self.cameo_structures)} CAMEO structures for evaluation")
+        logger.info(
+            f"Loaded {len(self.cameo_structures)} structures for evaluation "
+            f"(prefix={self.metric_prefix} chain_ids={self.use_chain_ids} "
+            f"epitope={self.use_epitope_conditioning})"
+        )
 
     def on_train_batch_end(self, trainer, model, outputs, batch, batch_idx):
         """Called at the end of each training batch."""
@@ -198,6 +273,10 @@ class ForwardFoldingCallback(lightning.Callback):
             coords_res = torch.zeros((B, max_length, 3, 3), device=device)
             mask = torch.zeros((B, max_length), device=device)
             indices = torch.zeros((B, max_length), dtype=torch.long, device=device)
+            chain_ids = torch.zeros((B, max_length), dtype=torch.long, device=device)
+            cond_tensor = torch.zeros((B, max_length, 1), device=device)
+            any_chain_signal = False
+            any_cond_signal = False
 
             # Fill batch tensors
             for i, structure in enumerate(batch_structures):
@@ -206,6 +285,26 @@ class ForwardFoldingCallback(lightning.Callback):
                 coords_res[i, :L] = structure["coords_res"].to(device)
                 mask[i, :L] = structure["mask"].to(device)
                 indices[i, :L] = structure["indices"].to(device)
+                # Complex-aware: build per-residue chain-id signal for the
+                # encoder's chain_embedding layer. Mirrors
+                # `RemapChainIdsForEmbedding` (chain_idx_0 -> 1,
+                # chain_idx_1 -> 2; monomers stay 0 / dead embedding).
+                if self.use_chain_ids and "chains" in structure:
+                    raw_chains = structure["chains"]
+                    uniques = sorted(torch.unique(raw_chains).tolist())[:2]
+                    for cls, raw in enumerate(uniques, start=1):
+                        chain_ids[i, :L][raw_chains == raw] = cls
+                    if len(uniques) > 1:
+                        any_chain_signal = True
+                # Complex-aware: epitope conditioning (1 on epitope residues,
+                # 0 elsewhere). Falls back to all-zeros for samples without
+                # an epitope_tensor (monomers, or dimers cropped to a single
+                # chain by the transform).
+                if self.use_epitope_conditioning and "epitope_tensor" in structure:
+                    ep = structure["epitope_tensor"].float().to(device)
+                    cond_tensor[i, :L, 0] = ep
+                    if ep.any():
+                        any_cond_signal = True
 
             mask_orig = mask.clone()
 
@@ -226,8 +325,16 @@ class ForwardFoldingCallback(lightning.Callback):
                 seq_len = min(len(tokenized_seq), max_length)
                 tokenized_sequences[i, :seq_len] = tokenized_seq[:seq_len]
 
-            # Generate structures from sequences (forward folding)
+            # Generate structures from sequences (forward folding). Pass
+            # chain_ids / conditioning_tensor_override only when the
+            # callback was configured for complex-aware eval AND at least
+            # one sample in the batch carries the corresponding signal.
+            # Passing all-zeros is equivalent to passing None (both leave
+            # the respective embedding rows dead) but explicit None keeps
+            # the model's autograph cleaner.
             logger.info(f"Generating structures for batch (batch {batch_start}-{batch_end}, {B} samples)...")
+            chain_ids_arg = chain_ids if (self.use_chain_ids and any_chain_signal) else None
+            cond_arg = cond_tensor if (self.use_epitope_conditioning and any_cond_signal) else None
             generate_sample = model.generate_sample(
                 length=max_length,
                 num_samples=B,
@@ -240,6 +347,8 @@ class ForwardFoldingCallback(lightning.Callback):
                 input_sequence_tokens=tokenized_sequences,
                 input_mask=mask,
                 input_indices=indices,
+                chain_ids=chain_ids_arg,
+                conditioning_tensor_override=cond_arg,
             )
 
             # Decode structures
@@ -338,11 +447,15 @@ class ForwardFoldingCallback(lightning.Callback):
         avg_tm_score = sum(all_tm_scores) / len(all_tm_scores)
         avg_rmsd = sum(all_rmsd_scores) / len(all_rmsd_scores)
 
-        # Log averaged metrics to WandB
+        # Log averaged metrics to WandB. Namespace by `metric_prefix` so
+        # multiple forward-folding callbacks in the same training run
+        # (e.g. monomer CAMEO + complex Pinder conditional / unconditional)
+        # log to distinct keys.
+        prefix = self.metric_prefix.rstrip("/") if self.metric_prefix else "forward_folding"
         metrics_to_log = {
-            "forward_folding/tm_score": avg_tm_score,
-            "forward_folding/rmsd": avg_rmsd,
-            "forward_folding/num_samples": len(all_tm_scores),
+            f"{prefix}/tm_score": avg_tm_score,
+            f"{prefix}/rmsd": avg_rmsd,
+            f"{prefix}/num_samples": len(all_tm_scores),
         }
         model.log_dict(metrics_to_log, batch_size=1)
 

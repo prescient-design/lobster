@@ -6,7 +6,13 @@ ForwardFoldingCallback:
   num_samples: 127
   max_length: 512
   nsteps: 200
-  batch_size: 10
+  # batch_size=1 => the callback generates at each structure's NATIVE length
+  # (it uses max(coords in batch) as the sample length). Any batch_size>1
+  # pads shorter structures up to the batch-max length, and masked padding
+  # still corrupts flow-matching geometry (measured: CAMEO TM 0.18 padded
+  # to 512 vs 0.67 native). Keep at 1 so training-time fwd-fold TM reflects
+  # real folding quality, matching the eval pipeline.
+  batch_size: 1
   temperature_seq: 0.3610371899835548
   temperature_struc: 0.2195534567490864
   stochasticity_seq: 1

@@ -357,16 +357,36 @@ class StructureLightningDataModule(LightningDataModule):
                             ]
                         )
 
-                    self._val_dataset = torch.utils.data.ConcatDataset(
-                        [
-                            self._create_dataset(
-                                self._path_to_datasets[j],
-                                dataset_type=self._dataset_types[j],
-                            )
-                            for j in range(len(self._path_to_datasets))
-                            if "val" in self._path_to_datasets[j]
-                        ]
-                    )
+                    # Build val datasets per source so val_dataloader can
+                    # return a list[DataLoader] and the lightning module can
+                    # log a separate ``val_loss_<source>`` per source (e.g.
+                    # CAMEO monomers vs Pinder dimers). The aggregate
+                    # ``val_loss`` is preserved by Lightning's default
+                    # multi-dataloader log-merging (see lightning_module
+                    # step() with add_dataloader_idx=False).
+                    _val_paths = [p for p in self._path_to_datasets if "val" in p]
+                    _val_dtypes = [self._dataset_types[j] for j, p in enumerate(self._path_to_datasets) if "val" in p]
+                    self._val_datasets_per_source = [
+                        self._create_dataset(p, dataset_type=dt) for p, dt in zip(_val_paths, _val_dtypes)
+                    ]
+                    # Source name derived from the path: "cameo" if the path
+                    # mentions cameo, "pinder_val" for pinder, else the
+                    # directory's basename. Used as the per-loader metric
+                    # suffix in the lightning module.
+                    import os as _os
+
+                    def _name_from_path(p: str) -> str:
+                        lp = p.lower()
+                        if "cameo" in lp:
+                            return "cameo"
+                        if "pinder" in lp:
+                            return "pinder_val"
+                        if "sabdab" in lp:
+                            return "sabdab_val"
+                        return _os.path.basename(p.rstrip("/")) or "val"
+
+                    self._val_source_names = [_name_from_path(p) for p in _val_paths]
+                    self._val_dataset = torch.utils.data.ConcatDataset(self._val_datasets_per_source)
                     self._test_dataset = torch.utils.data.ConcatDataset(
                         [
                             self._create_dataset(
@@ -493,9 +513,29 @@ class StructureLightningDataModule(LightningDataModule):
             drop_last=self._drop_last,
         )
 
-    def val_dataloader(self) -> DataLoader:
+    def val_dataloader(self) -> DataLoader | list[DataLoader]:
         # Validation uses standard sequential sampling (no custom sampler)
-        # to ensure reproducible evaluation and compatibility with DDP
+        # to ensure reproducible evaluation and compatibility with DDP.
+        # When there are >= 2 val sources we return one DataLoader per
+        # source so the lightning module can log a separate per-source
+        # ``val_loss_<source>`` (Lightning's default add_dataloader_idx
+        # behaviour is overridden in step() so the aggregate ``val_loss``
+        # is preserved).
+        per_source = getattr(self, "_val_datasets_per_source", None)
+        if per_source and len(per_source) >= 2:
+            return [
+                DataLoader(
+                    ds,
+                    batch_size=self._batch_size,
+                    shuffle=False,
+                    sampler=None,
+                    num_workers=self._num_workers,
+                    collate_fn=self._collate_fn,
+                    pin_memory=self._pin_memory,
+                    drop_last=self._drop_last,
+                )
+                for ds in per_source
+            ]
         return DataLoader(
             self._val_dataset,
             batch_size=self._batch_size,
