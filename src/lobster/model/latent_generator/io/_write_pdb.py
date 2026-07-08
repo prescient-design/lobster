@@ -816,7 +816,7 @@ aa2long = [
 
 
 # writepdb
-def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True):
+def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True, chains=None):
     """Write protein structure to a PDB file.
 
     Args:
@@ -830,6 +830,10 @@ def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True):
         bfacts: Optional tensor of B-factors (default: zeros)
         add_cb_o: If True and atoms has shape [N, 3, 3] (backbone only), add
             idealized O and CB atoms. CB is not added for glycine. Default: True
+        chains: Optional per-residue chain identifiers (tensor or list, length
+            num_residues). Distinct values are mapped to chain letters A, B, C, …
+            in order of first appearance, and a TER record is written at each
+            chain boundary. Default None -> everything on chain "A" (legacy).
     """
     f = open(filename, "w")
     ctr = 1
@@ -843,10 +847,25 @@ def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True):
     Bfacts = torch.clamp(bfacts.cpu(), 0, 1)
     num_residues = len(scpu)
 
+    # Per-residue chain letters (map distinct chain ids -> A, B, C, ... by first appearance).
+    if chains is not None:
+        _ch = chains.cpu().squeeze().tolist() if hasattr(chains, "cpu") else list(chains)
+        _letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        _seen: dict = {}
+        chain_letters = []
+        for _c in _ch:
+            if _c not in _seen:
+                _seen[_c] = _letters[len(_seen) % 26]
+            chain_letters.append(_seen[_c])
+    else:
+        chain_letters = ["A"] * num_residues
+
     for i, s in enumerate(scpu):
+        if i > 0 and chain_letters[i] != chain_letters[i - 1]:
+            f.write("TER\n")
         if len(atomscpu.shape) == 2:
             f.write(
-                f"{'ATOM':<6}{ctr:>5} {'CA':>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {atomscpu[i, 0]:8.3f}{atomscpu[i, 1]:8.3f}{atomscpu[i, 2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                f"{'ATOM':<6}{ctr:>5} {'CA':>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {atomscpu[i, 0]:8.3f}{atomscpu[i, 1]:8.3f}{atomscpu[i, 2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
             )
             ctr += 1
         elif atomscpu.shape[1] == 3:
@@ -858,19 +877,19 @@ def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True):
 
                 # Write N
                 f.write(
-                    f"{'ATOM':<6}{ctr:>5} {' N  ':>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {n_pos[0]:8.3f}{n_pos[1]:8.3f}{n_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                    f"{'ATOM':<6}{ctr:>5} {' N  ':>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {n_pos[0]:8.3f}{n_pos[1]:8.3f}{n_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
                 )
                 ctr += 1
 
                 # Write CA
                 f.write(
-                    f"{'ATOM':<6}{ctr:>5} {' CA ':>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {ca_pos[0]:8.3f}{ca_pos[1]:8.3f}{ca_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                    f"{'ATOM':<6}{ctr:>5} {' CA ':>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {ca_pos[0]:8.3f}{ca_pos[1]:8.3f}{ca_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
                 )
                 ctr += 1
 
                 # Write C
                 f.write(
-                    f"{'ATOM':<6}{ctr:>5} {' C  ':>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {c_pos[0]:8.3f}{c_pos[1]:8.3f}{c_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                    f"{'ATOM':<6}{ctr:>5} {' C  ':>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {c_pos[0]:8.3f}{c_pos[1]:8.3f}{c_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
                 )
                 ctr += 1
 
@@ -878,7 +897,7 @@ def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True):
                 next_n_pos = atomscpu[i + 1, 0] if i < num_residues - 1 else None
                 o_pos = calculate_idealized_o(ca_pos, c_pos, next_n_pos)
                 f.write(
-                    f"{'ATOM':<6}{ctr:>5} {' O  ':>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {o_pos[0]:8.3f}{o_pos[1]:8.3f}{o_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                    f"{'ATOM':<6}{ctr:>5} {' O  ':>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {o_pos[0]:8.3f}{o_pos[1]:8.3f}{o_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
                 )
                 ctr += 1
 
@@ -886,14 +905,14 @@ def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True):
                 if s != GLY_INDEX:
                     cb_pos = calculate_idealized_cb(n_pos, ca_pos, c_pos)
                     f.write(
-                        f"{'ATOM':<6}{ctr:>5} {' CB ':>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {cb_pos[0]:8.3f}{cb_pos[1]:8.3f}{cb_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                        f"{'ATOM':<6}{ctr:>5} {' CB ':>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {cb_pos[0]:8.3f}{cb_pos[1]:8.3f}{cb_pos[2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
                     )
                     ctr += 1
             else:
                 # Original behavior: just N, CA, C
                 for j, atm_j in enumerate([" N  ", " CA ", " C  "]):
                     f.write(
-                        f"{'ATOM':<6}{ctr:>5} {atm_j:>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {atomscpu[i, j, 0]:8.3f}{atomscpu[i, j, 1]:8.3f}{atomscpu[i, j, 2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                        f"{'ATOM':<6}{ctr:>5} {atm_j:>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {atomscpu[i, j, 0]:8.3f}{atomscpu[i, j, 1]:8.3f}{atomscpu[i, j, 2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
                     )
                     ctr += 1
         else:
@@ -937,7 +956,7 @@ def writepdb(filename, atoms, seq, idx_pdb=None, bfacts=None, add_cb_o=True):
             for j, atm_j in enumerate(atms):
                 if j < natoms and atm_j is not None:  # and not torch.isnan(atomscpu[i,j,:]).any()):
                     f.write(
-                        f"{'ATOM':<6}{ctr:>5} {atm_j:>4} {num2aa[s]:>3} {'A'}{idx_pdb[i]:>4}    {atomscpu[i, j, 0]:8.3f}{atomscpu[i, j, 1]:8.3f}{atomscpu[i, j, 2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
+                        f"{'ATOM':<6}{ctr:>5} {atm_j:>4} {num2aa[s]:>3} {chain_letters[i]}{idx_pdb[i]:>4}    {atomscpu[i, j, 0]:8.3f}{atomscpu[i, j, 1]:8.3f}{atomscpu[i, j, 2]:8.3f}{1.0:6.2f}{Bfacts[i]:6.2f}\n"
                     )
                     ctr += 1
 

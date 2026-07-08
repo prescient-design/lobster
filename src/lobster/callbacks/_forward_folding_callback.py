@@ -1,5 +1,8 @@
 import lightning
 import os
+import json
+import subprocess
+import tempfile
 import torch
 import glob
 from loguru import logger
@@ -51,6 +54,12 @@ class ForwardFoldingCallback(lightning.Callback):
         metric_prefix: str | None = None,
         max_length_filter: int | None = None,
         min_chains: int = 1,
+        # DockQ interface-quality scoring (complex eval only). Runs in an
+        # isolated venv (DockQ pins numpy<2) via subprocess, so it never
+        # touches the training env. Only fires for multi-chain structures.
+        use_dockq: bool = False,
+        dockq_python: str | None = None,
+        dockq_script: str | None = None,
     ):
         """Initialize forward folding callback.
 
@@ -111,6 +120,13 @@ class ForwardFoldingCallback(lightning.Callback):
         self.metric_prefix = metric_prefix or "forward_folding"
         self.max_length_filter = max_length_filter
         self.min_chains = min_chains
+        self.use_dockq = use_dockq
+        self.dockq_python = dockq_python or os.environ.get(
+            "DOCKQ_PYTHON", "/cv/scratch/u/lisanzas/.dockq_venv/bin/python"
+        )
+        self.dockq_script = dockq_script or os.environ.get(
+            "DOCKQ_SCRIPT", "/cv/home/lisanzas/lobster/scripts/_dockq_pair.py"
+        )
         self.cameo_structures = None
         self.tokenizer_transform = None
         self.structure_transform = None
@@ -237,6 +253,36 @@ class ForwardFoldingCallback(lightning.Callback):
         if is_forward_folding_step and trainer.world_size > 1:
             torch.distributed.barrier()
 
+    def _dockq_pair(self, gen_coords, gt_coords, seq_i, chains_i):
+        """Score a predicted complex interface against native with DockQ.
+
+        Writes pred + native 2-chain PDBs (chains from ``chains_i``) to a temp
+        dir and runs the DockQ scorer in its isolated venv via subprocess.
+        Returns a metrics dict (DockQ/fnat/irmsd/lrmsd) or None on failure.
+        """
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                mp = os.path.join(td, "model.pdb")
+                npdb = os.path.join(td, "native.pdb")
+                writepdb(mp, gen_coords, seq_i, chains=chains_i)
+                writepdb(npdb, gt_coords, seq_i, chains=chains_i)
+                out = subprocess.run(
+                    [self.dockq_python, self.dockq_script, mp, npdb],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                lines = out.stdout.strip().splitlines()
+                line = lines[-1] if lines else ""
+                d = json.loads(line) if line.startswith("{") else {}
+                if "DockQ" in d:
+                    return d
+                logger.warning(f"DockQ no score: {d.get('error', out.stderr[-200:])}")
+                return None
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"DockQ failed: {e}")
+            return None
+
     def _perform_forward_folding(self, trainer, model, device, batch_idx, current_step):
         """Perform forward folding on CAMEO validation examples.
 
@@ -251,6 +297,7 @@ class ForwardFoldingCallback(lightning.Callback):
         # Initialize lists to accumulate metrics
         all_tm_scores = []
         all_rmsd_scores = []
+        all_dockq, all_fnat, all_irmsd, all_lrmsd = [], [], [], []
 
         # Process CAMEO structures in batches
         batch_size = self.eval_batch_size
@@ -377,8 +424,12 @@ class ForwardFoldingCallback(lightning.Callback):
                 seq = generate_sample["sequence_logits"].argmax(dim=-1)
                 seq[seq > 21] = 20
 
-            # Only save structures for the first batch
-            if batch_start == 0:
+            # Only save structures for the first batch, and only when a real
+            # structure_path is set. structure_path=None means metrics-only
+            # (compute + log TM/RMSD, skip PDB dumps): without this guard the
+            # save path formats to the literal string "None/forward_folding/..."
+            # and writepdb crashes with FileNotFoundError.
+            if self.structure_path is not None and batch_start == 0:
                 # Save generated and ground truth structures
                 for i in range(min(5, B)):  # Save first 5 samples
                     seq_i = seq[i, mask_orig[i] == 1]
@@ -430,6 +481,17 @@ class ForwardFoldingCallback(lightning.Callback):
                 )
                 batch_rmsd_scores.append(rmsd)
 
+                # DockQ interface-quality score (multi-chain complexes only).
+                if self.use_dockq:
+                    ch_i = chain_ids[i, mask_orig[i] == 1]
+                    if int(ch_i.unique().numel()) >= 2:
+                        dq = self._dockq_pair(gen_coords, gt_coords, seq_i, ch_i)
+                        if dq is not None:
+                            all_dockq.append(dq["DockQ"])
+                            all_fnat.append(dq["fnat"])
+                            all_irmsd.append(dq["irmsd"])
+                            all_lrmsd.append(dq["lrmsd"])
+
             # Accumulate metrics
             all_tm_scores.extend(batch_tm_scores)
             all_rmsd_scores.extend(batch_rmsd_scores)
@@ -457,10 +519,28 @@ class ForwardFoldingCallback(lightning.Callback):
             f"{prefix}/rmsd": avg_rmsd,
             f"{prefix}/num_samples": len(all_tm_scores),
         }
+        # DockQ interface metrics (only when complexes were scored).
+        if all_dockq:
+            metrics_to_log.update(
+                {
+                    f"{prefix}/dockq": sum(all_dockq) / len(all_dockq),
+                    f"{prefix}/dockq_fnat": sum(all_fnat) / len(all_fnat),
+                    f"{prefix}/dockq_irmsd": sum(all_irmsd) / len(all_irmsd),
+                    f"{prefix}/dockq_lrmsd": sum(all_lrmsd) / len(all_lrmsd),
+                    f"{prefix}/dockq_acceptable_frac": sum(1 for q in all_dockq if q >= 0.23) / len(all_dockq),
+                    f"{prefix}/dockq_num": len(all_dockq),
+                }
+            )
         model.log_dict(metrics_to_log, batch_size=1)
 
         logger.info(f"Forward Folding Validation Results (step {current_step}):")
         logger.info(f"  Average TM-score: {avg_tm_score:.3f} (n={len(all_tm_scores)})")
         logger.info(f"  Average RMSD: {avg_rmsd:.2f} Å")
+        if all_dockq:
+            logger.info(
+                f"  Average DockQ: {sum(all_dockq) / len(all_dockq):.3f} "
+                f"(n={len(all_dockq)}, acceptable≥0.23: "
+                f"{100 * sum(1 for q in all_dockq if q >= 0.23) / len(all_dockq):.0f}%)"
+            )
         # Free GPU memory before returning to training (reduces OOM risk)
         torch.cuda.empty_cache()

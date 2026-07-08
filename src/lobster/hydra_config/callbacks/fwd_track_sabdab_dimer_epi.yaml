@@ -1,0 +1,25 @@
+# Tracking callback: SAbDab dimer forward folding WITH oracle epitope
+# conditioning (GT interface residues fed as conditioning_tensor). Pair
+# with fwd_track_sabdab_dimer.yaml (unconditional) to measure whether the
+# epitope signal helps antibody-antigen assembly as the fresh-init
+# conditioning embedding trains up. M-recipe, metrics only.
+FwdTrackSabdabDimerEpi:
+  _target_: lobster.callbacks._forward_folding_callback.ForwardFoldingCallback
+  structure_path: null
+  cameo_data_path: "/cv/scratch/u/lisanzas/sabdab_atom14/val_pdb_processed/*.pt"
+  save_every_n: 20000
+  num_samples: 50
+  max_length: 512
+  nsteps: 100
+  batch_size: 1
+  temperature_seq: 0.2967457760634187
+  temperature_struc: 0.1102551183666233
+  stochasticity_seq: 10
+  stochasticity_struc: 30
+  cache_dir: null
+  use_chain_ids: true
+  use_epitope_conditioning: true
+  metric_prefix: "fwd_sabdab_dimer_epi"
+  max_length_filter: 512
+  min_chains: 2
+  use_dockq: true

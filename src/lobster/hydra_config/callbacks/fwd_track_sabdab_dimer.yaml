@@ -1,0 +1,24 @@
+# Tracking callback: SAbDab dimer (antibody-antigen) forward folding.
+# Multi-chain inputs with chain_ids on, so the model co-folds Ab + Ag into
+# one complex; the callback's whole-structure TM is the complex TM.
+# Unconditional (no epitope hint), M-recipe, metrics only.
+FwdTrackSabdabDimer:
+  _target_: lobster.callbacks._forward_folding_callback.ForwardFoldingCallback
+  structure_path: null
+  cameo_data_path: "/cv/scratch/u/lisanzas/sabdab_atom14/val_pdb_processed/*.pt"
+  save_every_n: 20000
+  num_samples: 50
+  max_length: 512
+  nsteps: 100
+  batch_size: 1
+  temperature_seq: 0.2967457760634187
+  temperature_struc: 0.1102551183666233
+  stochasticity_seq: 10
+  stochasticity_struc: 30
+  cache_dir: null
+  use_chain_ids: true
+  use_epitope_conditioning: false
+  metric_prefix: "fwd_sabdab_dimer"
+  max_length_filter: 512
+  min_chains: 2
+  use_dockq: true

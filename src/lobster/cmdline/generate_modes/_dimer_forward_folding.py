@@ -42,6 +42,9 @@ Reads from ``cfg.generation``:
 from __future__ import annotations
 
 import glob
+import json
+import os
+import subprocess
 from pathlib import Path
 
 import torch
@@ -51,14 +54,21 @@ from tmtools import tm_align
 
 from lobster.metrics import align_and_compute_rmsd
 from lobster.model.latent_generator.io import writepdb
-from lobster.model.latent_generator.utils.residue_constants import (
-    convert_lobster_aa_tokenization_to_standard_aa,
-    restype_order_with_x_inv,
-)
-from lobster.transforms._structure_transforms import (
-    AminoAcidTokenizerTransform,
-    Atom14ToBackboneTransform,
-)
+
+
+def _dockq_score(model_pdb: str, native_pdb: str, dockq_python: str, dockq_script: str) -> float | None:
+    """Run DockQ (isolated venv, subprocess) on a predicted vs native complex PDB.
+    Returns the best-interface DockQ score, or None on failure."""
+    try:
+        out = subprocess.run(
+            [dockq_python, dockq_script, model_pdb, native_pdb], capture_output=True, text=True, timeout=300
+        )
+        lines = out.stdout.strip().splitlines()
+        d = json.loads(lines[-1]) if lines and lines[-1].startswith("{") else {}
+        return float(d["DockQ"]) if "DockQ" in d else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"DockQ failed: {e}")
+        return None
 
 
 def _write_pdb_multichain(
@@ -107,6 +117,16 @@ def _write_pdb_multichain(
     with open(filename, "w") as f:
         f.writelines(blocks)
         f.write("END\n")
+
+
+from lobster.model.latent_generator.utils.residue_constants import (
+    convert_lobster_aa_tokenization_to_standard_aa,
+    restype_order_with_x_inv,
+)
+from lobster.transforms._structure_transforms import (
+    AminoAcidTokenizerTransform,
+    Atom14ToBackboneTransform,
+)
 
 
 def _load_dimer_pt(path: str, structure_transform, tokenizer_transform, max_length: int = 512) -> dict | None:
@@ -233,6 +253,14 @@ def _generate_dimer_forward_folding(
     use_chain_ids = gen_cfg.get("use_chain_ids", True)
     use_epitope_conditioning = gen_cfg.get("use_epitope_conditioning", False)
     hotspot_cutoff_a = gen_cfg.get("hotspot_cutoff_a", 10.0)
+    # DockQ interface scoring (isolated venv via subprocess; numpy<2). Off by default.
+    use_dockq = gen_cfg.get("use_dockq", False)
+    dockq_python = gen_cfg.get("dockq_python", None) or os.environ.get(
+        "DOCKQ_PYTHON", "/cv/scratch/u/lisanzas/.dockq_venv/bin/python"
+    )
+    dockq_script = gen_cfg.get("dockq_script", None) or os.environ.get(
+        "DOCKQ_SCRIPT", "/cv/home/lisanzas/lobster/scripts/_dockq_pair.py"
+    )
 
     # Two transforms: atom14 -> backbone (for Pinder schema) and AA
     # tokenizer (to match the encoder's expected vocab).
@@ -243,6 +271,7 @@ def _generate_dimer_forward_folding(
     all_per_chain_rmsd: list[float] = []
     all_complex_tm: list[float] = []
     all_complex_rmsd: list[float] = []
+    all_complex_dockq: list[float] = []
 
     with torch.no_grad():
         for i, structure_path in enumerate(structure_paths):
@@ -386,21 +415,21 @@ def _generate_dimer_forward_folding(
             # see the prediction errors at the right scale; no manual
             # ``align`` command needed.
             name = d["name"]
+            gen_pdb = str(output_dir / f"dimer_forward_folding_{name}_generated.pdb")
+            orig_pdb = str(output_dir / f"dimer_forward_folding_{name}_original.pdb")
             try:
-                _write_pdb_multichain(
-                    str(output_dir / f"dimer_forward_folding_{name}_generated.pdb"),
-                    pred_xyz_aligned,
-                    seq,
-                    chains_local,
-                )
-                _write_pdb_multichain(
-                    str(output_dir / f"dimer_forward_folding_{name}_original.pdb"),
-                    gt_xyz,
-                    seq,
-                    chains_local,
-                )
+                _write_pdb_multichain(gen_pdb, pred_xyz_aligned, seq, chains_local)
+                _write_pdb_multichain(orig_pdb, gt_xyz, seq, chains_local)
             except Exception as e:
                 logger.warning(f"PDB dump failed for {name}: {type(e).__name__}: {e}")
+
+            # ------------- DockQ interface quality (predicted vs native) -------------
+            dockq_val = None
+            if use_dockq and len(unique_chains) >= 2:
+                dockq_val = _dockq_score(gen_pdb, orig_pdb, dockq_python, dockq_script)
+                if dockq_val is not None:
+                    all_complex_dockq.append(dockq_val)
+                    logger.info(f"  DockQ={dockq_val:.3f}")
 
             # CSV row per dimer.
             if csv_writer is not None:
@@ -410,6 +439,7 @@ def _generate_dimer_forward_folding(
                         "mean_chain_rmsd": mean_chain_rmsd,
                         "complex_tm_score": float(tm_out_complex.tm_norm_chain1),
                         "complex_rmsd": float(rmsd_complex),
+                        "complex_dockq": dockq_val if dockq_val is not None else float("nan"),
                     },
                     run_id=f"dimer_forward_folding_{name}",
                     sequence_length=L,
@@ -437,3 +467,8 @@ def _generate_dimer_forward_folding(
     _agg("per-chain RMSD (Å)", all_per_chain_rmsd, pass_threshold=2.0)
     _agg("COMPLEX TM-Score", all_complex_tm)
     _agg("COMPLEX RMSD (Å)", all_complex_rmsd, pass_threshold=5.0)
+    if all_complex_dockq:
+        _agg("COMPLEX DockQ", all_complex_dockq)
+        n = len(all_complex_dockq)
+        acc = sum(1 for q in all_complex_dockq if q >= 0.23)
+        logger.info(f"COMPLEX DockQ acceptable (>= 0.23): {acc}/{n} ({100 * acc / n:.1f}%)")

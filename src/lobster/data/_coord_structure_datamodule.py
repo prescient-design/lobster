@@ -64,6 +64,8 @@ class StructureLightningDataModule(LightningDataModule):
         stat_workers: int | None = None,
         balance_datasets: bool = False,
         max_cluster_replicates: int | None = None,
+        per_source_cluster_caps: list[int | None] | None = None,
+        max_cluster_replicates_per_source: list[int | None] | None = None,
     ) -> None:
         """:param path_to_datasets: path to data set directories
 
@@ -191,6 +193,15 @@ class StructureLightningDataModule(LightningDataModule):
         self.use_ligand_dataset = use_ligand_dataset
         self.balance_datasets = balance_datasets
         self.max_cluster_replicates = max_cluster_replicates
+        # Per-source (positional, aligned to the *train* sources in path order) knobs:
+        #   per_source_cluster_caps[j]            -> max clusters/epoch for train source j
+        #                                            (None = uncapped). A different random
+        #                                            subset is drawn each epoch (rotation),
+        #                                            so all clusters are seen over training.
+        #   max_cluster_replicates_per_source[j]  -> replicate cap for source j when
+        #                                            balancing (None = use max_cluster_replicates).
+        self._per_source_cluster_caps = per_source_cluster_caps
+        self._max_cluster_replicates_per_source = max_cluster_replicates_per_source
 
         # Handle dataset_types with backwards compatibility
         if dataset_types is not None:
@@ -452,6 +463,13 @@ class StructureLightningDataModule(LightningDataModule):
         if not self.use_shards and isinstance(self._sampler, (functools.partial, RandomizedMinorityUpsampler)):
             import random as _random
 
+            # Per-epoch RNG: seeded by (base_seed + epoch) so the capped subset ROTATES
+            # across epochs (full coverage over training) while staying IDENTICAL across
+            # DDP ranks (all ranks build the same group_indices -> consistent sharding).
+            # Rotation is realized via trainer.reload_dataloaders_every_n_epochs=1.
+            epoch = int(getattr(getattr(self, "trainer", None), "current_epoch", 0) or 0)
+            rng = _random.Random(self._seed + epoch)
+
             per_dataset_clusters = []
             cumulative_size = 0
             for dataset in self._train_dataset.datasets:
@@ -462,33 +480,49 @@ class StructureLightningDataModule(LightningDataModule):
                 per_dataset_clusters.append(global_clusters)
                 cumulative_size += len(dataset)
 
+            # Per-source per-epoch cluster cap: draw `cap` clusters (rotating subset) from
+            # each capped train source. Bounds a source's per-epoch dominance without
+            # dropping data (the drawn subset differs each epoch).
+            if self._per_source_cluster_caps is not None:
+                for j, dc in enumerate(per_dataset_clusters):
+                    cap = self._per_source_cluster_caps[j] if j < len(self._per_source_cluster_caps) else None
+                    if cap is not None and len(dc) > cap:
+                        per_dataset_clusters[j] = rng.sample(dc, cap)
+                        logger.info(
+                            f"[source {j}] per-epoch cap: {len(dc)} -> {cap} clusters (epoch={epoch}, rotating subset)"
+                        )
+
             if self.balance_datasets and len(per_dataset_clusters) > 1:
                 max_clusters = max(len(dc) for dc in per_dataset_clusters)
                 group_indices = []
-                for dc in per_dataset_clusters:
+                for j, dc in enumerate(per_dataset_clusters):
                     n = len(dc)
                     if n == 0:
                         continue
+                    # Per-source replicate override falls back to the global cap.
+                    rep = None
+                    if self._max_cluster_replicates_per_source is not None and j < len(
+                        self._max_cluster_replicates_per_source
+                    ):
+                        rep = self._max_cluster_replicates_per_source[j]
+                    if rep is None:
+                        rep = self.max_cluster_replicates
                     if n < max_clusters:
                         target = max_clusters
-                        if self.max_cluster_replicates is not None:
-                            target = min(target, n * self.max_cluster_replicates)
+                        if rep is not None:
+                            target = min(target, n * rep)
                         repeats = target // n
                         remainder = target % n
-                        balanced = dc * repeats + _random.sample(dc, remainder)
+                        balanced = dc * repeats + rng.sample(dc, remainder)
                         group_indices.extend(balanced)
                         logger.info(
-                            f"Balanced dataset: {n} clusters replicated to {len(balanced)} "
+                            f"[source {j}] balanced: {n} clusters replicated to {len(balanced)} "
                             f"(x{target / n:.2f})"
-                            + (
-                                f" [capped at {self.max_cluster_replicates}x]"
-                                if self.max_cluster_replicates is not None and target < max_clusters
-                                else ""
-                            )
+                            + (f" [capped at {rep}x]" if rep is not None and target < max_clusters else "")
                         )
                     else:
                         group_indices.extend(dc)
-                        logger.info(f"Balanced dataset: {n} clusters (max, unchanged)")
+                        logger.info(f"[source {j}] balanced: {n} clusters (max, unchanged)")
             else:
                 group_indices = []
                 for dc in per_dataset_clusters:

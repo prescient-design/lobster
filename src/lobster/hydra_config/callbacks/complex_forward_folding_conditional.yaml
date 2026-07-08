@@ -12,14 +12,15 @@ ComplexForwardFoldingConditional:
   save_every_n: 20000
   num_samples: 50
   max_length: 512
-  nsteps: 200
+  nsteps: 100
   # batch_size=1 => native-length generation, no intra-batch padding (which
   # corrupts flow-matching geometry even when masked). See forward_folding.yaml.
+  # M-recipe standardized across all forward-folding callbacks.
   batch_size: 1
-  temperature_seq: 0.3610371899835548
-  temperature_struc: 0.2195534567490864
-  stochasticity_seq: 1
-  stochasticity_struc: 20
+  temperature_seq: 0.2967457760634187
+  temperature_struc: 0.1102551183666233
+  stochasticity_seq: 10
+  stochasticity_struc: 30
   cache_dir: null
   # Complex-aware switches
   use_chain_ids: true
@@ -27,3 +28,4 @@ ComplexForwardFoldingConditional:
   metric_prefix: "forward_folding_pinder_cond"
   max_length_filter: 512
   min_chains: 2
+  use_dockq: true

@@ -243,6 +243,31 @@ def _generate_binders(
             logger.info(f"  Fixed residues: {num_fixed} (target + 1 binder chain-break token)")
             logger.info(f"  Generate residues: {num_generate} (binder minus first token)")
 
+            # Optional epitope conditioning: feed the hotspot residues (epitope_indices are
+            # antigen-local = target-region positions, since the target chain is concatenated
+            # first) into the model's conditioning channel, and pass per-residue chain ids, so
+            # a complex/epitope-trained checkpoint actually uses its training. Mirrors
+            # _dimer_forward_folding.py. When off (default), both stay None => unchanged behavior.
+            use_epitope_conditioning = gen_cfg.get("use_epitope_conditioning", False)
+            chain_ids_emb = None
+            cond_tensor = None
+            if use_epitope_conditioning:
+                chain_ids_emb = torch.zeros_like(chains_ids)
+                chain_ids_emb[chains_ids == target_chain_idx] = 1
+                chain_ids_emb[chains_ids == binder_chain_idx] = 2
+                cond_tensor = torch.zeros((1, L_total, 1), device=device)
+                if epitope_indices:
+                    hot = torch.tensor(
+                        [i for i in epitope_indices if 0 <= i < L_target], device=device, dtype=torch.long
+                    )
+                    if hot.numel() > 0:
+                        cond_tensor[0, hot, 0] = 1.0
+                logger.info(
+                    f"  Epitope conditioning ON: {int((cond_tensor > 0).sum())} hotspot residues "
+                    f"(of {len(epitope_indices) if epitope_indices else 0} given); "
+                    f"chain_ids remapped target->1, binder->2"
+                )
+
             # Generate binder designs
             for design_idx in range(n_designs_per_structure):
                 if n_designs_per_structure > 1:
@@ -271,6 +296,9 @@ def _generate_binders(
                         inpainting_mask_sequence=mask_sequence,
                         inpainting_mask_structure=mask_structure,
                         asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
+                        chain_ids=chain_ids_emb,
+                        conditioning_tensor_override=cond_tensor,
+                        encode_target_only=gen_cfg.get("encode_target_only", False),
                     )
 
                     # Decode structures
@@ -320,9 +348,10 @@ def _generate_binders(
                 gen_coords = best_result["coords"]
                 gen_sequence = best_result["sequence"]
 
-                # Save complete complex
+                # Save complete complex (binder + target on separate chains so
+                # viewers/downstream tools treat them as distinct entities).
                 complex_path = output_dir / f"{prefix}_complex.pdb"
-                writepdb(str(complex_path), gen_coords[0], gen_sequence[0])
+                writepdb(str(complex_path), gen_coords[0], gen_sequence[0], chains=best_result["chains_ids"][0])
                 logger.info(f"Saved complex: {complex_path}")
 
                 # Save binder alone
