@@ -267,7 +267,14 @@ class AminoAcidTokenizerTransform(BaseTransform):
 
 
 class StructureComplexTransform(BaseTransform):
-    def __init__(self, max_length=512, interface_distance=10.0, crop_strategy: str = "random_anchor", **kwargs):
+    def __init__(
+        self,
+        max_length=512,
+        interface_distance=10.0,
+        crop_strategy: str = "random_anchor",
+        epitope_subsample_min_frac: float = 1.0,
+        **kwargs,
+    ):
         """
         Args:
             max_length: max sequence length before the multi-chain crop fires.
@@ -300,7 +307,34 @@ class StructureComplexTransform(BaseTransform):
                 f"Unknown crop_strategy={crop_strategy!r}; expected 'random_anchor' or 'interface_anchored'"
             )
         self.crop_strategy = crop_strategy
-        logger.info(f"StructureComplexTransform  crop_strategy={crop_strategy}")
+        # Sparse-hotspot conditioning: when < 1.0, keep only a random fraction (drawn uniformly in
+        # [min_frac, 1.0] per example) of the epitope interface residues, so the model learns to use
+        # SPARSE hotspots -- matching de-novo binder inference (~3 hotspots) instead of the full
+        # one-sided interface it sees by default. 1.0 = off (full interface, legacy behaviour).
+        self.epitope_subsample_min_frac = float(epitope_subsample_min_frac)
+        logger.info(
+            f"StructureComplexTransform  crop_strategy={crop_strategy} "
+            f"epitope_subsample_min_frac={self.epitope_subsample_min_frac}"
+        )
+
+    def _subsample_epitope(self, x: dict) -> dict:
+        """Keep a random fraction (uniform in [min_frac, 1.0]) of the epitope residues."""
+        if self.epitope_subsample_min_frac >= 1.0 or "epitope_tensor" not in x:
+            return x
+        epi = x["epitope_tensor"]
+        idx = epi.nonzero(as_tuple=True)[0]
+        n = idx.numel()
+        if n <= 1:
+            return x
+        frac = self.epitope_subsample_min_frac + (1.0 - self.epitope_subsample_min_frac) * torch.rand(1).item()
+        k = max(1, int(round(n * frac)))
+        if k >= n:
+            return x
+        keep = idx[torch.randperm(n)[:k]]
+        new = torch.zeros_like(epi)
+        new[keep] = epi[keep] if epi.dtype != torch.bool else True
+        x["epitope_tensor"] = new
+        return x
 
     def get_interface_residues(self, positions, mask, asym_id, interface_threshold):
         """
@@ -585,6 +619,7 @@ class StructureComplexTransform(BaseTransform):
                 x["epitope_tensor"] = torch.zeros_like(x["indices"], device=x["indices"].device)
                 x["paratope_tensor"] = torch.zeros_like(x["indices"], device=x["indices"].device)
 
+        x = self._subsample_epitope(x)
         return x
 
 

@@ -1,0 +1,33 @@
+# Tracking callback: SAbDab dimer (antibody-antigen) forward folding WITH
+# leak-free per-chain structure-token TEMPLATES for BOTH chains.
+#
+# For every multi-chain sample the callback encodes each chain in isolation
+# (partner masked out) from an INDEPENDENT random SE(3) copy of the coords,
+# so the relative pose is not leaked -- exactly matching the training-time
+# template construction. The model receives both chains' template tokens and
+# must still learn to DOCK them; DockQ is the headline metric.
+#
+# Only meaningful for a template-trained checkpoint (model.template_percentage>0);
+# on a checkpoint without the template layer this callback is a no-op template
+# (all no_template rows) and reduces to the plain co-fold dimer track.
+FwdTrackSabdabDimerTemplate:
+  _target_: lobster.callbacks._forward_folding_callback.ForwardFoldingCallback
+  structure_path: null
+  cameo_data_path: "/cv/scratch/u/lisanzas/sabdab_atom14/val_pdb_processed/*.pt"
+  save_every_n: 20000
+  num_samples: 50
+  max_length: 512
+  nsteps: 100
+  batch_size: 1
+  temperature_seq: 0.2967457760634187
+  temperature_struc: 0.1102551183666233
+  stochasticity_seq: 10
+  stochasticity_struc: 30
+  cache_dir: null
+  use_chain_ids: true
+  use_epitope_conditioning: false
+  use_templates: true
+  metric_prefix: "fwd_sabdab_dimer_template"
+  max_length_filter: 512
+  min_chains: 2
+  use_dockq: true

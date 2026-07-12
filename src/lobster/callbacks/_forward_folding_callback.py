@@ -8,6 +8,7 @@ import glob
 from loguru import logger
 
 from lobster.model.latent_generator.io import writepdb
+from lobster.model.latent_generator.utils import apply_random_se3_batched
 from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
@@ -60,6 +61,11 @@ class ForwardFoldingCallback(lightning.Callback):
         use_dockq: bool = False,
         dockq_python: str | None = None,
         dockq_script: str | None = None,
+        # Provide leak-free per-chain structure-token TEMPLATES (both chains) to the
+        # model during this forward-fold eval. Each chain is encoded in isolation with
+        # an independent random SE(3) (matches training), so the relative pose is not
+        # leaked. Requires a template-trained checkpoint + multi-chain inputs.
+        use_templates: bool = False,
     ):
         """Initialize forward folding callback.
 
@@ -120,6 +126,7 @@ class ForwardFoldingCallback(lightning.Callback):
         self.metric_prefix = metric_prefix or "forward_folding"
         self.max_length_filter = max_length_filter
         self.min_chains = min_chains
+        self.use_templates = use_templates
         self.use_dockq = use_dockq
         self.dockq_python = dockq_python or os.environ.get(
             "DOCKQ_PYTHON", "/cv/scratch/u/lisanzas/.dockq_venv/bin/python"
@@ -382,6 +389,25 @@ class ForwardFoldingCallback(lightning.Callback):
             logger.info(f"Generating structures for batch (batch {batch_start}-{batch_end}, {B} samples)...")
             chain_ids_arg = chain_ids if (self.use_chain_ids and any_chain_signal) else None
             cond_arg = cond_tensor if (self.use_epitope_conditioning and any_cond_signal) else None
+
+            # Build leak-free per-chain structure-token TEMPLATES for BOTH chains.
+            # Each chain is encoded in isolation (other-chain residues masked out) from
+            # an INDEPENDENT random SE(3) copy of the coords -> the relative pose is not
+            # leaked (matches training) and the model must still learn to dock. Only for
+            # multi-chain samples; template rows for absent residues stay at no_template.
+            template_arg = None
+            if self.use_templates and any_chain_signal and getattr(model, "no_template_idx", None) is not None:
+                template_tokens = torch.full((B, max_length), model.no_template_idx, dtype=torch.long, device=device)
+                for c in (1, 2):
+                    mask_c = mask * (chain_ids == c).float()
+                    if mask_c.sum() == 0:
+                        continue
+                    coords_c = apply_random_se3_batched(coords_res.clone())
+                    xq_c, _, _ = model.encode_structure(coords_c, mask_c, indices)
+                    tok_c = xq_c.argmax(dim=-1)  # (B, max_length)
+                    sel = chain_ids == c
+                    template_tokens[sel] = tok_c[sel]
+                template_arg = template_tokens
             generate_sample = model.generate_sample(
                 length=max_length,
                 num_samples=B,
@@ -396,6 +422,7 @@ class ForwardFoldingCallback(lightning.Callback):
                 input_indices=indices,
                 chain_ids=chain_ids_arg,
                 conditioning_tensor_override=cond_arg,
+                template_structure_tokens=template_arg,
             )
 
             # Decode structures

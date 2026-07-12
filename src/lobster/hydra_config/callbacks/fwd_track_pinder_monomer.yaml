@@ -1,0 +1,24 @@
+# Tracking callback: Pinder monomer forward folding (each Pinder-val chain
+# folded ALONE). Single-chain inputs, so the callback's whole-structure TM
+# is the monomer TM. M-recipe (100/0.110/30, batch_size=1 native length),
+# metrics only. Data pre-split from Pinder val dimers by
+# scripts/_diag_split_pinder_val_to_monomer_pts.py.
+FwdTrackPinderMonomer:
+  _target_: lobster.callbacks._forward_folding_callback.ForwardFoldingCallback
+  structure_path: null
+  cameo_data_path: "/cv/scratch/u/lisanzas/pinder_atom14_val_monomers/*.pt"
+  save_every_n: 20000
+  num_samples: 50
+  max_length: 512
+  nsteps: 100
+  batch_size: 1
+  temperature_seq: 0.2967457760634187
+  temperature_struc: 0.1102551183666233
+  stochasticity_seq: 10
+  stochasticity_struc: 30
+  cache_dir: null
+  use_chain_ids: false
+  use_epitope_conditioning: false
+  metric_prefix: "fwd_pinder_monomer"
+  max_length_filter: 512
+  min_chains: 1

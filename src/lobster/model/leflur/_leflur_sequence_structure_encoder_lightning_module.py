@@ -17,6 +17,7 @@ from ._leflur_sequence_structure_encoder import AuxiliaryTask, LeFlurSequenceStr
 # latent generator code:
 from lobster.model.latent_generator.cmdline import LatentEncoderDecoder
 from lobster.model.latent_generator.cmdline import methods as latent_generator_methods
+from lobster.model.latent_generator.utils import apply_random_se3_batched
 
 # Re-route the LeFlur-paired LG codecs (which by default live behind s3:// or
 # /cv/... paths) to their HuggingFace mirror so external users can sample
@@ -103,6 +104,14 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # for finetunes on data that emits `epitope_tensor`
         # (e.g. Pinder dimers through `BinderTargetTransform`).
         cond_percentage: float = 0.0,
+        # Per-residue TEMPLATE structure-token conditioning. Each step, with prob
+        # `template_percentage`, provide leak-free per-chain structure tokens (each
+        # chain encoded IN ISOLATION) as an extra conditioning signal; within that,
+        # uniformly pick {both chains, one chain, none}, and for each templated chain
+        # mask its interface residues 50% of the time (so the template cannot leak
+        # the interface). 0.0 (default) = disabled (no template layer -> legacy
+        # checkpoints load unchanged).
+        template_percentage: float = 0.0,
         # Fresh-finetune-from-pretrained knobs. These are NOT used inside
         # __init__ — they're consumed by `cmdline/train.py` AFTER model
         # instantiation. Declared here purely so Hydra can pass them
@@ -115,6 +124,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
     ):
         self.save_hyperparameters()
         self.cond_percentage = cond_percentage
+        self.template_percentage = template_percentage
 
         super().__init__()
 
@@ -196,6 +206,9 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         self.padding_index_struc_tokens = self.quantizer.n_tokens + 1
         self.num_struc_classes = self.quantizer.n_tokens + 2
 
+        # Template-token conditioning: "no template" index = structure_token_vocab_size
+        # (the extra embedding row); templated residues use clean tokens 0..n_tokens-1.
+        self.no_template_idx = self.num_struc_classes
         self.encoder = LeFlurSequenceStructureEncoderModule(
             auxiliary_tasks=auxiliary_tasks,
             sequence_token_vocab_size=self.vocab_size,
@@ -203,6 +216,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             sequence_token_pad_token_id=self.pad_token_id,
             structure_token_pad_token_id=self.padding_index_struc_tokens,
             model_ckpt=ckpt_path,
+            use_template_conditioning=(template_percentage > 0),
             **encoder_kwargs or {},
         )
 
@@ -334,6 +348,72 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         conditioning_tensor = epitope_cond
         return x_gt, conditioning_tensor, mask, residue_index, conditioning
 
+    def build_template_tokens(self, batch: dict[str, Tensor], chain_ids: Tensor) -> Tensor:
+        """Leak-free per-chain TEMPLATE structure tokens with random-crop augmentation.
+
+        For each example, with prob ``template_percentage`` provide templates; within
+        that, uniformly pick {both, one(random), none} chains. Each templated chain is
+        encoded IN ISOLATION (partner masked out of the structure encoder, so no
+        interface/partner leakage) from an INDEPENDENT random SE(3) copy of the coords
+        (so the relative pose is NOT leaked -> model must still learn to dock).
+
+        Data augmentation: every time a chain is templated it is randomly CROPPED --- a
+        fraction ~U(0, 0.9) of its residues is dropped BEFORE encoding (mask-in-place),
+        so the template covers only the kept residues and their tokens are computed from
+        the partial structure. This matches how a cropped template behaves at inference
+        (see scripts/_exp_template_crop.py) and teaches the model to use partial
+        templates. Returns (B, L) long; no_template_idx where not templated / cropped.
+        ``chain_ids`` = remapped per-residue chain ids (0=none/pad, 1/2=chains).
+        """
+        import random as _random
+
+        coords, enc_mask, ridx = batch["input"]
+        B, L = chain_ids.shape
+        device = chain_ids.device
+        template = torch.full((B, L), self.no_template_idx, dtype=torch.long, device=device)
+
+        chain_vals = [int(c) for c in torch.unique(chain_ids).tolist() if c > 0]
+
+        # 1) Per-example schedule + per-(example, chain) random-CROP keep-mask, decided
+        #    BEFORE encoding so the crop is applied at the encoder input (template tokens
+        #    are then computed from the partial structure). keep_by_chain[c][i] marks the
+        #    residues of chain c in example i that are templated AND survive the crop.
+        keep_by_chain: dict[int, Tensor] = {c: torch.zeros(B, L, dtype=torch.bool, device=device) for c in chain_vals}
+        for i in range(B):
+            ci = [c for c in chain_vals if bool((chain_ids[i] == c).any())]
+            # Only template multi-chain (complex) examples — never single-chain/monomer.
+            if len(ci) < 2 or torch.rand(1).item() >= self.template_percentage:
+                continue
+            mode = _random.choice(["both", "one", "none"])
+            if mode == "none":
+                continue
+            chosen = ci if mode == "both" else [_random.choice(ci)]
+            for c in chosen:
+                cmask = (chain_ids[i] == c) & enc_mask[i].bool()
+                idxs = cmask.nonzero(as_tuple=True)[0]
+                n = int(idxs.numel())
+                if n == 0:
+                    continue
+                # crop augmentation: drop a random 0-90% of this chain's residues
+                crop_frac = torch.rand(1).item() * 0.9
+                n_keep = max(1, int(round(n * (1.0 - crop_frac))))
+                perm = torch.randperm(n, device=device)[:n_keep]
+                keep_by_chain[c][i, idxs[perm]] = True
+
+        # 2) Batched per-chain ISOLATED encoding on the CROPPED keep-mask, each chain
+        #    from an independent random SE(3) frame. Assign the resulting tokens only to
+        #    the kept residues; cropped / unkept residues stay at no_template_idx.
+        for c in chain_vals:
+            keep_c = keep_by_chain[c]
+            if not keep_c.any():
+                continue
+            coords_c = apply_random_se3_batched(coords.clone())
+            xq_c, _, _ = self.encode_structure(coords_c, keep_c.float(), ridx)
+            tok_c = xq_c.argmax(dim=-1)  # (B, L)
+            template[keep_c] = tok_c[keep_c]
+
+        return template
+
     def get_timesteps(self, batch: dict[str, Tensor]) -> dict[str, Tensor]:
         """Get the timesteps for the model."""
         timesteps_seq = self.interpolant_seq.sample_time(batch["sequence"].shape[0])
@@ -366,6 +446,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         conditioning_tensor: Tensor,
         timesteps: dict[str, Tensor] | None = None,
         chain_ids: Tensor | None = None,
+        template_structure_tokens: Tensor | None = None,
     ) -> dict[str, Tensor]:
         """Forward pass of the model, for inference."""
         if timesteps is not None:
@@ -383,6 +464,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             conditioning_tensor=conditioning_tensor,
             chain_ids=chain_ids,
             timesteps=timesteps,
+            template_structure_tokens=template_structure_tokens,
             return_auxiliary_tasks=False,
         )
 
@@ -478,9 +560,22 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # short-circuits to a zero contribution (padding_idx=0 + None guard).
         chain_ids = batch.get("chain_ids_for_embedding")
 
+        # Per-residue leak-free TEMPLATE structure tokens (built only when enabled and
+        # chain info is present; monomers have no chain_ids -> no template).
+        template_structure_tokens = None
+        if self.template_percentage > 0 and chain_ids is not None:
+            with torch.no_grad():
+                template_structure_tokens = self.build_template_tokens(batch, chain_ids)
+
         # gen tokens
         unmasked_x = self.forward(
-            x_t, mask, residue_index, conditioning_tensor, timesteps=timesteps, chain_ids=chain_ids
+            x_t,
+            mask,
+            residue_index,
+            conditioning_tensor,
+            timesteps=timesteps,
+            chain_ids=chain_ids,
+            template_structure_tokens=template_structure_tokens,
         )
 
         total_loss, loss_dict = self.apply_interpolant_loss(
@@ -600,6 +695,20 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # float in {0, 1}. None falls back to the all-zero default (no
         # conditioning, matches unconditional leflur-base behaviour).
         conditioning_tensor_override: Tensor | None = None,
+        # Per-residue TEMPLATE structure tokens (leak-free per-chain), (num_samples, length)
+        # long, no_template_idx where absent. Passed to the encoder's template embedding.
+        template_structure_tokens: Tensor | None = None,
+        # Inpainting only: if True, exclude the to-be-generated (inpainting_mask==1)
+        # region from structure encoding, so the placeholder geometry there does not
+        # perturb the fixed (target) structure tokens via the encoder's attention. The
+        # generated region is noised from the prior regardless; this just keeps the
+        # target tokens clean. The full mask is still used for the sampling loop.
+        encode_target_only: bool = False,
+        # Classifier-free guidance on the epitope/conditioning channel. >1.0 runs a second
+        # (unconditional: conditioning_tensor=0) forward per step and extrapolates the logits:
+        # guided = uncond + cfg_weight*(cond - uncond). 1.0 = off. Needs a cond-dropout-trained
+        # ckpt (cond_percentage>0) for the uncond branch to be in-distribution.
+        cfg_weight: float = 1.0,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -655,10 +764,19 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             if input_sequence_tokens is None:
                 raise ValueError("Sequence tokens are required for inpainting")
 
-            # Encode the input structure
+            # Encode the input structure. When encode_target_only, mask out the
+            # to-be-generated region so its placeholder geometry is not seen by the
+            # structure encoder (keeps the target/fixed tokens clean); restore the full
+            # mask afterwards for the sampling loop.
+            struct_encode_mask = input_mask
+            if encode_target_only and inpainting_mask_structure is not None:
+                struct_encode_mask = input_mask.clone()
+                struct_encode_mask[inpainting_mask_structure.bool()] = 0
             x_quant, x_quant_emb, mask = self.encode_structure(
-                x_gt=input_structure_coords, mask=input_mask, residue_index=input_indices
+                x_gt=input_structure_coords, mask=struct_encode_mask, residue_index=input_indices
             )
+            if encode_target_only:
+                mask = input_mask
             xt_struc_input = x_quant.argmax(dim=-1)
             xt_seq_input = input_sequence_tokens
 
@@ -689,8 +807,28 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             timesteps = {"sequence_tokens": t_seq, "structure_tokens": t_struc}
 
             unmasked_x = self.forward(
-                xt, mask, residue_index, conditioning_tensor, timesteps=timesteps, chain_ids=chain_ids
+                xt,
+                mask,
+                residue_index,
+                conditioning_tensor,
+                timesteps=timesteps,
+                chain_ids=chain_ids,
+                template_structure_tokens=template_structure_tokens,
             )
+            # Classifier-free guidance: extrapolate logits away from the unconditional (no-epitope)
+            # prediction to amplify the hotspot signal (which steers the interface, esp. L36).
+            if cfg_weight != 1.0:
+                uncond_x = self.forward(
+                    xt,
+                    mask,
+                    residue_index,
+                    torch.zeros_like(conditioning_tensor),
+                    timesteps=timesteps,
+                    chain_ids=chain_ids,
+                    template_structure_tokens=template_structure_tokens,
+                )
+                for _k in ("sequence_logits", "structure_logits"):
+                    unmasked_x[_k] = uncond_x[_k] + cfg_weight * (unmasked_x[_k] - uncond_x[_k])
             unmasked_sequence_tokens = unmasked_x["sequence_logits"]
             if sequence_logit_bias is not None and step_idx < sequence_logit_bias_steps:
                 unmasked_sequence_tokens = unmasked_sequence_tokens + sequence_logit_bias

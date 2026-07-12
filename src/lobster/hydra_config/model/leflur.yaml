@@ -38,6 +38,11 @@ cond_percentage: 0.0
 # that pre-dates chain embedding (e.g. leflur-base) so step 0 = source
 # checkpoint identically. `padding_idx=0` row stays zero regardless.
 zero_init_chain_embedding_on_load: false
+# Per-residue TEMPLATE structure-token conditioning (leak-free per-chain templates).
+# 0.0 (default) = disabled, no template layer, legacy checkpoints load unchanged.
+# >0 provides templates that fraction of steps; within, uniform {both,one,none} chains,
+# each templated chain's interface residues masked 50% of the time.
+template_percentage: 0.0
 encoder_kwargs:
   max_length: ${data.max_length}
   model_size: mini

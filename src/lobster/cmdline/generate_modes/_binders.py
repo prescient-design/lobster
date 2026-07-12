@@ -21,6 +21,7 @@ from omegaconf import DictConfig, ListConfig
 
 from lobster.metrics import predict_structure_with_esmfold
 from lobster.model.latent_generator.io import load_pdb, writepdb
+from lobster.model.latent_generator.utils import apply_random_se3_batched
 from lobster.model.latent_generator.utils.residue_constants import (
     convert_lobster_aa_tokenization_to_standard_aa,
     restype_order_with_x_inv,
@@ -268,6 +269,30 @@ def _generate_binders(
                     f"chain_ids remapped target->1, binder->2"
                 )
 
+            # TEMPLATE-TARGET mode: condition on the target via its per-chain template
+            # (frame-randomized, isolated encode -> fold only, no absolute pose) + hotspot,
+            # INSTEAD of pinning the target with fixed structure tokens. The target SEQUENCE
+            # stays fixed (known), but its STRUCTURE is generated (mask_structure target->1)
+            # guided by the template channel -- i.e. the target is forward-folded from its
+            # template while the binder is designed. Requires a template-trained checkpoint.
+            template_arg = None
+            if gen_cfg.get("template_target", False) and getattr(model, "no_template_idx", None) is not None:
+                template_tokens = torch.full((1, L_total), model.no_template_idx, dtype=torch.long, device=device)
+                tmask = mask * (chains_ids == target_chain_idx).float()
+                if tmask.sum() > 0:
+                    coords_c = apply_random_se3_batched(coords_res.clone())  # random frame -> no pose leak
+                    xq_c, _, _ = model.encode_structure(coords_c, tmask, indices)
+                    tok_c = xq_c.argmax(dim=-1)
+                    sel = chains_ids == target_chain_idx
+                    template_tokens[sel] = tok_c[sel]
+                template_arg = template_tokens
+                mask_structure = mask_structure.clone()
+                mask_structure[chains_ids == target_chain_idx] = 1.0  # generate target struct from template
+                logger.info(
+                    "  TEMPLATE-TARGET mode ON: target structure generated from per-chain template "
+                    "(seq fixed); target structure tokens NOT pinned"
+                )
+
             # Generate binder designs
             for design_idx in range(n_designs_per_structure):
                 if n_designs_per_structure > 1:
@@ -299,6 +324,8 @@ def _generate_binders(
                         chain_ids=chain_ids_emb,
                         conditioning_tensor_override=cond_tensor,
                         encode_target_only=gen_cfg.get("encode_target_only", False),
+                        template_structure_tokens=template_arg,
+                        cfg_weight=float(gen_cfg.get("cfg_weight", 1.0)),
                     )
 
                     # Decode structures

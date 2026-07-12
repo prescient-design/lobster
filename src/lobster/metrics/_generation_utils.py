@@ -1251,6 +1251,19 @@ class MetricsCSVWriter:
             )
         elif self.mode == "forward_folding":
             headers.extend(["tm_score", "rmsd", "sequence_length", "input_file"])
+        elif self.mode == "dimer_forward_folding":
+            headers.extend(
+                [
+                    "mean_chain_tm_score",
+                    "mean_chain_rmsd",
+                    "complex_tm_score",
+                    "complex_rmsd",
+                    "complex_dockq",
+                    "is_homodimer",
+                    "sequence_length",
+                    "input_file",
+                ]
+            )
         elif self.mode == "inpainting":
             headers.extend(
                 [
@@ -1383,6 +1396,19 @@ class MetricsCSVWriter:
                 [
                     _to_scalar(metrics.get("tm_score", "")),
                     _to_scalar(metrics.get("rmsd", "")),
+                    kwargs.get("sequence_length", ""),
+                    kwargs.get("input_file", ""),
+                ]
+            )
+        elif self.mode == "dimer_forward_folding":
+            row.extend(
+                [
+                    _to_scalar(metrics.get("mean_chain_tm_score", "")),
+                    _to_scalar(metrics.get("mean_chain_rmsd", "")),
+                    _to_scalar(metrics.get("complex_tm_score", "")),
+                    _to_scalar(metrics.get("complex_rmsd", "")),
+                    _to_scalar(metrics.get("complex_dockq", "")),
+                    _to_scalar(metrics.get("is_homodimer", "")),
                     kwargs.get("sequence_length", ""),
                     kwargs.get("input_file", ""),
                 ]

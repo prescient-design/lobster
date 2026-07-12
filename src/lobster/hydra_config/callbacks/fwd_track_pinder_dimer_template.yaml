@@ -1,0 +1,30 @@
+# Tracking callback: Pinder val dimer forward folding WITH leak-free per-chain
+# structure-token TEMPLATES for BOTH chains (the pinder counterpart of
+# fwd_track_sabdab_dimer_template). Each chain is encoded in isolation
+# (partner masked) from an independent random SE(3) copy of the coords, so the
+# relative pose is not leaked -- the model must still DOCK. DockQ is the headline.
+#
+# Only meaningful for a template-trained checkpoint (model.template_percentage>0);
+# on a checkpoint without the template layer this is a no-op template and reduces
+# to the plain co-fold pinder dimer track (forward_folding_pinder_uncond).
+FwdTrackPinderDimerTemplate:
+  _target_: lobster.callbacks._forward_folding_callback.ForwardFoldingCallback
+  structure_path: null
+  cameo_data_path: "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/val_pdb_processed/*.pt"
+  save_every_n: 20000
+  num_samples: 50
+  max_length: 512
+  nsteps: 100
+  batch_size: 1
+  temperature_seq: 0.2967457760634187
+  temperature_struc: 0.1102551183666233
+  stochasticity_seq: 10
+  stochasticity_struc: 30
+  cache_dir: null
+  use_chain_ids: true
+  use_epitope_conditioning: false
+  use_templates: true
+  metric_prefix: "fwd_pinder_dimer_template"
+  max_length_filter: 512
+  min_chains: 2
+  use_dockq: true

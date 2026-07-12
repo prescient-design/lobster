@@ -54,6 +54,15 @@ from tmtools import tm_align
 
 from lobster.metrics import align_and_compute_rmsd
 from lobster.model.latent_generator.io import writepdb
+from lobster.model.latent_generator.utils import apply_random_se3_batched
+from lobster.model.latent_generator.utils.residue_constants import (
+    convert_lobster_aa_tokenization_to_standard_aa,
+    restype_order_with_x_inv,
+)
+from lobster.transforms._structure_transforms import (
+    AminoAcidTokenizerTransform,
+    Atom14ToBackboneTransform,
+)
 
 
 def _dockq_score(model_pdb: str, native_pdb: str, dockq_python: str, dockq_script: str) -> float | None:
@@ -117,16 +126,6 @@ def _write_pdb_multichain(
     with open(filename, "w") as f:
         f.writelines(blocks)
         f.write("END\n")
-
-
-from lobster.model.latent_generator.utils.residue_constants import (
-    convert_lobster_aa_tokenization_to_standard_aa,
-    restype_order_with_x_inv,
-)
-from lobster.transforms._structure_transforms import (
-    AminoAcidTokenizerTransform,
-    Atom14ToBackboneTransform,
-)
 
 
 def _load_dimer_pt(path: str, structure_transform, tokenizer_transform, max_length: int = 512) -> dict | None:
@@ -204,6 +203,25 @@ def _interface_residues_local(coords_res: torch.Tensor, chains_ids: torch.Tensor
     return inter.min(dim=-1).values < cutoff_a
 
 
+def _is_homodimer(seq_str: str, chains_ids: torch.Tensor, min_id: float = 0.90) -> bool:
+    """True if the two chains share >= ``min_id`` sequence identity (homodimer).
+
+    Standard homo/hetero split for dimer forward-folding reporting: homodimers have a
+    symmetric interface and are the easier docking case, so DockQ/TM are reported split
+    by this flag. ``seq_str`` = per-residue AA string (len L), ``chains_ids`` = (L,).
+    """
+    uch = sorted(int(c) for c in chains_ids.unique().tolist())
+    if len(uch) < 2:
+        return False
+    a = [seq_str[i] for i in range(min(len(seq_str), chains_ids.shape[0])) if int(chains_ids[i]) == uch[0]]
+    b = [seq_str[i] for i in range(min(len(seq_str), chains_ids.shape[0])) if int(chains_ids[i]) == uch[1]]
+    if not a or not b:
+        return False
+    L = min(len(a), len(b))
+    same = sum(1 for i in range(L) if a[i] == b[i])
+    return same / max(len(a), len(b)) >= min_id
+
+
 def _generate_dimer_forward_folding(
     model,
     cfg: DictConfig,
@@ -248,11 +266,39 @@ def _generate_dimer_forward_folding(
     logger.info(f"Found {len(structure_paths)} dimer files to process")
 
     gen_cfg = cfg.generation
+    # Multi-GPU sharding: each array task processes a disjoint stride of the
+    # structures (structure_paths[shard::num_shards]); merge the per-shard CSVs
+    # afterward. Default num_shards=1 -> single-process (unchanged).
+    shard = int(gen_cfg.get("shard", 0))
+    num_shards = int(gen_cfg.get("num_shards", 1))
+    if num_shards > 1:
+        structure_paths = structure_paths[shard::num_shards]
+        logger.info(f"Shard {shard}/{num_shards}: processing {len(structure_paths)} of the dimers")
     max_length = gen_cfg.get("max_length", 512)
     nsteps = gen_cfg.get("nsteps", 200)
     use_chain_ids = gen_cfg.get("use_chain_ids", True)
     use_epitope_conditioning = gen_cfg.get("use_epitope_conditioning", False)
     hotspot_cutoff_a = gen_cfg.get("hotspot_cutoff_a", 10.0)
+    # Template conditioning (per-chain, isolated, INDEPENDENT random SE(3) frame per chain --
+    # matches training's build_template_tokens / ForwardFoldingCallback). Requires a
+    # template-trained checkpoint (model.template_percentage>0 -> model.no_template_idx set).
+    use_template = gen_cfg.get("use_template", False)
+    cfg_weight = float(gen_cfg.get("cfg_weight", 1.0))  # classifier-free guidance on epitope conditioning
+    # Structure inference schedule: default Linear (uniform t). Set inference_schedule_struc +
+    # schedule_exponent to front-load steps at low t (PowerInferenceSchedule exponent>1 -> more
+    # pose-forming-window steps). Callable is instantiated with nsteps inside generate_sample.
+    import functools as _functools
+
+    from lobster.cmdline.generate_modes._shared import _get_inference_schedule_class
+    from lobster.model.leflur._leflur_sequence_structure_encoder_lightning_module import LinearInferenceSchedule
+
+    _sched_name = gen_cfg.get("inference_schedule_struc", None)
+    _sched_exp = gen_cfg.get("schedule_exponent", None)
+    struct_schedule = LinearInferenceSchedule
+    if _sched_name:
+        _cls = _get_inference_schedule_class(_sched_name)
+        struct_schedule = _functools.partial(_cls, exponent=float(_sched_exp)) if _sched_exp is not None else _cls
+    logger.info(f"structure inference schedule: {_sched_name or 'Linear'} exponent={_sched_exp}")
     # DockQ interface scoring (isolated venv via subprocess; numpy<2). Off by default.
     use_dockq = gen_cfg.get("use_dockq", False)
     dockq_python = gen_cfg.get("dockq_python", None) or os.environ.get(
@@ -272,6 +318,9 @@ def _generate_dimer_forward_folding(
     all_complex_tm: list[float] = []
     all_complex_rmsd: list[float] = []
     all_complex_dockq: list[float] = []
+    # homo/hetero split (standard reporting): DockQ + complex-TM keyed by dimer type
+    dockq_by_type: dict[str, list[float]] = {"homo": [], "hetero": []}
+    cplx_tm_by_type: dict[str, list[float]] = {"homo": [], "hetero": []}
 
     with torch.no_grad():
         for i, structure_path in enumerate(structure_paths):
@@ -315,10 +364,37 @@ def _generate_dimer_forward_folding(
                 chain_ids_arg = cid
             cond_arg = None
             if use_epitope_conditioning:
-                ep_local = _interface_residues_local(d["coords_res"], d["chains_ids"], cutoff_a=hotspot_cutoff_a)
+                # Match TRAINING's epitope_tensor exactly: interface residues (CA-CA < cutoff,
+                # bilateral) restricted to ONE chain (the "epitope" side). Training picks a
+                # random chain as paratope and conditions on the OTHER chain's interface only;
+                # feeding BOTH sides would be out-of-distribution. We pick the last chain id
+                # deterministically as the epitope side for reproducibility.
+                inter = _interface_residues_local(d["coords_res"], d["chains_ids"], cutoff_a=hotspot_cutoff_a)
+                chains_local = d["chains_ids"]
+                epi_chain = sorted(int(c) for c in chains_local.unique().tolist())[-1]
+                ep_local = inter & (chains_local == epi_chain)
                 cond_tensor = torch.zeros(1, L, 1, device=device)
                 cond_tensor[0, :L, 0] = ep_local.float().to(device)
                 cond_arg = cond_tensor
+
+            # Per-chain template tokens: encode each chain in ISOLATION (partner masked out ->
+            # no interface/pose leak) under its OWN random SE(3) frame, argmax to structure
+            # tokens, assign only to that chain's residues. Gives the model each chain's fold as
+            # a template while withholding the relative pose (the docking target).
+            template_arg = None
+            if use_template and getattr(model, "no_template_idx", None) is not None and chain_ids_arg is not None:
+                coords_b = d["coords_res"].unsqueeze(0).to(device)  # (1, L, 3, 3)
+                template_tokens = torch.full((1, L), model.no_template_idx, dtype=torch.long, device=device)
+                for c in [int(x) for x in chain_ids_arg.unique().tolist() if int(x) != 0]:
+                    mask_c = mask * (chain_ids_arg == c).float()
+                    if mask_c.sum() == 0:
+                        continue
+                    coords_c = apply_random_se3_batched(coords_b.clone())  # independent frame per chain
+                    xq_c, _, _ = model.encode_structure(coords_c, mask_c, indices)
+                    tok_c = xq_c.argmax(dim=-1)  # (1, L)
+                    sel = chain_ids_arg == c
+                    template_tokens[sel] = tok_c[sel]
+                template_arg = template_tokens
 
             gen = model.generate_sample(
                 length=L,
@@ -334,6 +410,9 @@ def _generate_dimer_forward_folding(
                 stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
                 chain_ids=chain_ids_arg,
                 conditioning_tensor_override=cond_arg,
+                template_structure_tokens=template_arg,
+                cfg_weight=cfg_weight,
+                inference_schedule_struc=struct_schedule,
                 asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
             )
             decoded = model.decode_structure(gen, mask)
@@ -423,13 +502,18 @@ def _generate_dimer_forward_folding(
             except Exception as e:
                 logger.warning(f"PDB dump failed for {name}: {type(e).__name__}: {e}")
 
+            # ------------- homo vs hetero dimer (standard reporting) -------------
+            dimer_type = "homo" if _is_homodimer(seq_full_str, d["chains_ids"][:L]) else "hetero"
+            cplx_tm_by_type[dimer_type].append(float(tm_out_complex.tm_norm_chain1))
+
             # ------------- DockQ interface quality (predicted vs native) -------------
             dockq_val = None
             if use_dockq and len(unique_chains) >= 2:
                 dockq_val = _dockq_score(gen_pdb, orig_pdb, dockq_python, dockq_script)
                 if dockq_val is not None:
                     all_complex_dockq.append(dockq_val)
-                    logger.info(f"  DockQ={dockq_val:.3f}")
+                    dockq_by_type[dimer_type].append(dockq_val)
+                    logger.info(f"  DockQ={dockq_val:.3f} ({dimer_type})")
 
             # CSV row per dimer.
             if csv_writer is not None:
@@ -440,6 +524,7 @@ def _generate_dimer_forward_folding(
                         "complex_tm_score": float(tm_out_complex.tm_norm_chain1),
                         "complex_rmsd": float(rmsd_complex),
                         "complex_dockq": dockq_val if dockq_val is not None else float("nan"),
+                        "is_homodimer": int(dimer_type == "homo"),
                     },
                     run_id=f"dimer_forward_folding_{name}",
                     sequence_length=L,
@@ -472,3 +557,25 @@ def _generate_dimer_forward_folding(
         n = len(all_complex_dockq)
         acc = sum(1 for q in all_complex_dockq if q >= 0.23)
         logger.info(f"COMPLEX DockQ acceptable (>= 0.23): {acc}/{n} ({100 * acc / n:.1f}%)")
+
+    # ------------- homo vs hetero breakdown (standard reporting) -------------
+    logger.info("-" * 80)
+    logger.info("HOMO vs HETERO dimer breakdown (homodimer = two chains >=90% seq id)")
+    n_homo = len(cplx_tm_by_type["homo"])
+    n_het = len(cplx_tm_by_type["hetero"])
+    n_tot = n_homo + n_het
+    if n_tot:
+        logger.info(
+            f"  composition: homo={n_homo} ({100 * n_homo / n_tot:.1f}%)  hetero={n_het} ({100 * n_het / n_tot:.1f}%)"
+        )
+    for t in ("homo", "hetero"):
+        tm = cplx_tm_by_type[t]
+        dq = dockq_by_type[t]
+        if tm:
+            logger.info(f"  [{t}] COMPLEX TM: mean={sum(tm) / len(tm):.3f} (n={len(tm)})")
+        if dq:
+            acc_t = sum(1 for q in dq if q >= 0.23)
+            logger.info(
+                f"  [{t}] COMPLEX DockQ: mean={sum(dq) / len(dq):.3f}  "
+                f"acceptable(>=0.23)={acc_t}/{len(dq)} ({100 * acc_t / len(dq):.1f}%)"
+            )

@@ -688,7 +688,13 @@ class StructureDataset(Dataset):
                     cluster_id = cluster_info[1]
                     if cluster_id not in cluster_dict:
                         cluster_dict[cluster_id] = []
-                    cluster_dict[cluster_id].append(i)
+                    # index into processed_files (the filtered list that becomes
+                    # dataset_filenames), NOT the full-results enumerate index `i`:
+                    # skipped/None files make `i` overshoot len(processed_files),
+                    # producing cluster indices past the dataset end (IndexError in
+                    # ConcatDataset) for any source whose cluster file omits some files
+                    # (e.g. afdb_homo: ~48k of 1.93M lack a seqid40 assignment).
+                    cluster_dict[cluster_id].append(len(processed_files) - 1)
 
                 if self.testing and len(processed_files) > 500:
                     break
@@ -717,7 +723,13 @@ class StructureDataset(Dataset):
                     cluster_id = self.cluster_dict[p_file["name"]]
                     if cluster_id not in cluster_dict:
                         cluster_dict[cluster_id] = []
-                    cluster_dict[cluster_id].append(i)
+                    # index into processed_files (the filtered list that becomes
+                    # dataset_filenames), NOT the full-results enumerate index `i`:
+                    # skipped/None files make `i` overshoot len(processed_files),
+                    # producing cluster indices past the dataset end (IndexError in
+                    # ConcatDataset) for any source whose cluster file omits some files
+                    # (e.g. afdb_homo: ~48k of 1.93M lack a seqid40 assignment).
+                    cluster_dict[cluster_id].append(len(processed_files) - 1)
 
                 if self.testing and len(processed_files) > 500:
                     break

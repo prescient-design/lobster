@@ -91,6 +91,12 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         # `max_num_chains=0` to disable (no layer instantiated) for back-
         # compatibility with checkpoints that never had chain embedding.
         max_num_chains: int = 2,
+        # Per-residue TEMPLATE structure-token conditioning: give the model the
+        # (leak-free, per-chain) structure tokens of one/both chains as context.
+        # Extra vocab row (= structure_token_vocab_size) is the "no template"
+        # index (padding_idx, frozen 0). Gated so legacy checkpoints without this
+        # layer still load; zero-init so a warm-start is initially a no-op.
+        use_template_conditioning: bool = False,
         **neobert_kwargs,
     ) -> None:
         super().__init__()
@@ -139,6 +145,19 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
             )
         else:
             self.chain_embedding = None
+        # Template structure-token embedding (additive into the conditioning path,
+        # like chain_embedding). Row `structure_token_vocab_size` = "no template".
+        self.use_template_conditioning = use_template_conditioning
+        self.no_template_idx = structure_token_vocab_size
+        if use_template_conditioning:
+            self.template_structure_embedding = nn.Embedding(
+                num_embeddings=structure_token_vocab_size + 1,
+                embedding_dim=self.neobert.config.hidden_size,
+                padding_idx=self.no_template_idx,
+            )
+            nn.init.zeros_(self.template_structure_embedding.weight)  # warm-start no-op
+        else:
+            self.template_structure_embedding = None
         self.combine_embedding = nn.Linear(self.neobert.config.hidden_size * 3, self.neobert.config.hidden_size)
 
         # output for sequence and structure tokens
@@ -185,6 +204,7 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         chain_ids: Tensor | None = None,
         return_auxiliary_tasks: bool = False,
         timesteps: Tensor | None = None,
+        template_structure_tokens: Tensor | None = None,
         **kwargs,
     ) -> Tensor:
         sequence_output = self.sequence_embedding(sequence_input_ids)
@@ -198,6 +218,11 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         # monomers and active only on multi-chain inputs.
         if self.chain_embedding is not None and chain_ids is not None:
             conditioning_output = conditioning_output + self.chain_embedding(chain_ids.long())
+        # Additive template structure-token signal (leak-free per-chain templates).
+        if self.template_structure_embedding is not None and template_structure_tokens is not None:
+            conditioning_output = conditioning_output + self.template_structure_embedding(
+                template_structure_tokens.long()
+            )
         combined_output = self.combine_embedding(
             torch.cat([sequence_output, structure_output, conditioning_output], dim=-1)
         )
