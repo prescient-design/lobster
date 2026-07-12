@@ -112,6 +112,18 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # the interface). 0.0 (default) = disabled (no template layer -> legacy
         # checkpoints load unchanged).
         template_percentage: float = 0.0,
+        # Auxiliary AF3-style DISTOGRAM loss. When > 0 (and the encoder is built with
+        # encoder_kwargs.use_distogram_head=true), add a binned Cb-Cb distance
+        # cross-entropy on top of the interpolant loss, predicted from the (noised)
+        # hidden state. The FULL map (intra + inter chain) is supervised so the signal
+        # fires on every example (monomers included), and inter-chain pairs are
+        # up-weighted since docking is the sparse, high-value part of the map. 0.0
+        # (default) = disabled -> fully backward compatible with existing checkpoints.
+        distogram_loss_weight: float = 0.0,
+        distogram_inter_chain_weight: float = 5.0,
+        distogram_min_bin: float = 2.3125,
+        distogram_max_bin: float = 21.6875,
+        distogram_num_bins: int = 64,
         # Fresh-finetune-from-pretrained knobs. These are NOT used inside
         # __init__ — they're consumed by `cmdline/train.py` AFTER model
         # instantiation. Declared here purely so Hydra can pass them
@@ -125,6 +137,11 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         self.save_hyperparameters()
         self.cond_percentage = cond_percentage
         self.template_percentage = template_percentage
+        self.distogram_loss_weight = distogram_loss_weight
+        self.distogram_inter_chain_weight = distogram_inter_chain_weight
+        self.distogram_min_bin = distogram_min_bin
+        self.distogram_max_bin = distogram_max_bin
+        self.distogram_num_bins = distogram_num_bins
 
         super().__init__()
 
@@ -280,6 +297,67 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         loss_dict[f"{split}_interpolant_struc"] = loss_struc
         loss_dict[f"{split}_timesteps_seq"] = timesteps["sequence_tokens"].mean()
         loss_dict[f"{split}_timesteps_struc"] = timesteps["structure_tokens"].mean()
+        return total_loss, loss_dict
+
+    def apply_distogram_loss(
+        self,
+        split: str,
+        batch: dict[str, Tensor],
+        unmasked_x: dict[str, Tensor],
+        mask: Tensor,
+        chain_ids: Tensor | None,
+        total_loss: Tensor,
+        loss_dict: dict[str, Tensor],
+    ) -> tuple[Tensor, dict[str, Tensor]]:
+        """AF3-style distogram auxiliary loss (binned Cb-Cb distance CE).
+
+        Targets are built from the GT backbone coords (``batch["input"][0]``,
+        atom order N/CA/C -> pseudo-Cb). The prediction comes from the encoder's
+        distogram head, which reads the (noised) hidden state, so this pushes the
+        representation to encode explicit geometry. The full L x L map is supervised
+        (intra + inter chain); inter-chain pairs (different, non-pad chain ids) are
+        up-weighted by ``distogram_inter_chain_weight`` because docking is the sparse
+        signal we care about. Intra/inter mean CE are logged for monitoring.
+        """
+        from lobster.model.latent_generator.utils._kinematics import get_Cb
+
+        logits = unmasked_x["distogram_logits"]  # (B, L, L, num_bins)
+        coords = batch["input"][0]  # (B, L, >=3, 3), atom order N, CA, C
+        pb = get_Cb(coords[:, :, :3, :])  # (B, L, 3) pseudo-Cb
+        pb = torch.nan_to_num(pb, nan=0.0, posinf=0.0, neginf=0.0)
+
+        no_bins = self.distogram_num_bins
+        boundaries = (
+            torch.linspace(self.distogram_min_bin, self.distogram_max_bin, no_bins - 1, device=logits.device) ** 2
+        )
+        dists2 = ((pb[:, :, None, :] - pb[:, None, :, :]) ** 2).sum(-1)  # (B, L, L)
+        true_bins = torch.sum(dists2[..., None] > boundaries, dim=-1)  # (B, L, L) in [0, no_bins-1]
+
+        logp = torch.log_softmax(logits.float(), dim=-1)
+        ce = -logp.gather(-1, true_bins.unsqueeze(-1)).squeeze(-1)  # (B, L, L)
+
+        m = mask.bool()
+        pair_mask = (m[:, :, None] & m[:, None, :]).float()  # (B, L, L)
+        weight = torch.ones_like(pair_mask)
+        inter = None
+        if chain_ids is not None:
+            ci = chain_ids.long()
+            inter = (ci[:, :, None] != ci[:, None, :]) & (ci[:, :, None] > 0) & (ci[:, None, :] > 0)
+            weight = torch.where(inter, weight * self.distogram_inter_chain_weight, weight)
+        wm = pair_mask * weight
+        loss = (ce * wm).sum() / wm.sum().clamp_min(1.0)
+
+        total_loss = total_loss + self.distogram_loss_weight * loss
+        loss_dict[f"{split}_distogram"] = loss
+        with torch.no_grad():
+            if inter is not None:
+                inter_mask = pair_mask * inter.float()
+                intra_mask = pair_mask * (~inter).float()
+                if inter_mask.sum() > 0:
+                    loss_dict[f"{split}_distogram_inter"] = (ce * inter_mask).sum() / inter_mask.sum().clamp_min(1.0)
+            else:
+                intra_mask = pair_mask
+            loss_dict[f"{split}_distogram_intra"] = (ce * intra_mask).sum() / intra_mask.sum().clamp_min(1.0)
         return total_loss, loss_dict
 
     def apply_structure_decoder_loss(
@@ -581,6 +659,13 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         total_loss, loss_dict = self.apply_interpolant_loss(
             split, x_gt, unmasked_x, mask, total_loss, loss_dict, timesteps
         )
+
+        # Auxiliary distogram loss (no-op unless distogram_loss_weight>0 AND the
+        # encoder was built with a distogram head, i.e. "distogram_logits" is present).
+        if self.distogram_loss_weight > 0 and "distogram_logits" in unmasked_x:
+            total_loss, loss_dict = self.apply_distogram_loss(
+                split, batch, unmasked_x, mask, chain_ids, total_loss, loss_dict
+            )
 
         # Decode the tokens if needed
         if self.decode_tokens_during_training:

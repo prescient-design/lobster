@@ -97,6 +97,15 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         # index (padding_idx, frozen 0). Gated so legacy checkpoints without this
         # layer still load; zero-init so a warm-start is initially a no-op.
         use_template_conditioning: bool = False,
+        # Auxiliary AF3-style DISTOGRAM head: predict the binned pairwise Cb-Cb
+        # distance map (full intra + inter chain) from the last hidden state, to
+        # sharpen the model's geometric / docking signal during training. Gated so
+        # legacy checkpoints without this head still load; the head is train-only
+        # (never used at inference/decoding). ``distogram_pair_dim`` is the width of
+        # the pair projection, ``distogram_num_bins`` the number of distance bins.
+        use_distogram_head: bool = False,
+        distogram_num_bins: int = 64,
+        distogram_pair_dim: int = 64,
         **neobert_kwargs,
     ) -> None:
         super().__init__()
@@ -163,6 +172,27 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         # output for sequence and structure tokens
         self.sequence_output = nn.Linear(self.neobert.config.hidden_size, sequence_token_vocab_size)
         self.structure_output = nn.Linear(self.neobert.config.hidden_size, structure_token_vocab_size)
+
+        # Auxiliary distogram head. neobert is a single-sequence encoder (no pair
+        # track), so we build pair activations from the single hidden state via an
+        # outer sum of two projections, then an AF3-style symmetric linear -> bins
+        # (logits = half + half^T guarantees a symmetric distogram). The final layer
+        # is zero-initialized so the head starts by predicting a uniform distribution
+        # (stable warm-start when this head is added to an existing checkpoint).
+        self.use_distogram_head = use_distogram_head
+        self.distogram_num_bins = distogram_num_bins
+        if use_distogram_head:
+            hidden = self.neobert.config.hidden_size
+            self.distogram_left = nn.Linear(hidden, distogram_pair_dim)
+            self.distogram_right = nn.Linear(hidden, distogram_pair_dim)
+            self.distogram_act = nn.GELU()
+            self.distogram_out = nn.Linear(distogram_pair_dim, distogram_num_bins)
+            nn.init.zeros_(self.distogram_out.weight)
+            nn.init.zeros_(self.distogram_out.bias)
+        else:
+            self.distogram_left = None
+            self.distogram_right = None
+            self.distogram_out = None
 
     @classmethod
     def load_from_checkpoint(
@@ -240,6 +270,12 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         structure_output = self.structure_output(output["last_hidden_state"])
         output["sequence_logits"] = sequence_output
         output["structure_logits"] = structure_output
+
+        if self.use_distogram_head:
+            h = output["last_hidden_state"]  # (B, L, hidden)
+            pair = self.distogram_left(h).unsqueeze(2) + self.distogram_right(h).unsqueeze(1)  # (B, L, L, P)
+            half = self.distogram_out(self.distogram_act(pair))  # (B, L, L, num_bins)
+            output["distogram_logits"] = half + half.transpose(1, 2)  # symmetric
 
         if self.auxiliary_tasks is not None and return_auxiliary_tasks:
             for task_name, task_head in self.auxiliary_tasks.items():

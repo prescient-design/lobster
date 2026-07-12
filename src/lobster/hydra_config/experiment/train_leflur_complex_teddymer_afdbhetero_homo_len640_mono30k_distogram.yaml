@@ -1,0 +1,71 @@
+# @package _global_
+#
+# DISTOGRAM-AUX finetune: IDENTICAL recipe to train_leflur_complex_teddymer_afdbhetero_homo_len640_mono30k,
+# the only change is an auxiliary AF3-style DISTOGRAM head + loss (binned Cb-Cb distance map,
+# full intra + inter chain, predicted from the noised hidden state). Inter-chain pairs are
+# up-weighted so the sparse docking signal is emphasized. Goal: sharpen the geometric / docking
+# representation to directly lift DockQ, cleanly A/B-able against the base homo checkpoint it
+# warm-starts from (homo_last_frozen).
+#
+# Usage:
+#   sbatch slurm/scripts/train_leflur_complex_teddymer_afdbhetero_homo_len640_mono30k_distogram.sh
+
+defaults:
+  - override /data: structure_leflur_complex_teddymer_afdbhetero_homo_len640_mono30k
+  - override /model: leflur
+  - override /callbacks: leflur_fwd_track
+compile: false
+
+logger:
+  name: leflur_complex_teddymer_afdbhetero_homo_len640_mono30k_distogram-${model.encoder_kwargs.model_size}_${paths.timestamp}
+  project: lobster_leflur_complex
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: 50000
+  reload_dataloaders_every_n_epochs: 1
+  val_check_interval: 500
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 30
+  devices: 8
+  num_sanity_val_steps: 2
+
+data:
+  batch_size: 32
+  num_workers: 8
+
+model:
+  # Warm-start from the FROZEN base-homo last.ckpt (the eval baseline). The distogram head
+  # is new (absent in this checkpoint) -> loaded non-strict, zero-initialized output layer,
+  # so step 0 is identical to the baseline except for the (initially uniform) aux head.
+  pretrained_ckpt: /cv/scratch/u/lisanzas/dimer_dockq_baseline/homo_last_frozen_2026-07-12.ckpt
+  zero_init_conditioning_on_load: false
+  zero_init_chain_embedding_on_load: false
+  cond_percentage: 0.5
+  lr: 1e-4
+  scheduler: constant_with_warmup
+  num_warmup_steps: 2500
+  num_training_steps: 50000
+  scheduler_kwargs:
+    num_warmup_steps: 2500
+    num_training_steps: 50000
+  # Auxiliary distogram head + loss (the only change vs the base homo recipe).
+  distogram_loss_weight: 1.0
+  distogram_inter_chain_weight: 5.0
+  encoder_kwargs:
+    model_size: medium
+    max_num_chains: 2
+    use_distogram_head: true
+    distogram_num_bins: 64
+    distogram_pair_dim: 64

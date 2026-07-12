@@ -43,6 +43,19 @@ zero_init_chain_embedding_on_load: false
 # >0 provides templates that fraction of steps; within, uniform {both,one,none} chains,
 # each templated chain's interface residues masked 50% of the time.
 template_percentage: 0.0
+# Auxiliary AF3-style DISTOGRAM head + loss (binned Cb-Cb distance map, full intra +
+# inter chain, predicted from the noised hidden state). 0.0 (default) = disabled and
+# fully backward compatible. To enable: set distogram_loss_weight>0 AND
+# encoder_kwargs.use_distogram_head=true. Inter-chain pairs are up-weighted since
+# docking is the sparse, high-value signal. Bins follow AF3 (2.3125-21.6875 A, 64 bins).
+distogram_loss_weight: 0.0
+distogram_inter_chain_weight: 5.0
+distogram_min_bin: 2.3125
+distogram_max_bin: 21.6875
+distogram_num_bins: 64
 encoder_kwargs:
   max_length: ${data.max_length}
   model_size: mini
+  use_distogram_head: false
+  distogram_num_bins: 64
+  distogram_pair_dim: 64
