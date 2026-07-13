@@ -68,7 +68,10 @@ WEIGHT_ARGS=""
 [ -n "${DISTO_W:-}" ] && WEIGHT_ARGS="model.distogram_loss_weight=${DISTO_W}"
 uv run lobster_train \
     experiment=train_leflur_complex_teddymer_afdbhetero_homo_len640_mono30k_distogram \
-    +trainer.strategy=ddp_find_unused_parameters_true \
+    '+trainer.strategy._target_=lightning.pytorch.strategies.DDPStrategy' \
+    '+trainer.strategy.find_unused_parameters=true' \
+    '+trainer.strategy.timeout._target_=datetime.timedelta' \
+    '+trainer.strategy.timeout.minutes=90' \
     ${RESUME_ARGS} \
     ${WEIGHT_ARGS} \
     "hydra.run.dir=${HYDRA_OUT}/\${now:%Y-%m-%d}_\${now:%H-%M-%S}" \
