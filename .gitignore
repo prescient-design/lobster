@@ -372,6 +372,7 @@ docs/leflur/research_notes/
 # line ~68 above; these are explicit re-includes).
 !/slurm/scripts/train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_correct_cb.sh
 !/slurm/scripts/train_latent_generator_3di_input_flow_nokabsch_velocity_base_3di_coord_ce_w0.sh
+!/slurm/scripts/gen_sabdab_minibinders_full142.sh
 
 # Single-example overfit visualization dir (GT + sampled backbone PDBs).
 /overfit_viz/

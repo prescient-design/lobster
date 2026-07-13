@@ -89,6 +89,23 @@ def _generate_binders(
     epitope_indices = gen_cfg.get("epitope_indices", None)
     nsteps = gen_cfg.get("nsteps", 200)
     n_trials = gen_cfg.get("n_trials", 1)
+    # Optional front-loaded structure schedule (PowerInferenceSchedule exponent>1 concentrates
+    # inference steps at low t / the pose-forming window). Default = Linear (unchanged behaviour).
+    import functools as _functools
+
+    from lobster.cmdline.generate_modes._shared import _get_inference_schedule_class
+    from lobster.model.leflur._leflur_sequence_structure_encoder_lightning_module import LinearInferenceSchedule
+
+    _sched_name = gen_cfg.get("inference_schedule_struc", None)
+    _sched_exp = gen_cfg.get("schedule_exponent", None)
+    struct_schedule = LinearInferenceSchedule
+    if _sched_name:
+        _cls = _get_inference_schedule_class(_sched_name)
+        struct_schedule = _functools.partial(_cls, exponent=float(_sched_exp)) if _sched_exp is not None else _cls
+    logger.info(
+        f"binder gen: nsteps={nsteps} cfg_weight={gen_cfg.get('cfg_weight', 1.0)} "
+        f"schedule={_sched_name or 'Linear'} exponent={_sched_exp}"
+    )
     n_designs_per_structure = gen_cfg.get("n_designs_per_structure", 1)
 
     if not target_chain:
@@ -309,6 +326,7 @@ def _generate_binders(
                         length=L_total,
                         num_samples=1,
                         nsteps=nsteps,
+                        inference_schedule_struc=struct_schedule,
                         temperature_seq=gen_cfg.get("temperature_seq", 0.5),
                         temperature_struc=gen_cfg.get("temperature_struc", 1.0),
                         stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
