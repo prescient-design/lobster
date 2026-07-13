@@ -423,7 +423,7 @@ def _generate_binders(
                     str(target_path),
                     target_coords,
                     target_sequence,
-                    bfacts=(bfac[target_mask] if bfac is not None else None),
+                    bfacts=(bfac[target_mask.cpu()] if bfac is not None else None),
                 )
                 logger.info(f"Saved target: {target_path}")
 
