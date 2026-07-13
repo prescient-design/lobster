@@ -81,7 +81,11 @@ def _dockq_score(model_pdb: str, native_pdb: str, dockq_python: str, dockq_scrip
 
 
 def _write_pdb_multichain(
-    filename: str, coords: torch.Tensor, seq_openfold: torch.Tensor, chain_ids_per_res: torch.Tensor
+    filename: str,
+    coords: torch.Tensor,
+    seq_openfold: torch.Tensor,
+    chain_ids_per_res: torch.Tensor,
+    bfactors: torch.Tensor | None = None,
 ) -> None:
     """Write a multi-chain PDB by stitching together one ``writepdb`` call
     per chain. ``writepdb`` hard-codes chain ``A`` at column 21 -- we
@@ -110,9 +114,10 @@ def _write_pdb_multichain(
             continue
         sub_coords = coords[sel]
         sub_seq = seq_openfold[sel]
+        sub_bf = bfactors[sel] if bfactors is not None else None
         with _tempfile.NamedTemporaryFile(mode="r+", suffix=".pdb", delete=False) as tmp:
             tmp_path = tmp.name
-        writepdb(tmp_path, sub_coords, sub_seq, add_cb_o=True)
+        writepdb(tmp_path, sub_coords, sub_seq, bfacts=sub_bf, add_cb_o=True)
         with open(tmp_path) as f:
             for line in f:
                 if line.startswith("ATOM"):
@@ -496,9 +501,12 @@ def _generate_dimer_forward_folding(
             name = d["name"]
             gen_pdb = str(output_dir / f"dimer_forward_folding_{name}_generated.pdb")
             orig_pdb = str(output_dir / f"dimer_forward_folding_{name}_original.pdb")
+            # Hotspot coloring: B-factor = 100 at the epitope-conditioned residues (cond_arg), 0 else,
+            # so gen/native PDBs can be colored by B-factor. None when no epitope conditioning.
+            bfac = (100.0 * cond_arg[0, :L, 0].detach().cpu()) if cond_arg is not None else None
             try:
-                _write_pdb_multichain(gen_pdb, pred_xyz_aligned, seq, chains_local)
-                _write_pdb_multichain(orig_pdb, gt_xyz, seq, chains_local)
+                _write_pdb_multichain(gen_pdb, pred_xyz_aligned, seq, chains_local, bfactors=bfac)
+                _write_pdb_multichain(orig_pdb, gt_xyz, seq, chains_local, bfactors=bfac)
             except Exception as e:
                 logger.warning(f"PDB dump failed for {name}: {type(e).__name__}: {e}")
 

@@ -393,10 +393,17 @@ def _generate_binders(
                 gen_coords = best_result["coords"]
                 gen_sequence = best_result["sequence"]
 
+                # Hotspot coloring: write the epitope-conditioning mask into the B-factor column
+                # (B=100 at conditioned target hotspots, 0 elsewhere) so viewers can color by
+                # B-factor. cond_tensor is (1, L_total, 1) with 1.0 at the target hotspot residues.
+                bfac = (100.0 * cond_tensor[0, :, 0].detach().cpu()) if cond_tensor is not None else None
+
                 # Save complete complex (binder + target on separate chains so
                 # viewers/downstream tools treat them as distinct entities).
                 complex_path = output_dir / f"{prefix}_complex.pdb"
-                writepdb(str(complex_path), gen_coords[0], gen_sequence[0], chains=best_result["chains_ids"][0])
+                writepdb(
+                    str(complex_path), gen_coords[0], gen_sequence[0], bfacts=bfac, chains=best_result["chains_ids"][0]
+                )
                 logger.info(f"Saved complex: {complex_path}")
 
                 # Save binder alone
@@ -407,12 +414,17 @@ def _generate_binders(
                 writepdb(str(binder_path), binder_coords, binder_sequence)
                 logger.info(f"Saved binder: {binder_path}")
 
-                # Save target alone (for reference)
+                # Save target alone (for reference) with the hotspot B-factor coloring
                 target_mask = chains_ids[0] == target_chain_idx
                 target_coords = gen_coords[0, target_mask]
                 target_sequence = gen_sequence[0, target_mask]
                 target_path = output_dir / f"{prefix}_target.pdb"
-                writepdb(str(target_path), target_coords, target_sequence)
+                writepdb(
+                    str(target_path),
+                    target_coords,
+                    target_sequence,
+                    bfacts=(bfac[target_mask] if bfac is not None else None),
+                )
                 logger.info(f"Saved target: {target_path}")
 
                 # Validate with ESMFold if enabled
