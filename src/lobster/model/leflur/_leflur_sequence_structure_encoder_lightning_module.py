@@ -794,6 +794,12 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # guided = uncond + cfg_weight*(cond - uncond). 1.0 = off. Needs a cond-dropout-trained
         # ckpt (cond_percentage>0) for the uncond branch to be in-distribution.
         cfg_weight: float = 1.0,
+        # Optional per-timestep hook for analysis (e.g. distogram-vs-decoded-structure consistency).
+        # Called as step_callback(step_idx, t_struc, unmasked_x, mask) right after each forward pass,
+        # before the interpolant step. `unmasked_x` holds structure_logits / sequence_logits and, when
+        # the encoder has the distogram head on, distogram_logits. No-op when None (default) — zero
+        # effect on generation.
+        step_callback: Callable[..., None] | None = None,
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
@@ -914,6 +920,10 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                 )
                 for _k in ("sequence_logits", "structure_logits"):
                     unmasked_x[_k] = uncond_x[_k] + cfg_weight * (unmasked_x[_k] - uncond_x[_k])
+            # Analysis hook (no-op unless a callback is supplied): lets callers capture per-timestep
+            # distogram logits + decode the current structure without altering the sampling path.
+            if step_callback is not None:
+                step_callback(step_idx, t_struc, unmasked_x, mask)
             unmasked_sequence_tokens = unmasked_x["sequence_logits"]
             if sequence_logit_bias is not None and step_idx < sequence_logit_bias_steps:
                 unmasked_sequence_tokens = unmasked_sequence_tokens + sequence_logit_bias
