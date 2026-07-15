@@ -19,6 +19,11 @@ class NeoBERTConfig(PretrainedConfig):
         vocab_size: int = 1280,
         pad_token_id: int = 0,
         max_length: int = 512,
+        # Pair-bias attention (AF3/Proteina-style): when True, each EncoderBlock builds a per-layer,
+        # per-head additive attention bias from a shared (B,L,L,pair_dim) pair representation supplied
+        # by the encoder. `pair_dim` is the width of that representation. Off by default (no-op).
+        use_pair_bias: bool = False,
+        pair_dim: int = 0,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -36,6 +41,8 @@ class NeoBERTConfig(PretrainedConfig):
         self.vocab_size = vocab_size
         self.pad_token_id = pad_token_id
         self.max_length = max_length
+        self.use_pair_bias = use_pair_bias
+        self.pair_dim = pair_dim
         self.kwargs = kwargs
 
 

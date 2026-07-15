@@ -1,0 +1,76 @@
+# @package _global_
+#
+# PAIR-BIAS-ATTENTION finetune: IDENTICAL recipe to the distogram experiment, plus AF3/Proteina-style
+# geometry-grounded pair-bias attention. At each forward the current (noised) structure tokens are
+# decoded (detached) to Cb distance bins and, with relpos (±64) + chain-diff + hotspot, projected
+# per-layer/per-head into an additive attention bias (added to QK before softmax in all 66 layers).
+# Warm-starts from the distogram step7680 checkpoint (best FF/docking); the new per-layer to_bias are
+# zero-init so step 0 is identical to that checkpoint. Self-conditioning is stubbed (reserved columns,
+# off). Goal: give attention a geometric prior so the interface can form -> lift docking DockQ.
+#
+# Usage:
+#   sbatch slurm/scripts/train_leflur_complex_teddymer_afdbhetero_homo_len640_mono30k_distogram_pairbias.sh
+
+defaults:
+  - override /data: structure_leflur_complex_teddymer_afdbhetero_homo_len640_mono30k
+  - override /model: leflur
+  - override /callbacks: leflur_fwd_track
+compile: false
+
+logger:
+  name: leflur_complex_..._distogram_pairbias-${model.encoder_kwargs.model_size}_${paths.timestamp}
+  project: lobster_leflur_complex
+  entity: null
+  save_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+paths:
+  timestamp: ${now:%Y-%m-%d}T${now:%H-%M-%S}
+  output_dir: ${paths.root_dir}/${paths.timestamp}
+  root_dir: ${oc.env:LOBSTER_RUNS_DIR}
+
+trainer:
+  num_nodes: 1
+  max_epochs: -1
+  gradient_clip_val: 0.5
+  max_time: null
+  max_steps: 50000
+  reload_dataloaders_every_n_epochs: 1
+  val_check_interval: 500
+  limit_val_batches: 50_000
+  precision: bf16-mixed
+  accumulate_grad_batches: 30
+  devices: 8
+  num_sanity_val_steps: 2
+
+data:
+  batch_size: 32
+  num_workers: 8
+
+model:
+  # Warm-start from the distogram step7680 checkpoint (best FF/docking). The per-layer pair-bias to_bias
+  # are new (absent) -> loaded non-strict, zero-initialized, so step 0 == step7680.
+  pretrained_ckpt: /cv/scratch/u/lisanzas/eval_snapshots/2026-07-13_eval/distogram_step7680.ckpt
+  zero_init_conditioning_on_load: false
+  zero_init_chain_embedding_on_load: false
+  cond_percentage: 0.5
+  lr: 1e-4
+  scheduler: constant_with_warmup
+  num_warmup_steps: 2500
+  num_training_steps: 50000
+  scheduler_kwargs:
+    num_warmup_steps: 2500
+    num_training_steps: 50000
+  # Keep the distogram head/loss (as in step7680) + add pair-bias attention.
+  distogram_loss_weight: 1.0
+  distogram_inter_chain_weight: 5.0
+  encoder_kwargs:
+    model_size: medium
+    max_num_chains: 2
+    use_distogram_head: true
+    distogram_num_bins: 64
+    distogram_pair_dim: 64
+    # Pair-bias attention ON (hotspot active; self-cond stubbed off).
+    use_pair_bias_attention: true
+    pair_bias_relpos_bins: 129
+    use_pair_bias_hotspot: true
+    use_pair_bias_self_cond: false

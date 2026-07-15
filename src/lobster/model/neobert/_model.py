@@ -47,6 +47,18 @@ class EncoderBlock(nn.Module):
         self.attention_norm = nn.RMSNorm(config.hidden_size, config.norm_eps)
         self.ffn_norm = nn.RMSNorm(config.hidden_size, config.norm_eps)
 
+        # Pair-bias attention (AF3/Proteina-style): per-layer, per-head additive bias projected from a
+        # shared (B,L,L,pair_dim) pair representation. `pair_to_bias` is zero-initialized so adding this
+        # module to a pretrained checkpoint is a no-op at load (warm-start safe); the model learns to use
+        # the geometry bias during finetuning.
+        if getattr(config, "use_pair_bias", False) and getattr(config, "pair_dim", 0) > 0:
+            self.pair_norm = nn.LayerNorm(config.pair_dim)
+            self.pair_to_bias = nn.Linear(config.pair_dim, config.num_attention_heads, bias=False)
+            nn.init.zeros_(self.pair_to_bias.weight)
+        else:
+            self.pair_norm = None
+            self.pair_to_bias = None
+
     def forward(
         self,
         x: torch.Tensor,
@@ -55,10 +67,19 @@ class EncoderBlock(nn.Module):
         output_attentions: bool,
         max_seqlen: int = None,
         cu_seqlens: torch.Tensor = None,
+        pair_feat: torch.Tensor = None,
+        pair_valid: torch.Tensor = None,
     ):
         # Attention
         attn_output, attn_weights = self._att_block(
-            self.attention_norm(x), attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens
+            self.attention_norm(x),
+            attention_mask,
+            freqs_cis,
+            output_attentions,
+            max_seqlen,
+            cu_seqlens,
+            pair_feat,
+            pair_valid,
         )
 
         # Residual
@@ -77,6 +98,8 @@ class EncoderBlock(nn.Module):
         output_attentions: bool,
         max_seqlen: int = None,
         cu_seqlens: torch.Tensor = None,
+        pair_feat: torch.Tensor = None,
+        pair_valid: torch.Tensor = None,
     ):
         batch_size, seq_len, _ = x.shape
 
@@ -90,6 +113,15 @@ class EncoderBlock(nn.Module):
 
         # Attn block
         attn_weights = None
+
+        # Per-layer, per-head additive pair bias (B, H, L, L), projected from the shared pair rep.
+        # to_bias is zero-init -> no-op at warm-start; masked pairs zeroed by pair_valid.
+        pair_bias = None
+        if pair_feat is not None and self.pair_to_bias is not None:
+            b = self.pair_to_bias(self.pair_norm(pair_feat))  # (B, L, L, H)
+            pair_bias = b.permute(0, 3, 1, 2)  # (B, H, L, L)
+            if pair_valid is not None:
+                pair_bias = pair_bias * pair_valid.unsqueeze(1).to(pair_bias.dtype)
 
         # Flash attention if the tensors are packed
         if cu_seqlens is not None:
@@ -108,17 +140,27 @@ class EncoderBlock(nn.Module):
         elif output_attentions:
             attn_weights = xq.permute(0, 2, 1, 3) @ xk.permute(0, 2, 3, 1) / (xq.size(-1) ** 0.5)
             if attention_mask is not None:
-                attn_weights = attn_weights * attention_mask
+                if pair_bias is not None:
+                    # additive mask: 0 where valid, large-negative where padded, plus the pair bias
+                    add_mask = torch.where(attention_mask.bool(), 0.0, torch.finfo(attn_weights.dtype).min)
+                    attn_weights = attn_weights + add_mask + pair_bias
+                else:
+                    attn_weights = attn_weights * attention_mask
             attn_weights = attn_weights.softmax(-1)
             attn = attn_weights @ xv.permute(0, 2, 1, 3)
             attn = attn.transpose(1, 2)
         # Fall back to SDPA otherwise
         else:
+            if pair_bias is not None:
+                # SDPA adds attn_mask to QK^T/sqrt(d) before softmax -> additive padding mask + pair bias
+                attn_mask = torch.where(attention_mask.bool(), 0.0, torch.finfo(xq.dtype).min).to(xq.dtype) + pair_bias
+            else:
+                attn_mask = attention_mask.bool()
             attn = scaled_dot_product_attention(
                 query=xq.transpose(1, 2),
                 key=xk.transpose(1, 2),
                 value=xv.transpose(1, 2),
-                attn_mask=attention_mask.bool(),
+                attn_mask=attn_mask,
                 dropout_p=0,
             ).transpose(1, 2)
 
@@ -172,6 +214,8 @@ class NeoBERT(NeoBERTPreTrainedModel):
         inputs_embeds: torch.Tensor | None = None,
         output_hidden_states: bool = False,
         output_attentions: bool = False,
+        pair_feat: torch.Tensor | None = None,
+        pair_valid: torch.Tensor | None = None,
         **kwargs,
     ):
         # Initialize
@@ -217,9 +261,12 @@ class NeoBERT(NeoBERTPreTrainedModel):
         # Embedding
         x = self.encoder(input_ids) if input_ids is not None else inputs_embeds
 
-        # Transformer encoder
+        # Transformer encoder. The shared pair_feat/pair_valid (built once by the encoder) is passed
+        # into every layer; each layer projects it with its own zero-init to_bias.
         for layer in self.transformer_encoder:
-            x, attn = layer(x, attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens)
+            x, attn = layer(
+                x, attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens, pair_feat, pair_valid
+            )
             if output_hidden_states:
                 hidden_states.append(x)
             if output_attentions:

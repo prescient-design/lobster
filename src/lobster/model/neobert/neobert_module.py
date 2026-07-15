@@ -21,6 +21,8 @@ class NeoBERTModule(nn.Module):
         pad_token_id: int | None = None,
         max_length: int = 512,
         model_size: Literal["mini", "small", "medium", "large"] | None = None,
+        use_pair_bias: bool = False,
+        pair_dim: int = 0,
     ):
         super().__init__()
 
@@ -42,6 +44,8 @@ class NeoBERTModule(nn.Module):
             vocab_size=vocab_size,
             pad_token_id=pad_token_id,
             max_length=max_length,
+            use_pair_bias=use_pair_bias,
+            pair_dim=pair_dim,
         )
         self.model = NeoBERT(self.config)
         self.decoder = nn.Linear(self.config.hidden_size, self.config.vocab_size)
@@ -55,6 +59,8 @@ class NeoBERTModule(nn.Module):
         attention_mask: Tensor = None,
         output_hidden_states: bool = False,
         output_attentions: bool = False,
+        pair_feat: Tensor = None,
+        pair_valid: Tensor = None,
         **kwargs,
     ) -> dict:
         output = self.model(
@@ -65,6 +71,8 @@ class NeoBERTModule(nn.Module):
             attention_mask=attention_mask,
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
+            pair_feat=pair_feat,
+            pair_valid=pair_valid,
             **kwargs,
         )
 

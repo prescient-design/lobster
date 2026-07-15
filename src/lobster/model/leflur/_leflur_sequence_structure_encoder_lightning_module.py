@@ -267,6 +267,80 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
 
         return decoded_x
 
+    @torch.no_grad()
+    def _build_pair_bias_inputs(
+        self,
+        structure_tokens: Tensor,
+        mask: Tensor,
+        residue_index: Tensor,
+        chain_ids: Tensor | None,
+        conditioning_tensor: Tensor | None,
+    ) -> dict[str, Tensor]:
+        """Build the raw per-pair features for pair-bias attention from the CURRENT (noised) structure
+        tokens. DETACHED (no grad through the ViT decoder) — geometry is a fixed input; only the
+        per-layer to_bias/pair_norm learn. Masking follows the template-track rule (valid = mask &
+        token<n_tokens). Returns bin ids / relpos ids / chain-diff / hotspot / pair_valid, all (B,L,L)."""
+        from lobster.model.latent_generator.utils._kinematics import get_Cb
+
+        B, L = structure_tokens.shape
+        device = structure_tokens.device
+        n_tok = self.quantizer.n_tokens
+
+        # Normalize aux tensors to (B, L): training passes (B,L); generation may pass 1-D (L,) or (1,L).
+        def _to_bl(t):
+            if t is None:
+                return None
+            if t.dim() == 1:
+                t = t.unsqueeze(0)
+            if t.shape[0] == 1 and B > 1:
+                t = t.expand(B, -1)
+            return t
+
+        mask = _to_bl(mask)
+        residue_index = _to_bl(residue_index)
+        chain_ids = _to_bl(chain_ids)
+        valid = mask.bool() & (structure_tokens < n_tok)  # 1=valid (template-track rule)
+        # One-hot the current codebook tokens (zero the mask/pad rows), decode to coords with the valid
+        # mask so masked positions are ignored (mirrors encode_structure(coords, mask_c, ...)).
+        onehot = torch.nn.functional.one_hot(structure_tokens.clamp(0, n_tok - 1), n_tok).to(self.dtype)
+        onehot = onehot * valid.unsqueeze(-1).to(self.dtype)
+        coords = self.decoder_factory.decoders["vit_decoder"](onehot, valid.to(self.dtype))  # (B,L,3,3)
+        cb = torch.nan_to_num(get_Cb(coords[:, :, :3, :]))  # (B,L,3)
+        dist2 = ((cb[:, :, None, :] - cb[:, None, :, :]) ** 2).sum(-1)  # (B,L,L)
+        boundaries = (
+            torch.linspace(self.distogram_min_bin, self.distogram_max_bin, self.distogram_num_bins - 1, device=device)
+            ** 2
+        )
+        bin_ids = torch.sum(dist2[..., None] > boundaries, dim=-1)  # (B,L,L) in [0, num_bins-1]
+        pair_valid = valid[:, None, :] & valid[:, :, None]  # (B,L,L)
+        # relative sequence separation, one-hot, clamped to ±64 -> 129 bins
+        k = 64
+        ridx = residue_index.long()
+        sep = ridx[:, :, None] - ridx[:, None, :]  # (B,L,L)
+        relpos_ids = (sep.clamp(-k, k) + k).long()
+        # chain-diff (1 if different chain)
+        if chain_ids is not None:
+            chain_diff = (chain_ids[:, :, None] != chain_ids[:, None, :]).float()
+        else:
+            chain_diff = torch.zeros(B, L, L, device=device)
+        # hotspot: 1 if either residue is an epitope/hotspot (from the conditioning channel)
+        if conditioning_tensor is not None:
+            ct = conditioning_tensor
+            if ct.dim() == 3:
+                ct = ct[..., 0]  # (B,L,1) -> (B,L)
+            ct = _to_bl(ct)
+            epi = ct > 0  # (B,L)
+            hotspot = (epi[:, :, None] | epi[:, None, :]).float()
+        else:
+            hotspot = torch.zeros(B, L, L, device=device)
+        return {
+            "pair_bin_ids": bin_ids,
+            "pair_relpos_ids": relpos_ids,
+            "pair_chain_diff": chain_diff,
+            "pair_hotspot": hotspot,
+            "pair_valid": pair_valid,
+        }
+
     def encode_structure(self, x_gt: Tensor, mask: Tensor, residue_index: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Encode the model input."""
         x_emb = self.strucure_encoder(x_gt, mask, residue_index=residue_index)
@@ -534,6 +608,14 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             timesteps["sequence_tokens"] = timesteps["sequence_tokens"][:, None].expand(-1, L)[:, :, None]
             timesteps["structure_tokens"] = timesteps["structure_tokens"][:, None].expand(-1, L)[:, :, None]
 
+        # Pair-bias attention: build the geometry-grounded per-pair features from the current structure
+        # tokens (detached decode) and hand them to the encoder, which assembles + projects them.
+        pair_kwargs: dict[str, Tensor] = {}
+        if getattr(self.encoder, "use_pair_bias_attention", False):
+            pair_kwargs = self._build_pair_bias_inputs(
+                x_t["structure_tokens"], mask, residue_index, chain_ids, conditioning_tensor
+            )
+
         unmasked_x = self.encoder(
             sequence_input_ids=x_t["sequence_tokens"],
             structure_input_ids=x_t["structure_tokens"],
@@ -544,6 +626,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             timesteps=timesteps,
             template_structure_tokens=template_structure_tokens,
             return_auxiliary_tasks=False,
+            **pair_kwargs,
         )
 
         return unmasked_x

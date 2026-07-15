@@ -59,3 +59,10 @@ encoder_kwargs:
   use_distogram_head: false
   distogram_num_bins: 64
   distogram_pair_dim: 64
+  # Pair-bias attention (AF3/Proteina-style geometry-grounded attention). Off by default (no-op).
+  # When on: per-layer per-head additive bias from a shared one-hot pair rep [Xt-distogram | relpos(±64,
+  # 129) | chain-diff | hotspot | self-cond STUB]. hotspot active; self-cond reserved (zeros).
+  use_pair_bias_attention: false
+  pair_bias_relpos_bins: 129
+  use_pair_bias_hotspot: true
+  use_pair_bias_self_cond: false

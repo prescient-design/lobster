@@ -106,9 +106,39 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         use_distogram_head: bool = False,
         distogram_num_bins: int = 64,
         distogram_pair_dim: int = 64,
+        # Pair-bias attention (AF3/Proteina-style): bias every attention layer with a per-head term
+        # projected (per-layer, zero-init) from a shared (B,L,L,pair_dim) pair representation. The pair
+        # rep is a FIXED-layout concat of one-hot features:
+        #   [ Xt-distogram(distogram_num_bins) | relpos(pair_bias_relpos_bins) | chain-diff(1) |
+        #     hotspot(1) | self-cond distogram(distogram_num_bins, STUB zeros) ].
+        # Gated so legacy checkpoints load; zero-init to_bias makes warm-start a no-op. hotspot is ACTIVE
+        # in v1; self-cond is reserved (zeros) for a later recycling pass.
+        use_pair_bias_attention: bool = False,
+        pair_bias_relpos_bins: int = 129,  # relative seq separation one-hot, clamped to ±64 -> 2*64+1
+        use_pair_bias_hotspot: bool = True,
+        use_pair_bias_self_cond: bool = False,
+        pair_bias_hidden: int = 64,  # width of the shared pair rep fed to the per-layer to_bias
         **neobert_kwargs,
     ) -> None:
         super().__init__()
+
+        # Pair-bias attention: the raw fixed-layout one-hot features (pair_bias_raw_dim) are projected
+        # ONCE by a shared Linear to a small pair_bias_hidden rep (memory: avoids carrying/normalizing a
+        # ~259-wide tensor per layer across 66 layers). NeoBERT builds per-layer to_bias on pair_hidden.
+        self.use_pair_bias_attention = use_pair_bias_attention
+        self.pair_bias_relpos_bins = pair_bias_relpos_bins
+        self.pair_dist_bins = distogram_num_bins
+        self.use_pair_bias_hotspot = use_pair_bias_hotspot
+        self.use_pair_bias_self_cond = use_pair_bias_self_cond
+        self.pair_bias_raw_dim = 0
+        self.pair_bias_hidden = pair_bias_hidden
+        self.pair_input_proj = None
+        if use_pair_bias_attention:
+            # 64 (Xt distogram) + relpos + 1 (chain) + 1 (hotspot) + 64 (self-cond stub)
+            self.pair_bias_raw_dim = distogram_num_bins + pair_bias_relpos_bins + 1 + 1 + distogram_num_bins
+            self.pair_input_proj = nn.Linear(self.pair_bias_raw_dim, pair_bias_hidden)
+            neobert_kwargs["use_pair_bias"] = True
+            neobert_kwargs["pair_dim"] = pair_bias_hidden
 
         self.neobert = NeoBERTModule(**neobert_kwargs)
 
@@ -235,6 +265,14 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         return_auxiliary_tasks: bool = False,
         timesteps: Tensor | None = None,
         template_structure_tokens: Tensor | None = None,
+        # Pair-bias attention inputs (built in the lightning forward): per-pair distance-bin ids from the
+        # decoded current structure, relpos ids, chain-diff, hotspot, and the valid-pair mask. All
+        # (B,L,L). When present + use_pair_bias_attention, assembled into the shared one-hot pair rep.
+        pair_bin_ids: Tensor | None = None,
+        pair_relpos_ids: Tensor | None = None,
+        pair_chain_diff: Tensor | None = None,
+        pair_hotspot: Tensor | None = None,
+        pair_valid: Tensor | None = None,
         **kwargs,
     ) -> Tensor:
         sequence_output = self.sequence_embedding(sequence_input_ids)
@@ -256,6 +294,41 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         combined_output = self.combine_embedding(
             torch.cat([sequence_output, structure_output, conditioning_output], dim=-1)
         )
+
+        # Assemble the shared pair representation once (fixed column layout: Xt-distogram | relpos |
+        # chain-diff | hotspot | self-cond-stub). Each NeoBERT layer projects it with its own zero-init
+        # to_bias. Built only when pair-bias is on and the geometry inputs were supplied.
+        pair_feat = None
+        if self.use_pair_bias_attention and pair_bin_ids is not None:
+            oh = torch.nn.functional.one_hot
+            B, L, _ = pair_bin_ids.shape
+            dev, dt = combined_output.device, combined_output.dtype
+            valid = pair_valid if pair_valid is not None else torch.ones(B, L, L, dtype=torch.bool, device=dev)
+            chain_diff = pair_chain_diff if pair_chain_diff is not None else torch.zeros(B, L, L, device=dev, dtype=dt)
+            # Relpos is a DIRECTIONAL (signed i-j) one-hot for SAME-chain pairs only; cross-chain pairs
+            # are zeroed (Proteina's cross-sequence relpos returns zeros) -> cross-chain features stay
+            # symmetric (distance sym + relpos zero + chain-diff sym + hotspot sym => binder<->target
+            # pair_feat[i,j] == pair_feat[j,i], no explicit pair symmetrization needed).
+            same_chain = (1.0 - chain_diff).unsqueeze(-1).to(dt)
+            relpos_oh = oh(pair_relpos_ids.clamp(0, self.pair_bias_relpos_bins - 1), self.pair_bias_relpos_bins).to(dt)
+            relpos_oh = relpos_oh * same_chain  # zero cross-chain sequence separation
+            hotspot = (
+                pair_hotspot
+                if (pair_hotspot is not None and self.use_pair_bias_hotspot)
+                else torch.zeros(B, L, L, device=dev, dtype=dt)
+            )
+            cols = [
+                oh(pair_bin_ids.clamp(0, self.pair_dist_bins - 1), self.pair_dist_bins).to(dt)
+                * valid.unsqueeze(-1).to(dt),  # Cb-distance distogram (symmetric)
+                relpos_oh,  # relpos: directional intra, zeroed inter
+                chain_diff.unsqueeze(-1).to(dt),  # different-chain indicator (symmetric)
+                hotspot.unsqueeze(-1).to(dt),  # hotspot: either residue (symmetric)
+                torch.zeros(B, L, L, self.pair_dist_bins, device=dev, dtype=dt),  # self-cond STUB (zeros)
+            ]
+            pair_feat_raw = torch.cat(cols, dim=-1)  # (B, L, L, pair_bias_raw_dim)
+            # project the wide one-hot rep ONCE to a small hidden dim (per-layer to_bias operates on this)
+            pair_feat = self.pair_input_proj(pair_feat_raw)  # (B, L, L, pair_bias_hidden)
+
         # removinf position_ids becuase not properly formulated for current neo architecture
         position_ids = None
         output = self.neobert(
@@ -263,6 +336,8 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
             inputs_embeds=combined_output,
             position_ids=position_ids,
             attention_mask=attention_mask,
+            pair_feat=pair_feat,
+            pair_valid=pair_valid,
             **kwargs,
         )
 
