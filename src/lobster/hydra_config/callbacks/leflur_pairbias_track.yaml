@@ -1,0 +1,26 @@
+# Lean callback bundle for the PAIR-BIAS finetune: checkpointing + lr/progress only. The heavy
+# forward-folding generation tracks (leflur_fwd_track) batch many structures through generate_sample,
+# and with pair-bias each denoising step builds (B,L,L,*) tensors -> OOM at the callback's batch size.
+# Training itself is fine (gradient checkpointing). We evaluate FF/binder OFFLINE at batch 1 (memory
+# safe) on saved checkpoints, so the in-training generation tracks are dropped here.
+defaults:
+  - model_checkpoint.yaml
+  - lr_monitor.yaml
+  - progress_bar.yaml
+  - _self_
+
+# Complex-focused checkpoint (keeps last.ckpt for resume), anchored on the pinder-val loss.
+model_checkpoint:
+  dirpath: ${paths.output_dir}
+  filename: "{epoch}-{step}-complex-{val_loss_pinder_val:.4f}"
+  monitor: val_loss_pinder_val
+
+model_checkpoint_monomer:
+  _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  dirpath: ${paths.output_dir}
+  filename: "{epoch}-{step}-monomer-{val_loss_cameo:.4f}"
+  monitor: val_loss_cameo
+  save_top_k: 3
+  mode: min
+  verbose: true
+  save_last: false

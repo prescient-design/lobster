@@ -142,9 +142,11 @@ class EncoderBlock(nn.Module):
             attn_weights = xq.permute(0, 2, 1, 3) @ xk.permute(0, 2, 3, 1) / (xq.size(-1) ** 0.5)
             if attention_mask is not None:
                 if pair_bias is not None:
-                    # additive mask: 0 where valid, large-negative where padded, plus the pair bias
-                    add_mask = torch.where(attention_mask.bool(), 0.0, torch.finfo(attn_weights.dtype).min)
-                    attn_weights = attn_weights + add_mask + pair_bias
+                    # additive mask = pair_bias, with padded key positions set to -inf (memory-lean:
+                    # reuse the (B,H,L,L) bf16 pair_bias, no separate FP32 torch.where intermediate)
+                    attn_weights = attn_weights + pair_bias.masked_fill(
+                        ~attention_mask.bool(), torch.finfo(attn_weights.dtype).min
+                    )
                 else:
                     attn_weights = attn_weights * attention_mask
             attn_weights = attn_weights.softmax(-1)
@@ -153,8 +155,9 @@ class EncoderBlock(nn.Module):
         # Fall back to SDPA otherwise
         else:
             if pair_bias is not None:
-                # SDPA adds attn_mask to QK^T/sqrt(d) before softmax -> additive padding mask + pair bias
-                attn_mask = torch.where(attention_mask.bool(), 0.0, torch.finfo(xq.dtype).min).to(xq.dtype) + pair_bias
+                # SDPA adds attn_mask to QK^T/sqrt(d) before softmax. Reuse pair_bias (bf16, B,H,L,L)
+                # and set padded key positions to -inf via masked_fill (no FP32 intermediate).
+                attn_mask = pair_bias.masked_fill(~attention_mask.bool(), torch.finfo(xq.dtype).min)
             else:
                 attn_mask = attention_mask.bool()
             attn = scaled_dot_product_attention(

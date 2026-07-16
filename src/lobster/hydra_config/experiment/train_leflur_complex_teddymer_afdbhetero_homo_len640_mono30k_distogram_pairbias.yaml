@@ -14,7 +14,9 @@
 defaults:
   - override /data: structure_leflur_complex_teddymer_afdbhetero_homo_len640_mono30k
   - override /model: leflur
-  - override /callbacks: leflur_fwd_track
+  # Lean callbacks (no in-training FF generation tracks — they OOM with pair-bias at the callback's
+  # batch size; training is fine via gradient checkpointing; eval FF/binder offline at batch 1).
+  - override /callbacks: leflur_pairbias_track
 compile: false
 
 logger:
