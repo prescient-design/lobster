@@ -74,3 +74,5 @@ model:
     pair_bias_relpos_bins: 129
     use_pair_bias_hotspot: true
     use_pair_bias_self_cond: false
+    # Gradient checkpointing required: per-layer L^2 pair tensors ×66 layers OOM otherwise.
+    gradient_checkpointing: true

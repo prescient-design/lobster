@@ -24,6 +24,10 @@ class NeoBERTConfig(PretrainedConfig):
         # by the encoder. `pair_dim` is the width of that representation. Off by default (no-op).
         use_pair_bias: bool = False,
         pair_dim: int = 0,
+        # Activation/gradient checkpointing on the transformer layers: recompute each layer in backward
+        # instead of saving all layers' activations. Essential for pair-bias (per-layer L^2 pair tensors
+        # ×N_layers would otherwise OOM). Off by default (base model unaffected).
+        gradient_checkpointing: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)

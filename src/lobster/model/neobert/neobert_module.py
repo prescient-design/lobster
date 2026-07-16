@@ -23,6 +23,7 @@ class NeoBERTModule(nn.Module):
         model_size: Literal["mini", "small", "medium", "large"] | None = None,
         use_pair_bias: bool = False,
         pair_dim: int = 0,
+        gradient_checkpointing: bool = False,
     ):
         super().__init__()
 
@@ -46,6 +47,7 @@ class NeoBERTModule(nn.Module):
             max_length=max_length,
             use_pair_bias=use_pair_bias,
             pair_dim=pair_dim,
+            gradient_checkpointing=gradient_checkpointing,
         )
         self.model = NeoBERT(self.config)
         self.decoder = nn.Linear(self.config.hidden_size, self.config.vocab_size)

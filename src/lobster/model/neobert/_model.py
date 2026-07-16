@@ -2,6 +2,7 @@
 
 
 import torch
+import torch.utils.checkpoint
 from torch import nn
 from torch.nn.functional import scaled_dot_product_attention
 
@@ -262,11 +263,28 @@ class NeoBERT(NeoBERTPreTrainedModel):
         x = self.encoder(input_ids) if input_ids is not None else inputs_embeds
 
         # Transformer encoder. The shared pair_feat/pair_valid (built once by the encoder) is passed
-        # into every layer; each layer projects it with its own zero-init to_bias.
+        # into every layer; each layer projects it with its own zero-init to_bias. When
+        # gradient_checkpointing is on (needed for pair-bias: the per-layer L^2 pair tensors would
+        # otherwise OOM), each layer is recomputed in backward instead of saving its activations.
+        use_ckpt = getattr(self.config, "gradient_checkpointing", False) and self.training and not output_attentions
         for layer in self.transformer_encoder:
-            x, attn = layer(
-                x, attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens, pair_feat, pair_valid
-            )
+            if use_ckpt:
+                x, attn = torch.utils.checkpoint.checkpoint(
+                    layer,
+                    x,
+                    attention_mask,
+                    freqs_cis,
+                    output_attentions,
+                    max_seqlen,
+                    cu_seqlens,
+                    pair_feat,
+                    pair_valid,
+                    use_reentrant=False,
+                )
+            else:
+                x, attn = layer(
+                    x, attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens, pair_feat, pair_valid
+                )
             if output_hidden_states:
                 hidden_states.append(x)
             if output_attentions:
