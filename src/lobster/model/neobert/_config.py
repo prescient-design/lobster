@@ -47,6 +47,7 @@ class NeoBERTConfig(PretrainedConfig):
         self.max_length = max_length
         self.use_pair_bias = use_pair_bias
         self.pair_dim = pair_dim
+        self.gradient_checkpointing = gradient_checkpointing
         self.kwargs = kwargs
 
 

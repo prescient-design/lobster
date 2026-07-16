@@ -269,7 +269,12 @@ class NeoBERT(NeoBERTPreTrainedModel):
         # into every layer; each layer projects it with its own zero-init to_bias. When
         # gradient_checkpointing is on (needed for pair-bias: the per-layer L^2 pair tensors would
         # otherwise OOM), each layer is recomputed in backward instead of saving its activations.
-        use_ckpt = getattr(self.config, "gradient_checkpointing", False) and self.training and not output_attentions
+        # Gate on grad-enabled (robust: True in the training-step forward where checkpointing matters,
+        # False under no_grad generation where it's pointless) rather than self.training, which can be
+        # False here under DDP/warm-start.
+        use_ckpt = (
+            getattr(self.config, "gradient_checkpointing", False) and torch.is_grad_enabled() and not output_attentions
+        )
         for layer in self.transformer_encoder:
             if use_ckpt:
                 x, attn = torch.utils.checkpoint.checkpoint(
