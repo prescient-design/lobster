@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#SBATCH --partition ai4dd-b200
+#SBATCH --partition llm-b200
 #SBATCH --account llm
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
