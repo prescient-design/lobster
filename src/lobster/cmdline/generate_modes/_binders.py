@@ -115,6 +115,23 @@ def _generate_binders(
     if rg_retry_max > 1:
         logger.info(f"binder gen: Rg reject/retry ON (rg_thresh={rg_thresh} Å, max {rg_retry_max} attempts/design)")
 
+    # Per-amino-acid sequence logit bias (additive, applied to sequence logits for the first
+    # `sequence_logit_bias_steps` denoising steps) — same mechanism as unconditional gen. Use a
+    # NEGATIVE value to suppress an over-used residue, e.g. {"A": -3.0} to lower alanine composition.
+    seq_logit_bias = None
+    seq_bias_cfg = gen_cfg.get("sequence_logit_bias", None)
+    if seq_bias_cfg:
+        from lobster.tokenization._amino_acid import AA_VOCAB
+
+        seq_logit_bias = torch.zeros(len(AA_VOCAB), device=device)
+        for aa, bval in seq_bias_cfg.items():
+            if aa in AA_VOCAB:
+                seq_logit_bias[AA_VOCAB[aa]] = float(bval)
+            else:
+                logger.warning(f"Unknown amino acid '{aa}' in sequence_logit_bias, skipping")
+        logger.info(f"Sequence logit bias: {dict(seq_bias_cfg)}")
+    seq_logit_bias_steps = int(gen_cfg.get("sequence_logit_bias_steps", 200))
+
     if not target_chain:
         raise ValueError("target_chain must be specified for binder_design mode")
     if not binder_length:
@@ -423,6 +440,8 @@ def _generate_binders(
                         encode_target_only=gen_cfg.get("encode_target_only", False),
                         template_structure_tokens=template_arg,
                         cfg_weight=float(gen_cfg.get("cfg_weight", 1.0)),
+                        sequence_logit_bias=seq_logit_bias,
+                        sequence_logit_bias_steps=seq_logit_bias_steps,
                     )
 
                     # Decode structures
