@@ -442,6 +442,7 @@ def _generate_binders(
                         cfg_weight=float(gen_cfg.get("cfg_weight", 1.0)),
                         sequence_logit_bias=seq_logit_bias,
                         sequence_logit_bias_steps=seq_logit_bias_steps,
+                        sequence_diversity_penalty=float(gen_cfg.get("sequence_diversity_penalty", 0.0)),
                     )
 
                     # Decode structures

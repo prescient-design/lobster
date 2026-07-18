@@ -852,6 +852,12 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         sequence_anchor_mask: Tensor = None,
         sequence_logit_bias: Tensor | None = None,
         sequence_logit_bias_steps: int = 10,
+        # Per-SEQUENCE diversity (frequency) penalty: at each step subtract
+        # `sequence_diversity_penalty * (running per-design frequency of each AA)` from the sequence
+        # logits, so whichever residue is currently over-represented in a given design is suppressed.
+        # Adaptive + residue-agnostic -> fights single-AA collapse WITHIN each sequence (unlike the
+        # static composition bias which only matches the aggregate marginal). 0 = off.
+        sequence_diversity_penalty: float = 0.0,
         # Per-residue chain-id signal for the encoder's chain_embedding
         # layer (Commit C). Shape (num_samples, length), long. None or
         # all-zero disables the chain channel (padding_idx=0 -> embedding
@@ -1010,6 +1016,20 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             unmasked_sequence_tokens = unmasked_x["sequence_logits"]
             if sequence_logit_bias is not None and step_idx < sequence_logit_bias_steps:
                 unmasked_sequence_tokens = unmasked_sequence_tokens + sequence_logit_bias
+            if sequence_diversity_penalty and sequence_diversity_penalty > 0 and step_idx < sequence_logit_bias_steps:
+                # Adaptive per-design frequency penalty: subtract alpha * (current AA frequency) so the
+                # residue a given design is over-using gets suppressed. Frequency measured from the
+                # current x0-hat prediction over the positions being generated (inpainting mask).
+                pred = unmasked_sequence_tokens.argmax(dim=-1)  # (B, L)
+                B, L, V = unmasked_sequence_tokens.shape
+                genmask = (
+                    inpainting_mask_sequence.bool()
+                    if inpainting_mask_sequence is not None
+                    else torch.ones(B, L, dtype=torch.bool, device=unmasked_sequence_tokens.device)
+                )
+                onehot = torch.nn.functional.one_hot(pred, V).float() * genmask.unsqueeze(-1).float()
+                freq = onehot.sum(dim=1) / genmask.float().sum(dim=1, keepdim=True).clamp(min=1.0)  # (B, V)
+                unmasked_sequence_tokens = unmasked_sequence_tokens - sequence_diversity_penalty * freq.unsqueeze(1)
             xt_seq_new = self.interpolant_seq.step(
                 unmasked_sequence_tokens,
                 t_seq,
