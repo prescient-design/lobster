@@ -126,6 +126,14 @@ def _generate_binders(
             f"binder gen: sequence-degeneracy reject/retry ON (max_aa_frac<={maxaa_thresh}, "
             f"max {maxaa_retry_max} attempts/design)"
         )
+    rg_on = rg_retry_max > 1
+    degen_on = maxaa_thresh < 1.0
+    # When a binder-length RANGE is used with retry, optionally sample a FRESH length on every retry
+    # (not just fresh noise), so a redraw explores a different binder SIZE too. Default off = length is
+    # sampled once per design and held fixed across that design's retries.
+    resample_length_on_retry = bool(gen_cfg.get("resample_length_on_retry", False))
+    if resample_length_on_retry:
+        logger.info("binder gen: per-retry length resampling ON (each retry draws a fresh binder_length)")
 
     # Per-amino-acid sequence logit bias (additive, applied to sequence logits for the first
     # `sequence_logit_bias_steps` denoising steps) — same mechanism as unconditional gen. Use a
@@ -219,6 +227,8 @@ def _generate_binders(
                 _bllo = _blhi = int(_blspec)
                 _bl_range = False
             _blrng = _random.Random(int(cfg.get("seed", 0)) + structure_idx)
+            # Resample a fresh length on every retry only makes sense with a range + retry enabled.
+            resample_len = _bl_range and (rg_on or degen_on) and resample_length_on_retry
 
             def build_composite(
                 binder_length,
@@ -392,7 +402,10 @@ def _generate_binders(
 
             # Generate binder designs
             for design_idx in range(n_designs_per_structure):
-                if _bl_range:
+                if resample_len:
+                    # length + composite are (re)built fresh inside the trial loop below
+                    comp = None
+                elif _bl_range:
                     _Ldes = _blrng.randint(_bllo, _blhi)
                     comp = build_composite(_Ldes)
                     if comp is None:
@@ -403,18 +416,19 @@ def _generate_binders(
                     logger.info(f"design {design_idx}: sampled binder_length={_Ldes}")
                 else:
                     comp = _comp_fixed
-                L_total = comp["L_total"]
-                coords_res = comp["coords_res"]
-                sequence_tokenized = comp["sequence_tokenized"]
-                mask = comp["mask"]
-                indices = comp["indices"]
-                chains_ids = comp["chains_ids"]
-                mask_sequence = comp["mask_sequence"]
-                mask_structure = comp["mask_structure"]
-                chain_ids_emb = comp["chain_ids_emb"]
-                cond_tensor = comp["cond_tensor"]
-                template_arg = comp["template_arg"]
-                binder_chain_idx = comp["binder_chain_idx"]
+                if comp is not None:
+                    L_total = comp["L_total"]
+                    coords_res = comp["coords_res"]
+                    sequence_tokenized = comp["sequence_tokenized"]
+                    mask = comp["mask"]
+                    indices = comp["indices"]
+                    chains_ids = comp["chains_ids"]
+                    mask_sequence = comp["mask_sequence"]
+                    mask_structure = comp["mask_structure"]
+                    chain_ids_emb = comp["chain_ids_emb"]
+                    cond_tensor = comp["cond_tensor"]
+                    template_arg = comp["template_arg"]
+                    binder_chain_idx = comp["binder_chain_idx"]
                 if n_designs_per_structure > 1:
                     logger.info(f"\n--- Design {design_idx + 1}/{n_designs_per_structure} ---")
 
@@ -422,12 +436,11 @@ def _generate_binders(
                 best_rg = float("inf")
                 best_maxaa = 1.0
                 best_score = float("inf")
-                # binder residues (constant across attempts) for the compactness / degeneracy checks
-                binder_mask_sel = chains_ids[0] == binder_chain_idx
+                # binder residues for the compactness / degeneracy checks (recomputed per-trial when the
+                # length is resampled, since chains_ids changes with binder length).
+                binder_mask_sel = None if resample_len else (chains_ids[0] == binder_chain_idx)
                 # Number of attempts: Rg and/or degeneracy retry (if enabled) supersede the legacy
                 # n_trials counter.
-                rg_on = rg_retry_max > 1
-                degen_on = maxaa_thresh < 1.0
                 if rg_on or degen_on:
                     n_attempts = max(rg_retry_max, maxaa_retry_max)
                 else:
@@ -436,6 +449,32 @@ def _generate_binders(
                 for trial in range(n_attempts):
                     if n_attempts > 1:
                         logger.info(f"Trial {trial + 1}/{n_attempts}")
+
+                    if resample_len:
+                        # Fresh binder length (and composite) for this attempt, so a redraw explores a
+                        # different size, not just fresh noise at a fixed size.
+                        _Ldes = _blrng.randint(_bllo, _blhi)
+                        comp = build_composite(_Ldes)
+                        if comp is None:
+                            logger.warning(
+                                f"design {design_idx} trial {trial + 1}: sampled binder_length={_Ldes} "
+                                f"exceeds max_length, skipping attempt"
+                            )
+                            continue
+                        logger.info(f"design {design_idx} trial {trial + 1}: sampled binder_length={_Ldes}")
+                        L_total = comp["L_total"]
+                        coords_res = comp["coords_res"]
+                        sequence_tokenized = comp["sequence_tokenized"]
+                        mask = comp["mask"]
+                        indices = comp["indices"]
+                        chains_ids = comp["chains_ids"]
+                        mask_sequence = comp["mask_sequence"]
+                        mask_structure = comp["mask_structure"]
+                        chain_ids_emb = comp["chain_ids_emb"]
+                        cond_tensor = comp["cond_tensor"]
+                        template_arg = comp["template_arg"]
+                        binder_chain_idx = comp["binder_chain_idx"]
+                        binder_mask_sel = chains_ids[0] == binder_chain_idx
 
                     # Generate with inpainting
                     generate_sample = model.generate_sample(
@@ -491,13 +530,19 @@ def _generate_binders(
                         gen_sequence = generate_sample["sequence_logits"].argmax(dim=-1)
                         gen_sequence[gen_sequence > 21] = 20
 
-                    # Store result
+                    # Store result. cond_tensor / binder_chain_idx are carried so the save block below
+                    # uses the accepted attempt's composite (length can differ across attempts).
                     result = {
                         "coords": gen_coords,
                         "sequence": gen_sequence,
                         "mask": mask,
                         "chains_ids": chains_ids,
                         "indices": indices,
+                        "cond_tensor": cond_tensor,
+                        "binder_chain_idx": binder_chain_idx,
+                        "coords_res": coords_res,
+                        "mask_sequence": mask_sequence,
+                        "mask_structure": mask_structure,
                     }
 
                     if rg_on or degen_on:
@@ -546,6 +591,16 @@ def _generate_binders(
 
                 gen_coords = best_result["coords"]
                 gen_sequence = best_result["sequence"]
+                # Use the accepted attempt's composite (length may differ across attempts when
+                # resample_length_on_retry is on).
+                chains_ids = best_result["chains_ids"]
+                indices = best_result["indices"]
+                binder_chain_idx = best_result["binder_chain_idx"]
+                cond_tensor = best_result["cond_tensor"]
+                mask = best_result["mask"]
+                coords_res = best_result["coords_res"]
+                mask_sequence = best_result["mask_sequence"]
+                mask_structure = best_result["mask_structure"]
 
                 # Hotspot coloring: write the epitope-conditioning mask into the B-factor column
                 # (B=100 at conditioned target hotspots, 0 elsewhere) so viewers can color by
