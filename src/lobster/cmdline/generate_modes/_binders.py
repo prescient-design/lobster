@@ -114,6 +114,18 @@ def _generate_binders(
     rg_thresh = float(gen_cfg.get("rg_thresh", 15.0))
     if rg_retry_max > 1:
         logger.info(f"binder gen: Rg reject/retry ON (rg_thresh={rg_thresh} Å, max {rg_retry_max} attempts/design)")
+    # Sequence-degeneracy reject/retry: if the binder sequence is low-complexity (any single amino acid
+    # accounts for > `maxaa_thresh` of the binder), regenerate that design (fresh independent draw) up to
+    # `maxaa_retry_max` attempts and keep the least-degenerate one. Motivated by the finding that
+    # degenerate designs (>50% one AA) pass at ~1/5 the rate and poly-Ala at 0% — a fresh redraw lands
+    # naturally non-degenerate ~58% of the time. maxaa_thresh=1.0 (default) => disabled.
+    maxaa_thresh = float(gen_cfg.get("max_aa_frac", 1.0))
+    maxaa_retry_max = int(gen_cfg.get("maxaa_retry_max", 1))
+    if maxaa_thresh < 1.0:
+        logger.info(
+            f"binder gen: sequence-degeneracy reject/retry ON (max_aa_frac<={maxaa_thresh}, "
+            f"max {maxaa_retry_max} attempts/design)"
+        )
 
     # Per-amino-acid sequence logit bias (additive, applied to sequence logits for the first
     # `sequence_logit_bias_steps` denoising steps) — same mechanism as unconditional gen. Use a
@@ -408,10 +420,18 @@ def _generate_binders(
 
                 best_result = None
                 best_rg = float("inf")
-                # binder residues (constant across attempts) for the compactness check
+                best_maxaa = 1.0
+                best_score = float("inf")
+                # binder residues (constant across attempts) for the compactness / degeneracy checks
                 binder_mask_sel = chains_ids[0] == binder_chain_idx
-                # Number of attempts: Rg retry (if enabled) supersedes the legacy n_trials counter.
-                n_attempts = rg_retry_max if rg_retry_max > 1 else n_trials
+                # Number of attempts: Rg and/or degeneracy retry (if enabled) supersede the legacy
+                # n_trials counter.
+                rg_on = rg_retry_max > 1
+                degen_on = maxaa_thresh < 1.0
+                if rg_on or degen_on:
+                    n_attempts = max(rg_retry_max, maxaa_retry_max)
+                else:
+                    n_attempts = n_trials
 
                 for trial in range(n_attempts):
                     if n_attempts > 1:
@@ -480,21 +500,33 @@ def _generate_binders(
                         "indices": indices,
                     }
 
-                    if rg_retry_max > 1:
+                    if rg_on or degen_on:
                         # Compactness (radius of gyration) of the generated binder CA (atom index 1).
                         binder_ca = gen_coords[0, binder_mask_sel][:, 1, :]  # (L_binder, 3)
                         if binder_ca.shape[0] >= 2:
                             rg = (binder_ca - binder_ca.mean(0)).pow(2).sum(-1).mean().sqrt().item()
                         else:
                             rg = float("inf")
+                        # Sequence degeneracy: fraction of the single most-common residue in the binder.
+                        bseq = gen_sequence[0, binder_mask_sel]
+                        maxaa = (bseq.bincount().max().item() / bseq.numel()) if bseq.numel() > 0 else 1.0
+                        rg_ok = (rg <= rg_thresh) if rg_on else True
+                        degen_ok = (maxaa <= maxaa_thresh) if degen_on else True
+                        # Lower score = better. Unmet active criteria dominate (1000 each); among ties
+                        # prefer more compact (rg) then more diverse (maxaa).
+                        score = (0.0 if rg_ok else 1000.0) + (0.0 if degen_ok else 1000.0)
+                        score += (rg if rg_on else 0.0) + (10.0 * maxaa)
                         logger.info(
                             f"  design {design_idx} attempt {trial + 1}/{n_attempts}: binder Rg={rg:.1f} Å "
-                            f"(accept <= {rg_thresh})"
+                            f"(<= {rg_thresh if rg_on else 'off'}), maxAAfrac={maxaa:.2f} "
+                            f"(<= {maxaa_thresh if degen_on else 'off'})"
                         )
-                        if rg < best_rg:  # keep the most-compact attempt seen so far
+                        if score < best_score:  # keep the best attempt seen so far
+                            best_score = score
                             best_rg = rg
+                            best_maxaa = maxaa
                             best_result = result
-                        if rg <= rg_thresh:
+                        if rg_ok and degen_ok:
                             break
                     else:
                         # Legacy path: keep the first/only trial.
@@ -505,8 +537,8 @@ def _generate_binders(
                 if best_result is None:
                     logger.error(f"design {design_idx}: no valid generation after {n_attempts} attempts, skipping")
                     continue
-                if rg_retry_max > 1:
-                    logger.info(f"  design {design_idx}: final binder Rg={best_rg:.1f} Å")
+                if rg_on or degen_on:
+                    logger.info(f"  design {design_idx}: final binder Rg={best_rg:.1f} Å, maxAAfrac={best_maxaa:.2f}")
 
                 # Save outputs
                 structure_name = Path(structure_path).stem
