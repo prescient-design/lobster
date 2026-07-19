@@ -127,6 +127,10 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     if "chain_ids_for_embedding" in batch[0]:
         padded_chain_ids_for_embedding = []
 
+    # Per-design scalar conditioning bins (per-residue Long, 0=NULL); generic pass-through + pad with 0.
+    sc_keys = sorted(k for k in batch[0] if k.startswith("scalar_cond__"))
+    padded_scalar_cond = {k: [] for k in sc_keys}
+
     for bb_dict in batch:
         coords_res = bb_dict["coords_res"]
         mask = bb_dict["mask"]
@@ -217,6 +221,11 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
                     ],
                     dim=0,
                 )
+            )
+        for _sck in sc_keys:
+            _t = bb_dict[_sck]
+            padded_scalar_cond[_sck].append(
+                torch.cat([_t, torch.zeros(max_length - _t.shape[0], dtype=_t.dtype)], dim=0)
             )
         if "template_coords" in batch[0]:
             padded_template_coords.append(
@@ -359,6 +368,8 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     if "epitope_tensor" in batch[0]:
         out["epitope_tensor"] = torch.stack(padded_epitope_tensor, dim=0)
         out["paratope_tensor"] = torch.stack(padded_paratope_tensor, dim=0)
+    for _sck in sc_keys:
+        out[_sck] = torch.stack(padded_scalar_cond[_sck], dim=0)
     if "name" in batch[0]:
         # Heterogeneous batches: when the train mix combines datasets
         # produced by different preprocessing passes (e.g. the leflur-p

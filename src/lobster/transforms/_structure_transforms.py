@@ -273,6 +273,11 @@ class StructureComplexTransform(BaseTransform):
         interface_distance=10.0,
         crop_strategy: str = "random_anchor",
         epitope_subsample_min_frac: float = 1.0,
+        # Emit per-design SCALAR conditioning bins (rg_ratio, iface_frac, interface SS helix/sheet/coil,
+        # frac_arom) on the BINDER chain (= the paratope side; NULL/0 on the target). Matches the
+        # binder-design inference framing. Off (default) => no extra keys, no overhead.
+        emit_scalar_cond: bool = False,
+        scalar_cond_interface_cutoff: float = 8.0,
         **kwargs,
     ):
         """
@@ -312,9 +317,12 @@ class StructureComplexTransform(BaseTransform):
         # SPARSE hotspots -- matching de-novo binder inference (~3 hotspots) instead of the full
         # one-sided interface it sees by default. 1.0 = off (full interface, legacy behaviour).
         self.epitope_subsample_min_frac = float(epitope_subsample_min_frac)
+        self.emit_scalar_cond = bool(emit_scalar_cond)
+        self.scalar_cond_interface_cutoff = float(scalar_cond_interface_cutoff)
         logger.info(
             f"StructureComplexTransform  crop_strategy={crop_strategy} "
-            f"epitope_subsample_min_frac={self.epitope_subsample_min_frac}"
+            f"epitope_subsample_min_frac={self.epitope_subsample_min_frac} "
+            f"emit_scalar_cond={self.emit_scalar_cond}"
         )
 
     def _subsample_epitope(self, x: dict) -> dict:
@@ -620,6 +628,109 @@ class StructureComplexTransform(BaseTransform):
                 x["paratope_tensor"] = torch.zeros_like(x["indices"], device=x["indices"].device)
 
         x = self._subsample_epitope(x)
+        if self.emit_scalar_cond:
+            x = self._add_scalar_cond(x)
+        return x
+
+    # Fixed categorical bin edges (from the conditioning plan). bin id 0 = NULL; value bins 1..K.
+    _SC_EDGES = {
+        "rg_ratio": [1.25, 1.45, 1.70, 2.10],  # K=5: very_compact/compact/moderate/extended/very_extended
+        "iface_frac": [0.12, 0.20, 0.30],  # K=4: focused/moderate/broad/draped
+        "iface_helix": [0.10, 0.30, 0.50],  # K=4: none/low/med/high
+        "iface_sheet": [0.10, 0.30, 0.50],
+        "iface_coil": [0.10, 0.30, 0.50],
+        "frac_arom": [0.03, 0.07, 0.13],  # K=4: none/low/med/high
+    }
+    _AROM_SET = frozenset("FYW")
+
+    @staticmethod
+    def _to_bin(v: float, edges: list) -> int:
+        b = 1
+        for e in edges:
+            if v <= e:
+                return b
+            b += 1
+        return b  # > last edge -> top bin
+
+    def _add_scalar_cond(self, x: dict) -> dict:
+        """Compute per-design scalar conditioning bins on the BINDER chain (paratope side) and emit
+        `scalar_cond__{name}` per-residue LongTensors (bin on binder residues, 0/NULL elsewhere)."""
+        import biotite.structure as struc
+
+        L = x["indices"].shape[0]
+        out = {n: torch.zeros(L, dtype=torch.long) for n in self._SC_EDGES}
+        try:
+            chains = x["chains"]
+            mask = x.get("mask", torch.ones(L))
+            uch = [c.item() for c in torch.unique(chains) if c.item() != -1]
+            if len(uch) < 2:
+                for n in self._SC_EDGES:
+                    x[f"scalar_cond__{n}"] = out[n]
+                return x
+            # binder chain = the one carrying the paratope (binder-side interface); fallback = smaller chain
+            para = x.get("paratope_tensor")
+            if para is not None and para.sum() > 0:
+                bc = max(uch, key=lambda c: float(((chains == c) & (para.bool())).sum()))
+            else:
+                bc = min(uch, key=lambda c: int((chains == c).sum()))
+            bsel = (chains == bc) & (mask.bool())
+            tsel = (chains != bc) & (chains != -1) & (mask.bool())
+            if bsel.sum() < 5 or tsel.sum() < 1:
+                for n in self._SC_EDGES:
+                    x[f"scalar_cond__{n}"] = out[n]
+                return x
+            ca = x["coords_res"][:, 1, :].float()  # (L,3) CA
+            bca, tca = ca[bsel], ca[tsel]
+            nres = bca.shape[0]
+            # rg_ratio
+            rg = torch.sqrt(((bca - bca.mean(0)) ** 2).sum(-1).mean()).item()
+            rg_ratio = rg / (2.2 * (nres ** (1.0 / 3.0)))
+            # interface residues (binder CA within cutoff of any target CA)
+            d = torch.cdist(bca, tca)
+            ifm = d.min(1).values < self.scalar_cond_interface_cutoff
+            n_if = int(ifm.sum())
+            iface_frac = n_if / nres
+            # binder sequence (restype -> 1-letter) for aromatics
+            inv = residue_constants.restype_order_with_x_inv
+            bseq = [inv[int(i)] for i in x["sequence"][bsel]]
+            # secondary structure of the binder chain via P-SEA
+            try:
+                arr = struc.array(
+                    [
+                        struc.Atom(
+                            bca[i].tolist(), atom_name="CA", element="C", res_id=i + 1, chain_id="A", res_name="GLY"
+                        )
+                        for i in range(nres)
+                    ]
+                )
+                sse = struc.annotate_sse(arr)
+            except Exception:
+                sse = np.array(["c"] * nres)
+            n = min(nres, len(sse))
+            if_idx = [i for i in range(n) if bool(ifm[i])]
+            if if_idx:
+                ss_if = sse[if_idx]
+                m = len(if_idx)
+                h = float((ss_if == "a").sum()) / m
+                b = float((ss_if == "b").sum()) / m
+                c = float((ss_if == "c").sum()) / m
+                arom = sum(1 for i in if_idx if i < len(bseq) and bseq[i] in self._AROM_SET) / m
+            else:
+                h = b = c = arom = 0.0
+            vals = {
+                "rg_ratio": rg_ratio,
+                "iface_frac": iface_frac,
+                "iface_helix": h,
+                "iface_sheet": b,
+                "iface_coil": c,
+                "frac_arom": arom,
+            }
+            for name, v in vals.items():
+                out[name][bsel] = self._to_bin(v, self._SC_EDGES[name])
+        except Exception as e:
+            logger.warning(f"scalar_cond computation failed ({type(e).__name__}: {e}); emitting NULL")
+        for n in self._SC_EDGES:
+            x[f"scalar_cond__{n}"] = out[n]
         return x
 
 

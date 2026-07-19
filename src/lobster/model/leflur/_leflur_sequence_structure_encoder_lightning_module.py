@@ -133,10 +133,16 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         pretrained_ckpt: str | None = None,
         zero_init_conditioning_on_load: bool = False,
         zero_init_chain_embedding_on_load: bool = False,
+        # Per-signal CFG dropout for the scalar (categorical) conditioning. During training each present
+        # signal is set to NULL (bin 0) per-example with its dropout prob, so the model learns to run with
+        # any subset -> each signal is independently CFG-scalable + optional at inference. float = same rate
+        # for all; dict {signal: rate} for per-signal schedules.
+        scalar_cond_dropout: float | dict = 0.2,
     ):
         self.save_hyperparameters()
         self.cond_percentage = cond_percentage
         self.template_percentage = template_percentage
+        self._scalar_cond_dropout = scalar_cond_dropout
         self.distogram_loss_weight = distogram_loss_weight
         self.distogram_inter_chain_weight = distogram_inter_chain_weight
         self.distogram_min_bin = distogram_min_bin
@@ -462,6 +468,44 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
 
         return total_loss, loss_dict
 
+    # Names of the per-design scalar conditioning signals; batch key = f"scalar_cond__{name}".
+    _SCALAR_COND_NAMES = ("rg_ratio", "iface_frac", "iface_helix", "iface_sheet", "iface_coil", "frac_arom")
+
+    def build_scalar_cond_bins(self, batch: dict[str, Tensor], training: bool) -> dict | None:
+        """Pull per-design scalar conditioning bins from the batch and apply per-signal CFG dropout.
+
+        Returns {name: (B,L) Long bin ids} for signals present in the batch, or None when scalar
+        conditioning is disabled / no signals present. During training each signal is independently set to
+        NULL (bin 0) per-example with its dropout prob, so the model learns to run with any subset.
+        """
+        if not getattr(self.encoder, "use_scalar_conditioning", False):
+            return None
+        dev = batch["sequence"].device
+        B = batch["sequence"].shape[0]
+        dd = self._scalar_cond_dropout
+        # Two-level schedule: with prob `_all`, drop EVERY signal for an example (clean unconditioned mode
+        # -> preserves the strong base generation); otherwise drop each signal independently at its own rate.
+        p_all = dd.get("_all", 0.0) if isinstance(dd, dict) else 0.0
+        all_drop = (
+            (torch.rand(B, device=dev) < p_all)
+            if (training and p_all > 0)
+            else torch.zeros(B, dtype=torch.bool, device=dev)
+        )
+        bins: dict[str, Tensor] = {}
+        for name in self._SCALAR_COND_NAMES:
+            key = f"scalar_cond__{name}"
+            if key not in batch or batch[key] is None:
+                continue
+            t = batch[key].to(dev).long()
+            if training:
+                p = dd.get(name, 0.2) if isinstance(dd, dict) else float(dd)
+                drop = all_drop | (torch.rand(B, device=dev) < p) if p > 0 else all_drop
+                if drop.any():
+                    t = t.clone()
+                    t[drop] = 0  # NULL the whole example for this signal
+            bins[name] = t
+        return bins or None
+
     def get_gen_gt_and_conditioning_tensor(
         self, batch: dict[str, Tensor], cond_percentage: float | None = None
     ) -> tuple[dict[str, Tensor], Tensor, Tensor, Tensor, bool]:
@@ -599,6 +643,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         timesteps: dict[str, Tensor] | None = None,
         chain_ids: Tensor | None = None,
         template_structure_tokens: Tensor | None = None,
+        scalar_cond_bins: dict | None = None,
     ) -> dict[str, Tensor]:
         """Forward pass of the model, for inference."""
         if timesteps is not None:
@@ -625,6 +670,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             chain_ids=chain_ids,
             timesteps=timesteps,
             template_structure_tokens=template_structure_tokens,
+            scalar_cond_bins=scalar_cond_bins,
             return_auxiliary_tasks=False,
             **pair_kwargs,
         )
@@ -728,6 +774,9 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             with torch.no_grad():
                 template_structure_tokens = self.build_template_tokens(batch, chain_ids)
 
+        # Per-design scalar (categorical) conditioning bins with per-signal CFG dropout (train only).
+        scalar_cond_bins = self.build_scalar_cond_bins(batch, training=self.training)
+
         # gen tokens
         unmasked_x = self.forward(
             x_t,
@@ -737,6 +786,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             timesteps=timesteps,
             chain_ids=chain_ids,
             template_structure_tokens=template_structure_tokens,
+            scalar_cond_bins=scalar_cond_bins,
         )
 
         total_loss, loss_dict = self.apply_interpolant_loss(
@@ -872,6 +922,9 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # Per-residue TEMPLATE structure tokens (leak-free per-chain), (num_samples, length)
         # long, no_template_idx where absent. Passed to the encoder's template embedding.
         template_structure_tokens: Tensor | None = None,
+        # Per-design scalar conditioning bins {name -> (num_samples, length) Long, 0=NULL}. Applied at every
+        # denoising step (both the conditional and the epitope-CFG uncond forward). None = off.
+        scalar_cond_bins: dict | None = None,
         # Inpainting only: if True, exclude the to-be-generated (inpainting_mask==1)
         # region from structure encoding, so the placeholder geometry there does not
         # perturb the fixed (target) structure tokens via the encoder's attention. The
@@ -994,6 +1047,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                 timesteps=timesteps,
                 chain_ids=chain_ids,
                 template_structure_tokens=template_structure_tokens,
+                scalar_cond_bins=scalar_cond_bins,
             )
             # Classifier-free guidance: extrapolate logits away from the unconditional (no-epitope)
             # prediction to amplify the hotspot signal (which steers the interface, esp. L36).
@@ -1006,6 +1060,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                     timesteps=timesteps,
                     chain_ids=chain_ids,
                     template_structure_tokens=template_structure_tokens,
+                    scalar_cond_bins=scalar_cond_bins,
                 )
                 for _k in ("sequence_logits", "structure_logits"):
                     unmasked_x[_k] = uncond_x[_k] + cfg_weight * (unmasked_x[_k] - uncond_x[_k])

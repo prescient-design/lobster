@@ -38,6 +38,43 @@ from lobster.transforms._structure_transforms import (
 )
 
 
+# Category-name -> bin id for the per-design scalar conditioning signals (bin 0 = NULL/off).
+_SC_VOCAB = {
+    "rg_ratio": {"very_compact": 1, "compact": 2, "moderate": 3, "extended": 4, "very_extended": 5},
+    "iface_frac": {"focused": 1, "moderate": 2, "broad": 3, "draped": 4},
+    "iface_helix": {"none": 1, "low": 2, "med": 3, "high": 4},
+    "iface_sheet": {"none": 1, "low": 2, "med": 3, "high": 4},
+    "iface_coil": {"none": 1, "low": 2, "med": 3, "high": 4},
+    "frac_arom": {"none": 1, "low": 2, "med": 3, "high": 4},
+}
+
+
+def _build_scalar_cond_bins(gen_cfg, chains_ids_row, binder_chain_idx, L_total, device):
+    """Build {signal -> (1,L) Long bin ids} from generation.scalar_cond (dict signal->category name or
+    int bin), placing the bin on binder residues and 0/NULL on the target. None when unset."""
+    spec = gen_cfg.get("scalar_cond", None)
+    if not spec:
+        return None
+    binder_mask = chains_ids_row == binder_chain_idx
+    bins = {}
+    for name, cat in dict(spec).items():
+        if name not in _SC_VOCAB or cat is None:
+            continue
+        bid = _SC_VOCAB[name].get(str(cat))
+        if bid is None:
+            try:
+                bid = int(cat)
+            except (TypeError, ValueError):
+                logger.warning(f"scalar_cond: unknown category '{cat}' for '{name}', skipping")
+                continue
+        t = torch.zeros(1, L_total, dtype=torch.long, device=device)
+        t[0, binder_mask] = bid
+        bins[name] = t
+    if bins:
+        logger.info(f"scalar_cond ON: {dict(spec)}")
+    return bins or None
+
+
 def _generate_binders(
     model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
 ) -> None:
@@ -476,6 +513,11 @@ def _generate_binders(
                         binder_chain_idx = comp["binder_chain_idx"]
                         binder_mask_sel = chains_ids[0] == binder_chain_idx
 
+                    # Per-design scalar (categorical) conditioning bins on the binder residues.
+                    scalar_cond_bins = _build_scalar_cond_bins(
+                        gen_cfg, chains_ids[0], binder_chain_idx, L_total, device
+                    )
+
                     # Generate with inpainting
                     generate_sample = model.generate_sample(
                         length=L_total,
@@ -502,6 +544,7 @@ def _generate_binders(
                         sequence_logit_bias=seq_logit_bias,
                         sequence_logit_bias_steps=seq_logit_bias_steps,
                         sequence_diversity_penalty=float(gen_cfg.get("sequence_diversity_penalty", 0.0)),
+                        scalar_cond_bins=scalar_cond_bins,
                     )
 
                     # Decode structures

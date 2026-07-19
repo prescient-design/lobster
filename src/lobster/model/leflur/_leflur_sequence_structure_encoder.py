@@ -97,6 +97,11 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         # index (padding_idx, frozen 0). Gated so legacy checkpoints without this
         # layer still load; zero-init so a warm-start is initially a no-op.
         use_template_conditioning: bool = False,
+        # Per-design SCALAR conditioning (categorical): rg_ratio (compactness), iface_frac (normalized
+        # interface size), interface SS composition (helix/sheet/coil bins), and interface aromatic
+        # fraction. Each is a zero-init additive bin embedding (bin 0 = NULL/padding -> no-op), broadcast
+        # over binder residues. Gated so legacy checkpoints load unchanged; zero-init => warm-start no-op.
+        use_scalar_conditioning: bool = False,
         # Auxiliary AF3-style DISTOGRAM head: predict the binned pairwise Cb-Cb
         # distance map (full intra + inter chain) from the last hidden state, to
         # sharpen the model's geometric / docking signal during training. Gated so
@@ -197,6 +202,26 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
             nn.init.zeros_(self.template_structure_embedding.weight)  # warm-start no-op
         else:
             self.template_structure_embedding = None
+        # Per-design scalar (categorical) conditioning embeddings. num_embeddings = K value bins + 1 NULL
+        # (row 0 = padding_idx, frozen zero). Zero-init => warm-start no-op; additive into conditioning path,
+        # broadcast over binder residues (the transform emits 0/NULL on target residues).
+        self.use_scalar_conditioning = use_scalar_conditioning
+        if use_scalar_conditioning:
+            _sc_bins = {
+                "rg_ratio": 6,
+                "iface_frac": 5,
+                "iface_helix": 5,
+                "iface_sheet": 5,
+                "iface_coil": 5,
+                "frac_arom": 5,
+            }  # num_embeddings incl. NULL row 0
+            self.scalar_cond_emb = nn.ModuleDict(
+                {k: nn.Embedding(n, self.neobert.config.hidden_size, padding_idx=0) for k, n in _sc_bins.items()}
+            )
+            for _emb in self.scalar_cond_emb.values():
+                nn.init.zeros_(_emb.weight)
+        else:
+            self.scalar_cond_emb = None
         self.combine_embedding = nn.Linear(self.neobert.config.hidden_size * 3, self.neobert.config.hidden_size)
 
         # output for sequence and structure tokens
@@ -265,6 +290,9 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         return_auxiliary_tasks: bool = False,
         timesteps: Tensor | None = None,
         template_structure_tokens: Tensor | None = None,
+        # Per-design scalar conditioning bins: dict {name -> (B,L) Long bin ids, 0=NULL}. Added additively
+        # into the conditioning path via zero-init embeddings. No-op when None / all-NULL / layer disabled.
+        scalar_cond_bins: dict | None = None,
         # Pair-bias attention inputs (built in the lightning forward): per-pair distance-bin ids from the
         # decoded current structure, relpos ids, chain-diff, hotspot, and the valid-pair mask. All
         # (B,L,L). When present + use_pair_bias_attention, assembled into the shared one-hot pair rep.
@@ -291,6 +319,12 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
             conditioning_output = conditioning_output + self.template_structure_embedding(
                 template_structure_tokens.long()
             )
+        # Additive per-design scalar (categorical) conditioning signals. Each zero-init bin embedding is a
+        # no-op at NULL (bin 0) / warm-start; broadcast over binder residues.
+        if self.scalar_cond_emb is not None and scalar_cond_bins:
+            for _name, _bins in scalar_cond_bins.items():
+                if _bins is not None and _name in self.scalar_cond_emb:
+                    conditioning_output = conditioning_output + self.scalar_cond_emb[_name](_bins.long())
         combined_output = self.combine_embedding(
             torch.cat([sequence_output, structure_output, conditioning_output], dim=-1)
         )
