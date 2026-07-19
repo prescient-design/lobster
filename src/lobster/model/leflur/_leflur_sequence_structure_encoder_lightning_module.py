@@ -142,7 +142,13 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         self.save_hyperparameters()
         self.cond_percentage = cond_percentage
         self.template_percentage = template_percentage
-        self._scalar_cond_dropout = scalar_cond_dropout
+        # Normalize to a plain float or plain dict (hydra passes a DictConfig, which is NOT `isinstance
+        # dict` -> would fall into the float() branch and crash).
+        self._scalar_cond_dropout = (
+            float(scalar_cond_dropout)
+            if isinstance(scalar_cond_dropout, (int, float))
+            else {str(k): float(v) for k, v in dict(scalar_cond_dropout).items()}
+        )
         self.distogram_loss_weight = distogram_loss_weight
         self.distogram_inter_chain_weight = distogram_inter_chain_weight
         self.distogram_min_bin = distogram_min_bin
