@@ -1273,6 +1273,15 @@ class BinderTargetTransform(BaseTransform):
         if "chain_ids_for_embedding" in batch:
             feat_dict["chain_ids_for_embedding"] = batch["chain_ids_for_embedding"]
 
+        # Same passthrough for the per-design scalar conditioning bins — otherwise they're dropped here
+        # and the scalar_cond embeddings stay frozen at zero-init (exactly the chain_ids bug above).
+        for _sck in [
+            "scalar_cond__rg_ratio", "scalar_cond__iface_frac", "scalar_cond__iface_helix",
+            "scalar_cond__iface_sheet", "scalar_cond__iface_coil", "scalar_cond__frac_arom",
+        ]:
+            if _sck in batch:
+                feat_dict[_sck] = batch[_sck]
+
         return feat_dict
 
 
