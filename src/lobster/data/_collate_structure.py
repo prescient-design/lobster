@@ -127,8 +127,13 @@ def collate_fn_backbone(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     if "chain_ids_for_embedding" in batch[0]:
         padded_chain_ids_for_embedding = []
 
-    # Per-design scalar conditioning bins (per-residue Long, 0=NULL); generic pass-through + pad with 0.
-    sc_keys = sorted(k for k in batch[0] if k.startswith("scalar_cond__"))
+    # Per-design scalar conditioning bins (per-residue Long, 0=NULL); pad with 0. Use explicit key names
+    # + `in` (works for dict and PyG-Data samples; iterating the sample yields values, not keys).
+    _sc_all = [
+        "scalar_cond__rg_ratio", "scalar_cond__iface_frac", "scalar_cond__iface_helix",
+        "scalar_cond__iface_sheet", "scalar_cond__iface_coil", "scalar_cond__frac_arom",
+    ]
+    sc_keys = [k for k in _sc_all if k in batch[0]]
     padded_scalar_cond = {k: [] for k in sc_keys}
 
     for bb_dict in batch:
