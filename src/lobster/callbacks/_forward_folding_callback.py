@@ -52,6 +52,10 @@ class ForwardFoldingCallback(lightning.Callback):
         # Complex-aware extensions (Pinder dimer val sets):
         use_chain_ids: bool = False,
         use_epitope_conditioning: bool = False,
+        # ORACLE per-design scalar conditioning: feed the GT-computed rg_ratio / iface_frac / interface-SS /
+        # frac_arom bins (on the binder chain) to generate_sample, on top of epitope. Tests whether the true
+        # conditioning improves forward-folding DockQ (upper bound on the conditioning's predictive value).
+        use_scalar_conditioning: bool = False,
         metric_prefix: str | None = None,
         max_length_filter: int | None = None,
         min_chains: int = 1,
@@ -123,6 +127,10 @@ class ForwardFoldingCallback(lightning.Callback):
         #   crop boundary as training.
         self.use_chain_ids = use_chain_ids
         self.use_epitope_conditioning = use_epitope_conditioning
+        self.use_scalar_conditioning = use_scalar_conditioning
+        self._scalar_cond_names = (
+            "rg_ratio", "iface_frac", "iface_helix", "iface_sheet", "iface_coil", "frac_arom",
+        )
         self.metric_prefix = metric_prefix or "forward_folding"
         self.max_length_filter = max_length_filter
         self.min_chains = min_chains
@@ -210,9 +218,13 @@ class ForwardFoldingCallback(lightning.Callback):
         # `chains` + `epitope_tensor` keys that downstream needs. For the
         # historical monomer-CAMEO callback we keep the lighter
         # `StructureBackboneTransform` to avoid changing baseline runs.
-        if self.use_chain_ids or self.use_epitope_conditioning:
+        if self.use_chain_ids or self.use_epitope_conditioning or self.use_scalar_conditioning:
             self.structure_transform = StructureComplexTransform(
-                max_length=self.max_length, crop_strategy="interface_anchored"
+                max_length=self.max_length,
+                crop_strategy="interface_anchored",
+                # ORACLE conditioning: compute the GT scalar bins so we can feed the model the true
+                # rg_ratio/iface_frac/interface-SS/frac_arom of the binder chain during forward folding.
+                emit_scalar_cond=self.use_scalar_conditioning,
             )
         else:
             self.structure_transform = StructureBackboneTransform(max_length=self.max_length)
@@ -331,6 +343,13 @@ class ForwardFoldingCallback(lightning.Callback):
             cond_tensor = torch.zeros((B, max_length, 1), device=device)
             any_chain_signal = False
             any_cond_signal = False
+            # ORACLE scalar conditioning bins (per signal), (B, max_length) Long, 0=NULL.
+            sc_bins = (
+                {n: torch.zeros((B, max_length), dtype=torch.long, device=device) for n in self._scalar_cond_names}
+                if self.use_scalar_conditioning
+                else None
+            )
+            any_sc_signal = False
 
             # Fill batch tensors
             for i, structure in enumerate(batch_structures):
@@ -359,6 +378,15 @@ class ForwardFoldingCallback(lightning.Callback):
                     cond_tensor[i, :L, 0] = ep
                     if ep.any():
                         any_cond_signal = True
+                # ORACLE scalar conditioning: the GT-computed bins from the transform (binder chain).
+                if sc_bins is not None:
+                    for n in self._scalar_cond_names:
+                        key = f"scalar_cond__{n}"
+                        if key in structure:
+                            v = structure[key].to(device).long()
+                            sc_bins[n][i, :L] = v
+                            if v.any():
+                                any_sc_signal = True
 
             mask_orig = mask.clone()
 
@@ -423,6 +451,7 @@ class ForwardFoldingCallback(lightning.Callback):
                 chain_ids=chain_ids_arg,
                 conditioning_tensor_override=cond_arg,
                 template_structure_tokens=template_arg,
+                scalar_cond_bins=(sc_bins if (sc_bins is not None and any_sc_signal) else None),
             )
 
             # Decode structures
