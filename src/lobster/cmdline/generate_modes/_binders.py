@@ -131,17 +131,33 @@ def _generate_binders(
     import functools as _functools
 
     from lobster.cmdline.generate_modes._shared import _get_inference_schedule_class
-    from lobster.model.leflur._leflur_sequence_structure_encoder_lightning_module import LinearInferenceSchedule
+    from lobster.model.leflur._leflur_sequence_structure_encoder_lightning_module import (
+        LinearInferenceSchedule,
+        LogInferenceSchedule,
+    )
 
+    def _build_sched(name, exp, default):
+        if not name:
+            return default
+        cls = _get_inference_schedule_class(name)
+        return _functools.partial(cls, exponent=float(exp)) if exp is not None else cls
+
+    # Per-track inference schedules for the schedule ablation. LG (struc) default Linear; sequence default
+    # Log (the historical binder-gen default); 3Di default None -> reuses struc. Each independently settable.
     _sched_name = gen_cfg.get("inference_schedule_struc", None)
     _sched_exp = gen_cfg.get("schedule_exponent", None)
-    struct_schedule = LinearInferenceSchedule
-    if _sched_name:
-        _cls = _get_inference_schedule_class(_sched_name)
-        struct_schedule = _functools.partial(_cls, exponent=float(_sched_exp)) if _sched_exp is not None else _cls
+    struct_schedule = _build_sched(_sched_name, _sched_exp, LinearInferenceSchedule)
+    _seq_name = gen_cfg.get("inference_schedule_seq", None)
+    _seq_exp = gen_cfg.get("seq_schedule_exponent", None)
+    seq_schedule = _build_sched(_seq_name, _seq_exp, LogInferenceSchedule)
+    _tri_name = gen_cfg.get("inference_schedule_tri", None)
+    _tri_exp = gen_cfg.get("tri_schedule_exponent", None)
+    tri_schedule = _build_sched(_tri_name, _tri_exp, None)
+    tri_time_accel = float(gen_cfg.get("tri_time_accel", 1.0))
     logger.info(
         f"binder gen: nsteps={nsteps} cfg_weight={gen_cfg.get('cfg_weight', 1.0)} "
-        f"schedule={_sched_name or 'Linear'} exponent={_sched_exp}"
+        f"sched seq={_seq_name or 'Log'} struc={_sched_name or 'Linear'} tri={_tri_name or '(reuse struc)'} "
+        f"tri_accel={tri_time_accel}"
     )
     n_designs_per_structure = gen_cfg.get("n_designs_per_structure", 1)
     # Compactness reject/retry: if the generated binder's radius of gyration exceeds `rg_thresh`
@@ -188,6 +204,26 @@ def _generate_binders(
                 logger.warning(f"Unknown amino acid '{aa}' in sequence_logit_bias, skipping")
         logger.info(f"Sequence logit bias: {dict(seq_bias_cfg)}")
     seq_logit_bias_steps = int(gen_cfg.get("sequence_logit_bias_steps", 200))
+
+    # Per-3Di-state logit bias (additive, applied to the 3Di logits for the first
+    # `sequence_logit_bias_steps` denoising steps) — the structure-track analogue of the
+    # sequence logit bias. Use a NEGATIVE value to suppress an over-used 3Di state, e.g.
+    # {"V": -4.0} to lower the failure-correlated V-state (Foldseek alphabet). 3Di logits
+    # have width 22 (20 states + mask + pad); states are indexed by Foldseek ALPHABET order.
+    tri_logit_bias = None
+    tri_bias_cfg = gen_cfg.get("tri_logit_bias", None)
+    if tri_bias_cfg:
+        from lobster.model.latent_generator.utils.mini3di._encoder import ALPHABET
+
+        # ALPHABET is a numpy array of single-char states; join to a str for .index().
+        tri_alphabet = "".join(ALPHABET)  # "ACDEFGHIKLMNPQRSTVWYX" (V -> index 17)
+        tri_logit_bias = torch.zeros(22, device=device)
+        for state, bval in tri_bias_cfg.items():
+            if state in tri_alphabet:
+                tri_logit_bias[tri_alphabet.index(state)] = float(bval)
+            else:
+                logger.warning(f"Unknown 3Di state '{state}' in tri_logit_bias, skipping")
+        logger.info(f"3Di logit bias: {dict(tri_bias_cfg)}")
 
     if not target_chain:
         raise ValueError("target_chain must be specified for binder_design mode")
@@ -523,11 +559,15 @@ def _generate_binders(
                         length=L_total,
                         num_samples=1,
                         nsteps=nsteps,
+                        inference_schedule_seq=seq_schedule,
                         inference_schedule_struc=struct_schedule,
+                        inference_schedule_tri=tri_schedule,
+                        tri_time_accel=tri_time_accel,
                         temperature_seq=gen_cfg.get("temperature_seq", 0.5),
                         temperature_struc=gen_cfg.get("temperature_struc", 1.0),
                         stochasticity_seq=gen_cfg.get("stochasticity_seq", 20),
                         stochasticity_struc=gen_cfg.get("stochasticity_struc", 20),
+                        stochasticity_tri=gen_cfg.get("stochasticity_tri", None),
                         inpainting=True,
                         input_structure_coords=coords_res,
                         input_sequence_tokens=sequence_tokenized,
@@ -543,7 +583,9 @@ def _generate_binders(
                         cfg_weight=float(gen_cfg.get("cfg_weight", 1.0)),
                         sequence_logit_bias=seq_logit_bias,
                         sequence_logit_bias_steps=seq_logit_bias_steps,
+                        tri_logit_bias=tri_logit_bias,
                         sequence_diversity_penalty=float(gen_cfg.get("sequence_diversity_penalty", 0.0)),
+                        tri_diversity_penalty=float(gen_cfg.get("tri_diversity_penalty", 0.0)),
                         scalar_cond_bins=scalar_cond_bins,
                     )
 

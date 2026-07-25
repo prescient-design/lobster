@@ -138,6 +138,18 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # any subset -> each signal is independently CFG-scalable + optional at inference. float = same rate
         # for all; dict {signal: rate} for per-signal schedules.
         scalar_cond_dropout: float | dict = 0.2,
+        # 3Di generative TRACK: a third discrete-flow track (Foldseek 3Di alphabet, 20 states + mask + pad).
+        # Adds its own masked-prior DiscreteFlowMatcher + CE loss (weight `tri_loss_weight`). GT 3Di tokens
+        # come from batch["3di_states"] (Structure3diTransform). off/0-weight => fully backward compatible.
+        use_3di_track: bool = False,
+        tri_loss_weight: float = 1.0,
+        # Bidirectional hotspots: fold binder-side interface residues (batch["paratope_tensor"]) into the
+        # SAME epitope conditioning channel, RARER + SPARSER than epitope so the model never depends on it.
+        # Gated on epitope-on examples; when on, mark only a few (<= paratope_max_residues) random paratope
+        # residues. off (default) => paratope never added (pure epitope behaviour).
+        use_paratope_conditioning: bool = False,
+        paratope_cond_percentage: float = 0.2,
+        paratope_max_residues: int = 3,
     ):
         self.save_hyperparameters()
         self.cond_percentage = cond_percentage
@@ -154,6 +166,16 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         self.distogram_min_bin = distogram_min_bin
         self.distogram_max_bin = distogram_max_bin
         self.distogram_num_bins = distogram_num_bins
+        # 3Di track + bidirectional (paratope) hotspot config.
+        self.use_3di_track = use_3di_track
+        self.tri_loss_weight = tri_loss_weight
+        self.use_paratope_conditioning = use_paratope_conditioning
+        self.paratope_cond_percentage = paratope_cond_percentage
+        self.paratope_max_residues = paratope_max_residues
+        # 3Di vocab: 20 Foldseek states (0..19) + mask (20) + pad (21).
+        self.num_tri_classes = 22
+        self.mask_index_tri = 20
+        self.padding_index_tri = 21
 
         super().__init__()
 
@@ -222,6 +244,19 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         inference_schedule = self.inference_schedule(nsteps=1000)
         self.interpolant_seq = interpolant_seq
         self.interpolant_struc = interpolant_struc
+        # 3Di track interpolant (masked prior over 20 states + mask). Built only when the track is enabled.
+        if use_3di_track:
+            if use_masked_prior:
+                prior_tri = DiscreteMaskedPrior(
+                    num_classes=self.num_tri_classes, mask_dim=self.mask_index_tri, inclusive=True
+                )
+            else:
+                prior_tri = self.prior_distribution_seq(num_classes=self.num_tri_classes)
+            self.interpolant_tri = self.interpolant(
+                time_distribution=self.time_distribution_seq(), prior_distribution=prior_tri, device=device
+            )
+        else:
+            self.interpolant_tri = None
         self.inference_schedule = inference_schedule
 
         logger.info(f"Using prior distribution seq: {self.prior_distribution_seq}")
@@ -246,6 +281,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             structure_token_pad_token_id=self.padding_index_struc_tokens,
             model_ckpt=ckpt_path,
             use_template_conditioning=(template_percentage > 0),
+            use_3di_track=use_3di_track,
             **encoder_kwargs or {},
         )
 
@@ -383,6 +419,13 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         loss_dict[f"{split}_interpolant_struc"] = loss_struc
         loss_dict[f"{split}_timesteps_seq"] = timesteps["sequence_tokens"].mean()
         loss_dict[f"{split}_timesteps_struc"] = timesteps["structure_tokens"].mean()
+        # 3Di track loss (weighted). Present only when the track is enabled and GT/logits exist.
+        if self.use_3di_track and "tri_logits" in unmasked_x and "tri_tokens" in x_gt:
+            loss_tri = self.interpolant_tri.loss(
+                unmasked_x["tri_logits"], x_gt["tri_tokens"], timesteps["tri_tokens"]
+            ).mean()
+            total_loss += self.tri_loss_weight * loss_tri
+            loss_dict[f"{split}_interpolant_tri"] = loss_tri
         return total_loss, loss_dict
 
     def apply_distogram_loss(
@@ -534,6 +577,17 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
 
         x_gt = {"structure_tokens": x_1_struc_tokens_argmax, "sequence_tokens": seq_gt}
 
+        # 3Di GT tokens (Foldseek states 0..19). Pad positions -> padding_index_tri (masked out of the loss
+        # via the interpolant's pad handling / our mask). Only built when the track is enabled and the
+        # transform emitted 3di_states.
+        if self.use_3di_track and "3di_states" in batch and batch["3di_states"] is not None:
+            tri_gt = batch["3di_states"].to(device).long().clone()
+            L3 = tri_gt.shape[1]
+            m3 = mask.bool()[:, :L3]
+            tri_gt = tri_gt.clamp(0, self.mask_index_tri - 1)  # guard any stray values into [0,19]
+            tri_gt[~m3] = self.padding_index_tri
+            x_gt["tri_tokens"] = tri_gt
+
         # Generate a random mask for each batch index
         conditioning_mask = torch.rand(B, device=device) < cond_percentage
         epitope_cond = torch.full((B, x_quant.shape[1], 1), 0, device=device, requires_grad=True, dtype=torch.float)
@@ -546,6 +600,20 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                     # Mask 0 - 100% of non-zero indices in epitope tensor
                     epitope_mask = torch.rand_like(epitope_cond[i].float()) < torch.rand(1).item()
                     epitope_cond[i] = epitope_cond[i] * epitope_mask
+                # Bidirectional hotspots: fold a FEW binder-side (paratope) interface residues into the SAME
+                # channel, RARER + SPARSER than epitope, so the model can locate the binder side of the
+                # interface at inference (for 3Di interaction-type guidance) without depending on it.
+                if (
+                    self.use_paratope_conditioning
+                    and "paratope_tensor" in batch
+                    and batch["paratope_tensor"] is not None
+                    and torch.rand(1).item() < self.paratope_cond_percentage
+                ):
+                    para_idx = batch["paratope_tensor"][i].nonzero(as_tuple=True)[0]
+                    if para_idx.numel() > 0:
+                        k = int(torch.randint(1, self.paratope_max_residues + 1, (1,)).item())
+                        sel = para_idx[torch.randperm(para_idx.numel(), device=para_idx.device)[:k]]
+                        epitope_cond[i, sel, 0] = 1.0
 
         conditioning_tensor = epitope_cond
         return x_gt, conditioning_tensor, mask, residue_index, conditioning
@@ -621,6 +689,8 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         timesteps_seq = self.interpolant_seq.sample_time(batch["sequence"].shape[0])
         timesteps_struc = self.interpolant_struc.sample_time(batch["sequence"].shape[0])
         timesteps = {"sequence_tokens": timesteps_seq, "structure_tokens": timesteps_struc}
+        if self.use_3di_track:
+            timesteps["tri_tokens"] = self.interpolant_tri.sample_time(batch["sequence"].shape[0])
         return timesteps
 
     def interpolate_tokens(self, input_tokens: dict[str, Tensor], timesteps: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -638,6 +708,11 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         x_t_struc = self.interpolant_struc.interpolate(x_1_struc, timesteps_struc, x_0_struc)
 
         x_t = {"sequence_tokens": x_t_seq, "structure_tokens": x_t_struc}
+        # 3Di track: noise from the masked prior like the sequence track.
+        if self.use_3di_track and "tri_tokens" in input_tokens:
+            x_1_tri = input_tokens["tri_tokens"]
+            x_0_tri = self.interpolant_tri.sample_prior(x_1_tri.shape)
+            x_t["tri_tokens"] = self.interpolant_tri.interpolate(x_1_tri, timesteps["tri_tokens"], x_0_tri)
         return x_t
 
     def forward(
@@ -677,6 +752,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             timesteps=timesteps,
             template_structure_tokens=template_structure_tokens,
             scalar_cond_bins=scalar_cond_bins,
+            tri_input_ids=x_t.get("tri_tokens"),
             return_auxiliary_tasks=False,
             **pair_kwargs,
         )
@@ -752,6 +828,8 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         device = batch["sequence"].device
         self.interpolant_seq.device = device
         self.interpolant_struc.device = device
+        if self.use_3di_track:
+            self.interpolant_tri.device = device
 
         # set losses
         total_loss = 0.0
@@ -931,6 +1009,34 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # Per-design scalar conditioning bins {name -> (num_samples, length) Long, 0=NULL}. Applied at every
         # denoising step (both the conditional and the epitope-CFG uncond forward). None = off.
         scalar_cond_bins: dict | None = None,
+        # 3Di track sampling. By DEFAULT the 3Di track uses the SAME schedule as the LG structure track
+        # (reuses struc per-step t/dt) and, when temperature_tri/stochasticity_tri are None, the SAME
+        # temperature/stochasticity as the struc track — so callbacks need no 3Di-specific config (to be
+        # ablated post-training). `input_3di_tokens` (num_samples,length) Long supplies 3Di:
+        #   - with `inpainting_mask_3di` (1=generate, 0=hold): partial 3Di spec (interaction-type guidance),
+        #   - with `pin_3di_clean=True`: hold the WHOLE supplied 3Di clean (condition-on-3Di mode).
+        # `tri_logit_bias` (like sequence_logit_bias) nudges the 3Di logits for the first N steps.
+        temperature_tri: float | None = None,
+        stochasticity_tri: int | None = None,
+        # Decode the 3Di track FASTER than the LG structure track: warp 3Di time t_tri = min(t_struc*accel,
+        # 0.9995) and hold it clean once resolved, so the interpretable 3Di fold commits early and scaffolds
+        # the LG denoising. accel=1.0 (default) = lockstep with struc (bit-exact baseline). accel=2 -> 3Di
+        # clean by ~50% of steps; accel=4 -> ~25%. Tests the "3Di leads structure prediction" hypothesis.
+        tri_time_accel: float = 1.0,
+        # INDEPENDENT 3Di inference schedule (its OWN shape: Linear/Log/Power), fully decoupled from the LG
+        # (struc) schedule. None = 3Di reuses the struc schedule (then tri_time_accel warps it). When set,
+        # the 3Di track is denoised on this schedule's own t/dt (a genuinely different schedule, not a
+        # time-warp of struc). Callable(nsteps=...) like inference_schedule_struc.
+        inference_schedule_tri: Callable | None = None,
+        input_3di_tokens: Tensor | None = None,
+        inpainting_mask_3di: Tensor | None = None,
+        pin_3di_clean: bool = False,
+        tri_logit_bias: Tensor | None = None,
+        # 3Di diversity penalty (analog of sequence_diversity_penalty): subtract
+        # `tri_diversity_penalty * (running per-design 3Di-token frequency)` from the 3Di logits each step,
+        # suppressing over-used structural states. Motivated by 3Di degeneracy predicting binder failure
+        # (>0.5 max-token designs pass ~2% vs ~9% for diverse). Applied over generated (inpainting) positions.
+        tri_diversity_penalty: float = 0.0,
         # Inpainting only: if True, exclude the to-be-generated (inpainting_mask==1)
         # region from structure encoding, so the placeholder geometry there does not
         # perturb the fixed (target) structure tokens via the encoder's attention. The
@@ -951,9 +1057,28 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
     ):
         """Generate with model, with option to return full unmasking trajectory and likelihood."""
         device = next(self.parameters()).device
+        self.interpolant_seq.device = device
+        self.interpolant_struc.device = device
+        if self.use_3di_track:
+            self.interpolant_tri.device = device
         xt_seq = self.interpolant_seq.sample_prior((num_samples, length))
         xt_struc = self.interpolant_struc.sample_prior((num_samples, length))
         xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
+        # 3Di track init (masked prior). Reuses the struc inference schedule for per-step t/dt.
+        xt_tri = xt_tri_input = None
+        if self.use_3di_track:
+            xt_tri = self.interpolant_tri.sample_prior((num_samples, length))
+            if input_3di_tokens is not None:
+                xt_tri_input = input_3di_tokens.to(device).long()
+                if pin_3di_clean:
+                    # Hold the entire supplied 3Di clean (condition-on-3Di).
+                    xt_tri = xt_tri_input.clone()
+                elif inpainting_mask_3di is not None:
+                    # Keep supplied 3Di where mask=0, noise from prior where mask=1 (partial spec).
+                    xt_tri = torch.where(inpainting_mask_3di.bool(), xt_tri, xt_tri_input)
+                else:
+                    xt_tri = xt_tri_input.clone()
+            xt["tri_tokens"] = xt_tri
         if inference_schedule_seq is None:
             inference_schedule_seq = self.inference_schedule
         else:
@@ -968,6 +1093,17 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         ts_struc = inference_schedule_struc.generate_schedule(device=device)
         dts_seq = inference_schedule_seq.discretize(device=device)
         dts_struc = inference_schedule_struc.discretize(device=device)
+        # INDEPENDENT 3Di schedule. If inference_schedule_tri given, the 3Di track runs on its OWN schedule
+        # shape (Linear/Log/Power) — genuinely decoupled from struc, not a time-warp. Else reuse struc's
+        # schedule (and tri_time_accel warps it). Same nsteps so the sampling loop stays aligned.
+        _sched_tri_obj = None
+        if self.use_3di_track and inference_schedule_tri is not None:
+            _sched_tri_obj = inference_schedule_tri(nsteps=nsteps)
+            ts_tri = _sched_tri_obj.generate_schedule(device=device)
+            dts_tri = _sched_tri_obj.discretize(device=device)
+            logger.info(f"Using INDEPENDENT 3Di inference schedule: {_sched_tri_obj}")
+        else:
+            ts_tri, dts_tri = ts_struc, dts_struc
         mask = torch.ones((num_samples, length), device=device)
         residue_index = torch.arange(length, device=device)
         conditioning_tensor = torch.zeros((num_samples, length, 1), device=device)
@@ -1038,11 +1174,14 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
 
             xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
 
-        for step_idx, (dt_seq, dt_struc, t_seq, t_struc) in enumerate(
-            tqdm(zip(dts_seq, dts_struc, ts_seq, ts_struc), desc="Generating samples")
+        for step_idx, (dt_seq, dt_struc, dt_tri, t_seq, t_struc, t_tri_raw) in enumerate(
+            tqdm(zip(dts_seq, dts_struc, dts_tri, ts_seq, ts_struc, ts_tri), desc="Generating samples")
         ):
             t_seq = inference_schedule_seq.pad_time(num_samples, t_seq, device)
             t_struc = inference_schedule_struc.pad_time(num_samples, t_struc, device)
+            # 3Di time on its OWN schedule (independent shape) or struc's if none; pad with whichever built it.
+            _pad = (_sched_tri_obj or inference_schedule_struc).pad_time
+            t_tri_sched = _pad(num_samples, t_tri_raw, device)
             timesteps = {"sequence_tokens": t_seq, "structure_tokens": t_struc}
 
             unmasked_x = self.forward(
@@ -1133,6 +1272,57 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             if sequence_anchor_tokens is not None and sequence_anchor_mask is not None:
                 xt_seq = torch.where(sequence_anchor_mask.bool(), xt_seq, sequence_anchor_tokens)
 
+            # 3Di track step. By default shares the struc schedule (accel=1). With tri_time_accel>1 the 3Di
+            # time is warped ahead so it decodes faster and commits early (then holds clean). Optional logit
+            # bias, then hold-fixed for pinned/inpainted 3Di.
+            if self.use_3di_track:
+                unmasked_tri = unmasked_x["tri_logits"]
+                if tri_logit_bias is not None and step_idx < sequence_logit_bias_steps:
+                    unmasked_tri = unmasked_tri + tri_logit_bias
+                if tri_diversity_penalty and tri_diversity_penalty > 0:
+                    # Adaptive per-design 3Di-frequency penalty: subtract alpha * (current 3Di-token
+                    # frequency over generated positions) so an over-used structural state is suppressed.
+                    _pred = unmasked_tri.argmax(dim=-1)  # (B, L)
+                    _B, _L, _V = unmasked_tri.shape
+                    _gm = (
+                        inpainting_mask_3di.bool()
+                        if inpainting_mask_3di is not None
+                        else torch.ones(_B, _L, dtype=torch.bool, device=unmasked_tri.device)
+                    )
+                    _oh = torch.nn.functional.one_hot(_pred, _V).float() * _gm.unsqueeze(-1).float()
+                    _freq = _oh.sum(dim=1) / _gm.float().sum(dim=1, keepdim=True).clamp(min=1.0)  # (B, V)
+                    unmasked_tri = unmasked_tri - tri_diversity_penalty * _freq.unsqueeze(1)
+                # Base 3Di time = its INDEPENDENT schedule (t_tri_sched/dt_tri) — or struc's if no
+                # inference_schedule_tri (then ts_tri==ts_struc). tri_time_accel optionally warps it further.
+                _base_t, _base_dt = t_tri_sched, dt_tri
+                _accel = max(1.0, float(tri_time_accel))
+                if _accel == 1.0:
+                    _t_tri, _dt_tri, _do_step = _base_t, _base_dt, True  # pure schedule (baseline if struc-shared)
+                else:
+                    _t_tri = torch.clamp(_base_t * _accel, max=0.9995)
+                    _dt_tri = _base_dt * _accel
+                    _do_step = float(_t_tri.reshape(-1)[0]) < 0.999  # once 3Di is clean, hold it fixed
+                if _do_step:
+                    xt_tri_new = self.interpolant_tri.step(
+                        unmasked_tri,
+                        _t_tri,
+                        xt_tri,
+                        _dt_tri,
+                        # Default to the LG (struc) track's knobs unless explicitly overridden.
+                        stochasticity=stochasticity_tri if stochasticity_tri is not None else stochasticity_struc,
+                        temperature=temperature_tri if temperature_tri is not None else temperature_struc,
+                    )
+                else:
+                    xt_tri_new = xt_tri  # 3Di already resolved -> keep clean while LG finishes
+                if pin_3di_clean and xt_tri_input is not None:
+                    xt_tri = xt_tri_input
+                elif inpainting_mask_3di is not None and xt_tri_input is not None:
+                    xt_tri = torch.where(inpainting_mask_3di.bool(), xt_tri_new, xt_tri_input)
+                else:
+                    xt_tri = xt_tri_new
+
             xt = {"sequence_tokens": xt_seq, "structure_tokens": xt_struc}
+            if self.use_3di_track:
+                xt["tri_tokens"] = xt_tri
 
         return unmasked_x

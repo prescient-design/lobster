@@ -1,0 +1,23 @@
+# Transform chain for the leflur 3Di-TRACK finetune.
+#
+# IDENTICAL to `atom14_then_structure_complex_aa_tokenizer_alt_seq_chain_remap_transform.yaml`
+# plus `structure_3di_transform.yaml`, inserted right AFTER the complex transform so the 3Di
+# tokens (`3di_states`) are computed on the FINAL (cropped) coords_res/chains. The dict-value
+# insertion order (datamodule composes `list(transform_fn.values())`) is:
+#   1. atom14_to_backbone_transform      -- atom14 -> backbone (no-op on monomers).
+#   2. structure_alt_seq_swap_transform  -- alt-sequence swap.
+#   3. structure_complex_transform       -- backbone norm + length crop + epitope_tensor/paratope_tensor.
+#   4. structure_3di_transform           -- per-residue 3Di states (whole-complex by default; per_chain
+#                                           togglable) for the 3Di generative track.
+#   5. chain_ids_for_embedding_remap     -- remap raw `chains` -> per-residue embedding indices.
+#   6. structure_amino_acid_tokenizer_transform
+defaults:
+  - _self_
+  - structure_alt_seq_swap_transform.yaml
+  - structure_complex_transform_interface_anchored.yaml
+  - structure_3di_transform.yaml
+  - structure_chain_remap_transform.yaml
+  - structure_amino_acid_tokenizer_transform.yaml
+
+atom14_to_backbone_transform:
+  _target_: lobster.transforms._structure_transforms.Atom14ToBackboneTransform

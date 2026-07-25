@@ -9,6 +9,7 @@ from rdkit import Chem
 from lobster.model.latent_generator.utils import apply_random_se3_batched, residue_constants
 from lobster.model.latent_generator.utils._kinematics import c6d_to_bins, xyz_to_c6d
 from lobster.model.latent_generator.utils.mini3di import Encoder, calculate_cb
+from lobster.model.latent_generator.utils.mini3di._encoder import ALPHABET
 
 # Import ESM for embeddings
 try:
@@ -1059,15 +1060,23 @@ class StructureLigandTransform(BaseTransform):
 
 
 class Structure3diTransform(BaseTransform):
-    def __init__(self, **kwargs):
+    def __init__(self, per_chain: bool = False, chain_key: str = "chains", **kwargs):
         super().__init__(**kwargs)
         import lobster
 
         lobster.ensure_package("torch_geometric", group="struct-gpu (or --extra struct-cpu)")
 
         self.encoder = Encoder()
+        # per_chain=False (default): whole-complex encoding (existing behaviour; interface residues'
+        # 3Di can draw their nearest-neighbour partner from the OTHER chain -> encodes inter-chain
+        # geometry). per_chain=True: encode each chain IN ISOLATION and stitch, so 3Di is a pure
+        # intra-chain fold descriptor and cross-chain interaction is left to the LG track.
+        self.per_chain = per_chain
+        self.chain_key = chain_key
 
     def __call__(self, x: dict) -> dict:
+        if self.per_chain and x.get(self.chain_key) is not None:
+            return self._encode_per_chain(x)
         Ca, Cb, N, C = calculate_cb(x)
         out = self.encoder.encode_atoms(Ca, Cb, N, C)
         sequence_3di = self.encoder.build_sequence(out["states"])
@@ -1094,6 +1103,41 @@ class Structure3diTransform(BaseTransform):
         x["3di_descriptors"] = torch.tensor(x["3di_descriptors"], device=device)
         x["3di_partner_index"] = torch.tensor(x["3di_partner_index"], device=device, dtype=torch.long)
 
+        return x
+
+    def _encode_per_chain(self, x: dict) -> dict:
+        """Encode each chain IN ISOLATION and stitch, so no residue's 3Di draws its nearest-neighbour
+        partner from another chain. Termini of each chain -> INVALID_STATE (2). Partner indices are
+        remapped to global positions."""
+        coords = x["coords_res"]
+        device = coords.device
+        chains = x[self.chain_key]
+        chains_np = chains.cpu().numpy() if torch.is_tensor(chains) else np.asarray(chains)
+        L = coords.shape[0]
+        inval = self.encoder._INVALID_STATE
+        states_full = np.full(L, inval, dtype=np.int64)
+        desc_full = np.zeros((L, 10), dtype=np.float32)
+        partner_full = np.arange(L, dtype=np.int64)
+        fe = self.encoder.feature_encoder
+        for c in np.unique(chains_np):
+            idxs = np.where(chains_np == c)[0]
+            if idxs.size < 4:  # too short for a meaningful nearest-neighbour encoding
+                continue
+            sub = {"coords_res": coords[idxs]}
+            Ca, Cb, N, C = calculate_cb(sub)
+            out_c = self.encoder.encode_atoms(Ca, Cb, N, C)
+            states_full[idxs] = np.asarray(out_c["states"].filled())
+            try:
+                desc_full[idxs] = np.asarray(out_c["descriptors"].data, dtype=np.float32)
+            except Exception:
+                pass
+            vc = fe.vc_encoder.encode_atoms(Ca, Cb, N, C)
+            pc = np.asarray(fe.partner_index_encoder._find_residue_partners(vc))
+            partner_full[idxs] = idxs[pc]  # local -> global
+        x["3di_states"] = torch.tensor(states_full, device=device, dtype=torch.long)
+        x["3di_descriptors"] = torch.tensor(desc_full, device=device)
+        x["3di_partner_index"] = torch.tensor(partner_full, device=device, dtype=torch.long)
+        x["3di_sequence"] = "".join(ALPHABET[states_full])
         return x
 
 
@@ -1276,11 +1320,19 @@ class BinderTargetTransform(BaseTransform):
         # Same passthrough for the per-design scalar conditioning bins — otherwise they're dropped here
         # and the scalar_cond embeddings stay frozen at zero-init (exactly the chain_ids bug above).
         for _sck in [
-            "scalar_cond__rg_ratio", "scalar_cond__iface_frac", "scalar_cond__iface_helix",
-            "scalar_cond__iface_sheet", "scalar_cond__iface_coil", "scalar_cond__frac_arom",
+            "scalar_cond__rg_ratio",
+            "scalar_cond__iface_frac",
+            "scalar_cond__iface_helix",
+            "scalar_cond__iface_sheet",
+            "scalar_cond__iface_coil",
+            "scalar_cond__frac_arom",
         ]:
             if _sck in batch:
                 feat_dict[_sck] = batch[_sck]
+
+        # Same passthrough for the 3Di track GT states (else dropped here and the 3Di track never trains).
+        if "3di_states" in batch:
+            feat_dict["3di_states"] = batch["3di_states"]
 
         return feat_dict
 

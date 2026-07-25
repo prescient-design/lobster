@@ -289,6 +289,10 @@ def _generate_dimer_forward_folding(
     # template-trained checkpoint (model.template_percentage>0 -> model.no_template_idx set).
     use_template = gen_cfg.get("use_template", False)
     cfg_weight = float(gen_cfg.get("cfg_weight", 1.0))  # classifier-free guidance on epitope conditioning
+    # Decode the 3Di track faster than LG (3Di-leads schedule sweep). 1.0 = lockstep baseline. Only affects
+    # 3Di-track checkpoints (no-op otherwise). hetero_only skips homodimers (187-hetero FF sweep).
+    tri_time_accel = float(gen_cfg.get("tri_time_accel", 1.0))
+    hetero_only = bool(gen_cfg.get("hetero_only", False))
     # Structure inference schedule: default Linear (uniform t). Set inference_schedule_struc +
     # schedule_exponent to front-load steps at low t (PowerInferenceSchedule exponent>1 -> more
     # pose-forming-window steps). Callable is instantiated with nsteps inside generate_sample.
@@ -304,6 +308,14 @@ def _generate_dimer_forward_folding(
         _cls = _get_inference_schedule_class(_sched_name)
         struct_schedule = _functools.partial(_cls, exponent=float(_sched_exp)) if _sched_exp is not None else _cls
     logger.info(f"structure inference schedule: {_sched_name or 'Linear'} exponent={_sched_exp}")
+    # INDEPENDENT 3Di schedule (its own shape) — None = reuse struc schedule.
+    _tri_name = gen_cfg.get("inference_schedule_tri", None)
+    _tri_exp = gen_cfg.get("tri_schedule_exponent", None)
+    tri_schedule = None
+    if _tri_name:
+        _tcls = _get_inference_schedule_class(_tri_name)
+        tri_schedule = _functools.partial(_tcls, exponent=float(_tri_exp)) if _tri_exp is not None else _tcls
+    logger.info(f"3Di inference schedule: {_tri_name or '(reuse struc)'} exponent={_tri_exp}")
     # DockQ interface scoring (isolated venv via subprocess; numpy<2). Off by default.
     use_dockq = gen_cfg.get("use_dockq", False)
     dockq_python = gen_cfg.get("dockq_python", None) or os.environ.get(
@@ -344,6 +356,12 @@ def _generate_dimer_forward_folding(
             if n_unique < 2:
                 logger.info(f"  only {n_unique} chain in file -- skip (use monomer mode)")
                 continue
+            if hetero_only:
+                # hetero = the two chains have DIFFERENT UniProt suffixes in the pinder id (same split as
+                # the FF DockQ plot's is_hetero). Skips homodimers -> the 187-hetero FF subset.
+                _p = Path(structure_path).stem.split("--")
+                if not (len(_p) == 2 and _p[0].split("_")[-1] != _p[1].split("_")[-1]):
+                    continue
 
             # Generate at the NATIVE dimer length L, not a fixed padded
             # canvas. The earlier "pad to max_length for batch
@@ -419,6 +437,8 @@ def _generate_dimer_forward_folding(
                 cfg_weight=cfg_weight,
                 inference_schedule_struc=struct_schedule,
                 asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
+                tri_time_accel=tri_time_accel,
+                inference_schedule_tri=tri_schedule,
             )
             decoded = model.decode_structure(gen, mask)
             x_recon = decoded.get("vit_decoder")

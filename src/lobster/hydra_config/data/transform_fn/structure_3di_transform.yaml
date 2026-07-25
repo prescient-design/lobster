@@ -1,2 +1,10 @@
+# Structure3diTransform component: emits per-residue 3Di (Foldseek structural alphabet) tokens into
+# `3di_states` from `coords_res`, for the LeFlur 3Di generative track. Placed AFTER the complex
+# transform (which crops + sets coords_res/chains) so 3Di is computed on the final structure.
+#   per_chain=false (default): whole-complex encoding (interface residues' 3Di can draw their
+#     nearest-neighbour partner from the OTHER chain -> encodes inter-chain packing geometry).
+#   per_chain=true: encode each chain in isolation (3Di = pure intra-chain fold; LG owns docking).
 structure_3di_transform:
   _target_: lobster.transforms._structure_transforms.Structure3diTransform
+  per_chain: false
+  chain_key: chains

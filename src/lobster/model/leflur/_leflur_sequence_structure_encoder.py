@@ -102,6 +102,14 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         # fraction. Each is a zero-init additive bin embedding (bin 0 = NULL/padding -> no-op), broadcast
         # over binder residues. Gated so legacy checkpoints load unchanged; zero-init => warm-start no-op.
         use_scalar_conditioning: bool = False,
+        # 3Di generative TRACK (Foldseek structural alphabet: 20 states + mask + pad = 22). The 3Di INPUT
+        # embedding is additive zero-init (like chain/template/scalar_cond -> warm-start no-op, no
+        # combine_embedding change); the 3Di OUTPUT head + its own discrete-flow interpolant/loss (in the
+        # lightning module) make it a real generated track -> interpretable structural readout + a guidance
+        # surface (3Di inpainting). Gated so legacy checkpoints load unchanged; zero-init => warm-start no-op.
+        use_3di_track: bool = False,
+        tri_token_vocab_size: int = 22,
+        tri_token_pad_token_id: int = 21,
         # Auxiliary AF3-style DISTOGRAM head: predict the binned pairwise Cb-Cb
         # distance map (full intra + inter chain) from the last hidden state, to
         # sharpen the model's geometric / docking signal during training. Gated so
@@ -222,11 +230,28 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
                 nn.init.zeros_(_emb.weight)
         else:
             self.scalar_cond_emb = None
+        # 3Di track INPUT embedding (additive into the conditioning path, zero-init => warm-start no-op).
+        # Row tri_token_pad_token_id = pad (padding_idx, frozen 0). No combine_embedding change.
+        self.use_3di_track = use_3di_track
+        if use_3di_track:
+            self.tri_embedding = nn.Embedding(
+                tri_token_vocab_size, self.neobert.config.hidden_size, padding_idx=tri_token_pad_token_id
+            )
+            nn.init.zeros_(self.tri_embedding.weight)
+        else:
+            self.tri_embedding = None
         self.combine_embedding = nn.Linear(self.neobert.config.hidden_size * 3, self.neobert.config.hidden_size)
 
         # output for sequence and structure tokens
         self.sequence_output = nn.Linear(self.neobert.config.hidden_size, sequence_token_vocab_size)
         self.structure_output = nn.Linear(self.neobert.config.hidden_size, structure_token_vocab_size)
+        # 3Di track OUTPUT head (zero-init => uniform logits at warm-start; trained by the interpolant loss).
+        if use_3di_track:
+            self.tri_output = nn.Linear(self.neobert.config.hidden_size, tri_token_vocab_size)
+            nn.init.zeros_(self.tri_output.weight)
+            nn.init.zeros_(self.tri_output.bias)
+        else:
+            self.tri_output = None
 
         # Auxiliary distogram head. neobert is a single-sequence encoder (no pair
         # track), so we build pair activations from the single hidden state via an
@@ -293,6 +318,9 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         # Per-design scalar conditioning bins: dict {name -> (B,L) Long bin ids, 0=NULL}. Added additively
         # into the conditioning path via zero-init embeddings. No-op when None / all-NULL / layer disabled.
         scalar_cond_bins: dict | None = None,
+        # 3Di track input token ids (B,L) Long. Added additively via the zero-init tri_embedding. No-op
+        # when None / layer disabled (warm-start).
+        tri_input_ids: Tensor | None = None,
         # Pair-bias attention inputs (built in the lightning forward): per-pair distance-bin ids from the
         # decoded current structure, relpos ids, chain-diff, hotspot, and the valid-pair mask. All
         # (B,L,L). When present + use_pair_bias_attention, assembled into the shared one-hot pair rep.
@@ -319,12 +347,16 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
             conditioning_output = conditioning_output + self.template_structure_embedding(
                 template_structure_tokens.long()
             )
-        # Additive per-design scalar (categorical) conditioning signals. Each zero-init bin embedding is a
-        # no-op at NULL (bin 0) / warm-start; broadcast over binder residues.
+        # Per-design scalar (categorical) conditioning. Each zero-init bin embedding is a no-op at NULL (bin 0)
+        # / warm-start; broadcast over binder residues. Summed additively into the shared conditioning path.
         if self.scalar_cond_emb is not None and scalar_cond_bins:
             for _name, _bins in scalar_cond_bins.items():
                 if _bins is not None and _name in self.scalar_cond_emb:
                     conditioning_output = conditioning_output + self.scalar_cond_emb[_name](_bins.long())
+        # Additive 3Di track input signal (zero-init => warm-start no-op). This is the 3Di TRACK's input
+        # embedding; its logits come from tri_output below and it is flow-matched in the lightning module.
+        if self.tri_embedding is not None and tri_input_ids is not None:
+            conditioning_output = conditioning_output + self.tri_embedding(tri_input_ids.long())
         combined_output = self.combine_embedding(
             torch.cat([sequence_output, structure_output, conditioning_output], dim=-1)
         )
@@ -379,6 +411,8 @@ class LeFlurSequenceStructureEncoderModule(nn.Module):
         structure_output = self.structure_output(output["last_hidden_state"])
         output["sequence_logits"] = sequence_output
         output["structure_logits"] = structure_output
+        if self.tri_output is not None:
+            output["tri_logits"] = self.tri_output(output["last_hidden_state"])
 
         if self.use_distogram_head:
             h = output["last_hidden_state"]  # (B, L, hidden)
