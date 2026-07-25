@@ -153,8 +153,9 @@ uv run lobster_generate \
     output_dir=./out/binder
 ```
 
-Swap `generate_binder_3di` → `generate_binder_disto` for the non-3Di arm. To
-run the full 38-target Complexa benchmark, fetch it and loop with the runner:
+Swap `generate_binder_3di` → `generate_binder_3di_best` for the highest-pass-rate
+3Di sampler (same checkpoint), or → `generate_binder_disto` for the non-3Di arm.
+To run the full 38-target Complexa benchmark, fetch it and loop with the runner:
 
 ```bash
 lobster_leflur_benchmarks fetch complexa-binder

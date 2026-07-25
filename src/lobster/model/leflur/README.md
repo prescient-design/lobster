@@ -242,22 +242,27 @@ lobster_generate --config-name experiment/generate_ligand_conditioned \
 ### 7. De-novo binder design — Complexa
 
 Design novel protein binders against a target antigen + epitope. Two dedicated
-complex-trained checkpoints: `leflur-binder-3di` (default; adds a 3Di
-structural track) and `leflur-binder-disto` (two-track). The **Complexa
-38-target benchmark** is the canonical evaluation; a design PASSES when
-Protenix co-folding gives **pTM > 0.80 AND ipTM > 0.70**.
+complex-trained checkpoints: `leflur-binder-3di` (adds a 3Di structural track)
+and `leflur-binder-disto` (two-track). The **Complexa 38-target benchmark** is
+the canonical evaluation; a design PASSES when Protenix co-folding gives
+**pTM > 0.80 AND ipTM > 0.70**.
 
 | Model | Config | Pass (%) | Coverage | Folds/covered |
 |---|---|---:|---:|---:|
 | Complexa (reference) | — | **28.80** | **35 / 35** † | **11.51** |
+| LeFlur `leflur-binder-3di` (best) | `experiment/generate_binder_3di_best` | **7.18** | 36 / 38 | 4.11 |
 | LeFlur `leflur-binder-3di` (default) | `experiment/generate_binder_3di` | 6.05 | 36 / 38 | 4.03 |
 | LeFlur `leflur-binder-disto` | `experiment/generate_binder_disto` | 6.37 | 33 / 38 | 4.30 |
 
-`Coverage` = targets with ≥ 1 passing design; `Folds/covered` = distinct
-Foldseek clusters (TM > 0.5) among a covered target's passing binders. 100
-designs/target. The 3Di arm trades a fraction of a point of aggregate pass rate
-for wider target coverage. † 3 of 38 targets OOM'd for the Complexa reference
-model and are excluded from its denominator. Fetch + run:
+Both 3Di rows use the **same** `leflur-binder-3di` checkpoint — they differ only
+in the sampler schedule. `generate_binder_3di_best` (seq=Log, 3Di=Power,
+`stochasticity_seq=60`) is the strongest arm we measured (7.18% at 36/38);
+`generate_binder_3di` (a8: seq=Power, 3Di=Log, `stochasticity_tri=80`) is the
+established/documented recipe at matching coverage. `Coverage` = targets with
+≥ 1 passing design; `Folds/covered` = distinct Foldseek clusters (TM > 0.5)
+among a covered target's passing binders. 100 designs/target. † 3 of 38 targets
+OOM'd for the Complexa reference model and are excluded from its denominator.
+Fetch + run:
 
 ```bash
 # One-time: fetch the 38-target benchmark (target PDBs + MSAs + manifests)

@@ -16,7 +16,7 @@ plus two complex-trained binder-design checkpoints (~5.7 GiB each).
 
 | Short name | Family | Size | Purpose |
 |---|---|---|---|
-| **`leflur-binder-3di`** | protein (complex) | ~5.7 GiB | **Default 3Di binder framework.** Sequence + latent-structure + 3Di generative tracks, complex/epitope-trained. Drives de-novo binder design against a target + epitope. Config `experiment/generate_binder_3di`. |
+| **`leflur-binder-3di`** | protein (complex) | ~5.7 GiB | **Default 3Di binder framework.** Sequence + latent-structure + 3Di generative tracks, complex/epitope-trained. Drives de-novo binder design against a target + epitope. Configs `experiment/generate_binder_3di` (a8) and `experiment/generate_binder_3di_best` (best; 7.18% vs 6.05%). |
 | **`leflur-binder-disto`** | protein (complex) | ~5.7 GiB | **Default non-3Di binder framework.** Two-track (sequence + latent structure) complex checkpoint with a distogram auxiliary head. Config `experiment/generate_binder_disto`. |
 
 See [`binder_design.md`](binder_design.md) for the end-to-end binder workflow
@@ -164,7 +164,8 @@ The four most relevant configs:
 | Inverse folding (Table 1) | `experiment/generate_inverse_folding` | `leflur-ted` | `cameo` |
 | Ligand-conditioned forward (Table 4) | `experiment/generate_ligand_conditioned_forward_folding` | `leflur-pl` | `posebusters_benchmark_no_overlap` |
 | Ligand-conditioned inverse (Table 2) | `experiment/generate_ligand_conditioned_inverse_folding` | `leflur-pl` | `posebusters_benchmark_no_overlap` |
-| De-novo binder design (3Di) | `experiment/generate_binder_3di` | `leflur-binder-3di` | `complexa-binder` |
+| De-novo binder design (3Di, a8) | `experiment/generate_binder_3di` | `leflur-binder-3di` | `complexa-binder` |
+| De-novo binder design (3Di, best) | `experiment/generate_binder_3di_best` | `leflur-binder-3di` | `complexa-binder` |
 | De-novo binder design (disto) | `experiment/generate_binder_disto` | `leflur-binder-disto` | `complexa-binder` |
 
 Each Tier-1 config is enforced by automated tests to use only canonical

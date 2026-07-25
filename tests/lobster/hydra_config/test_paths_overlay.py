@@ -131,7 +131,13 @@ def test_paths_public_resolves(config_name: str, monkeypatch) -> None:
 
 # --- Tier invariants (Phase 6) -------------------------------------------
 
-TIER_1_SHORT_NAMES = {"leflur-base", "leflur-ted", "leflur-pl"}
+TIER_1_SHORT_NAMES = {
+    "leflur-base",
+    "leflur-ted",
+    "leflur-pl",
+    "leflur-binder-3di",
+    "leflur-binder-disto",
+}
 TIER_1_ALLOWED_INTERPOLATIONS = (
     "${paths.checkpoints.base}",
     "${paths.checkpoints.ted}",

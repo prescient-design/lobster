@@ -8,8 +8,14 @@ only one that ships its own dedicated checkpoints.
 
 | Checkpoint | Track | Recommended config | Default |
 |---|---|---|---|
-| **`leflur-binder-3di`** | sequence + LG structure + **3Di** | `experiment/generate_binder_3di` | ✅ 3Di framework |
+| **`leflur-binder-3di`** | sequence + LG structure + **3Di** | `experiment/generate_binder_3di` (a8) · `experiment/generate_binder_3di_best` (best) | ✅ 3Di framework |
 | **`leflur-binder-disto`** | sequence + LG structure | `experiment/generate_binder_disto` | ✅ non-3Di framework |
+
+The 3Di checkpoint ships **two** sampler configs over the same weights:
+`generate_binder_3di` (the a8 arm — the established/documented recipe) and
+`generate_binder_3di_best` (the strongest arm we measured, 7.18% vs 6.05% at
+equal 36/38 coverage). They differ only in the inference schedules and sequence
+stochasticity — pick `_best` for peak aggregate pass rate.
 
 Both are ~5.7 GiB and live on
 [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur),
@@ -22,9 +28,12 @@ downloaded on first use by `resolve_checkpoint`.
   sampler recipe tuned on the 38-target sweep.
 - **`leflur-binder-disto`** is the two-track (sequence + latent structure)
   complex checkpoint with a distogram auxiliary head, run with the base
-  sampler schedules. Slightly higher aggregate pass rate, narrower coverage.
+  sampler schedules. Comparable aggregate pass rate to the a8 3Di arm, but
+  narrower target coverage.
 
-When in doubt, start with **`leflur-binder-3di`** (the default).
+When in doubt, start with **`leflur-binder-3di`** and the
+`generate_binder_3di_best` config (top aggregate pass rate at the widest
+coverage).
 
 ---
 
@@ -136,6 +145,7 @@ denominator).
 
 | Model | Config | Pass rate | Coverage | Unique folds / covered |
 |---|---|---:|---:|---:|
+| **`leflur-binder-3di`** (best) | `experiment/generate_binder_3di_best` | **7.18%** | 36 / 38 | 4.11 |
 | **`leflur-binder-3di`** (default) | `experiment/generate_binder_3di` | 6.05% | 36 / 38 | 4.03 |
 | **`leflur-binder-disto`** | `experiment/generate_binder_disto` | 6.37% | 33 / 38 | 4.30 |
 | Complexa (reference) | — | 28.80% | 35 / 35 † | 11.51 |
@@ -144,18 +154,21 @@ denominator).
 Complexa model at 24 GB and are excluded from its denominator. PASS = Protenix
 pTM > 0.80 AND ipTM > 0.70; 100 designs/target.
 
-**Reading the table.** The two LeFlur arms are close on aggregate pass rate;
-`leflur-binder-3di` trades a fraction of a point for **wider target coverage**
-(the 3Di track finds a working design on more antigens). Both trail the
-Complexa model substantially — Complexa remains the stronger binder generator
-on its own benchmark — so these numbers are an honest, reproducible baseline,
-not a state-of-the-art claim.
+**Reading the table.** The two 3Di configs run the same checkpoint;
+`_best` (seq=Log, 3Di=Power, `stochasticity_seq=60`) is the strongest arm we
+measured (7.18% at 36/38), while the a8 `default` (6.05%) is the
+established/documented recipe at identical coverage. `leflur-binder-disto` sits
+between them on aggregate pass rate but with narrower coverage. All LeFlur arms
+trail the Complexa model substantially — Complexa remains the stronger binder
+generator on its own benchmark — so these numbers are an honest, reproducible
+baseline, not a state-of-the-art claim.
 
 Regenerate the table with the per-target analysis script (needs the scored
 CSVs + a Foldseek binary):
 
 ```bash
 uv run python scripts/_complexa_pertarget.py \
+    stoch_best_seq60_n100:leflur-binder-3di-best \
     stoch_a8_tri80_n100:leflur-binder-3di \
     disto_last:leflur-binder-disto \
     complexa_complexabench:complexa
@@ -163,32 +176,36 @@ uv run python scripts/_complexa_pertarget.py \
 
 ## 6. The sampler recipe
 
-The recipe below is baked into `experiment/generate_binder_3di.yaml`; you only
-override the per-target target/epitope/length. It is the strongest
-binder-docking arm found on the 38-target Complexa sweep.
+Each recipe below is baked into its config; you only override the per-target
+target/epitope/length. The two 3Di columns are the a8 (`default`) and best arms
+from the 38-target Complexa sweep — same checkpoint, different sampler.
 
-| Knob | 3Di (`generate_binder_3di`) | disto (`generate_binder_disto`) |
-|---|---|---|
-| sequence schedule | `PowerInferenceSchedule` (exp 2) | `LogInferenceSchedule` |
-| structure schedule | `LinearInferenceSchedule` | `LinearInferenceSchedule` |
-| 3Di schedule | `LogInferenceSchedule` | — |
-| `sequence_diversity_penalty` | 2 | 2 |
-| `tri_diversity_penalty` | 8 | — |
-| `stochasticity_struc` | 60 | 60 |
-| `stochasticity_tri` | 80 | — |
-| `nsteps` | 400 | 400 |
+| Knob | 3Di a8 (`generate_binder_3di`) | 3Di best (`generate_binder_3di_best`) | disto (`generate_binder_disto`) |
+|---|---|---|---|
+| sequence schedule | `PowerInferenceSchedule` (exp 2) | `LogInferenceSchedule` (exp −2) | `LogInferenceSchedule` |
+| structure schedule | `LinearInferenceSchedule` | `LinearInferenceSchedule` | `LinearInferenceSchedule` |
+| 3Di schedule | `LogInferenceSchedule` | `PowerInferenceSchedule` (exp 2) | — |
+| `sequence_diversity_penalty` | 2 | 2 | 2 |
+| `tri_diversity_penalty` | 8 | — (0) | — |
+| `stochasticity_seq` | 20 | 60 | 20 |
+| `stochasticity_struc` | 60 | 60 | 60 |
+| `stochasticity_tri` | 80 | — | — |
+| `nsteps` | 200 | 200 | 200 |
 
-Two design decisions worth calling out:
+Three design decisions worth calling out:
 
 - **Diversity penalties** subtract `penalty × (running per-design token
   frequency)` from the logits, so a single design cannot collapse to one
   residue / one 3Di state. `sequence_diversity_penalty=2` lifts Complexa pass
   rate materially by removing degenerate (poly-residue) sequences;
-  `tri_diversity_penalty=8` downregulates the failure-correlated monotonous-3Di
-  mode.
-- **Per-track schedules.** The 3Di track denoises on a `Log` schedule while
-  sequence uses `Power(2)` and structure stays `Linear` — the arm that
-  maximised docking success in the sweep.
+  `tri_diversity_penalty=8` (a8 only) downregulates the failure-correlated
+  monotonous-3Di mode.
+- **Per-track schedules.** The a8 arm denoises 3Di on a `Log` schedule with
+  sequence on `Power(2)`; the best arm mirrors this — sequence on `Log`, 3Di on
+  `Power(2)` — and raises sequence remasking stochasticity to 60, which is what
+  lifts it to the top aggregate pass rate.
+- **Step count.** Every published number uses `nsteps=200`, the value the
+  Complexa sweep driver ran; the configs ship it so the numbers reproduce.
 
 `use_epitope_conditioning=true` feeds the epitope residues into the model's
 hotspot channel (the complex/epitope-trained docking prior), in addition to

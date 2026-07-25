@@ -54,7 +54,9 @@ generation:
   encode_target_only: false
 
   # --- Sampler recipe (base disto) ---------------------------------------
-  nsteps: 400
+  # nsteps=200 reproduces the published Complexa pass rate (6.37%); the Complexa
+  # gen driver ran every arm at 200 steps.
+  nsteps: 200
   n_trials: 1
   n_designs_per_structure: 10
 
