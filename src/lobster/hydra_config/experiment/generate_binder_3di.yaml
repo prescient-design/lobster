@@ -1,0 +1,90 @@
+# @package _global_
+
+# Default 3Di binder-design config — de-novo binder generation against a
+# target structure + epitope with the 3Di generative track enabled.
+#
+# Checkpoint: `leflur-binder-3di` (resolved + downloaded from HuggingFace by
+# `resolve_checkpoint`). Sampler recipe is the a8/tri80 arm from the Complexa
+# 38-target sweep (the strongest binder-docking configuration found):
+#   seq=Power(exp2), struc=Linear, 3Di=Log; sequence_diversity_penalty=2,
+#   tri_diversity_penalty=8, stochasticity_tri=80, stochasticity_struc=60.
+#
+# Usage (fetch the checkpoint once, then run against your own target):
+#   lobster_leflur_checkpoints fetch leflur-binder-3di
+#   uv run python -m lobster.cmdline.generate \
+#     --config-name experiment/generate_binder_3di paths=public \
+#     generation.input_structures=/path/to/target.pdb \
+#     generation.target_chain=A generation.epitope_indices="[155]"
+
+defaults:
+  - /paths: public
+  - _self_
+
+output_dir: "${paths.root_dir}/binder_design_3di"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration — registry short name; resolve_checkpoint downloads it.
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+generation:
+  mode: binder_design
+
+  # Target structure (PDB with one or more chains). Defaults to the bundled
+  # example target; override with your own PDB via
+  # `generation.input_structures=/path/to/target.pdb`.
+  input_structures: "${paths.examples.binder_template}"
+
+  # Target chain the binder is designed against (chain letter from the PDB).
+  target_chain: "A"
+
+  # Binder length (number of residues to generate). Typical range 50-150.
+  binder_length: 50
+
+  # Epitope residue indices (coords_res numbering, 0-indexed). Seeds the binder
+  # placement AND (with use_epitope_conditioning) feeds the model's hotspot
+  # channel. Override per target.
+  epitope_indices: [155]
+
+  # Feed the epitope hotspots into the model's conditioning channel (the
+  # complex/epitope-trained checkpoint's docking prior). ON for this arm.
+  use_epitope_conditioning: true
+  encode_target_only: false
+
+  # --- Sampler recipe (a8 / tri80) ---------------------------------------
+  nsteps: 400
+  n_trials: 1
+  n_designs_per_structure: 10
+
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 20
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+
+  # Per-track inference schedules (strongest binder-docking arm on Complexa).
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+
+  # Per-track diversity penalties: subtract penalty * (running per-design token
+  # frequency) from the logits so a design cannot collapse to one residue/state.
+  # seq=2 lifts Complexa pass rate 4.2% -> 6.2% (p<1e-4); tri=8 downregulates the
+  # failure-correlated monotonous-3Di mode.
+  sequence_diversity_penalty: 2
+  sequence_logit_bias_steps: 200
+  tri_diversity_penalty: 8
+
+  # ESMFold validation (recommended for binder design)
+  use_esmfold: true
+  max_length: 512
+  esmfold_chain_groups: null
+
+  # CSV metrics and plotting
+  save_csv_metrics: true
+  create_plots: true

@@ -1,0 +1,83 @@
+# @package _global_
+
+# Non-3Di binder-design config — de-novo binder generation against a target
+# structure + epitope with the 2-track (sequence + LG structure) distogram
+# checkpoint (no 3Di generative track).
+#
+# Checkpoint: `leflur-binder-disto` (resolved + downloaded from HuggingFace by
+# `resolve_checkpoint`). Base sampler recipe: seq=Log, struc=Linear,
+# sequence_diversity_penalty=2, standard stochasticity.
+#
+# Usage (fetch the checkpoint once, then run against your own target):
+#   lobster_leflur_checkpoints fetch leflur-binder-disto
+#   uv run python -m lobster.cmdline.generate \
+#     --config-name experiment/generate_binder_disto paths=public \
+#     generation.input_structures=/path/to/target.pdb \
+#     generation.target_chain=A generation.epitope_indices="[155]"
+
+defaults:
+  - /paths: public
+  - _self_
+
+output_dir: "${paths.root_dir}/binder_design_disto"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration — registry short name; resolve_checkpoint downloads it.
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-disto
+
+generation:
+  mode: binder_design
+
+  # Target structure (PDB with one or more chains). Defaults to the bundled
+  # example target; override with your own PDB via
+  # `generation.input_structures=/path/to/target.pdb`.
+  input_structures: "${paths.examples.binder_template}"
+
+  # Target chain the binder is designed against (chain letter from the PDB).
+  target_chain: "A"
+
+  # Binder length (number of residues to generate). Typical range 50-150.
+  binder_length: 50
+
+  # Epitope residue indices (coords_res numbering, 0-indexed). Seeds the binder
+  # placement AND (with use_epitope_conditioning) feeds the model's hotspot
+  # channel. Override per target.
+  epitope_indices: [155]
+
+  # Feed the epitope hotspots into the model's conditioning channel (the
+  # complex/epitope-trained checkpoint's docking prior). ON for this arm.
+  use_epitope_conditioning: true
+  encode_target_only: false
+
+  # --- Sampler recipe (base disto) ---------------------------------------
+  nsteps: 400
+  n_trials: 1
+  n_designs_per_structure: 10
+
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 20
+  stochasticity_struc: 60
+  asynchronous_sampling: false
+
+  # Per-track inference schedules (base recipe: seq=Log, struc=Linear). These
+  # are the model defaults; listed explicitly for clarity. No 3Di track.
+  inference_schedule_seq: LogInferenceSchedule
+  inference_schedule_struc: LinearInferenceSchedule
+
+  # Per-sequence diversity penalty (see generate_binder_3di for rationale).
+  sequence_diversity_penalty: 2
+  sequence_logit_bias_steps: 200
+
+  # ESMFold validation (recommended for binder design)
+  use_esmfold: true
+  max_length: 512
+  esmfold_chain_groups: null
+
+  # CSV metrics and plotting
+  save_csv_metrics: true
+  create_plots: true

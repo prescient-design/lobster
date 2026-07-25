@@ -218,6 +218,43 @@ KNOWN_CHECKPOINTS: dict[str, CheckpointInfo] = {
             "/cv/scratch/u/lisanzas/gen_ume_protein_ligand_no_geom_medium/runs/2026-03-11T13-22-20/last.ckpt"
         ),
     ),
+    "leflur-binder-3di": CheckpointInfo(
+        short_name="leflur-binder-3di",
+        hf_path="leflur_binder_3di.ckpt",
+        description=(
+            "Canonical binder-design checkpoint with the 3Di generative track "
+            "(complex + teddymer/AFDB heterodimer + homodimer + distogram "
+            "finetune). Default for de-novo binder design against a target "
+            "structure + epitope. Recommended sampler recipe (baked into "
+            "`experiment/generate_binder_3di`): seq=Power(exp2), struc=Linear, "
+            "3Di=Log; sequence_diversity_penalty=2, tri_diversity_penalty=8, "
+            "stochasticity_tri=80. Reproduces the Complexa 38-target benchmark."
+        ),
+        family="protein",
+        recommended_generation_config="experiment/generate_binder_3di",
+        paired_lg_codec="LG full attention",
+        tags=("canonical", "binder", "3di"),
+        local_source_path="/cv/scratch/u/lisanzas/eval_snapshots/2026-07-20_grid/leflur_3di.ckpt",
+    ),
+    "leflur-binder-disto": CheckpointInfo(
+        short_name="leflur-binder-disto",
+        hf_path="leflur_binder_disto.ckpt",
+        description=(
+            "Binder-design checkpoint WITHOUT the 3Di track (2-track distogram "
+            "finetune: complex + teddymer/AFDB heterodimer + homodimer + "
+            "mono30k). The non-3Di LeFlur binder default. Recommended sampler "
+            "recipe (baked into `experiment/generate_binder_disto`): seq=Log, "
+            "struc=Linear, sequence_diversity_penalty=2, standard stochasticity."
+        ),
+        family="protein",
+        recommended_generation_config="experiment/generate_binder_disto",
+        paired_lg_codec="LG full attention",
+        tags=("canonical", "binder"),
+        local_source_path=(
+            "/cv/scratch/u/lisanzas/leflur_complex_teddymer_afdbhetero_homo_len640_mono30k_distogram/"
+            "runs/2026-07-16T14-36-48/last.ckpt"
+        ),
+    ),
 }
 
 
