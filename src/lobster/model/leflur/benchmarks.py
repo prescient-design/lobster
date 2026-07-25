@@ -271,6 +271,37 @@ KNOWN_BENCHMARKS: dict[str, BenchmarkInfo] = {
         tags=("protein-ligand",),
         local_source_path="/cv/home/lisanzas/lobster/data/posebusters/processed/posebusters_benchmark",
     ),
+    "complexa-binder": BenchmarkInfo(
+        short_name="complexa-binder",
+        hf_subdir="complexa-binder",
+        description=(
+            "Complexa de-novo binder-design benchmark: 38 therapeutic target "
+            "antigens (target PDB + epitope residues + deep MSA per antigen). "
+            "Drives the LeFlur binder-design evaluation (PASS = pTM>0.80 AND "
+            "ipTM>0.70 by Protenix co-folding). Ships two manifests: "
+            "complexa_gen_targets.csv (generation: pdb/chain/epitope/binder-len "
+            "range) and complexa_score_targets.csv (scoring: antigen seq + a3m). "
+            "Paths in both manifests are relative to the benchmark dir. Run with "
+            "examples/run_complexa_binder.py."
+        ),
+        citation=(
+            "Complexa de-novo binder benchmark (this work). Per-target antigen "
+            "structures derive from their original PDB / RCSB entries and are "
+            "subject to those licenses."
+        ),
+        license="academic; per-target PDB licenses apply",
+        schema_keys=(
+            "target_id",
+            "pdb_path",
+            "target_chain",
+            "epitope_indices",
+            "binder_len_min",
+            "binder_len_max",
+        ),
+        pattern="complexa_gen_targets.csv",
+        tags=("binder", "complex", "publication"),
+        local_source_path=("/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/hf_export"),
+    ),
 }
 
 
