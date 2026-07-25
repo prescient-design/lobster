@@ -106,6 +106,12 @@ class BenchmarkInfo:
     pattern
         Glob (relative to the resolved benchmark dir) that the generate-mode
         helpers consume. Defaults to ``"*.pt"``.
+    tree
+        If ``True``, the benchmark is a directory *tree* of arbitrary files
+        (PDBs, MSAs, manifest CSVs, ...) rather than a flat set of ``.pt``
+        records. Upload pushes the whole source directory verbatim (no
+        per-file ``torch.load`` / sanitize pass), and ``pattern`` is used only
+        as the cache-hit sentinel on fetch. Defaults to ``False``.
     tags
         Free-form labels (``"canonical"``, ``"protein"``, ``"protein-ligand"``).
     hf_repo_id
@@ -123,6 +129,7 @@ class BenchmarkInfo:
     license: str = ""
     schema_keys: tuple[str, ...] = field(default_factory=tuple)
     pattern: str = "*.pt"
+    tree: bool = False
     tags: tuple[str, ...] = field(default_factory=tuple)
     cache_subdir: str = ""
     hf_repo_id: str = ""
@@ -299,6 +306,7 @@ KNOWN_BENCHMARKS: dict[str, BenchmarkInfo] = {
             "binder_len_max",
         ),
         pattern="complexa_gen_targets.csv",
+        tree=True,
         tags=("binder", "complex", "publication"),
         local_source_path=("/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/hf_export"),
     ),
@@ -876,9 +884,16 @@ def upload_benchmark(
     if not src.is_dir():
         raise FileNotFoundError(f"Source directory not found: {src}")
 
-    pt_files = sorted(src.glob(info.pattern))
-    if not pt_files:
-        raise FileNotFoundError(f"No files matching {info.pattern!r} under {src}. Nothing to upload.")
+    if info.tree:
+        # Directory-tree benchmark (PDBs / MSAs / manifests): upload the whole
+        # source dir verbatim; ``pattern`` is only the fetch cache sentinel.
+        pt_files = sorted(p for p in src.rglob("*") if p.is_file())
+        if not pt_files:
+            raise FileNotFoundError(f"No files found under {src}. Nothing to upload.")
+    else:
+        pt_files = sorted(src.glob(info.pattern))
+        if not pt_files:
+            raise FileNotFoundError(f"No files matching {info.pattern!r} under {src}. Nothing to upload.")
     total_bytes = sum(p.stat().st_size for p in pt_files)
 
     target_repo = repo_id or info.hf_repo_id
@@ -911,6 +926,27 @@ def upload_benchmark(
     api = HfApi(token=token)
     if create_repo_if_missing:
         _ensure_dataset_repo(api, target_repo)
+
+    if info.tree:
+        # Push the whole source tree in one commit; `upload_folder` mirrors
+        # the directory structure (pdbs/, msas/, manifests) under hf_subdir,
+        # which the fetch-side snapshot lift reconstructs verbatim.
+        commit_url = _upload_chunk_with_retry(
+            api,
+            chunk_dir=src,
+            path_in_repo=info.hf_subdir,
+            repo_id=target_repo,
+            revision=revision,
+            commit_message=(commit_message or f"Upload {short_name} benchmark ({len(pt_files)} files)"),
+        )
+        logger.info(
+            "upload_benchmark: %s tree (%d files) -> %s",
+            short_name,
+            len(pt_files),
+            commit_url,
+        )
+        summary["commit_url"] = commit_url
+        return summary
 
     # Chunk the upload so each `upload_folder` call sees a small,
     # well-formed batch. HF's preupload endpoint occasionally 401s on
