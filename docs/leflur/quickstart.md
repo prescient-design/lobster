@@ -134,7 +134,37 @@ Both modes report TM-score / RMSD against the ground-truth complex plus
 pocket-aware contact metrics (`ligand_in_pocket`,
 `good_fold_and_in_pocket`, `n_pocket_contacts`).
 
-## 6. Autoencode (round-trip a structure through the latent space)
+## 6. De-novo binder design (target + epitope → binder)
+
+Design a novel binder against a target antigen. Uses the dedicated
+complex-trained checkpoints (`leflur-binder-3di` by default), which download on
+first use. Point at your target PDB, name the target chain, and list the
+epitope residues (0-indexed into that chain):
+
+```bash
+uv run lobster_generate \
+    --config-name experiment/generate_binder_3di \
+    paths=public \
+    generation.input_structures=/path/to/target.pdb \
+    generation.target_chain=A \
+    generation.epitope_indices="[32,94,96,101]" \
+    generation.binder_length="[80,150]" \
+    generation.n_designs_per_structure=10 \
+    output_dir=./out/binder
+```
+
+Swap `generate_binder_3di` → `generate_binder_disto` for the non-3Di arm. To
+run the full 38-target Complexa benchmark, fetch it and loop with the runner:
+
+```bash
+lobster_leflur_benchmarks fetch complexa-binder
+uv run python examples/run_complexa_binder.py --limit 1 --n-designs 1   # smoke
+```
+
+See [`binder_design.md`](binder_design.md) for the full workflow, the sampler
+recipe, and Protenix scoring.
+
+## 7. Autoencode (round-trip a structure through the latent space)
 
 Useful for understanding reconstruction quality and as a debugging tool
 when configuring new benchmarks.

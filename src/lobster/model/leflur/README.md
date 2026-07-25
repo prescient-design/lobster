@@ -1,7 +1,8 @@
 # LeFlur
 
 LeFlur is a discrete-flow-matching model for protein and protein-ligand design.
-A single set of checkpoints supports five inference modes:
+The core checkpoints support five inference modes; two additional
+complex-trained checkpoints add de-novo binder design:
 
 | Mode | Input | Output | Checkpoint |
 |---|---|---|---|
@@ -10,10 +11,15 @@ A single set of checkpoints supports five inference modes:
 | **Inverse folding** | PDB / CIF | designed sequence | `leflur-ted` |
 | **Ligand-conditioned generation** | ligand (atoms + bonds) | binding protein | `leflur-pl` |
 | **Ligand-conditioned forward/inverse folding** | protein + ligand | structure or sequence with pocket awareness | `leflur-pl` |
+| **De-novo binder design** | target PDB + epitope residues | binder sequence + structure | `leflur-binder-3di`, `leflur-binder-disto` |
 
-The three canonical checkpoints (~17 GiB total) live on HuggingFace at
+The three core checkpoints (`leflur-base`, `leflur-ted`, `leflur-pl`;
+~17 GiB total) live on HuggingFace at
 [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur) and
-download automatically on first use.
+download automatically on first use. The two binder checkpoints
+(`leflur-binder-3di`, `leflur-binder-disto`; ~5.7 GiB each) live in the same
+repo — see [**De-novo binder design**](#7-de-novo-binder-design--complexa)
+below and [`docs/leflur/binder_design.md`](../../../../docs/leflur/binder_design.md).
 
 ## Quickstart
 
@@ -42,6 +48,9 @@ End-user docs live under [`docs/leflur/`](../../../../docs/leflur/):
 - **[`quickstart.md`](../../../../docs/leflur/quickstart.md)** — five-minute
   walkthroughs for each of the five inference modes, using the bundled
   test PDBs and ligand files.
+- **[`binder_design.md`](../../../../docs/leflur/binder_design.md)** —
+  de-novo binder design end-to-end: the two binder checkpoints, running one
+  target + the full Complexa 38-target benchmark, and Protenix scoring.
 - **[`checkpoints.md`](../../../../docs/leflur/checkpoints.md)** — the three
   canonical checkpoints, how to list / inspect / fetch them, and how the
   paired Latent Generator codecs are pulled in automatically.
@@ -229,6 +238,40 @@ if Boltz-2 predicts ipTM ≥ 0.9 AND iPDE ≤ 1. N1 base:
 lobster_generate --config-name experiment/generate_ligand_conditioned \
     paths=public output_dir=./out/ligand_conditioned
 ```
+
+### 7. De-novo binder design — Complexa
+
+Design novel protein binders against a target antigen + epitope. Two dedicated
+complex-trained checkpoints: `leflur-binder-3di` (default; adds a 3Di
+structural track) and `leflur-binder-disto` (two-track). The **Complexa
+38-target benchmark** is the canonical evaluation; a design PASSES when
+Protenix co-folding gives **pTM > 0.80 AND ipTM > 0.70**.
+
+| Model | Config | Pass (%) | Coverage | Folds/covered |
+|---|---|---:|---:|---:|
+| Complexa (reference) | — | **28.80** | **35 / 35** † | **11.51** |
+| LeFlur `leflur-binder-3di` (default) | `experiment/generate_binder_3di` | 6.05 | 36 / 38 | 4.03 |
+| LeFlur `leflur-binder-disto` | `experiment/generate_binder_disto` | 6.37 | 33 / 38 | 4.30 |
+
+`Coverage` = targets with ≥ 1 passing design; `Folds/covered` = distinct
+Foldseek clusters (TM > 0.5) among a covered target's passing binders. 100
+designs/target. The 3Di arm trades a fraction of a point of aggregate pass rate
+for wider target coverage. † 3 of 38 targets OOM'd for the Complexa reference
+model and are excluded from its denominator. Fetch + run:
+
+```bash
+# One-time: fetch the 38-target benchmark (target PDBs + MSAs + manifests)
+lobster_leflur_benchmarks fetch complexa-binder
+
+# Loop all 38 targets, 100 designs each (default = leflur-binder-3di)
+uv run python examples/run_complexa_binder.py --n-designs 100 \
+    --out-dir ./out/complexa_3di
+```
+
+Scoring with Protenix runs in a separate environment — see
+[`docs/leflur/binder_design.md`](../../../../docs/leflur/binder_design.md) for
+the end-to-end fetch → design → score walkthrough, the sampler recipe, and how
+to design against your own target.
 
 ## Best-of-N ranking with pseudo-NLL
 

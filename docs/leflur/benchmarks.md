@@ -8,7 +8,7 @@ Each benchmark is pre-tokenized into one `.pt` per target (or per
 protein-ligand pair), so the publication reproduction commands run
 end-to-end on a clean machine with no further data wrangling.
 
-## The four canonical benchmarks
+## The canonical benchmarks
 
 | Short name | HF subdir | Files | Schema | Drives |
 |---|---|---:|---|---|
@@ -16,8 +16,9 @@ end-to-end on a clean machine with no further data wrangling.
 | **`multiflow_test`** | `multiflow-test/` | 449 | protein-only | LeFlur Table 1 inverse folding + Table 3 forward folding (MultiFlow rows). |
 | **`posebusters_benchmark_no_overlap`** | `posebusters-benchmark-no-overlap/` | 412 (206 pairs) | protein + ligand | LeFlur Table 2 protein-ligand inverse folding + Table 4 protein-ligand forward folding. This is the canonical `leflur-pl` evaluation set. |
 | **`posebusters_benchmark`** | `posebusters-benchmark/` | 856 (428 pairs) | protein + ligand | Supplementary PoseBusters tables (no overlap filtering). |
+| **`complexa-binder`** | `complexa-binder/` | 38 targets (PDB + MSA) | binder design | De-novo binder-design evaluation for `leflur-binder-3di` / `leflur-binder-disto` (target antigen + epitope). See [`binder_design.md`](binder_design.md). |
 
-All four live on the dataset side of
+All live on the dataset side of
 [`Sidney-Lisanza/leflur`](https://huggingface.co/datasets/Sidney-Lisanza/leflur)
 and are anonymously downloadable — no HF token is required.
 
@@ -37,6 +38,15 @@ and are anonymously downloadable — no HF token is required.
   and `{id}_{ligand}_ligand.pt` carries the ligand
   (`atom_names`, `atom_coords`, `atom_indices`, `element_indices`,
   `bond_matrix`). `pdb_path` on the protein record is the basename.
+- **Complexa-binder** (`complexa-binder`) — not `.pt` tensors but a
+  portable target set: `pdbs/{id}.pdb` (38 target antigens), `msas/{id}.a3m`
+  (deep MSA per antigen), `all38_antigens.fasta`, and two manifest CSVs with
+  **paths relative to the benchmark dir**. `complexa_gen_targets.csv`
+  (columns `target_id, pdb_path, target_chain, epitope_indices,
+  binder_len_min, binder_len_max`) drives generation;
+  `complexa_score_targets.csv` (`target_id, antigen_pdb, antigen_seq,
+  antigen_a3m, epitope_indices, n_res, n_epi`) drives Protenix scoring. Loop
+  it with `examples/run_complexa_binder.py`.
 
 ## Three ways to reference a benchmark
 

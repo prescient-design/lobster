@@ -1,9 +1,10 @@
 # LeFlur Checkpoints
 
-LeFlur ships with three publicly distributed checkpoints on HuggingFace.
-They cover every published evaluation; together they total ~17 GiB.
+LeFlur ships five publicly distributed checkpoints on HuggingFace: three core
+checkpoints (~17 GiB) covering every published folding/generation evaluation,
+plus two complex-trained binder-design checkpoints (~5.7 GiB each).
 
-## The three canonical checkpoints
+## The three core checkpoints
 
 | Short name | Family | Size | Purpose |
 |---|---|---|---|
@@ -11,7 +12,17 @@ They cover every published evaluation; together they total ~17 GiB.
 | **`leflur-ted`** | protein-only | ~6 GiB | TED-CATH SS-balanced fine-tune. Best designability / quality trade-off; recommended for publication tables. Default for unconditional, forward, and inverse folding. |
 | **`leflur-pl`** | protein-ligand | ~5 GiB | Production protein-ligand checkpoint. Drives all ligand-conditioned generation + protein-ligand forward / inverse folding. |
 
-All three live on [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur).
+## The two binder-design checkpoints
+
+| Short name | Family | Size | Purpose |
+|---|---|---|---|
+| **`leflur-binder-3di`** | protein (complex) | ~5.7 GiB | **Default 3Di binder framework.** Sequence + latent-structure + 3Di generative tracks, complex/epitope-trained. Drives de-novo binder design against a target + epitope. Config `experiment/generate_binder_3di`. |
+| **`leflur-binder-disto`** | protein (complex) | ~5.7 GiB | **Default non-3Di binder framework.** Two-track (sequence + latent structure) complex checkpoint with a distogram auxiliary head. Config `experiment/generate_binder_disto`. |
+
+See [`binder_design.md`](binder_design.md) for the end-to-end binder workflow
+(fetch → design → score on the Complexa 38-target benchmark).
+
+All five live on [`Sidney-Lisanza/leflur`](https://huggingface.co/Sidney-Lisanza/leflur).
 The paired Latent Generator codecs that LeFlur uses internally
 (`LG full attention`, `LG Protein Ligand fsq 4375`,
 `LG Protein Ligand cont`) live on
@@ -153,6 +164,8 @@ The four most relevant configs:
 | Inverse folding (Table 1) | `experiment/generate_inverse_folding` | `leflur-ted` | `cameo` |
 | Ligand-conditioned forward (Table 4) | `experiment/generate_ligand_conditioned_forward_folding` | `leflur-pl` | `posebusters_benchmark_no_overlap` |
 | Ligand-conditioned inverse (Table 2) | `experiment/generate_ligand_conditioned_inverse_folding` | `leflur-pl` | `posebusters_benchmark_no_overlap` |
+| De-novo binder design (3Di) | `experiment/generate_binder_3di` | `leflur-binder-3di` | `complexa-binder` |
+| De-novo binder design (disto) | `experiment/generate_binder_disto` | `leflur-binder-disto` | `complexa-binder` |
 
 Each Tier-1 config is enforced by automated tests to use only canonical
 checkpoint references — see the tests under

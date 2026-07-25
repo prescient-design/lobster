@@ -31,6 +31,8 @@ lobster_generate --config-name experiment/<CONFIG_NAME> [overrides...]
 | `ligand_conditioned` | `experiment/generate_ligand_conditioned` | `leflur-pl` |
 | `protein_ligand_forward_folding` | `experiment/generate_ligand_conditioned_forward_folding` | `leflur-pl` |
 | `protein_ligand_inverse_folding` | `experiment/generate_ligand_conditioned_inverse_folding` | `leflur-pl` |
+| `binder_design` (3Di, default) | `experiment/generate_binder_3di` | `leflur-binder-3di` |
+| `binder_design` (disto) | `experiment/generate_binder_disto` | `leflur-binder-disto` |
 
 ### Common overrides
 
@@ -59,6 +61,15 @@ All of these work on every config (some are no-ops where they don't apply):
 
 - `generation.input_structures=<path|glob|list>` — input PDB/CIF files
 - `generation.use_se3_augmentation=<bool>` — applicable to inverse folding
+
+**Binder design** (`experiment/generate_binder_3di` / `_binder_disto`):
+
+- `generation.input_structures=<target.pdb>` — target antigen PDB
+- `generation.target_chain=<letter>` — antigen chain to design against
+- `generation.epitope_indices="[i,j,...]"` — epitope residues (0-indexed into `coords_res`)
+- `generation.binder_length=<int|[min,max]>` — binder length (range is resampled per design)
+- `generation.n_designs_per_structure=<N>` — designs per target
+- `generation.use_epitope_conditioning=<bool>` — feed epitope into the hotspot channel (default `true`)
 
 **Ligand-conditioned modes**:
 
