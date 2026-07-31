@@ -1,0 +1,116 @@
+# @package _global_
+#
+# GRPO RL fine-tuning over ALL pinder heterodimers (both redesign directions).
+#
+# Instead of overfitting one target, this run cycles the full pinder-FF heteromer
+# set: each dimer contributes two targets (design a binder against chain A, and
+# against chain B). Targets + native-interface epitopes come from the manifests
+# built by ``scripts/_build_pinder_grpo_manifest.py``:
+#   targets:          pinder_hetero_targets.csv        (conditioning: pdb/chain/epitopes)
+#   reward.targets_csv: pinder_hetero_score_targets.csv (antigen seq + deep ColabFold a3m)
+#
+# Per-group binder length is sampled U[60, 120] and held CONSTANT within each GRPO
+# group (binder_length_min/max), so a group's designs are length-matched.
+#
+# Reward = README default (M22 confidence combo): w_abag_iptm=1.0 + w_ptm=0.5.
+# Structure self-consistency and diversity weights are present but 0 (enable by
+# raising w_sctm_* / w_*_diversity below; w_sctm_* > 0 also makes the worker return
+# predicted coords).
+#
+# GATE: launch only after the deep-MSA build for the pinder antigens completes
+# (the score manifest asserts every referenced a3m exists at build time).
+#
+# Usage:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_pinder_hetero \
+#   N_WORKERS=8 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_pinder_hetero \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_pinder_hetero"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Full heteromer target set (both directions) — parsed from CSV by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/pinder_ff/pinder_hetero_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; best schedule from the 3Di sweep).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 2000            # large; adjust to compute budget
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0
+  eps_clip: 0.2
+  lr: 1.0e-5
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  # Confidence combo (README defaults = shipped M22 behaviour).
+  w_iptm: 0.0
+  w_ptm: 0.5
+  w_abag_iptm: 1.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency (0 = off; > 0 also asks worker for predicted coords).
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  # Within-group Jaccard novelty (AA + 3Di).
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # Per-group-constant binder length ~ U[60, 120].
+  binder_length_min: 60
+  binder_length_max: 120
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/pinder_ff/pinder_hetero_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: pinder-hetero-g32
+  entity: null

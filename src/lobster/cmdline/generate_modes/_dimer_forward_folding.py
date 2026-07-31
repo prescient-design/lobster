@@ -62,6 +62,7 @@ from lobster.model.latent_generator.utils.residue_constants import (
 from lobster.transforms._structure_transforms import (
     AminoAcidTokenizerTransform,
     Atom14ToBackboneTransform,
+    StructureComplexTransform,
 )
 
 
@@ -330,6 +331,19 @@ def _generate_dimer_forward_folding(
     atom14_to_backbone = Atom14ToBackboneTransform()
     tokenizer_transform = AminoAcidTokenizerTransform(max_length=max_length)
 
+    # ORACLE per-design scalar conditioning: feed the GT-computed rg_ratio / iface_frac / interface-SS /
+    # frac_arom bins (on the binder chain) to generate_sample, on top of epitope. Matches the
+    # ForwardFoldingCallback's use_scalar_conditioning arm -> upper bound on the conditioning's value.
+    use_scalar_conditioning = gen_cfg.get("use_scalar_conditioning", False)
+    sc_transform = None
+    sc_names: tuple[str, ...] = ()
+    if use_scalar_conditioning:
+        sc_transform = StructureComplexTransform(
+            max_length=max_length, interface_distance=8.0, emit_scalar_cond=True, scalar_cond_interface_cutoff=8.0
+        )
+        sc_names = tuple(StructureComplexTransform._SC_EDGES.keys())
+    logger.info(f"dimer FF: use_scalar_conditioning={use_scalar_conditioning}")
+
     all_per_chain_tm: list[float] = []
     all_per_chain_rmsd: list[float] = []
     all_complex_tm: list[float] = []
@@ -419,6 +433,26 @@ def _generate_dimer_forward_folding(
                     template_tokens[sel] = tok_c[sel]
                 template_arg = template_tokens
 
+            # ORACLE scalar conditioning: compute GT bins on the binder (smaller) chain via the training
+            # transform's _add_scalar_cond, broadcast to (1,L), pass alongside epitope.
+            sc_bins_arg = None
+            if use_scalar_conditioning and sc_transform is not None:
+                scx = {
+                    "indices": d["indices"],
+                    "chains": d["chains_ids"],
+                    "mask": d["mask"],
+                    "coords_res": d["coords_res"],
+                }
+                try:
+                    scx = sc_transform._add_scalar_cond(scx)
+                    sc_bins_arg = {
+                        n: scx[f"scalar_cond__{n}"][:L].unsqueeze(0).to(device)
+                        for n in sc_names
+                        if f"scalar_cond__{n}" in scx
+                    } or None
+                except Exception as e:
+                    logger.warning(f"  scalar_cond compute failed ({e}) -- skipping conditioning this sample")
+
             gen = model.generate_sample(
                 length=L,
                 num_samples=1,
@@ -437,6 +471,7 @@ def _generate_dimer_forward_folding(
                 cfg_weight=cfg_weight,
                 inference_schedule_struc=struct_schedule,
                 asynchronous_sampling=gen_cfg.get("asynchronous_sampling", False),
+                scalar_cond_bins=sc_bins_arg,
                 tri_time_accel=tri_time_accel,
                 inference_schedule_tri=tri_schedule,
             )

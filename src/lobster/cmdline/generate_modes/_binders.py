@@ -75,6 +75,292 @@ def _build_scalar_cond_bins(gen_cfg, chains_ids_row, binder_chain_idx, L_total, 
     return bins or None
 
 
+def load_binder_target(
+    structure_path: str,
+    target_chain: str,
+    max_length: int = 512,
+    min_length: int = 30,
+) -> dict | None:
+    """Load a target PDB and extract just its target chain (shared by gen + GRPO).
+
+    Mirrors the target-loading block of :func:`_generate_binders`: loads the PDB,
+    applies :class:`StructureBackboneTransform`, checks the minimum length,
+    identifies the target chain, and slices the structure down to that chain.
+
+    Parameters
+    ----------
+    structure_path : str
+        Path to the target PDB/CIF.
+    target_chain : str
+        Chain id of the target to keep.
+    max_length : int, optional
+        Max length for the backbone transform. Defaults to 512.
+    min_length : int, optional
+        Minimum residue count; shorter structures return ``None``. Defaults to 30.
+
+    Returns
+    -------
+    dict | None
+        ``{"target_data_filtered", "chains_key", "target_chain_idx",
+        "target_start", "target_end"}`` (the first mirroring the dict consumed by
+        :func:`build_binder_static_cond`), or ``None`` if the structure could not
+        be loaded / is too short / lacks the target chain.
+    """
+    target_data = load_pdb(structure_path, add_batch_dim=False)
+    if target_data is None:
+        logger.warning(f"Failed to load structure from {structure_path}")
+        return None
+
+    target_data = StructureBackboneTransform(max_length=max_length)(target_data)
+    if target_data["coords_res"].shape[0] < min_length:
+        logger.warning(f"Structure too short ({target_data['coords_res'].shape[0]} residues)")
+        return None
+
+    try:
+        target_chain_idx, target_start, target_end = get_target_chain_info(target_data, target_chain)
+    except ValueError as e:
+        logger.error(str(e))
+        return None
+
+    # StructureBackboneTransform renames 'chains_ids' to 'chains'.
+    chains_key = "chains" if "chains" in target_data else "chains_ids"
+    target_chain_mask = target_data[chains_key] == target_chain_idx
+    target_data_filtered = {
+        "coords_res": target_data["coords_res"][target_chain_mask],
+        "sequence": target_data["sequence"][target_chain_mask],
+        chains_key: target_data[chains_key][target_chain_mask],
+        "real_chains": target_data["real_chains"][target_chain_mask],
+        "indices": target_data["indices"][target_chain_mask],
+        "mask": target_data["mask"][target_chain_mask],
+    }
+    return {
+        "target_data_filtered": target_data_filtered,
+        "chains_key": chains_key,
+        "target_chain_idx": target_chain_idx,
+        "target_start": target_start,
+        "target_end": target_end,
+    }
+
+
+def build_binder_static_cond(
+    binder_length: int,
+    target_data_filtered: dict,
+    chains_key: str,
+    target_chain_idx: int,
+    *,
+    model,
+    gen_cfg,
+    device: torch.device,
+    tokenizer_transform,
+    epitope_indices=None,
+    output_dir: Path | None = None,
+    structure_path: str = "binder",
+    save_initial: bool = True,
+) -> dict | None:
+    """Build the static per-target conditioning for one binder design (target + binder composite).
+
+    This is the importable form of the ``build_composite`` step of
+    :func:`_generate_binders`: it initializes a binder chain of ``binder_length``
+    near the (already chain-filtered) target, concatenates it into a composite,
+    tokenizes the sequence, builds the inpainting masks, and assembles the
+    epitope/chain/template conditioning. GRPO rollouts and normal generation call
+    this so both build *identical* conditioning tensors.
+
+    Parameters
+    ----------
+    binder_length : int
+        Number of binder residues to design.
+    target_data_filtered : dict
+        Target chain only, from :func:`load_binder_target` (keys ``coords_res``,
+        ``sequence``, ``mask``, ``indices``, ``real_chains`` and ``chains_key``).
+    chains_key : str
+        Either ``"chains"`` or ``"chains_ids"`` (the transform renames it).
+    target_chain_idx : int
+        Chain index of the target chain within ``target_data_filtered``.
+    model : LeFlurSequenceStructureEncoderLightningModule
+        Policy/generation model (used for the template-target encode path).
+    gen_cfg : DictConfig
+        The ``cfg.generation`` config node.
+    device : torch.device
+        Device to place the composite tensors on.
+    tokenizer_transform : callable
+        Amino-acid tokenizer transform applied to the composite sequence.
+    epitope_indices : list[int] | None, optional
+        Target-local epitope residue indices (for epitope-anchored init +
+        conditioning). Defaults to ``None``.
+    output_dir : Path | None, optional
+        Where to write the pre-generation composite PDB (only when
+        ``save_initial``). Defaults to ``None``.
+    structure_path : str, optional
+        Source structure path/name (used for the saved-PDB stem). Defaults to
+        ``"binder"``.
+    save_initial : bool, optional
+        Write the initial composite PDB to ``output_dir``. Defaults to ``True``
+        (normal generation); RL rollouts pass ``False`` to avoid disk churn.
+
+    Returns
+    -------
+    dict | None
+        Static conditioning (``L_total``, ``L_target``, ``L_binder``,
+        ``coords_res``, ``sequence_tokenized``, ``mask``, ``indices``,
+        ``chains_ids``, ``mask_sequence``, ``mask_structure``, ``chain_ids_emb``,
+        ``cond_tensor``, ``template_arg``, ``binder_chain_idx``), or ``None`` if
+        the composite exceeds ``max_length``.
+    """
+    # Initialize binder position
+    if epitope_indices:
+        logger.info(f"Initializing binder with length {binder_length} near epitope")
+        logger.info(f"  Epitope residue indices: {epitope_indices}")
+        logger.info("  Ball center: 5Å from epitope, radius: 12Å, min target distance: 5Å")
+    else:
+        logger.info(f"Initializing binder with length {binder_length} around target center of mass")
+        logger.info("  Ball radius: 12Å, min target distance: 5Å")
+
+    binder_data = initialize_binder_at_origin(
+        binder_length,
+        device="cpu",
+        target_coords=target_data_filtered["coords_res"],
+        epitope_indices=epitope_indices,
+    )
+
+    # Get next chain index for binder
+    binder_chain_idx = get_next_chain_index(target_data_filtered)
+    logger.info(f"Binder will be assigned chain index: {binder_chain_idx}")
+
+    # Create composite structure (target + binder)
+    logger.info("Creating composite structure (target + binder)")
+
+    L_target = target_data_filtered["coords_res"].shape[0]
+    L_binder = binder_data["coords_res"].shape[0]
+    L_total = L_target + L_binder
+
+    # Check max length
+    max_length = gen_cfg.get("max_length", 512)
+    if L_total > max_length:
+        logger.warning(
+            f"Total length {L_total} (target: {L_target}, binder: {L_binder}) "
+            f"exceeds max_length {max_length}. Skipping structure."
+        )
+        return None
+
+    # Concatenate all tensors
+    coords_res_combined = torch.cat([target_data_filtered["coords_res"], binder_data["coords_res"]], dim=0)
+
+    sequence_combined = torch.cat([target_data_filtered["sequence"], binder_data["sequence"]], dim=0)
+
+    mask_combined = torch.cat([target_data_filtered["mask"], binder_data["mask"]], dim=0)
+
+    # Create chain IDs for binder
+    binder_chain_ids = torch.full((L_binder,), binder_chain_idx, dtype=target_data_filtered[chains_key].dtype)
+    chains_ids_combined = torch.cat([target_data_filtered[chains_key], binder_chain_ids], dim=0)
+
+    # Create indices for binder
+    binder_indices = torch.arange(
+        binder_chain_idx, binder_chain_idx + L_binder, dtype=target_data_filtered["indices"].dtype
+    )
+    indices_combined = torch.cat([target_data_filtered["indices"], binder_indices], dim=0)
+
+    logger.info("Composite structure created:")
+    logger.info(f"  Total length: {L_total} ({L_target} target + {L_binder} binder)")
+    logger.info(f"  Target chain index: {target_chain_idx}")
+    logger.info(f"  Binder chain index: {binder_chain_idx}")
+
+    # Save initial structure (before generation)
+    if save_initial and output_dir is not None:
+        structure_name = Path(structure_path).stem
+        initial_structure_path = output_dir / f"{structure_name}_initial_structure.pdb"
+        writepdb(str(initial_structure_path), coords_res_combined, sequence_combined)
+        logger.info(f"Saved initial structure: {initial_structure_path}")
+
+    # Add batch dimension and move to device
+    coords_res = coords_res_combined.unsqueeze(0).to(device)
+    sequence = sequence_combined.unsqueeze(0).to(device)
+    mask = mask_combined.unsqueeze(0).to(device)
+    chains_ids = chains_ids_combined.unsqueeze(0).to(device)
+    indices = indices_combined.unsqueeze(0).to(device)
+
+    # Apply tokenizer to sequence
+    tokenized_data = tokenizer_transform({"sequence": sequence.squeeze(0).cpu()})
+    sequence_tokenized = tokenized_data["sequence"].unsqueeze(0).to(device)
+
+    # Create inpainting masks
+    # Note: First binder residue is kept fixed to preserve chain break token
+    logger.info("Creating inpainting masks (target=fixed, first binder token=fixed, rest of binder=generate)")
+
+    mask_sequence, mask_structure = create_binder_inpainting_masks(
+        chains_ids, target_chain_idx, binder_chain_idx, device
+    )
+
+    # Verify masks
+    num_fixed = (mask_sequence == 0).sum().item()
+    num_generate = (mask_sequence == 1).sum().item()
+    logger.info(f"  Fixed residues: {num_fixed} (target + 1 binder chain-break token)")
+    logger.info(f"  Generate residues: {num_generate} (binder minus first token)")
+
+    # Optional epitope conditioning: feed the hotspot residues (epitope_indices are
+    # antigen-local = target-region positions, since the target chain is concatenated
+    # first) into the model's conditioning channel, and pass per-residue chain ids, so
+    # a complex/epitope-trained checkpoint actually uses its training. Mirrors
+    # _dimer_forward_folding.py. When off (default), both stay None => unchanged behavior.
+    use_epitope_conditioning = gen_cfg.get("use_epitope_conditioning", False)
+    chain_ids_emb = None
+    cond_tensor = None
+    if use_epitope_conditioning:
+        chain_ids_emb = torch.zeros_like(chains_ids)
+        chain_ids_emb[chains_ids == target_chain_idx] = 1
+        chain_ids_emb[chains_ids == binder_chain_idx] = 2
+        cond_tensor = torch.zeros((1, L_total, 1), device=device)
+        if epitope_indices:
+            hot = torch.tensor([i for i in epitope_indices if 0 <= i < L_target], device=device, dtype=torch.long)
+            if hot.numel() > 0:
+                cond_tensor[0, hot, 0] = 1.0
+        logger.info(
+            f"  Epitope conditioning ON: {int((cond_tensor > 0).sum())} hotspot residues "
+            f"(of {len(epitope_indices) if epitope_indices else 0} given); "
+            f"chain_ids remapped target->1, binder->2"
+        )
+
+    # TEMPLATE-TARGET mode: condition on the target via its per-chain template
+    # (frame-randomized, isolated encode -> fold only, no absolute pose) + hotspot,
+    # INSTEAD of pinning the target with fixed structure tokens. The target SEQUENCE
+    # stays fixed (known), but its STRUCTURE is generated (mask_structure target->1)
+    # guided by the template channel -- i.e. the target is forward-folded from its
+    # template while the binder is designed. Requires a template-trained checkpoint.
+    template_arg = None
+    if gen_cfg.get("template_target", False) and getattr(model, "no_template_idx", None) is not None:
+        template_tokens = torch.full((1, L_total), model.no_template_idx, dtype=torch.long, device=device)
+        tmask = mask * (chains_ids == target_chain_idx).float()
+        if tmask.sum() > 0:
+            coords_c = apply_random_se3_batched(coords_res.clone())  # random frame -> no pose leak
+            xq_c, _, _ = model.encode_structure(coords_c, tmask, indices)
+            tok_c = xq_c.argmax(dim=-1)
+            sel = chains_ids == target_chain_idx
+            template_tokens[sel] = tok_c[sel]
+        template_arg = template_tokens
+        mask_structure = mask_structure.clone()
+        mask_structure[chains_ids == target_chain_idx] = 1.0  # generate target struct from template
+        logger.info(
+            "  TEMPLATE-TARGET mode ON: target structure generated from per-chain template "
+            "(seq fixed); target structure tokens NOT pinned"
+        )
+    return {
+        "L_total": L_total,
+        "L_target": L_target,
+        "L_binder": L_binder,
+        "coords_res": coords_res,
+        "sequence_tokenized": sequence_tokenized,
+        "mask": mask,
+        "indices": indices,
+        "chains_ids": chains_ids,
+        "mask_sequence": mask_sequence,
+        "mask_structure": mask_structure,
+        "chain_ids_emb": chain_ids_emb,
+        "cond_tensor": cond_tensor,
+        "template_arg": template_arg,
+        "binder_chain_idx": binder_chain_idx,
+    }
+
+
 def _generate_binders(
     model, cfg: DictConfig, device: torch.device, output_dir: Path, plm_fold=None, csv_writer=None, plotter=None
 ) -> None:
@@ -310,163 +596,21 @@ def _generate_binders(
                 target_chain_idx=target_chain_idx,
                 structure_path=structure_path,
             ):
-                # Initialize binder position
-                if epitope_indices:
-                    logger.info(f"Initializing binder with length {binder_length} near epitope")
-                    logger.info(f"  Epitope residue indices: {epitope_indices}")
-                    logger.info("  Ball center: 5Å from epitope, radius: 12Å, min target distance: 5Å")
-                else:
-                    logger.info(f"Initializing binder with length {binder_length} around target center of mass")
-                    logger.info("  Ball radius: 12Å, min target distance: 5Å")
-
-                binder_data = initialize_binder_at_origin(
+                # Thin delegator to the importable builder (shared with GRPO rollouts) so
+                # generation and RL construct identical conditioning.
+                return build_binder_static_cond(
                     binder_length,
-                    device="cpu",
-                    target_coords=target_data_filtered["coords_res"],
+                    target_data_filtered,
+                    chains_key,
+                    target_chain_idx,
+                    model=model,
+                    gen_cfg=gen_cfg,
+                    device=device,
+                    tokenizer_transform=tokenizer_transform,
                     epitope_indices=epitope_indices,
+                    output_dir=output_dir,
+                    structure_path=structure_path,
                 )
-
-                # Get next chain index for binder
-                binder_chain_idx = get_next_chain_index(target_data_filtered)
-                logger.info(f"Binder will be assigned chain index: {binder_chain_idx}")
-
-                # Create composite structure (target + binder)
-                logger.info("Creating composite structure (target + binder)")
-
-                L_target = target_data_filtered["coords_res"].shape[0]
-                L_binder = binder_data["coords_res"].shape[0]
-                L_total = L_target + L_binder
-
-                # Check max length
-                max_length = gen_cfg.get("max_length", 512)
-                if L_total > max_length:
-                    logger.warning(
-                        f"Total length {L_total} (target: {L_target}, binder: {L_binder}) "
-                        f"exceeds max_length {max_length}. Skipping structure."
-                    )
-                    return None
-
-                # Concatenate all tensors
-                coords_res_combined = torch.cat([target_data_filtered["coords_res"], binder_data["coords_res"]], dim=0)
-
-                sequence_combined = torch.cat([target_data_filtered["sequence"], binder_data["sequence"]], dim=0)
-
-                mask_combined = torch.cat([target_data_filtered["mask"], binder_data["mask"]], dim=0)
-
-                # Create chain IDs for binder
-                binder_chain_ids = torch.full(
-                    (L_binder,), binder_chain_idx, dtype=target_data_filtered[chains_key].dtype
-                )
-                chains_ids_combined = torch.cat([target_data_filtered[chains_key], binder_chain_ids], dim=0)
-
-                # Create indices for binder
-                binder_indices = torch.arange(
-                    binder_chain_idx, binder_chain_idx + L_binder, dtype=target_data_filtered["indices"].dtype
-                )
-                indices_combined = torch.cat([target_data_filtered["indices"], binder_indices], dim=0)
-
-                logger.info("Composite structure created:")
-                logger.info(f"  Total length: {L_total} ({L_target} target + {L_binder} binder)")
-                logger.info(f"  Target chain index: {target_chain_idx}")
-                logger.info(f"  Binder chain index: {binder_chain_idx}")
-
-                # Save initial structure (before generation)
-                structure_name = Path(structure_path).stem
-                initial_structure_path = output_dir / f"{structure_name}_initial_structure.pdb"
-                writepdb(str(initial_structure_path), coords_res_combined, sequence_combined)
-                logger.info(f"Saved initial structure: {initial_structure_path}")
-
-                # Add batch dimension and move to device
-                coords_res = coords_res_combined.unsqueeze(0).to(device)
-                sequence = sequence_combined.unsqueeze(0).to(device)
-                mask = mask_combined.unsqueeze(0).to(device)
-                chains_ids = chains_ids_combined.unsqueeze(0).to(device)
-                indices = indices_combined.unsqueeze(0).to(device)
-
-                # Apply tokenizer to sequence
-                tokenized_data = tokenizer_transform({"sequence": sequence.squeeze(0).cpu()})
-                sequence_tokenized = tokenized_data["sequence"].unsqueeze(0).to(device)
-
-                # Create inpainting masks
-                # Note: First binder residue is kept fixed to preserve chain break token
-                logger.info(
-                    "Creating inpainting masks (target=fixed, first binder token=fixed, rest of binder=generate)"
-                )
-
-                mask_sequence, mask_structure = create_binder_inpainting_masks(
-                    chains_ids, target_chain_idx, binder_chain_idx, device
-                )
-
-                # Verify masks
-                num_fixed = (mask_sequence == 0).sum().item()
-                num_generate = (mask_sequence == 1).sum().item()
-                logger.info(f"  Fixed residues: {num_fixed} (target + 1 binder chain-break token)")
-                logger.info(f"  Generate residues: {num_generate} (binder minus first token)")
-
-                # Optional epitope conditioning: feed the hotspot residues (epitope_indices are
-                # antigen-local = target-region positions, since the target chain is concatenated
-                # first) into the model's conditioning channel, and pass per-residue chain ids, so
-                # a complex/epitope-trained checkpoint actually uses its training. Mirrors
-                # _dimer_forward_folding.py. When off (default), both stay None => unchanged behavior.
-                use_epitope_conditioning = gen_cfg.get("use_epitope_conditioning", False)
-                chain_ids_emb = None
-                cond_tensor = None
-                if use_epitope_conditioning:
-                    chain_ids_emb = torch.zeros_like(chains_ids)
-                    chain_ids_emb[chains_ids == target_chain_idx] = 1
-                    chain_ids_emb[chains_ids == binder_chain_idx] = 2
-                    cond_tensor = torch.zeros((1, L_total, 1), device=device)
-                    if epitope_indices:
-                        hot = torch.tensor(
-                            [i for i in epitope_indices if 0 <= i < L_target], device=device, dtype=torch.long
-                        )
-                        if hot.numel() > 0:
-                            cond_tensor[0, hot, 0] = 1.0
-                    logger.info(
-                        f"  Epitope conditioning ON: {int((cond_tensor > 0).sum())} hotspot residues "
-                        f"(of {len(epitope_indices) if epitope_indices else 0} given); "
-                        f"chain_ids remapped target->1, binder->2"
-                    )
-
-                # TEMPLATE-TARGET mode: condition on the target via its per-chain template
-                # (frame-randomized, isolated encode -> fold only, no absolute pose) + hotspot,
-                # INSTEAD of pinning the target with fixed structure tokens. The target SEQUENCE
-                # stays fixed (known), but its STRUCTURE is generated (mask_structure target->1)
-                # guided by the template channel -- i.e. the target is forward-folded from its
-                # template while the binder is designed. Requires a template-trained checkpoint.
-                template_arg = None
-                if gen_cfg.get("template_target", False) and getattr(model, "no_template_idx", None) is not None:
-                    template_tokens = torch.full((1, L_total), model.no_template_idx, dtype=torch.long, device=device)
-                    tmask = mask * (chains_ids == target_chain_idx).float()
-                    if tmask.sum() > 0:
-                        coords_c = apply_random_se3_batched(coords_res.clone())  # random frame -> no pose leak
-                        xq_c, _, _ = model.encode_structure(coords_c, tmask, indices)
-                        tok_c = xq_c.argmax(dim=-1)
-                        sel = chains_ids == target_chain_idx
-                        template_tokens[sel] = tok_c[sel]
-                    template_arg = template_tokens
-                    mask_structure = mask_structure.clone()
-                    mask_structure[chains_ids == target_chain_idx] = 1.0  # generate target struct from template
-                    logger.info(
-                        "  TEMPLATE-TARGET mode ON: target structure generated from per-chain template "
-                        "(seq fixed); target structure tokens NOT pinned"
-                    )
-                return {
-                    "L_total": L_total,
-                    "L_target": L_target,
-                    "L_binder": L_binder,
-                    "coords_res": coords_res,
-                    "sequence_tokenized": sequence_tokenized,
-                    "mask": mask,
-                    "indices": indices,
-                    "chains_ids": chains_ids,
-                    "mask_sequence": mask_sequence,
-                    "mask_structure": mask_structure,
-                    "chain_ids_emb": chain_ids_emb,
-                    "cond_tensor": cond_tensor,
-                    "template_arg": template_arg,
-                    "binder_chain_idx": binder_chain_idx,
-                }
 
             # fixed length: build once (unchanged behaviour incl. shared init across designs)
             _comp_fixed = None if _bl_range else build_composite(_bllo)

@@ -73,6 +73,7 @@ lobster_leflur_checkpoints = "lobster.cmdline.manage_leflur_checkpoints:main"
 lobster_leflur_benchmarks = "lobster.cmdline.manage_leflur_benchmarks:main"
 lobster_generate = "lobster.cmdline.generate:generate"
 lobster_autoencode = "lobster.cmdline.autoencode:autoencode"
+lobster_rl_train = "lobster.cmdline.rl_train:rl_train"
 
 [project.optional-dependencies]
 struct-cpu = [

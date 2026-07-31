@@ -9,6 +9,7 @@ from .intervene import intervene
 from .intervene_multiproperty import intervene_multiproperty
 from .manage_leflur_checkpoints import main as manage_leflur_checkpoints
 from .perplexity import perplexity
+from .rl_train import rl_train
 from .train import train
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "intervene_multiproperty",
     "manage_leflur_checkpoints",
     "perplexity",
+    "rl_train",
     "train",
 ]
