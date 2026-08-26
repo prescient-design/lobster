@@ -1,0 +1,191 @@
+# @package _global_
+#
+# CHORD SFT-DISTILLATION arm + SEQUENCE ANTI-DEGENERACY rewards (accum_targets=10, seqtrack).
+# Fork of rl_leflur_binder_grpo_shape_chord_nodist_accum10_seqtrack.yaml (the live HARD/SOFT
+# CHORD run) that turns ON the two correct diversity terms to stop the poly-alanine mode
+# collapse the CHORD arm drifts into (expertctx run: pass 3.11% @ s175 -> 1.01% @ s325 as
+# alanine rose 13.3% -> 53.1% of binder residues). See docs/leflur/grpo_two_reward_sets_proposal.tex
+# (Section "Sequence anti-degeneracy", Table tab:diversitymetrics) for the empirical basis.
+#
+# WHAT CHANGES vs the CHORD parent (everything else byte-identical):
+#   - grpo.w_seq_complexity: 0.0 -> 1.0   PRIMARY guardrail. Per-design linguistic-complexity
+#                                         floor: reward gets  -w_seq_complexity * g_i, with
+#                                         g_i = clip((lc_hi - LC_i)/(lc_hi - lc_lo), 0, 1),
+#                                         LC_i = prod_{k=1..3} cov^(k)_i (within-sequence k-mer
+#                                         coverage). Zero above lc_hi (NO force on healthy
+#                                         designs — base and passing Complexa both sit above),
+#                                         saturates at full collapse. This is the ONLY signal
+#                                         that is both a collapse detector (eta^2=0.63) AND
+#                                         success-aligned (passing Complexa scores HIGHEST LC).
+#   - grpo.lc_hi: 0.45 / grpo.lc_lo: 0.15 floor ramp edges (healthy-ref vs collapsed-CHORD split).
+#   - grpo.w_seq_diversity: 0.0 -> 0.1    GENTLE between-design guard = within-group k-mer-Jaccard
+#                                         novelty nu^aa (the INCUMBENT term, already wired). Kept
+#                                         SMALL on purpose: between-design diversity is ANTI-aligned
+#                                         with pass (passing Complexa scores LOWEST on it — good
+#                                         binders for a shared epitope converge), so it is only a
+#                                         mean-centered anti-consensus guard, never a maximization
+#                                         target. Chosen over the positional Hamming term because
+#                                         Jaccard under-reports consensus convergence and is thus a
+#                                         gentler guard that fights the converging passing
+#                                         distribution less.
+#   - grpo.w_seq_hamming: 0.0             positional Hamming diversity left OFF (Jaccard used instead).
+#
+# WATCH (kill criteria): diversity/lc_mean should HOLD/RISE (not fall toward the 0.098 collapsed
+# floor); diversity/lc_degenerate_frac (LC<lc_lo) should stay near 0; reward/seq_complexity_term_mean
+# is 0 while healthy and goes negative only as designs drift; ppo/grad_norm must not be swamped
+# (the floor's dynamic range is 0..w_seq_complexity). Existing CHORD watches still apply
+# (sft/ce_loss down, aar/aar_iface_mean vs dist/tv_aa, diversity/seq_novelty_mean).
+#
+# Usage (Protenix-free policy job; a SEPARATE a10g repack array serves the SC/CHORD pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_shape_chord_lcfloor_divaa_accum10_seqtrack \
+#   N_WORKERS=0 M_SHAPE=8 POLICY_HRS=168 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_shape_chord_lcfloor_divaa_accum10_seqtrack \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_shape_chord_lcfloor_divaa_accum10_seqtrack"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # --- Between-design sequence diversity: k-mer-Jaccard novelty nu^aa (INCUMBENT term) ---
+  # ON as a SMALL, mean-centered anti-consensus guard (between-design diversity is anti-aligned
+  # with pass, so this is a guard, not a maximization target). 3Di-track novelty stays OFF.
+  w_seq_diversity: 0.1
+  w_struct_diversity: 0.0
+  # Positional Hamming diversity left OFF (Jaccard nu^aa used as the between-design guard instead).
+  w_seq_hamming: 0.0
+  w_tri_hamming: 0.0
+  # --- Within-sequence anti-degeneracy: per-design linguistic-complexity floor (PRIMARY) ---
+  # reward -= w_seq_complexity * g_i, g_i = clip((lc_hi - LC_i)/(lc_hi - lc_lo), 0, 1).
+  # The one signal that is both a collapse detector AND success-aligned; zero on healthy designs.
+  w_seq_complexity: 1.0
+  lc_hi: 0.45
+  lc_lo: 0.15
+  # --- Interface-distribution distance term ---
+  # 3Di dist reward ON (as in the CHORD parent): steer the 3Di histogram (whole-binder+interface
+  # blend, dist_binder_frac=0.5) toward the Complexa-38 ref, TV metric. AA-dist stays OFF.
+  w_aa_dist: 0.0
+  w_3di_dist: 1.0
+  log_dist_diagnostic: true  # still compute+log AA/3Di dist diagnostics (both scopes)
+  dist_binder_frac: 0.5
+  dist_metric: tv
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38_binder.json"
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # --- Smooth clash + interface-contact geometry reward (kept ON, same as base) ---
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+  # --- Full-atom 3DZD interface shape-complementarity reward (kept ON, same as base) ---
+  w_shape: 1.0
+  # --- AAR SCALAR reward: OFF. The designed sequence it produces feeds the CHORD SFT term. ---
+  w_aar: 0.0
+  # --- CHORD SFT-distillation term (dense per-token LigandMPNN sequence supervision) ---
+  sft_mu: 0.1                 # convex-blend weight on L_SFT-φ (0 = off)
+  sft_mu_schedule: null       # constant μ (CHORD: with φ on, a small fixed μ suffices)
+  sft_use_phi: true           # φ_t = p_t(1-p_t) token weighting (detached)
+  sft_scope: binder           # distil the WHOLE binder sequence (φ guards the generic core per-token)
+  sft_label: hard             # HARD distillation: CE toward MPNN's argmax token (matches the LIVE CHORD runs)
+  sft_temperature: 1.0        # (soft-label only; unused for hard labels)
+  sft_masked_only: true       # supervise a position only while still masked at that step
+  sft_reward_gate: null       # distil every design (no advantage gate)
+  # The SEQUENCE track must be trainable for the SFT gradient to reach the seq head.
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the SC term
+# AND the CHORD SFT designed-sequence draw from one pack per design (want=("sc","aar") +
+# return_seq); the ProteinMPNN design scorer is lazily loaded in-worker.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-shape-chord-lcfloor-divaa-accum10-seqtrack-g64

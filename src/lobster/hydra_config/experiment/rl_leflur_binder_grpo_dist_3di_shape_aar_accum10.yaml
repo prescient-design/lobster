@@ -1,0 +1,163 @@
+# @package _global_
+#
+# AAR-ONLY arm (accum_targets=10): the shipped multi-target SC recipe (3Di-distribution +
+# clash·contact geometry + 3DZD interface shape) PLUS a single new full-atom term —
+# whole-binder ProteinMPNN amino-acid recovery (AAR / designability). Served by the SAME
+# LigandMPNN-repack pool as the shape term (one pack per design, want=("sc","aar")).
+#
+# Exact fork of rl_leflur_binder_grpo_dist_3di_shape_multitgt_stab.yaml. The ONLY changes:
+#   - grpo.w_aar: 0 -> 1            (add the AAR term)
+#   - grpo.accum_targets: 4 -> 10   (stronger multi-target gradient averaging per step)
+# Every other knob (dist/clash/shape rewards + refs, Dr.GRPO, grad-ckpt spu=3, lr 1e-5,
+# G=64, β=0, tracks, warm-start leflur-binder-3di) is byte-identical.
+#
+#   reward = w_3di_dist     * [ (1-alpha)*(1-D_iface_3di) + alpha*(1-D_binder_3di) ]
+#          + w_clash_contact * clash_score * contact_score          # backbone+Cb geometry
+#          + w_shape        * SC                                     # 3DZD interface shape
+#          + w_aar          * AAR_whole_binder                       # <-- the only reward addition
+#
+# WHY split AAR and sc_clash into separate single-term runs: the co-equal
+# w_sc_clash=1 + w_aar=1 arm (job 19887059) had its composite reward DECLINE — the
+# clashy warm-start gave the absolute sc_clash term all the headroom, so it dominated the
+# within-group advantage and cannibalized dist (the validated pass-predictor). Isolating
+# each new term (and, for sc_clash, switching to a retraction-resistant DENSITY energy —
+# see the sibling *_scclashdens_accum10 config) tests each addition without that
+# domination confound. CAVEAT for AAR: high whole-binder MPNN recovery marks
+# generic/degenerate sequences (the anti-predictive failing mode); watch wandb
+# aar/aar_mean against AA entropy for degeneracy collapse — the inference-time sequence/
+# tri diversity penalties (below) are the standing guard.
+#
+# Usage (Protenix-free policy job; a SEPARATE a10g repack array serves the pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_3di_shape_aar_accum10 \
+#   N_WORKERS=0 M_SHAPE=8 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_dist_3di_shape_aar_accum10 \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_dist_3di_shape_aar_accum10"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step (raised from 4)
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off; the dist reward self-regularizes.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Whole-binder + interface 3Di distribution distance reward (same as base) ---
+  w_aa_dist: 0.0             # AA distance OFF for the 3Di-only lineage
+  w_3di_dist: 1.0            # 3Di histogram closeness to Complexa reference
+  dist_binder_frac: 0.5      # alpha: blend interface (0) <-> whole-binder (1); 0.5 = equal
+  dist_metric: tv           # total variation (D0 primary); "js" also supported
+  # WHOLE-BINDER reference (has aa_binder/3di_binder alongside interface aa/3di).
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38_binder.json"
+  # Interface-size collapse guardrail (still overrides the whole term).
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # --- Smooth clash + interface-contact geometry reward (kept ON, same as base) ---
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2        # soft-core clash center (A): heavy atoms closer overlap
+  clash_soft: 0.5           # clash transition width (A)
+  clash_scale: 50.0         # E_clash -> clash_score saturation scale
+  contact_d0: 8.0           # interface-band center (A), matches the 8 A interface def
+  contact_soft: 1.0         # contact transition width (A)
+  frac_lo: 0.05             # iface_frac band: contact_score = 0 at/below this
+  frac_peak: 0.16           # iface_frac band: peak (contact_score = 1) -- native band
+  frac_hi: 0.4              # iface_frac band: contact_score = 0 at/above this
+  clash_seq_sep: 2          # exclude binder pairs within this residue separation
+  clash_include_cb: true    # include a virtual Cb atom per residue in the clash cloud
+  # --- Full-atom 3DZD interface shape-complementarity reward (kept ON, same as base) ---
+  w_shape: 1.0              # SC term ∈ [0,1] (clipped Pearson of the two interface 3DZDs)
+  # --- NEW full-atom side-chain reward term (served by the SAME repack pool) ---
+  w_aar: 1.0               # whole-binder ProteinMPNN AAR (designability) ∈ [0,1]
+  # dist (3Di), clash·contact, shape, and aar are all functions of the generated
+  # structure (side-chain packing is deterministic given the sequence) -> only the
+  # structure/tri tracks receive their advantage.
+  tracks: [structure_tokens, tri_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25            # finer spacing: fewer optimizer steps (each = accum_targets rollouts)
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves BOTH the
+# SC term and the new AAR term from one pack per design (want=("sc","aar")); the AAR
+# ProteinMPNN scorer is lazily loaded in-worker from its default proteinmpnn_v_48_020.pt.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-dist3di-shape-aar-accum10-g64

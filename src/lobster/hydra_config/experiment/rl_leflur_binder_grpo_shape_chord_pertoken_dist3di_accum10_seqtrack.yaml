@@ -1,0 +1,190 @@
+# @package _global_
+#
+# PER-TOKEN CLASH arm — HARD-label CHORD, SEQUENCE-TRACK, accum_targets=10.
+# Fork of rl_leflur_binder_grpo_shape_chord_nodist_accum10_seqtrack.yaml (the live/fast
+# CHORD config) that adds a PER-RESIDUE (per-binder-token) clash advantage routed ONLY to
+# the STRUCTURE track, on top of the byte-identical design-level GRPO objective.
+#
+# WHAT PER-TOKEN CLASH DOES (the only training-dynamics change vs the CHORD parent):
+#   The existing `clash_contact_reward` already yields a scalar clash term per design. Here we
+#   ALSO decompose the backbone clash energy per binder residue (return_eres): binder×antigen
+#   pairs attribute fully to the binder residue; binder×binder non-local pairs split 50/50
+#   between endpoints, so Σ_r E_clash_res[r] == E_clash exactly. That per-residue signal becomes
+#   a per-position advantage
+#       A_struct = A_design[:, None] + A_clash            # shape (G, L)
+#   where A_clash is the group-mean-centered, globally-std-normalized (-E_clash_res) scaled by
+#   w_pt_clash and masked to generated structure positions. The design-level (seq + tri) PPO
+#   ratio is UNCHANGED; only the structure track sees the extra per-residue credit. Lower clash
+#   at a residue -> higher advantage at that residue's structure token.
+#
+# Implemented on the FAST code path (byte-identical when per_token_clash=false):
+#   - old_lp for the structure per-position ratio is recomputed no-grad (struct_pos_logprob_per_step)
+#     so ppo/struct_ratio_init == 1 exactly on the first substep;
+#   - design-level (seq+tri) old_lp uses the fast inline capture, restricted to design_tracks.
+#
+# CHANGES vs the CHORD parent (rl_leflur_binder_grpo_shape_chord_nodist_accum10_seqtrack.yaml):
+#   - grpo.per_token_clash: true            (ACTIVATE per-residue clash advantage)
+#   - grpo.w_pt_clash: 1.0                  (scale of the per-position clash advantage)
+#   - grpo.pt_clash_tracks: [structure_tokens]   (route the per-position credit to structure only)
+#   - grpo.sft_label: hard                  (HARD distillation — clean A/B vs the HARD baseline)
+#   - grpo.log_sc_clash_diagnostic: true    (TRACK all-atom SC-clash as a diagnostic; weight stays 0)
+# Everything else (Dr.GRPO, grad-ckpt spu=3, lr 1e-5, G=64, β=0, accum_targets=10, w_shape=1,
+# w_clash_contact=1, w_3di_dist=1, sft_mu=0.1, warm-start leflur-binder-3di, inference diversity
+# penalties) is identical to the parent. This run starts FRESH from the base ckpt (step 0) so it
+# is a clean A/B against the permanent HARD CHORD baseline (20065898/20065897).
+#
+# SIDE-CHAIN CLASH TRACKING (per user): the whole-binder all-atom SC-clash (grpo.w_sc_clash) is
+# TRACKED as a diagnostic (log_sc_clash_diagnostic: true — computed + logged each step) but kept
+# OFF (w_sc_clash: 0.0, not in the reward/gradient). Watch sc_clash/* alongside the backbone clash.
+#
+# DEGENERACY WATCH (same as parent): a rising interface AAR with a diversity/novelty collapse or
+# an AA distribution racing away from the Complexa ref (dist/tv_aa) kills the arm. NEW per-token
+# knobs to watch: ptclash/adv_abs_mean, ptclash/adv_max_abs, ppo/struct_ratio_init (must start ~1).
+#
+# Usage (Protenix-free policy job; a SEPARATE a10g repack array serves the pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_shape_chord_pertoken_dist3di_accum10_seqtrack \
+#   N_WORKERS=0 M_SHAPE=8 POLICY_HRS=168 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_shape_chord_pertoken_dist3di_accum10_seqtrack \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_shape_chord_pertoken_dist3di_accum10_seqtrack"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Interface-distribution distance term ---
+  w_aa_dist: 0.0
+  w_3di_dist: 1.0
+  log_dist_diagnostic: true  # still compute+log AA/3Di dist diagnostics (both scopes)
+  dist_binder_frac: 0.5
+  dist_metric: tv
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38_binder.json"
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # --- Smooth clash + interface-contact geometry reward (kept ON, same as base) ---
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+  # --- PER-TOKEN (per-residue) backbone-clash advantage, routed to the STRUCTURE track ---
+  per_token_clash: true       # ACTIVATE the per-residue clash advantage (A_struct = A_design + A_clash)
+  w_pt_clash: 1.0             # scale of the per-position clash advantage
+  pt_clash_tracks: [structure_tokens]   # route the per-position credit to the structure track only
+  # --- Full-atom 3DZD interface shape-complementarity reward (kept ON, same as base) ---
+  w_shape: 1.0
+  # --- Whole-binder all-atom SC-clash: TRACKED as a diagnostic, kept OFF (weight 0) ---
+  w_sc_clash: 0.0
+  log_sc_clash_diagnostic: true
+  # --- AAR SCALAR reward: OFF. The designed sequence it produces feeds the CHORD SFT term. ---
+  w_aar: 0.0
+  # --- CHORD SFT-distillation term (dense per-token LigandMPNN sequence supervision) ---
+  sft_mu: 0.1                 # convex-blend weight on L_SFT-φ (0 = off)
+  sft_mu_schedule: null       # constant μ (CHORD: with φ on, a small fixed μ suffices)
+  sft_use_phi: true           # φ_t = p_t(1-p_t) token weighting (detached)
+  sft_scope: binder           # distil the WHOLE binder sequence (φ guards the generic core per-token)
+  sft_label: hard             # HARD distillation — clean A/B vs the permanent HARD baseline
+  sft_temperature: 1.0        # (soft-label only; unused for hard labels)
+  sft_masked_only: true       # supervise a position only while still masked at that step
+  sft_reward_gate: null       # distil every design (no advantage gate)
+  # The SEQUENCE track must be trainable for the SFT gradient to reach the seq head.
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the SC term
+# AND the CHORD SFT designed-sequence draw from one pack per design (want=("sc","aar") +
+# return_seq); the ProteinMPNN design scorer is lazily loaded in-worker.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-shape-chord-pertoken-dist3di-accum10-seqtrack-g64

@@ -1,0 +1,122 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M18: M17 + K=3 multi-seed reward averaging.
+#
+# WHY (M17 noise diagnosis): within-group ipTM std ~0.083, single-seed Protenix noise ~0.065.
+# Deconvolved true signal std ~0.049 -> SNR ~0.82x -> only ~44% of advantage variance is real
+# signal about docking quality; the rest is Protenix seed noise. 26% of groups fall entirely
+# below the noise floor (pure-noise gradient steps). K=3 averaging cuts noise to ~0.038,
+# pushing SNR to ~1.42x and real-signal fraction from 44% -> 73%.
+#
+# M18 changes vs M17:
+#   1. REWARD_SEEDS=101,202,303  (K=3 multi-seed, averaged per design by the reward server).
+#      Cost: 3x Protenix scoring per group -> 3x worker GPU-hours per step.
+#      Signal: noise floor 0.065 -> 0.038, SNR 0.82x -> 1.42x, real-signal frac 44% -> 73%.
+#   2. lr: 3e-5 (M17 config default) -> 1e-5 (BAKED IN here; M17 diverged at 3e-5 with beta=0).
+#      M7/M11b proven non-diverging at lr=1e-5 + beta=0.
+#   3. Everything else identical to M17: C-form rollout, gpde_weight=0.3, beta=0.0,
+#      group_size=32, diversity/degeneracy hinges, entropy_floor=0.80, tracks=[sequence_tokens].
+#
+# ROLLOUT (C / default-arm, identical to M17):
+#   seq  : PowerInferenceSchedule(exp 2),  stochasticity_seq 20
+#   struc: LinearInferenceSchedule,        stochasticity_struc 60
+#   3Di  : LogInferenceSchedule,           stochasticity_tri 80, tri_diversity_penalty 8
+#   sequence_diversity_penalty 2, temperature_seq 1.0, temperature_struc 0.316
+#
+# GPDE TERM (identical to M17):
+#   gpde_weight 0.3 => std(gpde_term) = 0.3 * std(dock) within each group.
+#   Per-group z-normalized: gpde_weight * std(dock) * (mean(gpde) - gpde) / std(gpde).
+#   Averaged over K seeds by the reward server before being returned.
+#
+# READ: with K=3 the gradient is 73% real signal. If ip still doesn't climb, the bottleneck
+# is capacity (single-target G=32 is insufficient) or the model itself (the policy can't
+# improve docking within its current support). If ip does climb, M17 was simply reward-noisy.
+#
+# Usage:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_m18 \
+#   REWARD_SEEDS=101,202,303 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_m18_cform_gpde_k3 \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m18"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs — C / default-arm, identical to M17
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 20
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0
+  eps_clip: 0.2
+  lr: 1.0e-5                     # <-- BAKED IN: 1e-5 (M17 diverged at 3e-5 with beta=0)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.2
+  degeneracy_weight: 0.5
+  max_aa_floor: 0.3
+  entropy_floor: 0.8
+  gpde_weight: 0.3
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m18-cform-gpde-k3
+  entity: null

@@ -1,0 +1,127 @@
+# @package _global_
+#
+# STABILIZED rerun of the AA-only Protenix-free distribution-reward GRPO ablation.
+# The first run (rl_leflur_binder_grpo_dist_aa_noptx, job 19655461) genuinely LEARNED
+# (rotation-smoothed AA TV 0.44 -> 0.37 at step ~1786) then DIVERGED — a stability /
+# no-trust-region failure, NOT the earlier flat-reward failure. This config keeps the
+# reward untouched and changes only the OPTIMIZER to hold the good basin:
+#
+#   1. Dr.GRPO: normalize_advantage=false (mean-center only, no /std). Dividing by the
+#      within-group std amplifies advantages exactly when the group tightens in a good
+#      basin (std shrinks) -> overshoot -> ejection. Removing it kills that positive-
+#      feedback destabilizer.
+#   2. n_iface < threshold is now a NEGATIVE reward (dist_iface_penalty=-1.0), not a
+#      soft 0. Interface-size collapse (n_iface -> 3) was a cheap escape hatch the old
+#      skip->0 rule only softly penalized; a hard negative repels that basin.
+#   3. steps_per_update 1 -> 3 via gradient checkpointing (grad_checkpoint=true). The
+#      per-step forward activations are freed and recomputed in backward, so peak
+#      update memory is ~O(group_size) instead of O(group_size * spu) -> spu=3 fits at
+#      G=64 on b200. More steps per update = lower-variance credit assignment.
+#   4. KL still OFF (beta=0.0) — deliberately not turned on yet.
+#
+# D0: AA distance is the CARRIER of pass-rate, so this is the higher-value arm.
+#
+# Usage (Protenix-free -> N_WORKERS=0 submits the policy job only):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_aa_noptx_stab \
+#   N_WORKERS=0 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_dist_aa_noptx_stab \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_dist_aa_noptx_stab"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # large; adjust to compute budget
+  rollout_nsteps: 40
+  steps_per_update: 3        # 1 -> 3: enabled by grad_checkpoint (frees per-step forward mem).
+  grad_checkpoint: true      # checkpoint each per-step forward+logprob -> peak mem ~O(group_size).
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: false  # Dr.GRPO: mean-center only, no /std (removes std-amplification)
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off; the dist reward self-regularizes.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Interface-distribution distance reward (THIS run's SOLE lever) ---
+  w_aa_dist: 1.0             # AA interface-histogram closeness to Complexa reference
+  w_3di_dist: 0.0            # 3Di distance OFF for the AA-only ablation
+  dist_metric: tv           # total variation (D0 primary); "js" also supported
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38.json"
+  # Interface-size collapse guardrail: a design whose binder interface has < dist_min_iface
+  # residues (min cross-chain Ca-Ca < 8 A) gets its WHOLE dist reward set to the negative
+  # penalty, repelling the n_iface-collapse escape hatch instead of softly zeroing it.
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # AA dist term is driven by sequence identity -> only the sequence track gets advantage.
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-distaa-noptx-stab-g64
+  entity: null

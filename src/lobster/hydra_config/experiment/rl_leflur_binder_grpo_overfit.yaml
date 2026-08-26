@@ -1,0 +1,104 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of the `leflur-binder-3di` policy — v1 single-target overfit.
+#
+# Goal of this config: prove the Protenix co-folding interface-pTM reward rises
+# end-to-end on ONE Complexa target (01_PD1) before scaling to the full 38. The
+# reward is served out-of-process by a Protenix worker pool over the shared
+# filesystem queue at `reward.queue_dir` (launch workers separately, e.g. via
+# `scripts/launch_leflur_grpo.slurm`); this process only submits jobs and blocks.
+#
+# Usage:
+#   lobster_rl_train --config-name experiment/rl_leflur_binder_grpo_overfit
+#
+# The sampler recipe mirrors `generate_binder_3di_best` (the 7.18% Complexa arm)
+# but at reduced rollout_nsteps (40) — the per-step log-prob recompute is the
+# dominant GRPO cost, so short rollouts + random step-subsampling are required.
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_overfit"
+seed: 12345
+
+# Policy checkpoint — registry short name; resolve_checkpoint downloads/patches it.
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Targets to optimize (v1 = single target). target_id must key into
+# reward.targets_csv; antigen_pdb/target_chain/epitope_indices come from
+# complexa_gen_targets.csv. epitope_indices are coords_res numbering (0-indexed).
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs (translated to generate_sample kwargs by rl_train.py).
+# Same recipe as generate_binder_3di_best, minus nsteps (set via grpo.rollout_nsteps).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 60
+  stochasticity_struc: 60
+  stochasticity_tri: null
+  asynchronous_sampling: false
+  inference_schedule_seq: LogInferenceSchedule
+  seq_schedule_exponent: -2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: PowerInferenceSchedule
+  tri_schedule_exponent: 2
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 0
+  sequence_logit_bias: null
+  # Bias/diversity apply over the (short) rollout; cap at rollout_nsteps.
+  sequence_logit_bias_steps: 40
+  tri_logit_bias: null
+
+# GRPO optimization hyperparameters (-> GRPOTrainerConfig).
+grpo:
+  group_size: 16
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 4
+  mu: 2
+  beta: 0.02
+  eps_clip: 0.2
+  lr: 1.0e-6
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.1
+  degeneracy_weight: 0.5
+  tracks: [sequence_tokens, structure_tokens, tri_tokens]
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+# Reward oracle (Protenix worker pool over a shared-filesystem queue).
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  # Split each group across this many parallel worker sub-jobs (throughput lever B).
+  # Keep = the launcher's N_WORKERS so the whole A10G pool works one group at once.
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: null
+  entity: null

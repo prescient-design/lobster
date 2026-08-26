@@ -1,0 +1,102 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M11 single-target overfit (01_PD1).
+#
+# M11 changes vs M10c (the prior pure-ipTM, g=32, lr=3e-5 run), isolating the
+# code-audit findings from #267:
+#   1. tracks = [sequence_tokens] ONLY. The Protenix reward co-folds from the binder
+#      SEQUENCE alone — the generated LG/3Di structure tokens never reach the oracle,
+#      yet with all three tracks they dominate ~2/3 of the log-prob budget (#259) and
+#      govern the PPO ratio + clip, drowning the one causal track. Seq-only isolates it.
+#   2. capture_old_lp_inline = true. `old_lp` is now the behaviour-policy log-prob
+#      captured inline from the exact biased logits the sampler drew from (zero extra
+#      forwards, faithful by construction). Exposes `ppo/ratio_init` (~1.0 expected) as
+#      a live consistency check on the `new_lp` recompute.
+# Everything else is held at M10c so any reward change is attributable to (1)+(2).
+#
+# Usage:
+#   lobster_rl_train --config-name experiment/rl_leflur_binder_grpo_m11
+#
+# Reward is served by a Protenix worker pool over the shared filesystem queue at
+# `reward.queue_dir` (launch workers separately, e.g. scripts/launch_leflur_grpo.slurm).
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m11"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs — identical recipe to M10c / generate_binder_3di_best.
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 60
+  stochasticity_struc: 60
+  stochasticity_tri: null
+  asynchronous_sampling: false
+  inference_schedule_seq: LogInferenceSchedule
+  seq_schedule_exponent: -2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: PowerInferenceSchedule
+  tri_schedule_exponent: 2
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 0
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 40
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.02
+  eps_clip: 0.2
+  lr: 3.0e-5            # M10c value; drop to 1e-5 if KL runs away (see #267 lever memory)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.0   # pure ipTM reward (match M9/M10)
+  degeneracy_weight: 0.0  # pure ipTM reward (match M9/M10)
+  tracks: [sequence_tokens]     # <-- M11 change 1: seq-only (causal track for the reward)
+  capture_old_lp_inline: true   # <-- M11 change 2: faithful inline behaviour-policy log-prob
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  # Split each group across this many parallel worker sub-jobs (throughput lever B).
+  # Keep = the launcher's N_WORKERS so the whole A10G pool works one group at once.
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m11-seqonly-inline
+  entity: null

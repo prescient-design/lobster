@@ -1,0 +1,115 @@
+# @package _global_
+
+# GRPO-finetuned 3Di binder-design config — the shape-complementarity (SC) reward
+# arm. Warm-started from `leflur-binder-3di` and further optimized with GRPO under
+# a combined reward: interface 3Di-distribution distance + backbone clash + the
+# 3DZD interface shape-complementarity (SC) term (w_shape=1). This is the "sc"
+# arm at GRPO step 125 — the de-clashing / interface-tightening checkpoint that
+# transferred to held-out antigens in the offline clash-viz validation.
+#
+# It reuses the SAME sampler recipe as `generate_binder_3di_best` (GRPO rollouts
+# were generated with the best-arm sampler): seq=Log(exp=-2), struc=Linear,
+# 3Di=Power(exp2); stochasticity_seq=60, stochasticity_struc=60;
+# sequence_diversity_penalty=2, no 3Di diversity penalty.
+#
+# Side-chain packing is ON by default here (`generation.pack_side_chains: true`):
+# LeFlur emits backbone-only structures, so each generated `*_complex.pdb` is
+# repacked in process with the LigandMPNN side-chain packer, writing an all-atom
+# `*_complex_packed.pdb` next to it. See docs/leflur/binder_design.md.
+#
+# Provenance: this checkpoint is currently INTERNAL-ONLY (not yet mirrored to
+# HuggingFace), so `model.ckpt_path` points at the materialized Lightning
+# snapshot on the shared filesystem and this config defaults to `paths=internal`.
+# Once the ckpt is uploaded, switch `ckpt_path` to the registry short name
+# `leflur-binder-3di-grpo-sc` and run with `paths=public`.
+#
+# Usage (design against your own target):
+#   uv run python -m lobster.cmdline.generate \
+#     --config-name experiment/generate_binder_3di_grpo_sc \
+#     generation.input_structures=/path/to/target.pdb \
+#     generation.target_chain=A generation.epitope_indices="[155]"
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/binder_design_3di_grpo_sc"
+
+# Random seed for reproducibility
+seed: 12345
+
+# Model configuration — GRPO-finetuned binder-3di (SC arm), internal snapshot.
+# The materialized Lightning envelope (grpo_step 125) loads directly via
+# load_from_checkpoint. Registry short name (post-HF-upload): leflur-binder-3di-grpo-sc.
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: /cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_3di_shape_multitgt_stab/ckpts/grpo_step_125_lightning.ckpt
+
+generation:
+  mode: binder_design
+
+  # Target structure (PDB with one or more chains). Defaults to the bundled
+  # example target; override with your own PDB via
+  # `generation.input_structures=/path/to/target.pdb`.
+  input_structures: "${paths.examples.binder_template}"
+
+  # Target chain the binder is designed against (chain letter from the PDB).
+  target_chain: "A"
+
+  # Binder length (number of residues to generate). Typical range 50-150.
+  binder_length: 50
+
+  # Epitope residue indices (coords_res numbering, 0-indexed). Seeds the binder
+  # placement AND (with use_epitope_conditioning) feeds the model's hotspot
+  # channel. Override per target.
+  epitope_indices: [155]
+
+  # Feed the epitope hotspots into the model's conditioning channel (the
+  # complex/epitope-trained checkpoint's docking prior). ON for this arm.
+  use_epitope_conditioning: true
+  encode_target_only: false
+
+  # --- Sampler recipe (best / seq60, same as generate_binder_3di_best) ----
+  nsteps: 200
+  n_trials: 1
+  n_designs_per_structure: 10
+
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 60
+  stochasticity_struc: 60
+  asynchronous_sampling: false
+
+  inference_schedule_seq: LogInferenceSchedule
+  seq_schedule_exponent: -2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: PowerInferenceSchedule
+  tri_schedule_exponent: 2
+
+  sequence_diversity_penalty: 2
+  sequence_logit_bias_steps: 200
+
+  # ESMFold validation (recommended for binder design)
+  use_esmfold: true
+  max_length: 512
+  esmfold_chain_groups: null
+
+  # CSV metrics and plotting
+  save_csv_metrics: true
+  create_plots: true
+
+  # --- Optional side-chain packing (ON for this config) -------------------
+  # Repack each backbone-only `*_complex.pdb` into an all-atom
+  # `*_complex_packed.pdb` with the LigandMPNN side-chain packer, in process.
+  # CPU-viable (~0.66 s/design @ 8 threads); the binder + target are packed
+  # together so interface side chains inform each other's chi torsions.
+  pack_side_chains: true
+  packing:
+    device: cpu
+    num_denoising_steps: 3
+    num_samples: 4
+    # Pack only the binder+target complex (not the *_binder / *_target /
+    # *_initial_structure split PDBs, and not the *_esmfold refolds).
+    glob: "*_complex.pdb"
+    ligandmpnn_path: null
+    sc_ckpt: null

@@ -1,0 +1,119 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M13 combined-fix single-target overfit (01_PD1).
+#
+# M6-M12 all show a FAITHFUL gradient (offline audit #259: pearson(advantage, Δlogprob)
+# = +0.92) but a FLAT reward. The audit's shuffled-advantage control is NOT clean
+# (pearson +0.78): the advantage-weighted update is dominated by a COMMON-MODE log-prob
+# drift (all designs in the group move in lockstep) rather than the advantage DIFFERENTIAL
+# (winners separating from losers). Root cause: too little within-group diversity → the
+# per-design gradients are near-parallel, so mean-centered advantages barely steer.
+#
+# M13 combines the cheap, high-impact fixes drawn from that diagnosis + the discrete-flow
+# GRPO literature (Flow-GRPO stochasticity; Dr. GRPO no-/std; KL omission; diffu-GRPO
+# step-subsampling), all at once:
+#   1. RAISE rollout temperature_seq 0.273 -> 0.6. The dominant lever: more diverse rollouts
+#      => less-parallel per-design gradients => the advantage differential can actually move
+#      the policy instead of being swamped by common-mode drift.
+#   2. Dr. GRPO — normalize_advantage=false (mean-center only, drop the per-group 1/std).
+#      Removes the bias toward low-variance groups; advantages now live on the raw reward
+#      scale, so lr is bumped to compensate (see 5).
+#   3. KL off — beta 0.02 -> 0. The KL anchor is itself a common-mode force pulling the whole
+#      group back to the reference; with a single-target overfit and clipping already bounding
+#      the step, it only damps the signal.
+#   4. steps_per_update 2 -> 8. Each PPO update sees more of the trajectory => lower-variance
+#      per-design log-prob => cleaner advantage differential per step.
+#   5. lr 3e-5 -> 1e-4. Dr. GRPO drops the ~1/std (~5-10x) rescaling, shrinking the effective
+#      step; 1e-4 restores the update magnitude into the known-working band (standardized-adv
+#      lr 1e-5 moved, 1e-6 froze — see #267 lever memory) without exceeding M10c's 3e-5-equiv.
+# New instrumentation (trainer): advantage/{abs_mean,max_abs}, reward/ip_std, ppo/kl_term,
+# and the key ppo/dlp_mean (common-mode drift) + ppo/dlp_adv_corr (advantage-differential
+# faithfulness, live analog of the offline audit) — watch dlp_adv_corr rise off ~0.
+#
+# Usage:
+#   lobster_rl_train --config-name experiment/rl_leflur_binder_grpo_m13
+#
+# Reward is served by a Protenix worker pool over the shared filesystem queue at
+# `reward.queue_dir` (launch workers separately, e.g. scripts/launch_leflur_grpo.slurm).
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m13"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs — M11 recipe with temperature_seq RAISED (M13 change 1).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 0.6            # <-- M13 change 1: was 0.273; diversify rollouts
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 60
+  stochasticity_struc: 60
+  stochasticity_tri: null
+  asynchronous_sampling: false
+  inference_schedule_seq: LogInferenceSchedule
+  seq_schedule_exponent: -2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: PowerInferenceSchedule
+  tri_schedule_exponent: 2
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 0
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 40
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 8            # <-- M13 change 4: was 2; lower-variance advantage differential
+  mu: 2
+  beta: 0.0                      # <-- M13 change 3: KL off (was 0.02)
+  eps_clip: 0.2
+  lr: 1.0e-4                     # <-- M13 change 5: was 3e-5; compensates Dr. GRPO /std removal
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: false     # <-- M13 change 2: Dr. GRPO (mean-center only, drop /std)
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.0   # pure ipTM reward (match M9/M10/M11)
+  degeneracy_weight: 0.0  # pure ipTM reward (match M9/M10/M11)
+  tracks: [sequence_tokens]     # seq-only (the causal track for the reward)
+  capture_old_lp_inline: true   # faithful inline behaviour-policy log-prob
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  # Split each group across this many parallel worker sub-jobs (throughput lever B).
+  # Keep = the launcher's N_WORKERS so the whole A10G pool works one group at once.
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m13-combined-drgrpo-temp06-kloff
+  entity: null

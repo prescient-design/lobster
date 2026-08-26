@@ -1,0 +1,121 @@
+# @package _global_
+#
+# GRPO RL fine-tuning on the Proteina-Complexa 38-target binder benchmark with an
+# AA interface-DISTRIBUTION shaping reward ONLY — Protenix OFF (no worker pool,
+# no queue). Ablation arm: does the dense AA-interface distance reward drive the
+# policy on its own?  (D0: AA distance is the CARRIER of pass-rate.)
+#
+# Reward = w_aa_dist * clip(1 - TV(haa_design, haa_ref), 0, 1)   [sole term]
+# where haa_design is the 20-AA histogram over the generated binder's interface
+# residues (interface set from the generated backbone; cross-chain Ca-Ca < 8 A),
+# and haa_ref is the per-target Proteina-Complexa reference (pooled fallback for the
+# 3 targets lacking a per-target ref). All confidence weights are 0, so the trainer
+# skips the Protenix oracle entirely (confs=[None]*G).
+#
+# Self-regularizing: a degenerate (poly-AA) design gives a spiky histogram far from
+# the balanced reference -> high TV -> low reward, so no anti-degeneracy guardrail
+# is needed (unlike the sparse-ipTM M14/M15 collapses).
+#
+# tracks = [sequence_tokens]: AA identity is driven by sequence_tokens, so only the
+# causal track receives advantage — a clean sequence ablation (M11 pattern).
+#
+# Usage (Protenix-free -> N_WORKERS=0 submits the policy job only):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_aa_noptx \
+#   N_WORKERS=0 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_dist_aa_noptx \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_dist_aa_noptx"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64             # doubled from 32 (M15 prescription: larger group)
+  num_steps: 2000            # large; adjust to compute budget
+  rollout_nsteps: 40
+  steps_per_update: 1        # 2->1: OOM fix. Backward graph holds every subset step, so peak mem
+                             # ~ group_size * steps_per_update. G=64/spu=1 == proven-safe G=32/spu=2
+                             # (G=64/spu=2 OOM'd on the longer Complexa-38 targets, b200 178GiB).
+  mu: 2
+  beta: 0.0
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off; the dist reward self-regularizes.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Interface-distribution distance reward (THIS run's SOLE lever) ---
+  w_aa_dist: 1.0             # AA interface-histogram closeness to Complexa reference
+  w_3di_dist: 0.0            # 3Di distance OFF for the AA-only ablation
+  dist_metric: tv           # total variation (D0 primary); "js" also supported
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38.json"
+  # AA dist term is driven by sequence identity -> only the sequence track gets advantage.
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-distaa-noptx-g64
+  entity: null

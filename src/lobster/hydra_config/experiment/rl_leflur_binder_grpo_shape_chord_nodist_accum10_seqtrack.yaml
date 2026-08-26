@@ -1,0 +1,201 @@
+# @package _global_
+#
+# CHORD SFT-DISTILLATION arm, SEQUENCE-TRACK variant, NO-DISTRIBUTION (accum_targets=10).
+# Fork of rl_leflur_binder_grpo_shape_aar_nodist_accum10_seqtrack.yaml that replaces the
+# scalar AAR REWARD term with a dense, per-token supervised-fine-tuning term blended into
+# the GRPO loss via the CHORD objective (arXiv:2508.11408):
+#
+#   L = (1 - μ)·L_GRPO + μ·L_SFT-φ            (+ β·KL, here β=0)
+#
+# where L_SFT-φ is a φ-weighted cross-entropy of the policy's sequence-track endpoint
+# prediction toward the LigandMPNN-DESIGNED binder identities (the expert), evaluated on
+# the learner's OWN generated backbones. The expert sequence rides the SAME repack pool
+# round-trip that serves SC (want=("sc","aar") + return_seq); the AAR SCALAR is no longer
+# in the reward (grpo.w_aar: 1.0 -> 0.0), only its per-residue designed identities are used.
+#
+# CHANGES vs the AAR-reward parent:
+#   - grpo.w_aar: 1.0 -> 0.0           (AAR removed from the scalar reward)
+#   - grpo.sft_mu: 0.1                 (CHORD blend weight; activates the SFT term)
+#   - grpo.sft_use_phi: true           (φ_t = p_t(1-p_t) token weighting, detached)
+#   - grpo.sft_scope: binder           (distil the WHOLE binder; φ guards the generic core per-token)
+#   - grpo.sft_label: soft             (SOFT distillation: CE toward LigandMPNN's FULL per-position
+#                                       output distribution `design_logq`, X dropped+renormalized;
+#                                       φ still keys on the teacher mode token — a strict superset
+#                                       of the hard-argmax target that encodes the substitution set)
+#   - grpo.sft_masked_only: true       (supervise a position only while still masked)
+#   - grpo.sft_reward_gate: null       (distil every design; not gated on advantage)
+# Everything else (Dr.GRPO, grad-ckpt spu=3, lr 1e-5, G=64, β=0, accum_targets=10,
+# w_shape=1, w_clash_contact=1, warm-start leflur-binder-3di, inference diversity penalties)
+# is byte-identical to the parent.
+# NOTE: w_3di_dist RE-ENABLED to 1.0 on 2026-08-18 (the "_nodist_" in the filename is now
+# stale) — the 3Di interface-distribution TV reward toward the Complexa-38 ref is ON again,
+# co-active with clash+shape (structure axis) and the CHORD SFT (sequence axis).
+#
+# WHY per-token φ carries whole-binder scope (the offline caveat this design answers): whole-
+# binder MPNN agreement is ANTI-predictive of Protenix pass (AUROC 0.292) — a naive whole-binder
+# SFT would steer into the generic buried-hydrophobic FAILING mode. SCOPE CHANGED 2026-08-18
+# interface -> binder: the guard is moved ENTIRELY onto the per-token φ weight, which is a finer
+# instrument than the per-region interface mask. Defenses now:
+#   (1) the CHORD φ weight (PRIMARY) — zeros high-p_t consensus tokens (exactly the generic
+#       buried-hydrophobic core = the AUROC-0.292 failing mode) AND tokens the policy strongly
+#       rejects (no wholesale copying); only genuinely contested positions carry gradient,
+#       wherever they sit on the binder. Whole-binder scope then gives a far DENSER gradient
+#       (every residue vs ~20-30% at the interface);
+#   (2) small μ=0.1 blend bound;
+#   (3) an optional advantage gate (sft_reward_gate; off here) to distil only above-average
+#       backbones.
+#   FALLBACK if diversity collapses / dist/tv_aa races the Complexa ref: restore
+#   sft_scope=interface (re-add the coarse per-region guard on top of φ) BEFORE soft label/gate.
+#   NOTE: the originally-launched run 20026589 used sft_scope=interface; whole-binder takes
+#   effect only on a RELAUNCH (a running job does not re-read its config).
+#
+# DEGENERACY WATCH (still live, same as parent): a rising interface AAR (aar/aar_iface_mean)
+# with a diversity/novelty collapse (diversity/seq_novelty_mean, diversity/unique_frac) or an
+# AA distribution racing away from the reference (dist/tv_aa) is the degenerate outcome and
+# should kill this arm. NEW knobs to watch: sft/ce_loss (should DECREASE), sft/mu (constant
+# 0.1 here), sft/supervised_tokens_mean + sft/scored_frac (payload health), ppo/grad_norm
+# (SFT must not swamp the policy gradient).
+#
+# Usage (Protenix-free policy job; a SEPARATE a10g repack array serves the pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_shape_chord_nodist_accum10_seqtrack \
+#   N_WORKERS=0 M_SHAPE=8 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_shape_chord_nodist_accum10_seqtrack \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_shape_chord_nodist_accum10_seqtrack"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Interface-distribution distance term ---
+  # 3Di dist reward RE-ENABLED 2026-08-18 (despite the "_nodist_" filename): steer the 3Di
+  # histogram (whole-binder+interface blend, dist_binder_frac=0.5) toward the Complexa-38 ref,
+  # TV metric. Canonical w=1.0 (== sibling dist_3di_shape_aar arm). AA-dist stays OFF.
+  w_aa_dist: 0.0
+  w_3di_dist: 1.0
+  log_dist_diagnostic: true  # still compute+log AA/3Di dist diagnostics (both scopes)
+  dist_binder_frac: 0.5
+  dist_metric: tv
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38_binder.json"
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # --- Smooth clash + interface-contact geometry reward (kept ON, same as base) ---
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+  # --- Full-atom 3DZD interface shape-complementarity reward (kept ON, same as base) ---
+  w_shape: 1.0
+  # --- AAR SCALAR reward: OFF. The designed sequence it produces feeds the CHORD SFT term. ---
+  w_aar: 0.0
+  # --- CHORD SFT-distillation term (dense per-token LigandMPNN sequence supervision) ---
+  sft_mu: 0.1                 # convex-blend weight on L_SFT-φ (0 = off)
+  sft_mu_schedule: null       # constant μ (CHORD: with φ on, a small fixed μ suffices)
+  sft_use_phi: true           # φ_t = p_t(1-p_t) token weighting (detached)
+  sft_scope: binder           # distil the WHOLE binder sequence (φ guards the generic core per-token)
+  sft_label: soft             # distil MPNN's FULL per-position output distribution (design_logq), not the argmax
+  sft_temperature: 1.0        # (soft-label only; unused for hard labels)
+  sft_masked_only: true       # supervise a position only while still masked at that step
+  sft_reward_gate: null       # distil every design (no advantage gate)
+  # The SEQUENCE track must be trainable for the SFT gradient to reach the seq head.
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the SC term
+# AND the CHORD SFT designed-sequence draw from one pack per design (want=("sc","aar") +
+# return_seq); the ProteinMPNN design scorer is lazily loaded in-worker.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-shape-chord-nodist-accum10-seqtrack-g64

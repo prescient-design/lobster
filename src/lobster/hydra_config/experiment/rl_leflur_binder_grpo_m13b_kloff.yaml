@@ -1,0 +1,110 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M13b clean KL-off + lr ISOLATION arm (01_PD1).
+#
+# Purpose: attribute any M13 gain to the RIGHT lever. M13 bundles FIVE changes at once
+# (temp 0.6, Dr.GRPO no-/std, KL off, steps_per_update 8, lr 1e-4). This arm is the
+# M12a control with ONLY two changes, both in the "release the brake" direction:
+#   1. KL off — beta 0.02 -> 0.0. The KL anchor logged kl=24-45 in M12a; with beta=0.02
+#      that is a loss term ~0.5-0.9, comparable to pg_loss — a common-mode force pulling
+#      the whole group back to the reference every step. This is the primary hypothesis
+#      for the flat reward (the estimator itself is faithful, audit #259 pearson +0.92).
+#   2. lr 1e-5 -> 3e-5. A modest step-size bump so updates aren't tiny once the KL brake
+#      is off. Standardized advantages are KEPT (normalize_advantage=true), so advantages
+#      stay ~unit-scale and 3e-5 is a true 3x of M12a (matches M10c's known-stable value)
+#      — NOT the 1e-4 M13 needs to compensate for Dr.GRPO dropping the ~1/std rescaling.
+#
+# EVERYTHING ELSE = M12a control, held fixed so the contrast is clean:
+#   temperature_seq 0.273 (NOT 0.6), normalize_advantage true (NOT Dr.GRPO),
+#   steps_per_update 2 (NOT 8), group_size 32, mu 2, tracks [sequence_tokens],
+#   single seed, n_shards 8.
+#
+# Read against M12a (flat) and M13 (bundled): if this arm moves reward, KL-off (+ modest
+# lr) is the lever and M13's temp/Dr.GRPO/spu are not load-bearing. If it stays flat but
+# M13 moves, the temperature/diversity changes matter. Watch ppo/dlp_adv_corr rise off ~0.
+#
+# Usage:
+#   lobster_rl_train --config-name experiment/rl_leflur_binder_grpo_m13b_kloff
+#
+# Reward is served by a Protenix worker pool over the shared filesystem queue at
+# `reward.queue_dir` (launch workers separately, e.g. scripts/launch_leflur_grpo.slurm).
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m13b"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs — M11/M12a recipe VERBATIM (temperature_seq kept at 0.273).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 0.27315634404739075   # <-- M12a value (NOT M13's 0.6): isolate the KL/lr lever
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 60
+  stochasticity_struc: 60
+  stochasticity_tri: null
+  asynchronous_sampling: false
+  inference_schedule_seq: LogInferenceSchedule
+  seq_schedule_exponent: -2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: PowerInferenceSchedule
+  tri_schedule_exponent: 2
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 0
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 40
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2            # <-- M12a value (NOT M13's 8): isolate the KL/lr lever
+  mu: 2
+  beta: 0.0                      # <-- CHANGE 1: KL off (was 0.02)
+  eps_clip: 0.2
+  lr: 3.0e-5                     # <-- CHANGE 2: modest bump (was 1e-5); standardized-adv scale
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true      # <-- M12a value (NOT M13's Dr.GRPO false): keep unit-scale adv
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.0   # pure ipTM reward (match M9/M10/M11/M12a)
+  degeneracy_weight: 0.0  # pure ipTM reward (match M9/M10/M11/M12a)
+  tracks: [sequence_tokens]     # seq-only (the causal track for the reward)
+  capture_old_lp_inline: true   # faithful inline behaviour-policy log-prob
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m13b-kloff-lr3e5-iso
+  entity: null

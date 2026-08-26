@@ -1,0 +1,158 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M17: switch the ROLLOUT sampler to the
+# fold-diverse C / default-arm 3Di formulation, add a gpde reward term, keep ipTM as the
+# docking reward. KL still off (01_PD1), single-seed reward.
+#
+# WHY (M16 outcome + rollout-collapse memory): through M12-M16 the rollout used the
+# "best-arm" 3Di formulation (3Di=Power(exp2), stochasticity_tri null, tri_diversity_penalty
+# 0), which — per memory grpo-rollout-beta-collapse — produces beta-collapsed, monotonous
+# binders (~75% sheet, std ~0.03) BEFORE any RL. Starting RL from a support that has already
+# collapsed to one fold gives the policy almost no structural diversity to select over, so the
+# within-group advantage signal is impoverished. The C / default-arm formulation (seq=Power
+# exp2 + stoch 20, struc=Linear + stoch 60, 3Di=Log + stoch_tri 80 + tri_diversity_penalty 8,
+# sequence_diversity_penalty 2) restores fold-diverse support (helix 0.36±0.29 / sheet
+# 0.49±0.28). M17 rolls out from THIS distribution so the group actually spans folds.
+#
+# M17 changes vs M16:
+#   1. Rollout generation block = the C / default-arm formulation VERBATIM from
+#      generate_binder_3di.yaml (the shipped a8/tri80 arm), EXCEPT temperature_seq (below).
+#        seq  : PowerInferenceSchedule(exp 2),  stochasticity_seq 20
+#        struc: LinearInferenceSchedule,        stochasticity_struc 60
+#        3Di  : LogInferenceSchedule,           stochasticity_tri 80, tri_diversity_penalty 8
+#        sequence_diversity_penalty 2, temperature_struc 0.316
+#      (M16 used best-arm: 3Di=Power(exp2), stoch_tri null, tri_diversity_penalty 0,
+#       seq=Log(exp-2), stoch_seq 60.)
+#   2. temperature_seq 0.273 -> 1.0 (user request: sample sequence at temperature 1).
+#   3. gpde reward term ON: grpo.gpde_weight 0.3 adds an ADDITIVE, WITHIN-GROUP
+#      z-normalized bonus. gpde (Protenix's global predicted distance error, lower=better)
+#      is Å-like (~0.4-1.7), NOT a [0,1] confidence, so the raw value must not set the
+#      reward scale. Per group the term is
+#         gpde_weight * std(dock) * (mean(gpde) - gpde) / std(gpde)
+#      i.e. the unit-variance z-score (positive when a design's gpde beats the group mean)
+#      rescaled by the group's ipTM std, so gpde_weight sets gpde's influence RELATIVE to
+#      ipTM: std(gpde_term) = gpde_weight * std(dock). At 0.3, gpde carries ~0.3x ipTM's
+#      within-group variance. ipTM stays the docking reward. gpde is parsed per-seed by the
+#      reward server and averaged; designs with no gpde contribute 0.
+#
+# DIVERSITY HANDLING (how sequence & structure diversity are dealt with in M17):
+#   Two independent, complementary mechanisms, both retained from M15/M16 and applied to
+#   BOTH the AA sequence and the 3Di token string:
+#   (a) Rollout-time (sampler) — diversity penalties inside generation subtract
+#       penalty * running per-design token frequency from the logits so a single design
+#       cannot collapse to one residue/state: sequence_diversity_penalty 2 (AA) and
+#       tri_diversity_penalty 8 (3Di). The C formulation's stochasticity (20/60/80) further
+#       widens the per-draw support. This shapes diversity WITHIN and ACROSS the group at
+#       sampling time and is the main structural-diversity lever (restores fold spread).
+#   (b) Reward-time (anti-degeneracy hinge + novelty bonus) — degeneracy_weight 0.5 with
+#       max_aa_floor 0.3 + entropy_floor 0.80 penalises low-complexity designs (any token
+#       >30%, or normalized entropy <0.80) for AA and 3Di alike; diversity_weight 0.2 adds a
+#       within-group novelty bonus (1 - max 3-mer Jaccard vs the rest of the group) so
+#       designs that differ from their group-mates are rewarded. This keeps the group from
+#       homogenising as RL concentrates probability mass.
+#   Net: (a) keeps each rollout internally diverse and the support fold-diverse; (b) stops the
+#   policy from reward-hacking into a low-complexity / group-collapsed mode over training.
+#
+# EVERYTHING ELSE = M16: beta 0.0 (KL off), lr 3e-5, normalize_advantage true,
+# steps_per_update 2, group_size 32, mu 2, tracks [sequence_tokens], n_shards 8,
+# diversity_weight 0.2, degeneracy_weight 0.5, max_aa_floor 0.3, entropy_floor 0.80.
+# SINGLE-SEED reward (K=1): launch with REWARD_SEEDS=101.
+#
+# READ: with fold-diverse rollouts + a gpde term, the discriminating outcome is whether ip
+# and/or gpde-quality climb while the group stays fold- and sequence-diverse (H>0.80,
+# max_aa<0.3, tri spread preserved). If gpde improves but ipTM stays pinned, the docking
+# reward is the bottleneck (shaping/multi-target next). If both stay flat with diversity
+# preserved, pure single-target G=32 is too weak even from diverse support.
+#
+# Usage:
+#   # config (policy side):
+#   lobster_rl_train --config-name experiment/rl_leflur_binder_grpo_m17_cform_gpde
+#   # launch (workers + policy), single-seed reward + matching queue:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_m17 \
+#   REWARD_SEEDS=101 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_m17_cform_gpde \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m17"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs — C / default-arm (a8/tri80) formulation VERBATIM from
+# generate_binder_3di.yaml, EXCEPT temperature_seq (1.0, user request).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0                    # <-- CHANGE: sample sequence at temperature 1 (was 0.273)
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 20                   # C value (M16 was 60)
+  stochasticity_struc: 60
+  stochasticity_tri: 80                   # C value (M16 was null)
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule   # C: seq=Power(exp2) (M16 was Log)
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule     # C: 3Di=Log (M16 was Power)
+  tri_schedule_exponent: null                       # Log takes no exponent
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8                # C value (M16 was 0)
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0                      # KL still off (M13b/M14/M15/M16)
+  eps_clip: 0.2
+  lr: 3.0e-5                     # M16 value
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.2   # within-group novelty bonus ON (seq + 3Di), M15/M16 value
+  degeneracy_weight: 0.5  # seq + 3Di anti-degeneracy hinge (M14/M15/M16)
+  max_aa_floor: 0.3       # hinge fires when any AA/3Di token > 30% (M15/M16)
+  entropy_floor: 0.8      # entropy hinge fires below H=0.80 (M16)
+  gpde_weight: 0.3        # <-- NEW: z-normalized gpde bonus, influence = 0.3x ipTM within-group std; ipTM stays docking reward
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m17-cform-gpde
+  entity: null

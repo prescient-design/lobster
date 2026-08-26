@@ -1,0 +1,126 @@
+# @package _global_
+#
+# GRPO RL fine-tuning on the Proteina-Complexa 38-target binder benchmark with a
+# 3Di interface-DISTRIBUTION shaping reward (Mode A: confidence + dense dist term).
+#
+# Reward = README confidence combo (w_abag_iptm=1.0 + w_ptm=0.5, Protenix every step)
+# PLUS a Protenix-free 3Di interface-distribution distance term:
+#   term = w_3di_dist * clip(1 - TV(h3di_design, h3di_ref), 0, 1)
+# where h3di_design is the generated backbone re-encoded with mini3di (binder chain
+# in isolation) over its interface residues, and h3di_ref is the per-target
+# Proteina-Complexa reference (D0-validated to predict pass; pooled fallback for the
+# 3 targets lacking a per-target ref). AA distance is wired but OFF (w_aa_dist=0)
+# for this first run — 3Di only, per the plan.
+#
+# CRITICAL: the 3Di histogram is a function of structure_tokens, so tracks MUST
+# include structure_tokens + tri_tokens (not seq-only) for the term to be a lever.
+#
+# Targets + native-interface epitopes:
+#   targets:            complexa_grpo_targets.csv   (target_id, antigen_pdb, target_chain,
+#                                                    binder_length [per-target midpoint], epitope_indices)
+#   reward.targets_csv: complexa_score_targets.csv  (antigen seq + deep MSA a3m)
+#   grpo.dist_reference: grpo_dist_reference_complexa38.json (35 per-target + pooled)
+#
+# Per-target binder length is FIXED (midpoint of the benchmark's [min,max] range) —
+# binder_length_min/max are unset so each group uses its target's length (length-matched).
+#
+# Usage:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_3di \
+#   N_WORKERS=8 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_dist_3di \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_dist_3di"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; best schedule from the 3Di sweep).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 2000            # large; adjust to compute budget
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0
+  eps_clip: 0.2
+  lr: 1.0e-5
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  # Confidence combo (README defaults = shipped M22 behaviour). Protenix every step
+  # => conf/pass_rate is the free per-step backstop for the shaping term.
+  w_iptm: 0.0
+  w_ptm: 0.5
+  w_abag_iptm: 1.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off (pass_rate already logged via confidence).
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di).
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Interface-distribution distance reward (THIS run's lever) ---
+  w_aa_dist: 0.0             # AA distance wired but OFF for the first run
+  w_3di_dist: 0.5            # 3Di interface-histogram closeness to Complexa reference
+  dist_metric: tv           # total variation (D0 primary); "js" also supported
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38.json"
+  # Per-target fixed length (midpoint) — min/max unset so spec.binder_length is used.
+  # tracks MUST include structure_tokens + tri_tokens so the 3Di dist term is a lever.
+  tracks: [sequence_tokens, structure_tokens, tri_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-dist3di-g32
+  entity: null

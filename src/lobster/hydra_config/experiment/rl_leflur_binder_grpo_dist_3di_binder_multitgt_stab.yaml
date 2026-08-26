@@ -1,0 +1,153 @@
+# @package _global_
+#
+# MULTI-TARGET arm: whole-binder 3Di-distribution GRPO (+ interface-3Di tracking) +
+# clash, with the gradient AVERAGED over several targets per optimizer step.
+#
+# Motivation. Every other arm takes a single-target gradient estimate per optimizer
+# step and marches through the 35 targets in a fixed round-robin. With KL off, lr=1e-5
+# and no trust region, consecutive single-target pulls whipsaw the policy: step k moves
+# toward target A, step k+1 undoes part of it toward target B. This arm imports the
+# stabilizer TRL uses for Dr.GRPO over multiple environments -- a per-group (per-target)
+# baseline plus CROSS-TARGET gradient averaging -- as three composable knobs:
+#
+#   1. accum_targets (Option 1): roll out `accum_targets` independent targets per step,
+#      average their per-target losses (each backward scaled by 1/accum_targets), and
+#      apply ONE optimizer step per inner (mu) iteration. The optimizer sees the mean
+#      gradient over N targets instead of one noisy single-target estimate.
+#   2. normalize_advantage=true (Option 2): standardize each target's advantages by its
+#      own group std before averaging. This is TRL's scale_rewards="group" -- it equalizes
+#      the per-target advantage SCALE so a single high-variance target cannot dominate the
+#      averaged gradient. (Dr.GRPO / normalize_advantage=false leaves scales unequal.)
+#   3. shuffle_targets=true (Option 3): reshuffle the round-robin target order each epoch,
+#      decorrelating which targets land in consecutive accumulation windows.
+#
+# Reward is IDENTICAL to Run A (rl_leflur_binder_grpo_dist_3di_binder_noptx_stab):
+#   reward = w_3di_dist * [ (1-alpha)*(1-D_iface_3di) + alpha*(1-D_binder_3di) ]
+#          + w_clash_contact * clash_score * contact_score
+# alpha = dist_binder_frac = 0.5. Only the UPDATE mechanics differ (accum + std-equalize
+# + shuffle). Requires the WHOLE-BINDER reference JSON (aa_binder/3di_binder per target).
+#
+# num_steps counts OPTIMIZER updates; each consumes accum_targets rollouts, so wall-clock
+# per step is ~accum_targets x a single-target step. POLICY_HRS + ckpt_every bound it.
+#
+# Usage (Protenix-free -> N_WORKERS=0 submits the policy job only):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_3di_binder_multitgt_stab \
+#   N_WORKERS=0 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_dist_3di_binder_multitgt_stab \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_dist_3di_binder_multitgt_stab"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization (THIS arm's lever) ---
+  accum_targets: 4           # Option 1: average the gradient over 4 targets per step
+  shuffle_targets: true      # Option 3: reshuffle target order each epoch
+  normalize_advantage: true  # Option 2: per-group /std (== TRL scale_rewards="group");
+                             # equalizes per-target advantage scale before averaging so no
+                             # single high-variance target dominates the accumulated grad.
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off; the dist reward self-regularizes.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Whole-binder + interface 3Di distribution distance reward (same as Run A) ---
+  w_aa_dist: 0.0             # AA distance OFF for the 3Di-only lineage
+  w_3di_dist: 1.0            # 3Di histogram closeness to Complexa reference
+  dist_binder_frac: 0.5      # alpha: blend interface (0) <-> whole-binder (1); 0.5 = equal
+  dist_metric: tv           # total variation (D0 primary); "js" also supported
+  # WHOLE-BINDER reference (has aa_binder/3di_binder alongside interface aa/3di).
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38_binder.json"
+  # Interface-size collapse guardrail (still overrides the whole term).
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # --- Smooth clash + interface-contact geometry reward (kept ON, same as Run A) ---
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2        # soft-core clash center (A): heavy atoms closer overlap
+  clash_soft: 0.5           # clash transition width (A)
+  clash_scale: 50.0         # E_clash -> clash_score saturation scale
+  contact_d0: 8.0           # interface-band center (A), matches the 8 A interface def
+  contact_soft: 1.0         # contact transition width (A)
+  frac_lo: 0.05             # iface_frac band: contact_score = 0 at/below this
+  frac_peak: 0.16           # iface_frac band: peak (contact_score = 1) -- native band
+  frac_hi: 0.4              # iface_frac band: contact_score = 0 at/above this
+  clash_seq_sep: 2          # exclude binder pairs within this residue separation
+  clash_include_cb: true    # include a virtual Cb atom per residue in the clash cloud
+  # Both dist (3Di) and clash terms are functions of structure -> only structure/tri
+  # tracks get advantage.
+  tracks: [structure_tokens, tri_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25            # finer spacing: fewer optimizer steps (each = 4 rollouts)
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-dist3di-binder-multitgt-stab-g64

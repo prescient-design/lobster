@@ -1,0 +1,119 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M19: Arm C rollout + group_size=100.
+#
+# MOTIVATION (from sweep analysis):
+#   4-arm sweep (nsteps×stoch, 32 designs, 10 Protenix seeds each) showed:
+#     - Arm A (GRPO rollout: nsteps=40, stoch=20): mean ip=0.359, DockQ=0.044, 0/32 pass
+#     - Arm B (nsteps=200, stoch=20):              mean ip=0.367, DockQ=0.052, 0/32 pass
+#     - Arm C (nsteps=40,  stoch=1):               mean ip=0.381, DockQ=0.052, 0/32 pass
+#     - Arm D (nsteps=200, stoch=1):               mean ip=0.349, DockQ=0.042, 0/32 pass
+#   All arms fail with honest 10-seed averaging. Arm C (stoch=1, short steps) gives the
+#   best ip distribution (p75=0.414, p95=0.562) and best gradient coverage:
+#     stoch=1 → ~3% remask rate vs stoch=20 → ~50% remask, so almost every step
+#     contributes gradient rather than resampling already-resolved positions.
+#   group_size=100 (up from 32): 3× more reward samples per step → lower per-step variance,
+#   more signal even when pass rate is low, better advantage estimation.
+#
+# M19 changes vs M18:
+#   1. stochasticity_seq: 20 → 1   (Arm C: greedy-ish sequence sampling)
+#   2. group_size:         32 → 100
+#   3. n_shards:            8 → 16  (fan 100 designs across 16 workers = 6-7 per worker)
+#   Everything else identical to M18: C-form rollout, gpde_weight=0.3, beta=0.0,
+#   lr=1e-5, diversity hinges, entropy_floor=0.80, tracks=[sequence_tokens],
+#   capture_old_lp_inline=True.
+#
+# ROLLOUT (Arm C):
+#   seq  : PowerInferenceSchedule(exp 2),  stochasticity_seq 1      ← CHANGED
+#   struc: LinearInferenceSchedule,        stochasticity_struc 60
+#   3Di  : LogInferenceSchedule,           stochasticity_tri 80, tri_diversity_penalty 8
+#   sequence_diversity_penalty 2, temperature_seq 1.0, temperature_struc 0.316
+#
+# Usage:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_m19 \
+#   N_WORKERS=16 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_m19_armC_g100 \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m19"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler — Arm C: stochasticity_seq=1 (greedy-ish), 40 steps
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1                      # ← Arm C (was 20 in M18)
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64                            # ← up from 32; 100 OOMed b200 (178GB full)
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0
+  eps_clip: 0.2
+  lr: 1.0e-5
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.2
+  degeneracy_weight: 0.5
+  max_aa_floor: 0.3
+  entropy_floor: 0.8
+  gpde_weight: 0.3
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8                               # 8 shards × 8 designs per shard = 64 total
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m19-armC-stoch1-g64
+  entity: null

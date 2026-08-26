@@ -1,0 +1,115 @@
+# @package _global_
+#
+# GRPO RL fine-tuning — M22: iptm + ptm reward (Exp A from GRPO_REWARD_PLAN.md).
+#
+# KEY CHANGE from M19: ptm_weight=0.5 adds clip(ptm,0,1) to the dock reward.
+#
+# WHY:
+#   M19 reward = clip(abag_iptm, 0, 1)  only
+#   ptm is much less noisy (seed std ~0.023 vs abag_iptm ~0.064) and has real
+#   within-group variance (0.65-0.82 range) on every design — not just passers.
+#   Adding 0.5*ptm means every design contributes useful gradient, not just the
+#   rare passer. ptm is also part of the pass criterion (ptm>0.80) so optimising
+#   it directly should pull the policy toward passing.
+#
+# REWARD per design:
+#   dock_i = clip(abag_iptm_i, 0, 1) + 0.5 * clip(ptm_i, 0, 1)
+#   r_i = dock_i
+#       + 0.2 * k-mer novelty (diversity bonus)
+#       - 0.5 * degeneracy hinge
+#       + 0.3 * dock_std * z_gpde
+#
+# Expected dock range: iptm ~0.35 + 0.5*ptm ~0.35 = ~0.70 at current baseline,
+# vs M19's ~0.35. Higher baseline reward → larger advantages → faster learning.
+#
+# Everything else identical to M19: Arm C rollout (stoch=1), group=64, lr=1e-5.
+#
+# Usage:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_m22 \
+#   N_WORKERS=8 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_m22_ptmiptm \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m22"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Arm C rollout (same as M19)
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0
+  eps_clip: 0.2
+  lr: 1.0e-5
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.2
+  degeneracy_weight: 0.5
+  max_aa_floor: 0.3
+  entropy_floor: 0.8
+  gpde_weight: 0.3
+  ptm_weight: 0.5              # ← NEW: 0.5 × clip(ptm, 0, 1) added to dock reward
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m22-ptmiptm-g64
+  entity: null

@@ -1,0 +1,70 @@
+defaults:
+  - sampler: randomized_minority_upsampler.yaml
+  - transform_fn: atom14_then_structure_complex_aa_tokenizer_alt_seq_chain_remap_transform.yaml
+  - collate_fn: collate_fn_backbone_binder_target.yaml
+
+_target_: lobster.data._coord_structure_datamodule.StructureLightningDataModule
+root: /cv/data/ai4dd/data2/lisanzas/
+
+# mono30k + HOMODIMERS + HumanBindome. Adds the HumanBindome designed-binder complexes
+# (`wjulius/HumanBindome`, ~205k BindCraft/AF2 train designs, ~128k interface clusters) as a
+# 9th TRAIN source (index 8) alongside the existing complex + monomer sources. Weighted as a
+# first-class complex source: 60k per-epoch cluster cap (matches teddymer/afdb_hetero/afdb_homo).
+# NOTE: TED and CATH are DROPPED here (their cluster files match NONE of their .pt filenames -> 0
+# data points; keeping them makes PyG re-run process() every launch and race on NFS). 9 real train
+# sources; per-epoch cluster balancing via randomized_minority_upsampler (balance_datasets: true;
+# requires trainer.reload_dataloaders_every_n_epochs=1 for the per-epoch rotation to fire).
+path_to_datasets: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/split_data/train.pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/train_processed",
+  "/cv/scratch/u/lisanzas/denovo_dataset/ume_dataset/train_processed_pt",
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/train_pdb_processed",
+  "/cv/scratch/u/lisanzas/sabdab_atom14/train_pdb_processed",
+  "/cv/scratch/u/lisanzas/teddymer_atom14/train_pdb_processed",
+  "/cv/scratch/u/lisanzas/afdb_hetero_atom14/train_pdb_processed",
+  "/cv/scratch/u/lisanzas/afdb_homo_atom14/train_pdb_processed",
+  "/cv/scratch/u/lisanzas/humanbindome_atom14/train_pdb_processed",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/valid_cameo_processed",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/test_multiflow_processed",
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/val_pdb_processed",
+  "/cv/scratch/u/lisanzas/sabdab_atom14/val_pdb_processed",
+  "/cv/scratch/u/lisanzas/humanbindome_atom14/validation_pdb_processed"
+]
+max_length: 640
+
+cluster_file_list: [
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pdb_data/pdb_seqid40_clusters_ss_balanced.pt",
+  "/cv/data/ai4dd/data2/lisanzas/AFDB/pdb_swissprot_clusters_ss_balanced.pt",
+  "/cv/scratch/u/lisanzas/denovo_dataset/ume_dataset/denovo_clusters_ss_balanced_v2.pt",
+  "/cv/data/ai4dd/data2/lisanzas/latent_generator_files/pinder_atom14/pinder_systemid_clusters_train.pt",
+  "/cv/scratch/u/lisanzas/sabdab_atom14/sabdab_clusters_train.pt",
+  "/cv/scratch/u/lisanzas/teddymer_atom14/teddymer_clusters_train.pt",
+  "/cv/scratch/u/lisanzas/afdb_hetero_atom14/afdb_hetero_clusters_train.pt",
+  "/cv/scratch/u/lisanzas/afdb_homo/afdb_homo_clusters_train.pt",
+  "/cv/scratch/u/lisanzas/humanbindome_atom14/humanbindome_clusters_train.pt",
+  null,
+  null,
+  null,
+  null,
+  null
+]
+
+files_to_keep: null
+files_to_keep_list: [null, null, null, null, null, null, null, null, null, null, null, null, null, null]
+testing: false
+use_shards: false
+datasets: leflur_complex_teddymer_afdbhetero_homo_humanbindome_mono30k
+balance_datasets: true
+
+# Per-source knobs POSITIONAL, aligned to the 9 TRAIN sources (path order):
+#   0 PDB  1 AFDB(monomer)  2 denovo  3 pinder  4 sabdab  5 teddymer  6 afdb_hetero  7 afdb_HOMO
+#   8 humanbindome
+# Monomers (0,1,2) capped 30k + replicate 1x (cap sticks). teddymer/afdb_hetero/afdb_homo/
+# humanbindome (5,6,7,8) capped 60k (rotating). sabdab (4) 10x. Requires
+# trainer.reload_dataloaders_every_n_epochs=1 for the per-epoch rotation to fire.
+per_source_cluster_caps: [30000, 30000, 30000, null, null, 60000, 60000, 60000, 60000]
+max_cluster_replicates: 5
+max_cluster_replicates_per_source: [1, 1, 1, null, 10, null, null, null, null]
+
+batch_size: 100
+num_workers: 12

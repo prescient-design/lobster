@@ -1,0 +1,123 @@
+# @package _global_
+#
+# GRPO diagnostic — M20: diversity/degeneracy reward only (ipTM zeroed out).
+#
+# PURPOSE: Isolate whether GRPO can learn at all on this target.
+# M19 shows flat ipTM after 13+ steps. Two hypotheses:
+#   A) The reward signal (ipTM) is too noisy / too sparse for the policy to learn.
+#   B) GRPO gradient flow itself is broken (wrong log-prob, dead gradients, etc.).
+#
+# This run tests hypothesis B: if the model can move on the CHEAPER, DENSER
+# diversity/degeneracy signal (no Protenix needed for those — they're computed
+# from sequences alone), then hypothesis A is confirmed and the fix is reward
+# quality, not the GRPO machinery.
+#
+# Reward zeroing:
+#   reward_clip_lo = reward_clip_hi = 0.0  → dock (ipTM) = 0 for every design
+#   When dock is constant-zero, dock_std = 0, so gpde_terms = gpde_weight * 0 * z = 0.
+#   Only remaining signal: adj["adjustment"] = diversity_weight * div - degeneracy_weight * pen
+#   This has real variance (depends on sequence novelty and composition) and is computed
+#   from sequences alone with no oracle — every step has a meaningful gradient.
+#
+# Expected behavior if GRPO works:
+#   - reward/mean should trend up (more diverse, less degenerate sequences)
+#   - entropy and max_aa_fraction should shift toward healthier values
+#   - pass=0 throughout (no Protenix scoring, ipTM=0)
+#   - ip logged but ignored (still scored, just not in reward)
+#
+# If reward/mean stays flat on this pure-diversity signal too, something is
+# fundamentally wrong with gradient flow (not reward quality).
+#
+# M20 identical to M19 except:
+#   reward_clip_lo = 0.0 → 0.0 (unchanged, already 0)
+#   reward_clip_hi = 1.0 → 0.0  ← ZEROES ipTM
+#   gpde_weight:    0.3 → 0.0   ← explicit (would be zero anyway via dock_std=0)
+#
+# Usage:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_m20 \
+#   N_WORKERS=8 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_m20_divonly \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m20"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Arm C rollout (same as M19)
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 200                  # shorter — diagnostic run
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0
+  eps_clip: 0.2
+  lr: 1.0e-5
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  reward_clip_lo: 0.0
+  reward_clip_hi: 0.0             # ← zeroes ipTM (clip(ip, 0, 0) = 0 always)
+  diversity_weight: 0.2
+  degeneracy_weight: 0.5
+  max_aa_floor: 0.3
+  entropy_floor: 0.8
+  gpde_weight: 0.0                # ← explicit zero (would be 0 anyway via dock_std=0)
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m20-divonly-diag
+  entity: null

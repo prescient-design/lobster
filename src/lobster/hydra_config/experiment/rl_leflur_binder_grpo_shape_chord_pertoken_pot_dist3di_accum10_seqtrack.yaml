@@ -1,0 +1,204 @@
+# @package _global_
+#
+# PER-TOKEN POTENTIALS arm — HARD-label CHORD, SEQUENCE-TRACK, accum_targets=10.
+# Fork of rl_leflur_binder_grpo_shape_chord_pertoken_dist3di_accum10_seqtrack.yaml (the live
+# per-token-CLASH CHORD config) that ADDS the SECOND reward set: a dense, per-binder-residue
+# all-atom INTERFACE-POTENTIAL advantage routed to the STRUCTURE track, on top of every reward
+# the parent already runs. WARM-STARTED from the parent run's step-100 checkpoint.
+#
+# WHY (offline validation, `[[packed-potential-rewards-auroc]]`): on 3500 LigandMPNN-packed
+# Complexa-bench designs the three per-residue potentials
+#   e_lj   (bounded Rosetta-style LJ energy; lower = better)   AUROC 0.778
+#   dsasa  (buried ΔSASA; higher = better)                     AUROC 0.757
+#   n_hb   (interface H-bonds; higher = better)                AUROC 0.742
+# each BEAT the already-shipped 3DZD SC reward (0.73) as a pass predictor, and all survive
+# controlling for binder length + n_iface_res. n_clash is DEAD on packed structures (0.506 — the
+# packer resolves clashes), so clash stays a BACKBONE per-token term (per_token_clash, kept ON).
+#
+# WHAT PER-TOKEN POTENTIALS DO (the only training-dynamics change vs the per-token-CLASH parent):
+#   The SAME LigandMPNN pack already produced for R_SC is scored per binder residue for the three
+#   potentials (Protenix-free — packing is the only slow step, already paid for the SC reward).
+#   Each per-residue vector is centered/normalized exactly like the per-token clash signal and
+#   routed as a per-position advantage to the STRUCTURE track, ADDITIVE with the clash arm:
+#       A_struct = A_design[:, None] + A_clash + A_lj + A_dsasa + A_hb        # shape (G, L)
+#   e_lj is a penalty (larger = worse); dsasa/n_hb are negated at collection so all three enter
+#   the per-position normalizer in "larger = worse" convention (less penalty / more buried area /
+#   more H-bonds -> higher advantage at that residue's structure token). The design-level (seq +
+#   tri) PPO ratio is UNCHANGED. NO extra pack: the "pot" want rides the existing R_SC round-trip.
+#
+# CHANGES vs the per-token-CLASH parent:
+#   - model.ckpt_path: <step-100 materialized ckpt>   (WARM-START from the parent's step 100)
+#   - grpo.per_token_pot: true            (ACTIVATE the per-residue interface-potential advantage)
+#   - grpo.w_pt_lj / w_pt_dsasa / w_pt_hb: 1.0   (scales of the three per-position potential arms)
+#   - grpo.pot_with_sasa: true            (compute the buried-ΔSASA term — its own strong signal)
+# Everything else (Dr.GRPO, grad-ckpt spu=3, lr 1e-5, G=64, β=0, accum_targets=10, w_shape=1,
+# w_clash_contact=1, w_3di_dist=1, per_token_clash=1, sft_mu=0.1, inference diversity penalties,
+# SC-clash diagnostic) is identical to the parent.
+#
+# DEGENERACY / GAMING WATCH: e_lj is BOUNDED (Rosetta fa_atr/fa_rep cap) so interpenetration
+# cannot fake favorable energy; still watch pot/e_lj_mean, pot/n_hb_mean, pot/dsasa_mean vs the
+# diversity/novelty and dist/tv_aa signals. Per-token knobs: ptclash/adv_abs_mean,
+# ptclash/adv_max_abs, ppo/struct_ratio_init (must start ~1).
+#
+# Usage (Protenix-free policy job; a SEPARATE a10g repack array serves the pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_shape_chord_pertoken_pot_dist3di_accum10_seqtrack \
+#   N_WORKERS=0 M_SHAPE=8 POLICY_HRS=168 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_shape_chord_pertoken_pot_dist3di_accum10_seqtrack \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_shape_chord_pertoken_pot_dist3di_accum10_seqtrack"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  # WARM-START from the per-token-CLASH parent's step-100 checkpoint (materialized into a full
+  # Lightning envelope via scripts/_materialize_grpo_ckpt.py against the leflur-binder-3di base).
+  ckpt_path: "/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_shape_chord_pertoken_dist3di_accum10_seqtrack/ckpts/grpo_step_100_lightning.ckpt"
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Interface-distribution distance term ---
+  w_aa_dist: 0.0
+  w_3di_dist: 1.0
+  log_dist_diagnostic: true  # still compute+log AA/3Di dist diagnostics (both scopes)
+  dist_binder_frac: 0.5
+  dist_metric: tv
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38_binder.json"
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # --- Smooth clash + interface-contact geometry reward (kept ON, same as base) ---
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+  # --- PER-TOKEN (per-residue) backbone-clash advantage, routed to the STRUCTURE track (kept ON) ---
+  per_token_clash: true       # per-residue clash advantage (A_struct += A_clash)
+  w_pt_clash: 1.0             # scale of the per-position clash advantage
+  pt_clash_tracks: [structure_tokens]   # route ALL per-position credit to the structure track only
+  # --- Backbone CHAIN-BREAK realism reward + PER-TOKEN (per-residue) chain-break advantage --------
+  # w_chainbreak turns on the C–N peptide-bond realism term ([0,1] mean_r·gate); it BOTH adds a
+  # design-level regularizer AND supplies the per-residue energy the per-token arm decomposes.
+  w_chainbreak: 1.0           # base chain-break realism reward (required > 0 for per_token_chainbreak)
+  chainbreak_gate: count      # discrete break-count gate (validated in _chainbreak_gate_compare.py)
+  per_token_chainbreak: true  # per-residue chain-break advantage (A_struct += A_chainbreak)
+  w_pt_chainbreak: 1.0        # scale of the per-position chain-break advantage
+  # --- PER-TOKEN (per-residue) all-atom INTERFACE-POTENTIAL advantage (SECOND reward set) -------
+  per_token_pot: true         # ACTIVATE per-residue e_lj/dsasa/n_hb advantage (A_struct += A_lj+A_dsasa+A_hb)
+  w_pt_lj: 1.0               # scale of the per-position bounded-LJ advantage (AUROC 0.778)
+  w_pt_dsasa: 1.0            # scale of the per-position buried-ΔSASA advantage (AUROC 0.757)
+  w_pt_hb: 1.0               # scale of the per-position interface-H-bond advantage (AUROC 0.742)
+  pot_with_sasa: true         # compute the buried-ΔSASA term (one-time SASA warmup on the server)
+  # --- Full-atom 3DZD interface shape-complementarity reward (kept ON, same as base) ---
+  w_shape: 1.0
+  # --- Whole-binder all-atom SC-clash: TRACKED as a diagnostic, kept OFF (weight 0) ---
+  w_sc_clash: 0.0
+  log_sc_clash_diagnostic: true
+  # --- AAR SCALAR reward: OFF. The designed sequence it produces feeds the CHORD SFT term. ---
+  w_aar: 0.0
+  # --- CHORD SFT-distillation term (dense per-token LigandMPNN sequence supervision) ---
+  sft_mu: 0.1                 # convex-blend weight on L_SFT-φ (0 = off)
+  sft_mu_schedule: null       # constant μ (CHORD: with φ on, a small fixed μ suffices)
+  sft_use_phi: true           # φ_t = p_t(1-p_t) token weighting (detached)
+  sft_scope: binder           # distil the WHOLE binder sequence (φ guards the generic core per-token)
+  sft_label: hard             # HARD distillation — clean A/B vs the permanent HARD baseline
+  sft_temperature: 1.0        # (soft-label only; unused for hard labels)
+  sft_masked_only: true       # supervise a position only while still masked at that step
+  sft_reward_gate: null       # distil every design (no advantage gate)
+  # The SEQUENCE track must be trainable for the SFT gradient to reach the seq head.
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the SC term,
+# the CHORD SFT designed-sequence draw, AND the per-residue interface potentials from ONE pack
+# per design (want=("sc","aar","pot") + return_seq); scorers are lazily loaded in-worker.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-shape-chord-pertoken-pot-dist3di-accum10-seqtrack-g64

@@ -1,0 +1,138 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M16: raise the entropy floor so the
+# anti-degeneracy hinge bites *distributed* low-complexity collapse, AND cut reward
+# noise with K=3 multi-seed Protenix averaging. KL still off (01_PD1).
+#
+# WHY (M15 outcome): M15 (diversity bonus ON @ 0.2, max_aa_floor 0.3, entropy_floor 0.5)
+# stopped the *single-residue* collapse of M14 (serine) but the policy simply relocated
+# the pathology to a *distributed* low-complexity mode: it collapsed onto a cluster of
+# chemically similar small aliphatics ({P,L,A} early -> {I,A,V} late, ~60% of every
+# design) where no single token exceeds the 0.3 max-AA floor, so the max-AA hinge stayed
+# silent. Normalized AA entropy sat at H~0.68 for the whole group -- ABOVE the 0.5
+# entropy_floor -- so the entropy hinge was silent too. ip never moved (flat ~0.34 across
+# 55 steps, pass~0); as the group homogenised the diversity bonus withdrew and total
+# reward fell 0.53 -> ~0, and once the collapse finally pushed max-AA past 0.3 the penalty
+# zeroed the reward outright. Net: guardrails register collapse but do not steer, and the
+# pure-ipTM signal at G=32 on one target is too weak to learn from -- exactly the M15 READ
+# prediction ("next lever is shaped/multi-seed reward, not regularisation").
+#
+# M16 makes two changes vs M15:
+#   1. entropy_floor 0.5 -> 0.80. The normalized-Shannon-entropy hinge (H = -sum p log2 p
+#      / log2 20, already computed by anti_degeneracy_penalty) now fires whenever a design
+#      drops below H=0.80, i.e. it bites the H~0.68 distributed-collapse regime the policy
+#      actually drifts into, while leaving natural-composition designs (H~0.90) untouched.
+#      This is the piece the 0.3 max-AA floor structurally cannot see (cluster collapse
+#      spread across 3 residues that each stay <0.3). max_aa_floor stays 0.3.
+#   2. K=3 multi-seed reward. Score each design under Protenix seeds 101,202,303 and average
+#      the per-seed ipTM. Single-seed ipTM has per-design std ~0.065; averaging K=3 cuts it
+#      ~1/sqrt(3) -> ~0.037 (memory grpo-reward-reproducibility), sharpening the advantage
+#      signal GRPO normalises within each group. This is a LAUNCH-TIME setting served by the
+#      worker pool, NOT a field here: launch the worker array with
+#        REWARD_SEEDS=101,202,303
+#      (scripts/launch_leflur_grpo.slurm -> protenix_reward_server.py --reward_seeds). It is
+#      documented here so the arm is reproducible. NB: K=3 triples Protenix work per design;
+#      rely on the resident-worker + group-split throughput infra (n_shards 8) to absorb it,
+#      and expect ~3x scoring wall-clock per step vs single-seed.
+#
+# EVERYTHING ELSE = M15 (= M14 = M13b): beta 0.0 (KL off), lr 3e-5, temperature_seq 0.273,
+# normalize_advantage true, steps_per_update 2, group_size 32, mu 2, tracks [sequence_tokens],
+# single seed, n_shards 8, diversity_weight 0.2, degeneracy_weight 0.5, max_aa_floor 0.3.
+#
+# READ: with the entropy floor biting and K=3 sharpening the signal, the discriminating
+# outcome is ip. If ip climbs above its ~0.34 pin while H stays >0.80 and max_aa <0.3 (no
+# collapse), the reward is finally learnable and regularisation was masking a usable signal.
+# If ip stays flat with no collapse, pure-ipTM at G=32 on one target is genuinely too weak
+# even de-noised, and the next lever is reward SHAPING (e.g. interface-contact / compactness
+# terms) or a larger group / multi-target batch -- not further guardrails.
+#
+# Usage:
+#   # config (policy side):
+#   lobster_rl_train --config-name experiment/rl_leflur_binder_grpo_m16_entropy_kseed
+#   # launch (workers + policy), K=3 seeds + matching queue:
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_m16 \
+#   REWARD_SEEDS=101,202,303 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_m16_entropy_kseed \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m16"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs — M13b/M14/M15 recipe VERBATIM.
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 60
+  stochasticity_struc: 60
+  stochasticity_tri: null
+  asynchronous_sampling: false
+  inference_schedule_seq: LogInferenceSchedule
+  seq_schedule_exponent: -2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: PowerInferenceSchedule
+  tri_schedule_exponent: 2
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 0
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 40
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0                      # KL still off (M13b/M14/M15)
+  eps_clip: 0.2
+  lr: 3.0e-5                     # M13b/M14/M15 value
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.2   # novelty bonus ON (seq + 3Di), M15 value
+  degeneracy_weight: 0.5  # seq + 3Di anti-degeneracy hinge (M14/M15)
+  max_aa_floor: 0.3       # hinge fires when any AA/3Di token > 30% (M15)
+  entropy_floor: 0.8      # <-- CHANGE: entropy hinge fires below H=0.80 (was 0.5); bites H~0.68 collapse
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m16-entropyfloor80-kseed3
+  entity: null

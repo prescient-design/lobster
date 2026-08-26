@@ -1,0 +1,125 @@
+# @package _global_
+#
+# GRPO RL fine-tuning of `leflur-binder-3di` — M15 diversity bonus ON + tighter
+# anti-degeneracy hinge, KL still off (01_PD1).
+#
+# WHY: M14 (KL off, lr 3e-5, pure ipTM + degeneracy hinge @ 0.5, diversity bonus OFF)
+# STILL reward-hacked. It collapsed into a serine-dominated low-complexity mode:
+# global S=33%, per-design serine fraction drifting 0.19 (early) -> 0.43 (late), mean
+# max-AA-fraction 0.22 -> 0.43, entropy 0.78 -> 0.57, while reward stayed flat/declining
+# (ip ~0.30) and pass=0.000 throughout. Root cause: the degeneracy hinge is one-sided and
+# silent until max-single-token-fraction > 0.5 OR entropy < 0.5. The policy drifted right
+# up to but *under* the 0.5 floor (mean max_aa ~0.43), so the penalty was silent for the
+# average design and never braked the collapse; with the diversity bonus flagged off there
+# was also no positive pressure toward variety.
+#
+# M15 makes two changes vs M14, both aimed squarely at the sub-0.5 drift:
+#   1. Tighten the anti-degeneracy hinge: max_aa_floor 0.5 -> 0.3 (max_aa_floor is exposed
+#      as a GRPOConfig knob in M15). The penalty now fires as soon as ANY single AA *or*
+#      3Di token exceeds 30% of a design (applied to both alphabets), i.e. it bites in the
+#      ~0.4 regime the policy actually drifts into rather than only at outright homopolymers.
+#      entropy_floor stays 0.5.
+#   2. Turn the diversity bonus ON: diversity_weight 0.0 -> 0.2. Within-group k-mer novelty
+#      (seq + 3Di, mean of the two axes) now contributes positively to the reward. A group
+#      that has collapsed to near-identical serine designs is mutually redundant -> low
+#      novelty -> loses the bonus, so variety is rewarded directly, not just non-collapse
+#      penalised. 0.2 keeps it well below the ip term's scale so it cannot swamp binding.
+#
+# EVERYTHING ELSE = M14 (= M13b), held fixed so the two guardrail changes are the only
+# levers: beta 0.0 (KL off), lr 3e-5, temperature_seq 0.273, normalize_advantage true,
+# steps_per_update 2, group_size 32, mu 2, tracks [sequence_tokens], single seed, n_shards 8,
+# degeneracy_weight 0.5.
+#
+# READ: if reward climbs while diversity/max_aa_frac_mean and diversity/tri_max_state_frac_mean
+# stay < 0.3 and diversity/bonus_mean stays high (no collapse), the tightened guardrail +
+# bonus let genuine learning through. If reward stays flat with no collapse, the pure-ipTM
+# signal is genuinely too weak at G=32 on one target and the next lever is shaped/multi-seed
+# reward, not regularisation.
+#
+# Usage:
+#   lobster_rl_train --config-name experiment/rl_leflur_binder_grpo_m15_divbonus
+#
+# Reward is served by a Protenix worker pool over the shared filesystem queue at
+# `reward.queue_dir` (launch workers separately, e.g. scripts/launch_leflur_grpo.slurm).
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_m15"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+targets:
+  - target_id: "01_PD1"
+    antigen_pdb: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/pdbs/01_PD1.pdb"
+    target_chain: "A"
+    binder_length: 80
+    epitope_indices: [32, 94, 96, 101]
+
+# Rollout sampler knobs — M13b/M14 recipe VERBATIM.
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 0.27315634404739075
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 60
+  stochasticity_struc: 60
+  stochasticity_tri: null
+  asynchronous_sampling: false
+  inference_schedule_seq: LogInferenceSchedule
+  seq_schedule_exponent: -2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: PowerInferenceSchedule
+  tri_schedule_exponent: 2
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 0
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 40
+  tri_logit_bias: null
+
+grpo:
+  group_size: 32
+  num_steps: 500
+  rollout_nsteps: 40
+  steps_per_update: 2
+  mu: 2
+  beta: 0.0                      # KL still off (M13b/M14)
+  eps_clip: 0.2
+  lr: 3.0e-5                     # M13b/M14 value
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  normalize_advantage: true
+  reward_clip_lo: 0.0
+  reward_clip_hi: 1.0
+  diversity_weight: 0.2   # <-- CHANGE: novelty bonus ON (seq + 3Di), was 0.0
+  degeneracy_weight: 0.5  # seq + 3Di anti-degeneracy hinge (M14)
+  max_aa_floor: 0.3       # <-- CHANGE: hinge fires when any AA/3Di token > 30% (was 0.5)
+  entropy_floor: 0.5      # normalized-entropy hinge point (unchanged)
+  tracks: [sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 50
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: m15-divbonus-tighthinge-kloff
+  entity: null

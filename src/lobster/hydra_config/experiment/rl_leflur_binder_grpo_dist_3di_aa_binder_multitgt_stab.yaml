@@ -1,0 +1,145 @@
+# @package _global_
+#
+# MULTI-TARGET arm: whole-binder (3Di + AA) distribution GRPO (+ interface tracking) +
+# clash, with the gradient AVERAGED over several targets per optimizer step.
+#
+# This is the `complexa38-dist3di-binder-multitgt-stab-g64` arm with the SINGLE
+# addition of the amino-acid distribution reward turned ON (w_aa_dist: 1.0). The
+# step-125 analysis of the 3Di-only multitgt-stab arm showed the 3Di histogram was
+# pulled toward the Complexa reference but the (unrewarded) AA histogram DRIFTED away
+# from it:
+#     interface    AA (w=0)  TV 0.414 -> 0.461  (worse)
+#     whole-binder AA (w=0)  TV 0.265 -> 0.295  (worse)
+# because the reward gave AA no gradient. This arm closes that gap by adding the AA
+# distribution term alongside the existing 3Di term, both blended over the interface
+# and the whole binder by the same alpha (dist_binder_frac = 0.5).
+#
+# Reward:
+#   reward = w_3di_dist * [ (1-alpha)*(1-D_iface_3di) + alpha*(1-D_binder_3di) ]
+#          + w_aa_dist  * [ (1-alpha)*(1-D_iface_aa ) + alpha*(1-D_binder_aa ) ]
+#          + w_clash_contact * clash_score * contact_score
+# alpha = dist_binder_frac = 0.5. EVERYTHING else (multi-target accum/shuffle/std-equalize
+# stabilization, clash params, generation levers, G=64, lr, KL off) is IDENTICAL to the
+# 3Di-only multitgt-stab arm. Requires the WHOLE-BINDER reference JSON, which already
+# carries aa_binder/3di_binder + interface aa/3di per target.
+#
+# Usage (Protenix-free -> N_WORKERS=0 submits the policy job only):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_3di_aa_binder_multitgt_stab \
+#   N_WORKERS=0 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_dist_3di_aa_binder_multitgt_stab \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_dist_3di_aa_binder_multitgt_stab"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization (same as the 3Di-only multitgt-stab arm) ---
+  accum_targets: 4           # Option 1: average the gradient over 4 targets per step
+  shuffle_targets: true      # Option 3: reshuffle target order each epoch
+  normalize_advantage: true  # Option 2: per-group /std (== TRL scale_rewards="group")
+  # Confidence combo OFF -> Protenix skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency off.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Within-group Jaccard novelty (AA + 3Di) — off; the dist reward self-regularizes.
+  w_seq_diversity: 0.0
+  w_struct_diversity: 0.0
+  # --- Whole-binder + interface (3Di AND AA) distribution distance reward ---
+  w_aa_dist: 1.0             # AA distance ON — the sole change vs the 3Di-only arm
+  w_3di_dist: 1.0            # 3Di histogram closeness to Complexa reference
+  dist_binder_frac: 0.5      # alpha: blend interface (0) <-> whole-binder (1); 0.5 = equal
+  dist_metric: tv           # total variation (D0 primary); "js" also supported
+  # WHOLE-BINDER reference (has aa_binder/3di_binder alongside interface aa/3di).
+  dist_reference: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/grpo_dist_reference_complexa38_binder.json"
+  # Interface-size collapse guardrail (still overrides the whole term).
+  dist_min_iface: 4
+  dist_iface_penalty: -1.0
+  # --- Smooth clash + interface-contact geometry reward (kept ON, same as the 3Di arm) ---
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2        # soft-core clash center (A): heavy atoms closer overlap
+  clash_soft: 0.5           # clash transition width (A)
+  clash_scale: 50.0         # E_clash -> clash_score saturation scale
+  contact_d0: 8.0           # interface-band center (A), matches the 8 A interface def
+  contact_soft: 1.0         # contact transition width (A)
+  frac_lo: 0.05             # iface_frac band: contact_score = 0 at/below this
+  frac_peak: 0.16           # iface_frac band: peak (contact_score = 1) -- native band
+  frac_hi: 0.4              # iface_frac band: contact_score = 0 at/above this
+  clash_seq_sep: 2          # exclude binder pairs within this residue separation
+  clash_include_cb: true    # include a virtual Cb atom per residue in the clash cloud
+  # dist (3Di+AA) advantages both structure & sequence tracks; clash is structure-only.
+  # AA distribution is a function of the SEQUENCE track, so include structure_tokens
+  # (3Di + clash) AND sequence for the AA term to receive gradient.
+  tracks: [sequence, structure_tokens, tri_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25            # finer spacing: fewer optimizer steps (each = 4 rollouts)
+
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-dist3di-aa-binder-multitgt-stab-g64
