@@ -1,0 +1,665 @@
+<title>LeFlur GRPO · Protenix-free Distribution Reward — AA vs 3Di Ablation</title>
+<style>
+  :root {
+    --bg: #f4f6f7;
+    --panel: #ffffff;
+    --panel-2: #eef1f2;
+    --ink: #171a1e;
+    --ink-soft: #454d55;
+    --ink-faint: #79838d;
+    --line: #d9dee1;
+    --line-strong: #c3cace;
+    /* structural-cyan = the 3Di lever (this run's signal) */
+    --cyan: #0c7d7d;
+    --cyan-soft: #d7ecec;
+    /* amber = Protenix confidence backstop */
+    --amber: #b06f14;
+    --amber-soft: #f2e6d0;
+    /* slate = inert / OFF terms */
+    --slate: #7b8792;
+    --slate-soft: #e6eaec;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101417;
+      --panel: #171c20;
+      --panel-2: #1e242a;
+      --ink: #e8edf0;
+      --ink-soft: #b3bcc4;
+      --ink-faint: #7c8790;
+      --line: #2a323a;
+      --line-strong: #3a444d;
+      --cyan: #3fb5b5;
+      --cyan-soft: #143333;
+      --amber: #d69a3f;
+      --amber-soft: #33280f;
+      --slate: #909ca7;
+      --slate-soft: #232b31;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101417;
+    --panel: #171c20;
+    --panel-2: #1e242a;
+    --ink: #e8edf0;
+    --ink-soft: #b3bcc4;
+    --ink-faint: #7c8790;
+    --line: #2a323a;
+    --line-strong: #3a444d;
+    --cyan: #3fb5b5;
+    --cyan-soft: #143333;
+    --amber: #d69a3f;
+    --amber-soft: #33280f;
+    --slate: #909ca7;
+    --slate-soft: #232b31;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2.5rem) 4rem;
+  }
+
+  /* ---------- header ---------- */
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 1.4rem; margin-bottom: 2.5rem; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin: 0 0 .7rem;
+    font-weight: 600;
+  }
+  h1 {
+    font-size: clamp(1.6rem, 3.6vw, 2.5rem);
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+    font-weight: 680;
+  }
+  h1 .lever { color: var(--cyan); }
+  .meta { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.1rem; }
+  .chip {
+    font-family: var(--mono);
+    font-size: .74rem;
+    padding: .28rem .6rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--ink-soft);
+    background: var(--panel);
+    white-space: nowrap;
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- section scaffolding ---------- */
+  section { margin-top: 2.6rem; }
+  h2 {
+    font-size: 1.02rem;
+    letter-spacing: .01em;
+    margin: 0 0 1.1rem;
+    display: flex; align-items: baseline; gap: .7rem;
+    font-weight: 660;
+  }
+  h2 .idx {
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--cyan);
+    font-weight: 600;
+  }
+  p { margin: 0 0 1rem; max-width: 68ch; color: var(--ink-soft); }
+  p strong { color: var(--ink); font-weight: 620; }
+  code {
+    font-family: var(--mono);
+    font-size: .86em;
+    background: var(--panel-2);
+    padding: .08em .35em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  /* ---------- thesis callout ---------- */
+  .thesis {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--cyan);
+    border-radius: 4px;
+    padding: 1.1rem 1.3rem;
+    margin: 1.2rem 0;
+  }
+  .thesis p { margin: 0; color: var(--ink); }
+  .thesis .src { font-family: var(--mono); font-size: .74rem; color: var(--ink-faint); margin-top: .5rem; }
+
+  /* ---------- pipeline ---------- */
+  .pipe-scroll { overflow-x: auto; padding-bottom: .4rem; }
+  .pipe {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(120px, 1fr));
+    gap: 0;
+    min-width: 760px;
+    align-items: stretch;
+  }
+  .stage {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: .85rem .8rem 1rem;
+    margin-right: 20px;
+  }
+  .stage:last-child { margin-right: 0; }
+  .stage::after {
+    content: "→";
+    position: absolute;
+    right: -18px; top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--mono);
+    color: var(--line-strong);
+    font-size: 1.1rem;
+    z-index: 1;
+  }
+  .stage:last-child::after { content: none; }
+  .stage .n {
+    font-family: var(--mono);
+    font-size: .68rem;
+    color: var(--ink-faint);
+    letter-spacing: .12em;
+  }
+  .stage .t {
+    font-weight: 640;
+    font-size: .92rem;
+    margin: .3rem 0 .35rem;
+    line-height: 1.2;
+  }
+  .stage .d {
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--ink-soft);
+    line-height: 1.45;
+  }
+  .stage.key {
+    border-color: var(--cyan);
+    background: var(--cyan-soft);
+  }
+  .stage.key .t { color: var(--cyan); }
+  .stage.key::after { color: var(--cyan); }
+
+  .pipe-note {
+    font-family: var(--mono);
+    font-size: .74rem;
+    color: var(--ink-faint);
+    margin-top: .9rem;
+    line-height: 1.5;
+  }
+
+  /* ---------- reward ledger ---------- */
+  .ledger {
+    display: grid;
+    gap: .55rem;
+  }
+  .term {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .9rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: .7rem .9rem;
+  }
+  .term .w {
+    font-family: var(--mono);
+    font-weight: 640;
+    font-size: .82rem;
+    padding: .2rem .5rem;
+    border-radius: 3px;
+    min-width: 3.4rem;
+    text-align: center;
+  }
+  .term.on .w { background: var(--cyan-soft); color: var(--cyan); border: 1px solid var(--cyan); }
+  .term.conf .w { background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber); }
+  .term.off .w { background: var(--slate-soft); color: var(--slate); border: 1px solid transparent; }
+  .term .body .name { font-weight: 600; font-size: .92rem; }
+  .term .body .desc { font-family: var(--mono); font-size: .73rem; color: var(--ink-soft); margin-top: .1rem; }
+  .term .tag {
+    font-family: var(--mono);
+    font-size: .66rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: .2rem .45rem;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .term.on .tag { background: var(--cyan); color: #fff; }
+  .term.conf .tag { background: var(--amber); color: #fff; }
+  .term.off .tag { background: var(--slate-soft); color: var(--slate); }
+  .sum {
+    font-family: var(--mono);
+    font-size: .82rem;
+    color: var(--ink-soft);
+    margin-top: 1rem;
+    padding: .8rem .9rem;
+    background: var(--panel-2);
+    border-radius: 4px;
+    border: 1px dashed var(--line-strong);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .sum b { color: var(--cyan); }
+
+  /* ---------- spec grid ---------- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1rem 1.1rem 1.1rem;
+  }
+  .card h3 {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 .8rem;
+    padding-bottom: .55rem;
+    border-bottom: 1px solid var(--line);
+  }
+  dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: .38rem .8rem; }
+  dt { color: var(--ink-soft); font-size: .84rem; }
+  dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: .8rem;
+    color: var(--ink);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  dd.hi { color: var(--cyan); font-weight: 600; }
+  dd.dim { color: var(--slate); }
+
+  /* ---------- launch + checklist ---------- */
+  pre {
+    font-family: var(--mono);
+    font-size: .8rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--amber);
+    border-radius: 4px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    line-height: 1.6;
+    margin: 0 0 1.2rem;
+    color: var(--ink);
+  }
+  pre .k { color: var(--cyan); }
+  pre .c { color: var(--ink-faint); }
+  .check { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+  .check li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .7rem;
+    align-items: start;
+    font-size: .88rem;
+    color: var(--ink-soft);
+  }
+  .check .box {
+    font-family: var(--mono);
+    color: var(--cyan);
+    font-weight: 700;
+    line-height: 1.5;
+  }
+  .check b { color: var(--ink); font-weight: 620; }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: .73rem;
+    color: var(--ink-faint);
+    display: flex; flex-wrap: wrap; gap: .4rem 1.2rem;
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">LeFlur · GRPO RL fine-tuning · Protenix-free distribution reward</p>
+    <h1>Can a <span class="lever">distribution reward</span> alone steer the binder interface toward Complexa?</h1>
+    <p style="max-width:72ch;">
+      A dense, <strong>Protenix-free</strong> shaping term rewards a generated binder for having an
+      interface state distribution close to the per-target Proteina-Complexa reference — the distribution
+      offline analysis showed predicts the true pass objective. This round runs <strong>two clean
+      single-term ablations</strong> — AA-only and 3Di-only — at group size 64, with no confidence oracle,
+      to test whether each reward drives optimization on its own.
+    </p>
+    <div class="meta">
+      <span class="chip"><b>arm 1</b>&nbsp; complexa38-distaa-noptx-g64</span>
+      <span class="chip"><b>arm 2</b>&nbsp; complexa38-dist3di-noptx-g64</span>
+      <span class="chip"><b>model</b>&nbsp; leflur-binder-3di</span>
+      <span class="chip"><b>group</b>&nbsp; 64</span>
+      <span class="chip"><b>Protenix</b>&nbsp; OFF</span>
+      <span class="chip"><b>date</b>&nbsp; 2026-08-11</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="idx">01</span> Why this reward</h2>
+    <p>
+      LeFlur binders are <strong>D-3Di-state heavy and structurally monotonous</strong> at the interface;
+      Proteina-Complexa binders are 3Di-diverse and V-dominated. Offline (D0), the distance from a design's
+      interface distribution to a <strong>Complexa</strong> reference predicts pass rate — and beats distance
+      to the native interface. We turn that predictive distance into a per-step RL reward so the policy learns
+      to move its interface toward the passing distribution without paying a Protenix call every design.
+    </p>
+    <div class="thesis">
+      <p>
+        <strong>Validated claim:</strong> closer interface distribution → higher pass rate (target-difficulty
+        controlled). Against a Complexa reference the 3Di term is co-equal and independent of the AA term
+        (z<sub>3Di</sub> = −0.244), unlike a native reference where 3Di is redundant.
+      </p>
+      <p class="src">docs/leflur/grpo_distribution_reward_scope.md · §D0</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="idx">02</span> Reward pipeline — one design</h2>
+    <p>
+      Every rolled-out design is scored with pure geometry — no Protenix call. Shown for the
+      <strong>3Di arm</strong>: the 3Di histogram is recomputed from the <strong>generated backbone</strong>,
+      so <code>structure_tokens</code> are the true lever — not the decoder's <code>tri_seqs</code>. The
+      <strong>AA arm</strong> is analogous: the same interface subset feeds a 20-AA histogram from
+      <code>sequence_tokens</code>.
+    </p>
+    <div class="pipe-scroll">
+      <div class="pipe">
+        <div class="stage">
+          <div class="n">ROLLOUT</div>
+          <div class="t">Group of 64</div>
+          <div class="d">policy samples G=64 binders per target (arm C schedule)</div>
+        </div>
+        <div class="stage">
+          <div class="n">DECODE</div>
+          <div class="t">Backbone coords</div>
+          <div class="d">trajectory → (G,L,3,3) N·CA·C, free from _compute_rewards</div>
+        </div>
+        <div class="stage key">
+          <div class="n">ENCODE</div>
+          <div class="t">mini3di, isolated</div>
+          <div class="d">binder chain alone → 20 Foldseek states (X dropped)</div>
+        </div>
+        <div class="stage">
+          <div class="n">SUBSET</div>
+          <div class="t">Interface only</div>
+          <div class="d">binder residues with cross-chain CA–CA &lt; 8 Å; skip if n&lt;4</div>
+        </div>
+        <div class="stage">
+          <div class="n">HISTOGRAM</div>
+          <div class="t">20-bin p<sub>3Di</sub></div>
+          <div class="d">normalized state counts, alphabetical ACDEF…WY</div>
+        </div>
+        <div class="stage key">
+          <div class="n">SCORE</div>
+          <div class="t">TV → term</div>
+          <div class="d">clip(1 − TV(p, ref), 0, 1) vs per-target Complexa ref</div>
+        </div>
+      </div>
+    </div>
+    <p class="pipe-note">
+      Reference matched by target_id → per-target (35/38) else pooled fallback (3/38: 25_CbAgo, 35_H1, 38_TNFalpha).
+      TV is primary; JS logged alongside. Each arm rewards ONE histogram; the other is still computed and logged.
+      Self-regularizing: a degenerate design → spiky histogram → high TV → low reward, so no anti-degeneracy guardrail.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="idx">03</span> Reward composition — two ablation arms</h2>
+    <p>
+      Per-design reward is a sum of weighted, per-metric-clipped <code>[0,1]</code> terms. This round each arm
+      keeps exactly <strong>one</strong> term live and everything else — including the whole Protenix
+      confidence combo — at weight 0. With all confidence weights 0 the trainer skips the oracle entirely
+      (<code>confs=[None]*G</code>), so there is no worker pool and no queue.
+    </p>
+    <div class="ledger">
+      <div class="term on">
+        <span class="w">1.0</span>
+        <div class="body">
+          <div class="name">Arm 1 · AA interface distribution</div>
+          <div class="desc">w_aa_dist=1.0 · TV to Complexa ref · tracks=[sequence_tokens] · D0 carrier of pass</div>
+        </div>
+        <span class="tag">lever</span>
+      </div>
+      <div class="term on">
+        <span class="w">1.0</span>
+        <div class="body">
+          <div class="name">Arm 2 · 3Di interface distribution</div>
+          <div class="desc">w_3di_dist=1.0 · TV to Complexa ref · tracks=[structure_tokens, tri_tokens]</div>
+        </div>
+        <span class="tag">lever</span>
+      </div>
+      <div class="term off">
+        <span class="w">0.0</span>
+        <div class="body">
+          <div class="name">Protenix confidence</div>
+          <div class="desc">w_abag_iptm = w_ptm = w_iptm = 0 · OFF → oracle skipped, no A10G pool</div>
+        </div>
+        <span class="tag">off</span>
+      </div>
+      <div class="term off">
+        <span class="w">0.0</span>
+        <div class="body">
+          <div class="name">Seq / struct diversity · sctm</div>
+          <div class="desc">w_seq_diversity, w_struct_diversity, w_sctm_* = 0.0 · reward self-regularizes</div>
+        </div>
+        <span class="tag">off</span>
+      </div>
+    </div>
+    <div class="sum">arm 1: reward<sub>i</sub> = <b>1·(1 − TV<sub>AA</sub>)</b> &nbsp;·&nbsp; arm 2: reward<sub>i</sub> = <b>1·(1 − TV<sub>3Di</sub>)</b> &nbsp;&nbsp;→&nbsp;&nbsp; normalize_advantage ⇒ weight scale is moot; only cross-design variation matters</div>
+  </section>
+
+  <section>
+    <h2><span class="idx">04</span> What GRPO framework worked best <span style="font-family:var(--mono);font-size:.72rem;color:var(--ink-faint);font-weight:400;">M1–M22</span></h2>
+    <p>
+      22 prior M-runs pin down the framework so these two runs don't re-litigate it. The headline: the
+      <strong>gradients always worked</strong> — M21 reward-hacked a dense oracle-free reward in ~80 steps.
+      What starved every ipTM run was <strong>reward quality</strong>: single-seed Protenix ipTM is noisy
+      (σ≈0.06) and ~85% of steps had zero passers, so advantages chased noise and the mean→max gap never
+      closed. The dense distribution reward is the direct answer to the diagnosed bottleneck, and the M15
+      endpoint prescription — <em>"next lever is reward shaping or larger group / multi-target"</em> — is
+      exactly what group-64 + 38-target + dense-reward implements.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3>Confirmed levers</h3>
+        <dl>
+          <dt>lr</dt><dd class="hi">1e-5</dd>
+          <dt>lr=1e-6</dt><dd class="dim">freezes mode</dd>
+          <dt>lr=1e-4</dt><dd class="dim">blows up</dd>
+          <dt>beta (KL)</dt><dd>0.0 ok</dd>
+          <dt>temp_struc</dt><dd>0.316 low</dd>
+          <dt>raise temp?</dt><dd class="dim">no</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Rollout — must be fold-diverse</h3>
+        <dl>
+          <dt>arm</dt><dd class="hi">C</dd>
+          <dt>tri sched</dt><dd>Log</dd>
+          <dt>stoch_tri</dt><dd>80</dd>
+          <dt>tri divpen</dt><dd>8</dd>
+          <dt>best-arm?</dt><dd class="dim">β-collapse</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Diagnosis</h3>
+        <dl>
+          <dt>gradients</dt><dd class="hi">work (M21)</dd>
+          <dt>bottleneck</dt><dd>reward quality</dd>
+          <dt>ipTM σ</dt><dd>0.06</dd>
+          <dt>zero-pass</dt><dd>~85%</dd>
+          <dt>fix</dt><dd class="hi">dense reward</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Collapse history</h3>
+        <dl>
+          <dt>M14</dt><dd>poly-serine</dd>
+          <dt>M15</dt><dd>I/A/V distrib.</dd>
+          <dt>cause</dt><dd class="dim">sparse ipTM</dd>
+          <dt>here</dt><dd class="hi">self-reg.</dd>
+        </dl>
+      </div>
+    </div>
+    <p class="pipe-note">
+      Why degeneracy can't hide here: with a sparse ipTM reward a monotonous design scored fine; against a
+      spread-out distribution reference it produces a spiky histogram → high TV → low reward. The reward
+      penalizes collapse intrinsically, so neither pure arm needs an entropy floor / max-AA hinge.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="idx">05</span> Configuration</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>GRPO</h3>
+        <dl>
+          <dt>group_size</dt><dd class="hi">64</dd>
+          <dt>num_steps</dt><dd>2000</dd>
+          <dt>rollout_nsteps</dt><dd>40</dd>
+          <dt>steps_per_update</dt><dd class="hi">1</dd><dd class="dim" style="grid-column:2">2&rarr;1 OOM fix: backward graph holds every subset step, peak mem &prop; group_size&times;spu; G=64/spu=1 == proven-safe G=32/spu=2</dd>
+          <dt>mu</dt><dd>2</dd>
+          <dt>beta (KL)</dt><dd class="dim">0.0</dd>
+          <dt>lr</dt><dd class="hi">1e-5</dd>
+          <dt>normalize_adv</dt><dd>true</dd>
+          <dt>tracks · AA arm</dt><dd>seq</dd>
+          <dt>tracks · 3Di arm</dt><dd>struc+tri</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Generation — arm C</h3>
+        <dl>
+          <dt>epitope cond.</dt><dd>on</dd>
+          <dt>temp_struc</dt><dd>0.316</dd>
+          <dt>stoch_struc</dt><dd>60</dd>
+          <dt>stoch_tri</dt><dd>80</dd>
+          <dt>seq sched</dt><dd>Power²</dd>
+          <dt>tri sched</dt><dd>Log</dd>
+          <dt>seq divpen</dt><dd>2</dd>
+          <dt>tri divpen</dt><dd>8</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Data — Complexa 38</h3>
+        <dl>
+          <dt>targets</dt><dd>38</dd>
+          <dt>per-target ref</dt><dd class="hi">35</dd>
+          <dt>pooled fallback</dt><dd>3</dd>
+          <dt>binder len</dt><dd>fixed/tgt</dd>
+          <dt>ref designs/tgt</dt><dd>~100</dd>
+          <dt>MSA a3m</dt><dd>present</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Infra — Protenix-free</h3>
+        <dl>
+          <dt>policy</dt><dd>b200 ×1/arm</dd>
+          <dt>reward</dt><dd class="hi">in-process</dd>
+          <dt>A10G pool</dt><dd class="dim">none</dd>
+          <dt>queue</dt><dd class="dim">unused</dd>
+          <dt>N_WORKERS</dt><dd>0</dd>
+          <dt>ckpt_every</dt><dd>50</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="idx">06</span> Launch &amp; pre-flight</h2>
+    <pre><span class="c"># confirm-before-SLURM · standing llm-b200 authorization · N_WORKERS=0 ⇒ no A10G pool</span>
+<span class="c"># arm 1 — AA-only</span>
+<span class="k">OUTBASE</span>=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_aa_noptx <span class="k">N_WORKERS</span>=0 \
+<span class="k">CONFIG</span>=experiment/rl_leflur_binder_grpo_dist_aa_noptx \
+  bash scripts/launch_leflur_grpo.slurm
+
+<span class="c"># arm 2 — 3Di-only</span>
+<span class="k">OUTBASE</span>=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_dist_3di_noptx <span class="k">N_WORKERS</span>=0 \
+<span class="k">CONFIG</span>=experiment/rl_leflur_binder_grpo_dist_3di_noptx \
+  bash scripts/launch_leflur_grpo.slurm</pre>
+    <ul class="check">
+      <li><span class="box">☑</span><span><b>Unit tests</b> — distribution reward (TV·JS bounds, skip floor, alphabet guard) + Protenix-skip gate · <b>18 passed</b></span></li>
+      <li><span class="box">☑</span><span><b>Gate</b> — all conf weights 0 ⇒ <code>score_group</code> never called; reward = pure dist term · verified in <code>test_grpo_reward_gate.py</code></span></li>
+      <li><span class="box">☑</span><span><b>Hydra compose</b> — both <code>*_noptx</code> configs resolve; conf weights 0, group_size 64, right tracks · existing <code>dist_3di</code> still <code>w_abag_iptm=1.0</code> (no-op proof)</span></li>
+      <li><span class="box">☑</span><span><b>GPU smoke</b> (num_steps=3) — <b>no OOM at G=64</b>; <code>reward/std</code> 0.089 (AA) / 0.111 (3Di) = <b>89–111× floor</b> (learnable); <code>frac_skipped=0</code>; <code>conf/pass_rate=0</code> (Protenix truly skipped)</span></li>
+      <li><span class="box">☑</span><span><b>Launched</b> — two policy-only b200 jobs, 2000 steps, wandb online (see status below)</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="idx">07</span> Live runs · status 2026-08-11</h2>
+    <p class="note"><b>OOM fix &amp; relaunch.</b> The first launch (jobs 19654998 / 19655002) passed a 3-step
+      smoke but <b>OOM'd on the full run at step 11 (<code>12_Claudin1</code>, L=316)</b> — the b200 update-path
+      backward graph (<code>logprob_over_trajectory</code>) holds every subset step, so peak mem &prop;
+      <code>group_size&times;steps_per_update</code>, and the 3-step smoke never rotated past the short targets
+      (L=228). Fix: <code>steps_per_update 2&rarr;1</code>, keeping G=64. This halves the dominant term, matching
+      the proven-safe G=32/spu=2 footprint; the largest target <code>25_CbAgo</code> (L=391) is only 1.24&times;
+      Claudin1, so it fits with margin. Relaunched <b>AA=19655461 / 3Di=19655462</b> &mdash; <b>both cleared
+      the largest targets (24_SpCas9 L=330, 25_CbAgo L=391) with zero OOM</b> and are advancing normally
+      (ratio&asymp;1.0, reward moving). Fix confirmed.</p>
+    <div class="cards">
+      <div class="card">
+        <h3>AA-only</h3>
+        <dl>
+          <dt>wandb name</dt><dd>complexa38-distaa-noptx-g64</dd>
+          <dt>SLURM job</dt><dd class="hi">19655461</dd><dd class="dim" style="grid-column:2">(relaunch; orig 19654998 OOM'd)</dd>
+          <dt>reward term</dt><dd>w_aa_dist=1</dd>
+          <dt>tracks</dt><dd>sequence_tokens</dd>
+          <dt>step-0 reward</dt><dd>0.653 (=1−tv_aa)</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>3Di-only</h3>
+        <dl>
+          <dt>wandb name</dt><dd>complexa38-dist3di-noptx-g64</dd>
+          <dt>SLURM job</dt><dd class="hi">19655462</dd><dd class="dim" style="grid-column:2">(relaunch; orig 19655002 OOM'd)</dd>
+          <dt>reward term</dt><dd>w_3di_dist=1</dd>
+          <dt>tracks</dt><dd>structure_tokens, tri_tokens</dd>
+          <dt>step-0 reward</dt><dd>0.455 (=1−tv_3di)</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Common · wandb project</h3>
+        <dl>
+          <dt>project</dt><dd>prescient-design/leflur-grpo</dd>
+          <dt>mode</dt><dd class="hi">online</dd>
+          <dt>steps</dt><dd>2000</dd>
+          <dt>ckpt_every</dt><dd>50</dd>
+          <dt>N_WORKERS</dt><dd>0 (no A10G)</dd>
+          <dt>judge</dt><dd class="dim">post-hoc Protenix eval of ckpts</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>LeFlur GRPO</span>
+    <span>reward: _distribution_reward.py</span>
+    <span>trainer: _leflur_grpo_trainer.py</span>
+    <span>next: post-hoc Protenix eval of ckpts · combine AA+3Di · pinder generalization</span>
+  </footer>
+</div>
