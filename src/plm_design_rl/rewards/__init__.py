@@ -44,9 +44,17 @@ final reward is a sum of weighted, per-metric-clipped terms:
   :mod:`plm_design_rl.pool.queue` and ``scripts/ligandmpnn_repack_server.py``); the
   packing step (openfold) stays isolated in the worker so importing this module stays
   pure numpy/scipy.
+* :mod:`._ddg_reward` — interface **ΔΔG of binding** via tmol (Rosetta
+  ``beta_nov2016``), the physics-complete upgrade of the numpy ``e_lj`` interface proxy
+  (adds ``fa_lk``/``lk_ball`` desolvation). Rigid and unbound-relaxed flavors + a bounded
+  logistic reward mapper and a contact-weighted per-binder-residue attribution. ``tmol``
+  is behind the optional ``[tmol]`` extra and imported lazily, so importing this module
+  never requires it — the first scoring call raises a clear install-the-extra error.
 
 Each module is pure (no ``trl`` dependency) so the policy side can import the
-reward terms without pulling in the reward oracle's heavy deps.
+reward terms without pulling in the reward oracle's heavy deps. Heavy oracle backends
+(the LigandMPNN packer, Protenix, tmol) are imported lazily inside the functions that
+need them, so a bare ``import plm_design_rl.rewards`` stays light.
 """
 
 from ._protenix_reward import (
@@ -97,6 +105,11 @@ from ._shape_reward import (
     shape_complementarity_reward,
     shape_complementarity_reward_atoms,
 )
+from ._ddg_reward import (
+    ddg_per_binder_residue,
+    ddg_reward,
+    ddg_terms,
+)
 from ._protenix_structure_expert import (
     INVALID_3DI_STATE,
     assemble_structure_expert,
@@ -145,6 +158,9 @@ __all__ = [
     "SFT_IGNORE_INDEX",
     "shape_complementarity_reward",
     "shape_complementarity_reward_atoms",
+    "ddg_per_binder_residue",
+    "ddg_reward",
+    "ddg_terms",
     "INVALID_3DI_STATE",
     "assemble_structure_expert",
     "build_struct_sft_targets",

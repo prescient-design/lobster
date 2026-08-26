@@ -14,7 +14,9 @@ import sys
 
 import pytest
 
-# The 10 reward-term submodules moved verbatim into ``plm_design_rl.rewards``.
+# Reward-term submodules living in ``plm_design_rl.rewards`` with a back-compat shim at the
+# old ``lobster.rl_training.rewards`` path (the first 10 moved verbatim in Step 1;
+# ``_ddg_reward`` is the tmol interface-ΔΔG term added with the packaging work).
 _REWARD_SUBMODULES = [
     "_aar_reward",
     "_chainbreak_reward",
@@ -26,6 +28,7 @@ _REWARD_SUBMODULES = [
     "_sc_clash_reward",
     "_shape_reward",
     "_structure_reward",
+    "_ddg_reward",
 ]
 
 # A representative public symbol per submodule, to assert function-identity parity.
@@ -40,6 +43,7 @@ _REWARD_SYMBOLS = {
     "_sc_clash_reward": "sc_clash_reward",
     "_shape_reward": "shape_complementarity_reward_atoms",
     "_structure_reward": "structure_terms",
+    "_ddg_reward": "ddg_reward",
 }
 
 

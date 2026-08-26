@@ -150,6 +150,14 @@ trl = [
 tabpfn = [
     "tabpfn>=6.0.0",
 ]
+# Interface ΔΔG reward (plm_design_rl.rewards._ddg_reward): tmol is a GPU/CPU PyTorch
+# reimplementation of Rosetta beta_nov2016 (uw-ipd/tmol, Apache-2.0). Its wheels are
+# built per (python x torch x CUDA); the wheel lane must match the local torch build
+# (e.g. +cu128torch2.8 cp312 for GPU, +cpu for CPU-only). The reward raises a clear
+# "install plm-design-rl[tmol]" error at first use, never at import.
+tmol = [
+    "tmol",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

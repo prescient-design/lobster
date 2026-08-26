@@ -1692,7 +1692,8 @@ plm_design_rl/
   api.py                 # the Protocols above (Policy/Trajectory/Reward/RewardPool)
   logprob/               # dfm.py (from _dfm_logprob), autoregressive.py   [core: torch]
   rewards/               # clash, chainbreak, distribution, diversity, complexity,
-                         #   potentials, shape_sc, aar, structure_sc        [core: numpy/scipy]
+                         #   potentials, shape_sc, aar, structure_sc  [core: numpy/scipy]
+                         #   ddg (tmol interface dG)                   [extra: tmol]
   stack.py               # RewardStack: weights, per-metric clips, scalar/per-token merge
   pool/                  # queue.py (from ShapeRewardClient) + server entry points
   trainers/grpo.py       # GRPOTrainer + GRPOConfig  (from _leflur_grpo_trainer)
@@ -1701,18 +1702,23 @@ plm_design_rl/
 extras:
   [ligandmpnn]  openfold + LigandMPNN   -> repack/potentials/shape/AAR oracles
   [protenix]    protenix               -> co-folding confidence + self-consistency oracle
+  [tmol]        tmol                   -> interface dG (beta_nov2016) potential upgrade
   [trl]         trl                    -> the UME text-GRPO path (unchanged)
 \end{verbatim}
 The core (\ttk{api} $+$ \ttk{logprob} $+$ \ttk{rewards} that need only numpy/scipy $+$ \ttk{stack}
-$+$ \ttk{trainers}) installs with torch alone; a reward whose oracle needs openfold/Protenix raises a
-clear ``\ttk{pip install plm-design-rl[ligandmpnn]}'' error at construction, never at import.
+$+$ \ttk{trainers}) installs with torch alone; a reward whose oracle needs openfold/Protenix/tmol
+raises a clear ``\ttk{pip install plm-design-rl[ligandmpnn]}'' error at construction, never at import.
+(\ttk{tmol} is distributed as wheels built per \ttk{python}$\times$\ttk{torch}$\times$\ttk{CUDA}, so
+the \ttk{[tmol]} lane must match the local torch build --- e.g.\ \ttk{+cu128torch2.8 cp312} on GPU or
+\ttk{+cpu} for a CPU-only scoring pool.)
 
 \subsection{Bring your own model}
 The user implements \ttk{Policy} for their model, picks reward terms, and trains --- no LeFlur code
 on the path:
 \begin{verbatim}
 from plm_design_rl import GRPOTrainer, GRPOConfig, RewardStack
-from plm_design_rl.rewards import InterfacePotential, ChainBreak, ChordSFT, LinguisticComplexity
+from plm_design_rl.rewards import (InterfacePotential, InterfaceDDG, ChainBreak,
+                                   ChordSFT, LinguisticComplexity)
 from plm_design_rl.logprob import MaskedDiffusionPolicy
 from my_models import MyStructureTokenPLM          # your checkpoint
 
@@ -1723,6 +1729,7 @@ class MyPolicy(MaskedDiffusionPolicy):             # inherits logprob() from the
 policy  = MyPolicy(MyStructureTokenPLM.from_pretrained("ckpt"))
 rewards = RewardStack([
     (1.0, InterfacePotential(term="e_lj", per_token=True)),   # dense structure-track credit
+    (0.0, InterfaceDDG(flavor="ddg", per_token=True)),        # tmol dG upgrade (opt-in [tmol])
     (1.0, ChainBreak(gate="count")),                          # backbone realism
     (0.1, ChordSFT(expert="ligandmpnn", scope="binder")),     # optional seq distillation
     (1.0, LinguisticComplexity(lc_full=0.7)),                 # anti-degeneracy
@@ -1768,5 +1775,75 @@ methods as the protocol (regression-tested against the live run for byte-identic
 \ttk{ratio\_init}$\approx1$); (4) publish extras and a \ttk{README} with the two examples above.
 Steps 1--2 are pure moves; step 3 is the only real interface work, and the LeFlur adapter is the
 proof that the abstraction is faithful.
+
+\subsection{Implementation status}
+\textbf{Step 1 is complete} (commit \ttk{043f0f8}, \ttk{complex\_infra}); steps 2--4 remain.
+
+\paragraph{Done (Step 1 --- pure moves).} The in-repo package \ttk{src/plm\_design\_rl/} now exists
+and is auto-discovered by \ttk{setuptools} (no \ttk{pyproject} edit needed). The pure layers were
+lifted out of \ttk{lobster.rl\_training} \emph{byte-identically}:
+\begin{itemize}
+\item \ttk{logprob/dfm.py} $\leftarrow$ \ttk{\_dfm\_logprob.py} (the DFM \ttk{dfm\_step\_prob} /
+  \ttk{dfm\_step\_logprob} / \ttk{dfm\_step\_kl} kernels);
+\item \ttk{rewards/\_*.py} $\leftarrow$ the ten reward-term modules (protenix, structure,
+  diversity, distribution, clash, chainbreak, sc\_clash, aar, shape, protenix\_structure\_expert);
+\item \ttk{pool/queue.py} $\leftarrow$ \ttk{\_shape\_reward\_pool.py} (\ttk{ShapeRewardClient} /
+  \ttk{reward\_from\_shape}), with its one internal import repointed to
+  \ttk{plm\_design\_rl.rewards.\_protenix\_reward}.
+\end{itemize}
+Package \ttk{\_\_init\_\_} files publish the reward terms, the DFM kernels, and the pool clients
+(\ttk{ShapeRewardClient}, \ttk{ProtenixRewardClient}, \ttk{reward\_from\_shape},
+\ttk{atomic\_write\_json}, \ttk{ensure\_queue}). Every historical
+\ttk{lobster.rl\_training} import path is preserved by \textbf{transparent \ttk{sys.modules}-alias
+shims} so old code resolves to the \emph{same object} (each moved submodule) and the reward package
+namespace is re-exported unchanged. \ttk{LeFlurGRPOTrainer}, \ttk{\_structure\_sft}, and
+\ttk{reward\_functions} were \emph{not touched} --- their \ttk{from .rewards} / \ttk{from
+.\_dfm\_logprob} imports transparently get the moved implementations. Verified: \ttk{ruff} clean;
+new \ttk{tests/plm\_design\_rl/test\_package\_and\_shims.py} (27 tests: import success $+$
+old-path$\leftrightarrow$new-path object identity) plus the full \ttk{rl\_training} suite pass (306
+total). The refactor lives in the \ttk{complex\_infra} worktree and could not perturb the live
+run, whose processes import from a different worktree and editable install.
+
+\paragraph{Also done (the tmol interface-\texorpdfstring{$\Delta\Delta G$}{ddG} reward, packaged).}
+The physics-complete upgrade of the numpy \ttk{e\_lj} proxy (\S\ref{sec:potentials}) now ships
+\emph{as a package reward module}, \ttk{plm\_design\_rl.rewards.\_ddg\_reward}, so it is wired
+exactly like every other term the moment its offline gate clears. It computes the interface
+$\Delta\Delta G$ of binding with tmol's full \ttk{beta\_nov2016} energy (adding the
+\ttk{fa\_lk}/\ttk{lk\_ball} desolvation the numpy proxy lacks) in two flavors --- \emph{rigid}
+(\ttk{ddg\_*}: cross-chain interaction energy of the relaxed bound complex) and
+\emph{unbound-relaxed} (\ttk{ddg\_ub\_*}: each separated partner independently Cartesian-minimized,
+adding strain-relief-on-unbinding) --- plus a bounded logistic reward mapper (more-negative
+$\Delta\Delta G$ $\to$ higher reward $\in[0,1]$) and a contact-weighted per-binder-residue
+attribution for dense per-token credit. It observes the extra discipline: \ttk{torch} is the only
+top-level import, \ttk{tmol} is imported lazily, and the first scoring call without it raises a
+clear ``\ttk{pip install plm-design-rl[tmol]}'' error --- never at import. The \ttk{[tmol]} extra is
+declared in \ttk{pyproject.toml}; a \ttk{sys.modules}-alias shim preserves the
+\ttk{lobster.rl\_training.rewards.\_ddg\_reward} path; the offline validation drivers
+(\ttk{scripts/\_tmol\_ddg\_compute.py} / \ttk{\_analyze.py}) now re-export the engine from the
+package (single source of truth); and \ttk{tests/plm\_design\_rl/test\_ddg\_reward.py} checks the
+mapper (bounds, monotonicity, floor-to-zero, numerical stability) and the install-error discipline,
+with the shim-identity suite extended to cover it. Whether the weight is turned on above $0$ is
+gated on the offline head-to-head: ship it only if a $\Delta\Delta G$ flavor beats \ttk{e\_lj}
+(AUROC $0.778$); the sweep is in flight.
+
+\paragraph{Remaining (steps 2--4 --- the interface work).}
+\begin{itemize}
+\item \textbf{Step 2 (pure extraction):} carve \ttk{stack.py} (\ttk{RewardStack}: the weighted,
+  per-metric-clipped scalar$+$per-token merge) and \ttk{trainers/grpo.py} (\ttk{GRPOConfig}, the
+  optimization half of \ttk{GRPOTrainerConfig}) out of \ttk{\_leflur\_grpo\_trainer.py}; move
+  \ttk{sft.py} (the CHORD $\phi$-weighted $\mu$-blend) out of \ttk{\_structure\_sft.py}. These are
+  still pure moves, but they split a live file, so they carry regression-test risk the Step-1 moves
+  did not.
+\item \textbf{Step 3 (the only real interface work):} define \ttk{api.py}
+  (\ttk{Policy}/\ttk{Trajectory}/\ttk{Reward}/\ttk{RewardPool} protocols), add the
+  \ttk{AutoregressivePolicy} log-prob mixin alongside the DFM reference, and refactor
+  \ttk{LeFlurGRPOTrainer} to call the protocol via \ttk{adapters/leflur.py} --- regression-tested
+  against the live run for byte-identical rewards and \ttk{ratio\_init}$\approx1$.
+\item \textbf{Step 4 (packaging):} declare the remaining optional-extras dependency groups
+  (\ttk{[ligandmpnn]}, \ttk{[protenix]}, \ttk{[trl]}) so the core installs with torch alone and an
+  oracle-backed term raises a clear install error at construction, and write the \ttk{README} with
+  the two BYO-model examples above. (\ttk{[tmol]} is already declared, as the ddG reward above
+  ships with it.)
+\end{itemize}
 
 \end{document}
