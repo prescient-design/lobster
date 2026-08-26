@@ -1261,6 +1261,86 @@ packed interface-energy set with a backbone / per-token structure set --- per-to
 a graded chain-break term (\ttk{chainbreak\_reward}, \S3.2/\S3.5) --- since chain-break survives the
 pack exactly where clash does not.
 
+\subsection{The tmol interface-\texorpdfstring{$\Delta\Delta G$}{ddG} upgrade: a matched head-to-head}
+\label{sec:ddg}
+The bounded $\R_{\mathrm{LJ}}$ of Table \ref{tab:potentials} is a hand-rolled soft-core Lennard-Jones
+sum. A physically fuller substitute is a genuine \emph{interface} $\Delta\Delta G$ from
+\ttk{tmol} (a GPU/CPU PyTorch reimplementation of Rosetta's \ttk{beta\_nov2016}): it adds the
+isotropic Lennard--Kossmann desolvation term (\ttk{fa\_lk}, the physics the numpy LJ lacks entirely),
+an orientation-dependent H-bond potential, \ttk{lk\_ball} anisotropic solvation, and screened
+electrostatics --- and, crucially, it can \emph{relax} the structure by Cartesian LBFGS minimization
+before scoring, so the number reports a settled energy rather than the raw generated coordinates. We
+built this reward and packaged it (\S\ref{sec:package} status), in two flavors: \emph{rigid}
+(\ttk{ddg\_*}: relaxed-bound complex minus the rigidly-separated partners --- the pure cross-chain
+interaction energy) and \emph{unbound-relaxed} (\ttk{ddg\_ub\_*}: each separated partner
+independently re-minimized, so the number also credits strain relief on unbinding, the
+InterfaceAnalyzer convention). The gate from the scope doc is explicit: \emph{wire the $\Delta\Delta G$
+term with positive weight only if a flavor beats the numpy $\R_{\mathrm{LJ}}$ it would replace.}
+
+\emph{Matched discriminator (offline).} We scored $811$ A8 cold-generated designs from the current
+best GRPO checkpoint ($32$ targets, $111$ pass $/\,700$ fail, $13.7\%$) \emph{two ways on the
+identical set}: the tmol $\Delta\Delta G$ (both flavors, each with two Cartesian minimizations;
+$0$ errors on all $811$) and the numpy packed potentials with SASA. Table \ref{tab:ddg} ranks every
+term by AUROC against the same Protenix pass label. The result is a clean \emph{null}: on this set
+\textbf{every interface-energy term --- numpy and tmol alike --- collapses toward random}. The numpy
+$\R_{\mathrm{LJ}}$ here is $0.529$, \emph{not} the $0.778$ of Table \ref{tab:potentials}; the best
+tmol total (\ttk{ddg\_ub\_total}, $0.537$) edges it by $0.008$, but with $111$ positives the AUROC
+standard error is $\approx\!0.047$, so that gap is $\approx\!0.17$ SE --- noise --- and the whole
+panel ($0.500$--$0.564$) sits within $\sim\!1$ SE of $0.5$. The nominal leaders (numpy \ttk{e\_elec}
+$0.564$, tmol \ttk{ddg\_hb} $0.546$) are not exceptions to this; they are inside the same noise band.
+
+\begin{table}[htbp]
+\centering
+{\renewcommand{\arraystretch}{1.2}%
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{4.6cm}
+                    >{\centering\arraybackslash}p{2.0cm}
+                    >{\centering\arraybackslash}p{1.4cm}
+                    >{\centering\arraybackslash}p{1.2cm}
+                    >{\centering\arraybackslash}p{2.2cm}@{}}
+\toprule
+\textbf{Term} & \textbf{source} & \textbf{AUROC} & \textbf{dir} & \textbf{$\beta\,|\,$len}\\
+\midrule
+Electrostatics \ttk{e\_elec}          & numpy       & $0.564$ & $-$ & $-0.137$\\
+H-bond \ttk{ddg\_hb}                   & tmol        & $0.546$ & $-$ & $-0.168$\\
+LJ repulsive \ttk{e\_lj\_rep}         & numpy       & $0.542$ & $-$ & $-0.009$\\
+LJ attractive \ttk{e\_lj\_atr}       & numpy       & $0.541$ & $+$ & $-0.010$\\
+\rowcolor{aTint}$\Delta\Delta G$ total \ttk{ddg\_ub\_total} & tmol (unbound) & $0.537$ & $+$ & $-0.047$\\
+S.c.\ H-bonds \ttk{n\_hb\_sc}         & numpy       & $0.531$ & $+$ & $+0.210$\\
+\rowcolor{aTint}Bounded LJ \ttk{e\_lj}\emph{ (Table \ref{tab:potentials} term)} & numpy & $0.529$ & $-$ & $-0.024$\\
+$\Delta\Delta G$ total \ttk{ddg\_total} & tmol (rigid) & $0.521$ & $-$ & $+0.012$\\
+Buried $\Delta$SASA \ttk{dsasa}       & numpy       & $0.508$ & $+$ & $+0.203$\\
+H-bond count \ttk{n\_hb}              & numpy       & $0.500$ & $-$ & $+0.118$\\
+\bottomrule
+\end{tabular}}
+\caption{Head-to-head predictiveness of the tmol interface $\Delta\Delta G$ (rigid and
+unbound-relaxed) versus the numpy packed potentials, on the \emph{same} $811$ A8 designs ($111$ pass
+$/\,700$ fail, $32$ targets), against the Protenix pass label. \textbf{dir} gives the favorable sign;
+\textbf{$\beta\,|\,$len} is the standardized logistic coefficient after controlling for binder length.
+Selected rows shown (the full $23$-term table is in the run log); the omitted tmol terms
+(\ttk{ddg\_ub\_noclash} $0.525$, \ttk{ddg\_ub\_rep} $0.522$, $\ldots$, \ttk{ddg\_sol} $0.500$) all
+fall in $[0.500,0.525]$. Highlighted rows are the two totals whose comparison the gate turns on:
+$\Delta\Delta G$ ($0.537$) versus the numpy bounded LJ ($0.529$) --- a $0.008$ gap against an AUROC
+SE of $\approx\!0.047$. Computed by \ttk{scripts/\_tmol\_ddg\_compute.py} $+$
+\ttk{scripts/\_tmol\_ddg\_analyze.py} and \ttk{scripts/\_packed\_potentials\_compute.py}.}
+\label{tab:ddg}
+\end{table}
+
+\emph{Why the null, and the decision.} The discrepancy with Table \ref{tab:potentials}'s $0.778$ is
+the \emph{pool}, not the metric. Table \ref{tab:potentials} spanned $3500$ designs across the whole
+base$\rightarrow$GRPO trajectory --- a wide interface-energy range, from clashy early designs to
+de-clashed late ones --- where LJ energy is a strong pass-predictor precisely because it separates
+those regimes. The A8 set is a single advanced checkpoint's cold generations: interface energy is
+already compressed and near-native, so within it pass/fail turns on fold/dock correctness, not on
+residual interaction energy, and \emph{no} energy term --- our numpy $\R_{\mathrm{LJ}}$ included ---
+can separate the band. This matched null therefore does \emph{not} clear the gate: the physics
+upgrade shows no decisive AUROC advantage over the numpy $\R_{\mathrm{LJ}}$ it would replace, at
+$\sim\!30$--$60\times$ the per-design cost (two Cartesian minimizations). \textbf{The tmol
+$\Delta\Delta G$ ships at weight $0$} --- packaged, wired-ready, and computed as a tracked diagnostic
+--- rather than as a graded reward. It is a drop-in the moment a wide-pool re-test (the
+base$\rightarrow$GRPO span of Table \ref{tab:potentials}, where $\R_{\mathrm{LJ}}$ reaches $0.778$)
+shows a $\Delta\Delta G$ flavor separating \emph{that} regime better than the numpy sum; on a matched
+within-checkpoint set the two are statistically indistinguishable, so the cheaper term stays primary.
+
 \section{The third reward set: Protenix fold-consistency distillation}
 \label{sec:protenix-sft}
 Every reward so far is computed on structure the policy \emph{itself} emitted --- the generated
@@ -1823,8 +1903,12 @@ declared in \ttk{pyproject.toml}; a \ttk{sys.modules}-alias shim preserves the
 package (single source of truth); and \ttk{tests/plm\_design\_rl/test\_ddg\_reward.py} checks the
 mapper (bounds, monotonicity, floor-to-zero, numerical stability) and the install-error discipline,
 with the shim-identity suite extended to cover it. Whether the weight is turned on above $0$ is
-gated on the offline head-to-head: ship it only if a $\Delta\Delta G$ flavor beats \ttk{e\_lj}
-(AUROC $0.778$); the sweep is in flight.
+gated on the offline head-to-head (\S\ref{sec:ddg}): the matched $811$-design run is now
+\emph{done}, and it is a null --- on a single-checkpoint set every interface-energy term (numpy
+$\R_{\mathrm{LJ}}$ included) collapses to $\approx\!0.5$, so no $\Delta\Delta G$ flavor decisively
+beats \ttk{e\_lj}. The term therefore \textbf{ships at weight $0$} (tracked diagnostic, drop-in
+ready), pending a wide-pool re-test on the base$\rightarrow$GRPO span where \ttk{e\_lj} reaches
+$0.778$.
 
 \paragraph{Remaining (steps 2--4 --- the interface work).}
 \begin{itemize}
