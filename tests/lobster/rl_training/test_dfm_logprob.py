@@ -200,6 +200,34 @@ def test_logprob_matches_captured_step_prob() -> None:
     torch.testing.assert_close(got, expected, atol=1e-5, rtol=1e-5)
 
 
+def test_logprob_per_position_sums_to_default() -> None:
+    """``per_position=True`` returns a masked ``(B, L)`` tensor that sums over L to the default.
+
+    This is the contract the per-token structure-track advantage (e_lj / clash per-residue
+    credit) relies on: routing credit per position, then summing, must not change the total.
+    """
+    torch.manual_seed(3)
+    batch_size, length = 2, 5
+    logits = torch.randn(batch_size, length, VOCAB_SIZE, dtype=torch.float32)
+    xt = torch.tensor(
+        [[MASK_INDEX, MASK_INDEX, 1, MASK_INDEX, 0], [MASK_INDEX, 2, MASK_INDEX, MASK_INDEX, MASK_INDEX]],
+        dtype=torch.long,
+    )
+    x_next = torch.tensor([[0, 3, 1, 2, 0], [1, 2, 0, 3, 2]], dtype=torch.long)
+    gen_mask = torch.tensor([[1, 1, 0, 1, 0], [1, 0, 1, 1, 1]], dtype=torch.bool)
+    t = torch.full((batch_size,), 0.35, dtype=torch.float32)
+
+    common = dict(mask_index=MASK_INDEX, temperature=1.0, stochasticity=1.0)
+    summed = dfm_step_logprob(logits, t, 0.05, xt, x_next, gen_mask, **common)
+    per_pos = dfm_step_logprob(logits, t, 0.05, xt, x_next, gen_mask, per_position=True, **common)
+
+    assert per_pos.shape == (batch_size, length)
+    # Fixed / non-generated positions carry exactly zero credit.
+    assert torch.all(per_pos[~gen_mask] == 0.0)
+    # Summing the per-position credit over L reproduces the default (B,) return.
+    torch.testing.assert_close(per_pos.sum(dim=-1), summed, atol=1e-6, rtol=1e-6)
+
+
 def test_gradcheck_logprob() -> None:
     """Double-precision gradcheck of the log-prob w.r.t. logits (interior probs)."""
     torch.manual_seed(4)

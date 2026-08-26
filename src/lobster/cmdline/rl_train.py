@@ -229,6 +229,25 @@ def rl_train(cfg: DictConfig) -> None:
     g = cfg.grpo
     _blen_min = g.get("binder_length_min", None)
     _blen_max = g.get("binder_length_max", None)
+    # LigandMPNN-repack reward pool config (serves SC shape-complementarity, all-atom clash,
+    # and ProteinMPNN AAR from ONE pool). Read from an optional top-level `shape:` block
+    # (mirrors `reward:`); the queue defaults to a `shape_queue/` subdir of the run's
+    # output_dir when any repack weight (w_shape / w_sc_clash / w_aar) > 0 and no explicit
+    # queue_dir is given. Absent block + all repack weights 0 leaves every repack term inert
+    # (no client constructed).
+    shape_cfg = cfg.get("shape", None)
+    _shape_queue = None
+    if shape_cfg is not None:
+        _shape_queue = shape_cfg.get("queue_dir", None)
+    _need_repack = (
+        float(g.get("w_shape", 0.0)) > 0
+        or float(g.get("w_sc_clash", 0.0)) > 0
+        or float(g.get("w_aar", 0.0)) > 0
+        # CHORD SFT distillation also draws the LigandMPNN-designed sequence from the pool.
+        or float(g.get("sft_mu", 0.0)) > 0
+    )
+    if _shape_queue is None and _need_repack:
+        _shape_queue = f"{cfg.output_dir}/shape_queue"
     grpo_config = GRPOTrainerConfig(
         group_size=int(g.group_size),
         num_steps=int(g.num_steps),
@@ -252,14 +271,114 @@ def rl_train(cfg: DictConfig) -> None:
         # Structure self-consistency + diversity weights (all off by default).
         w_sctm_binder=float(g.get("w_sctm_binder", 0.0)),
         w_sctm_complex=float(g.get("w_sctm_complex", 0.0)),
+        log_struct_diagnostic=bool(g.get("log_struct_diagnostic", False)),
         w_seq_diversity=float(g.get("w_seq_diversity", 0.0)),
         w_struct_diversity=float(g.get("w_struct_diversity", 0.0)),
+        # Within-sequence anti-degeneracy: per-design saturating linguistic-complexity reward
+        # (reward += w_seq_complexity * clip(LC/lc_full, 0, 1)); off by default.
+        w_seq_complexity=float(g.get("w_seq_complexity", 0.0)),
+        lc_full=float(g.get("lc_full", 0.7)),
+        # Interface-distribution distance reward (Protenix-free shaping); off by default.
+        w_aa_dist=float(g.get("w_aa_dist", 0.0)),
+        w_3di_dist=float(g.get("w_3di_dist", 0.0)),
+        # Track the distribution diagnostics even when both dist weights are 0 (the term
+        # then contributes 0 to the reward); requires dist_reference.
+        log_dist_diagnostic=bool(g.get("log_dist_diagnostic", False)),
+        dist_metric=str(g.get("dist_metric", "tv")),
+        dist_reference=g.get("dist_reference", None),
+        # Interface-size guardrail (collapse penalty); defaults reproduce prior behaviour.
+        dist_min_iface=int(g.get("dist_min_iface", 4)),
+        # Interface vs whole-binder distribution blend (0 = interface-only, default).
+        dist_binder_frac=float(g.get("dist_binder_frac", 0.0)),
+        dist_iface_penalty=float(g.get("dist_iface_penalty", 0.0)),
+        # Smooth clash + interface-contact geometry reward (Protenix-free); off by default.
+        w_clash_contact=float(g.get("w_clash_contact", 0.0)),
+        clash_d_clash=float(g.get("clash_d_clash", 2.2)),
+        clash_soft=float(g.get("clash_soft", 0.5)),
+        clash_scale=float(g.get("clash_scale", 50.0)),
+        contact_d0=float(g.get("contact_d0", 8.0)),
+        contact_soft=float(g.get("contact_soft", 1.0)),
+        frac_lo=float(g.get("frac_lo", 0.05)),
+        frac_peak=float(g.get("frac_peak", 0.16)),
+        frac_hi=float(g.get("frac_hi", 0.4)),
+        clash_seq_sep=int(g.get("clash_seq_sep", 2)),
+        clash_include_cb=bool(g.get("clash_include_cb", True)),
+        # Backbone chain-break realism reward (Protenix-free; C–N peptide-bond geometry). A [0,1]
+        # regularizer (mean_r·gate) weighted by w_chainbreak; off by default. Supplies the
+        # per-residue energy that the per-token chain-break advantage decomposes.
+        w_chainbreak=float(g.get("w_chainbreak", 0.0)),
+        chainbreak_gate=str(g.get("chainbreak_gate", "count")),
+        chainbreak_gate_k=float(g.get("chainbreak_gate_k", 2.0)),
+        chainbreak_ideal=float(g.get("chainbreak_ideal", 1.33)),
+        chainbreak_tol=float(g.get("chainbreak_tol", 0.10)),
+        chainbreak_cap=float(g.get("chainbreak_cap", 2.00)),
+        chainbreak_sigma=float(g.get("chainbreak_sigma", 0.50)),
+        chainbreak_break_hard=float(g.get("chainbreak_break_hard", 2.0)),
+        chainbreak_break_d0=float(g.get("chainbreak_break_d0", 2.0)),
+        chainbreak_break_soft=float(g.get("chainbreak_break_soft", 0.10)),
+        # Full-atom LigandMPNN-repack rewards (ONE shared pool): SC 3DZD shape-complementarity,
+        # all-atom side-chain clash, and ProteinMPNN AAR. All off by default; any weight > 0
+        # builds the pool client and requires a shape queue. All run on the CPU worker pool —
+        # scale throughput by adding CPU workers (no GPU contention).
+        w_shape=float(g.get("w_shape", 0.0)),
+        w_sc_clash=float(g.get("w_sc_clash", 0.0)),
+        sc_clash_density=bool(g.get("sc_clash_density", False)),
+        # Track (compute + log) all-atom SC clash without putting it in the reward (diagnostic).
+        log_sc_clash_diagnostic=bool(g.get("log_sc_clash_diagnostic", False)),
+        w_aar=float(g.get("w_aar", 0.0)),
+        # Per-token (per-residue) backbone-clash advantage routed to the structure track.
+        per_token_clash=bool(g.get("per_token_clash", False)),
+        w_pt_clash=float(g.get("w_pt_clash", 1.0)),
+        # Per-token (per-residue) backbone chain-break advantage routed to the structure track
+        # (the exact analog of per_token_clash). Requires w_chainbreak > 0 (its energy source).
+        per_token_chainbreak=bool(g.get("per_token_chainbreak", False)),
+        w_pt_chainbreak=float(g.get("w_pt_chainbreak", 1.0)),
+        # Per-token (per-residue) all-atom interface-potential advantage (e_lj/dsasa/n_hb on the
+        # LigandMPNN pack) routed to the structure track. Reuses the R_SC pack via the "pot" want.
+        per_token_pot=bool(g.get("per_token_pot", False)),
+        w_pt_lj=float(g.get("w_pt_lj", 1.0)),
+        w_pt_dsasa=float(g.get("w_pt_dsasa", 1.0)),
+        w_pt_hb=float(g.get("w_pt_hb", 1.0)),
+        pot_with_sasa=bool(g.get("pot_with_sasa", True)),
+        pt_clash_tracks=tuple(g.get("pt_clash_tracks", ("structure_tokens",))),
+        # CHORD SFT distillation (dense per-token LigandMPNN sequence supervision blended into
+        # the GRPO loss). sft_mu>0 activates it; it rides the "aar" repack path (return_seq),
+        # so it needs a shape queue but does NOT require w_aar>0. Off by default.
+        sft_mu=float(g.get("sft_mu", 0.0)),
+        sft_mu_schedule=g.get("sft_mu_schedule", None),
+        sft_use_phi=bool(g.get("sft_use_phi", True)),
+        sft_scope=str(g.get("sft_scope", "interface")),
+        sft_label=str(g.get("sft_label", "hard")),
+        sft_temperature=float(g.get("sft_temperature", 1.0)),
+        sft_masked_only=bool(g.get("sft_masked_only", True)),
+        sft_reward_gate=g.get("sft_reward_gate", None),
+        # Structure CHORD SFT distillation (structural dual of the sequence CHORD term: Protenix
+        # folds the policy sequence -> X* -> derive 3Di tau* + LG structure tokens s*, then distill
+        # the structure/tri tracks). struct_sft_mu>0 activates it and REQUIRES the Protenix worker
+        # pool (reward_client). Off by default.
+        struct_sft_mu=float(g.get("struct_sft_mu", 0.0)),
+        struct_sft_mu_schedule=g.get("struct_sft_mu_schedule", None),
+        struct_sft_w_struct=float(g.get("struct_sft_w_struct", 1.0)),
+        struct_sft_w_tri=float(g.get("struct_sft_w_tri", 1.0)),
+        struct_sft_use_phi=bool(g.get("struct_sft_use_phi", True)),
+        struct_sft_masked_only=bool(g.get("struct_sft_masked_only", True)),
+        struct_sft_reward_gate=g.get("struct_sft_reward_gate", None),
+        shape_queue_dir=_shape_queue,
+        shape_timeout_s=float(shape_cfg.get("timeout_s", 1800.0)) if shape_cfg is not None else 1800.0,
+        shape_poll_s=float(shape_cfg.get("poll_s", 2.0)) if shape_cfg is not None else 2.0,
+        shape_cache=bool(shape_cfg.get("cache", True)) if shape_cfg is not None else True,
+        shape_n_shards=int(shape_cfg.get("n_shards", 1)) if shape_cfg is not None else 1,
         # Per-group binder-length sampling (both set => L ~ U[min, max], constant per group).
         binder_length_min=None if _blen_min is None else int(_blen_min),
         binder_length_max=None if _blen_max is None else int(_blen_max),
+        # Multi-target gradient accumulation. Default 10 (training-stabilization baseline);
+        # set accum_targets=1 + shuffle_targets=False for the legacy single-target loop.
+        accum_targets=int(g.get("accum_targets", 10)),
+        shuffle_targets=bool(g.get("shuffle_targets", False)),
         tracks=tuple(g.get("tracks", ("sequence_tokens", "structure_tokens", "tri_tokens"))),
         capture_old_lp_inline=bool(g.get("capture_old_lp_inline", True)),
         grad_clip=float(g.get("grad_clip", 1.0)),
+        grad_checkpoint=bool(g.get("grad_checkpoint", False)),
         rollout_kwargs=_build_rollout_kwargs(cfg.generation, device),
         seed=int(g.get("seed", 0)),
         log_every=int(g.get("log_every", 1)),

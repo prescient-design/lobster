@@ -207,6 +207,7 @@ def dfm_step_logprob(
     temperature: float = 1.0,
     stochasticity: float = 1.0,
     eps: float = 1e-9,
+    per_position: bool = False,
 ) -> Tensor:
     """Log-probability of a sampled transition ``xt -> x_next`` over generated positions.
 
@@ -238,12 +239,20 @@ def dfm_step_logprob(
         Stochasticity level. Defaults to ``1.0``.
     eps : float, optional
         Floor added inside the log for numerical stability. Defaults to ``1e-9``.
+    per_position : bool, optional
+        When ``True``, return the masked per-position log-prob of shape ``(B, L)``
+        (generated positions carry ``log step_prob[b, l, x_next]``; fixed positions
+        are zeroed) instead of summing over ``L``. Used by the per-token structure-
+        track advantage (e.g. the e_lj/clash per-residue credit). Defaults to
+        ``False``; ``per_position=True`` output summed over ``L`` equals the default
+        ``(B,)`` return. Defaults to ``False``.
 
     Returns
     -------
     Tensor
-        Per-batch summed log-probability of shape ``(B,)``, differentiable in
-        ``logits``.
+        Per-batch summed log-probability of shape ``(B,)`` (default), or the masked
+        per-position log-prob of shape ``(B, L)`` when ``per_position=True``;
+        differentiable in ``logits``.
 
     Notes
     -----
@@ -259,7 +268,10 @@ def dfm_step_logprob(
     chosen = step_prob.gather(dim=-1, index=x_next.long().unsqueeze(-1)).squeeze(-1)  # (B, L)
     logp = torch.log(chosen.clamp_min(eps)) - torch.log(row_sum)  # (B, L) — normalized categorical
     gen = gen_mask.to(logp.dtype)
-    return (logp * gen).sum(dim=-1)  # (B,)
+    logp_pos = logp * gen  # (B, L) — masked per-position log-prob
+    if per_position:
+        return logp_pos  # (B, L)
+    return logp_pos.sum(dim=-1)  # (B,)
 
 
 def dfm_step_kl(

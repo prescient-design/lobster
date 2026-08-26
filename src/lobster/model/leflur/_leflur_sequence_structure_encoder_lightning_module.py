@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 import torch
 import torch.nn as nn
+import torch.utils.checkpoint
 import transformers
 from lightning import LightningModule
 from torch import Tensor
@@ -150,6 +151,15 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         use_paratope_conditioning: bool = False,
         paratope_cond_percentage: float = 0.2,
         paratope_max_residues: int = 3,
+        # Depth-wise DEEP SUPERVISION. Attach auxiliary heads to an intermediate NeoBERT layer (1-indexed;
+        # e.g. 33 = midpoint of the 66-layer medium preset) predicting the SEQUENCE and the PER-MONOMER 3Di
+        # fold (batch["3di_states_monomer"], each chain encoded in isolation), so early layers specialize in
+        # folding each chain while late layers keep the whole-complex heads (docking). The layer index is
+        # passed to the encoder (builds the heads); the two loss weights gate the losses here. None / 0
+        # (default) => no heads built, no capture, no loss => byte-identical to the base path.
+        deep_supervision_layer: int | None = None,
+        early_seq_loss_weight: float = 0.0,
+        early_tri_monomer_loss_weight: float = 0.0,
     ):
         self.save_hyperparameters()
         self.cond_percentage = cond_percentage
@@ -172,6 +182,10 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         self.use_paratope_conditioning = use_paratope_conditioning
         self.paratope_cond_percentage = paratope_cond_percentage
         self.paratope_max_residues = paratope_max_residues
+        # Deep-supervision config (early monomer-fold heads).
+        self.deep_supervision_layer = deep_supervision_layer
+        self.early_seq_loss_weight = early_seq_loss_weight
+        self.early_tri_monomer_loss_weight = early_tri_monomer_loss_weight
         # 3Di vocab: 20 Foldseek states (0..19) + mask (20) + pad (21).
         self.num_tri_classes = 22
         self.mask_index_tri = 20
@@ -273,6 +287,16 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         # Template-token conditioning: "no template" index = structure_token_vocab_size
         # (the extra embedding row); templated residues use clean tokens 0..n_tokens-1.
         self.no_template_idx = self.num_struc_classes
+        # Deep supervision (early-layer auxiliary heads) is NOT implemented by the encoder /
+        # NeoBERT in this tree — it lives on a divergent branch. The base leflur-binder-3di
+        # ckpt does not use it (hparam absent -> None, no deep-supervision weights), so we do
+        # not forward the kwarg (the encoder would sweep it into **neobert_kwargs and NeoBERT
+        # would reject it). Guard against loading a checkpoint that genuinely needs it.
+        if deep_supervision_layer is not None:
+            raise NotImplementedError(
+                "deep_supervision_layer is set, but the current LeFlur encoder/NeoBERT do not "
+                "implement deep supervision. Expected None for the leflur-binder-3di base ckpt."
+            )
         self.encoder = LeFlurSequenceStructureEncoderModule(
             auxiliary_tasks=auxiliary_tasks,
             sequence_token_vocab_size=self.vocab_size,
@@ -426,6 +450,47 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             ).mean()
             total_loss += self.tri_loss_weight * loss_tri
             loss_dict[f"{split}_interpolant_tri"] = loss_tri
+        return total_loss, loss_dict
+
+    def apply_deep_supervision_loss(
+        self,
+        split: str,
+        x_gt: dict[str, Tensor],
+        unmasked_x: dict[str, Tensor],
+        total_loss: Tensor,
+        loss_dict: dict[str, Tensor],
+        timesteps: dict[str, Tensor],
+    ) -> tuple[Tensor, dict[str, Tensor]]:
+        """Depth-wise deep-supervision loss (early monomer-fold heads).
+
+        The early heads read an intermediate NeoBERT layer and predict the SEQUENCE and the PER-MONOMER
+        3Di fold. They reuse the SAME masked-prior (D3PM masked-only) interpolant loss and the SAME
+        timesteps as the final heads — the early heads see the same noised COMPLEX ``x_t`` but must recover
+        the clean sequence / isolated-chain 3Di. That input/target divergence at the interface (complex in,
+        monomer 3Di out) is the intended pressure pushing monomer structure into the early layers.
+
+        No-op unless deep supervision is enabled, at least one weight is > 0, and the early logits + monomer
+        GT are present.
+        """
+        if self.deep_supervision_layer is None:
+            return total_loss, loss_dict
+        if self.early_seq_loss_weight <= 0 and self.early_tri_monomer_loss_weight <= 0:
+            return total_loss, loss_dict
+
+        if self.early_seq_loss_weight > 0 and "early_sequence_logits" in unmasked_x:
+            loss_seq_e = self.interpolant_seq.loss(
+                unmasked_x["early_sequence_logits"], x_gt["sequence_tokens"], timesteps["sequence_tokens"]
+            ).mean()
+            total_loss += self.early_seq_loss_weight * loss_seq_e
+            loss_dict[f"{split}_early_seq"] = loss_seq_e
+
+        if self.early_tri_monomer_loss_weight > 0 and "early_tri_logits" in unmasked_x and "tri_tokens_monomer" in x_gt:
+            loss_tri_e = self.interpolant_tri.loss(
+                unmasked_x["early_tri_logits"], x_gt["tri_tokens_monomer"], timesteps["tri_tokens"]
+            ).mean()
+            total_loss += self.early_tri_monomer_loss_weight * loss_tri_e
+            loss_dict[f"{split}_early_tri_monomer"] = loss_tri_e
+
         return total_loss, loss_dict
 
     def apply_distogram_loss(
@@ -587,6 +652,17 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             tri_gt = tri_gt.clamp(0, self.mask_index_tri - 1)  # guard any stray values into [0,19]
             tri_gt[~m3] = self.padding_index_tri
             x_gt["tri_tokens"] = tri_gt
+
+        # Per-MONOMER 3Di GT (each chain encoded in isolation; deep-supervision target). Built the same way
+        # as tri_tokens but from batch["3di_states_monomer"]. Only present when the transform emitted it and
+        # deep supervision is on; the whole-complex tri_tokens above is untouched.
+        if self.deep_supervision_layer is not None and batch.get("3di_states_monomer") is not None:
+            tri_mono_gt = batch["3di_states_monomer"].to(device).long().clone()
+            Lm = tri_mono_gt.shape[1]
+            mm = mask.bool()[:, :Lm]
+            tri_mono_gt = tri_mono_gt.clamp(0, self.mask_index_tri - 1)  # guard stray values into [0,19]
+            tri_mono_gt[~mm] = self.padding_index_tri
+            x_gt["tri_tokens_monomer"] = tri_mono_gt
 
         # Generate a random mask for each batch index
         conditioning_mask = torch.rand(B, device=device) < cond_percentage
@@ -877,6 +953,12 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             split, x_gt, unmasked_x, mask, total_loss, loss_dict, timesteps
         )
 
+        # Depth-wise deep-supervision loss (early monomer-fold heads). No-op unless
+        # deep_supervision_layer is set and at least one early weight > 0.
+        total_loss, loss_dict = self.apply_deep_supervision_loss(
+            split, x_gt, unmasked_x, total_loss, loss_dict, timesteps
+        )
+
         # Auxiliary distogram loss (no-op unless distogram_loss_weight>0 AND the
         # encoder was built with a distogram head, i.e. "distogram_logits" is present).
         if self.distogram_loss_weight > 0 and "distogram_logits" in unmasked_x:
@@ -916,6 +998,15 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             f"{split}_timesteps_seq": timesteps["sequence_tokens"],
             f"{split}_timesteps_struc": timesteps["structure_tokens"],
         }
+
+    def _extra_forward_kwargs(self, xt: dict[str, Tensor], mask: Tensor) -> dict:
+        """Extra keyword args spliced into the per-step ``generate_sample`` forwards.
+
+        No-op ({}) in the base module, so the sampler is byte-identical. The Forward-XM
+        subclass overrides this to inject a sampled ``xm_latent_add`` at masked positions,
+        keeping inference in-distribution with best-of-K training (arXiv:2607.27372).
+        """
+        return {}
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
         return self.step(batch, batch_idx, "train")
@@ -1269,6 +1360,11 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                 }
                 trajectory_store["steps"].append(_traj_rec)
 
+            # Forward-XM: inject the masked-position latent so inference matches best-of-K
+            # training (no-op {} for the base module / K<=1). Drawn ONCE per denoising step and
+            # shared across the cond + uncond forwards (one latent draw feeds one forward set,
+            # so CFG differs only in the conditioning tensor). Masked positions shrink each step.
+            _xm_kwargs = self._extra_forward_kwargs(xt, mask)
             unmasked_x = self.forward(
                 xt,
                 mask,
@@ -1278,6 +1374,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                 chain_ids=chain_ids,
                 template_structure_tokens=template_structure_tokens,
                 scalar_cond_bins=scalar_cond_bins,
+                **_xm_kwargs,
             )
             # Classifier-free guidance: extrapolate logits away from the unconditional (no-epitope)
             # prediction to amplify the hotspot signal (which steers the interface, esp. L36).
@@ -1291,6 +1388,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                     chain_ids=chain_ids,
                     template_structure_tokens=template_structure_tokens,
                     scalar_cond_bins=scalar_cond_bins,
+                    **_xm_kwargs,
                 )
                 for _k in ("sequence_logits", "structure_logits"):
                     unmasked_x[_k] = uncond_x[_k] + cfg_weight * (unmasked_x[_k] - uncond_x[_k])
@@ -1564,6 +1662,7 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         t_struc: Tensor,
         step_idx: int,
         static: dict,
+        return_raw_seq: bool = False,
     ) -> dict[str, Tensor | None]:
         """Reproduce the exact per-track biased logits a ``generate_sample`` step used.
 
@@ -1593,7 +1692,13 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         -------
         dict[str, Tensor | None]
             Biased logits keyed ``sequence_tokens`` / ``structure_tokens`` /
-            ``tri_tokens`` (the last is ``None`` when the 3Di track is inactive).
+            ``tri_tokens`` (the last is ``None`` when the 3Di track is inactive). When
+            ``return_raw_seq`` is set, also carries ``raw_sequence_logits`` — the RAW
+            conditional sequence-endpoint logits captured immediately after the forward,
+            BEFORE any CFG mixing or seq bias/diversity penalty. This is bit-identical to
+            :meth:`_sft_seq_endpoint_logits`'s return (same forward, same timesteps, no
+            sampler tricks), so the CHORD SFT term can reuse this one forward instead of
+            running a second one (lever B: fuse the logprob + SFT forwards).
         """
         timesteps = {"sequence_tokens": t_seq, "structure_tokens": t_struc}
         out = self.forward(
@@ -1606,6 +1711,11 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             template_structure_tokens=static["template_structure_tokens"],
             scalar_cond_bins=static["scalar_cond_bins"],
         )
+        # Capture the RAW conditional seq logits before CFG/bias touch them (lever B). The CFG
+        # block below reassigns out["sequence_logits"] to a new tensor, and the seq-bias block
+        # reads it again; keeping our own reference here preserves the pre-trick conditional
+        # exactly as _sft_seq_endpoint_logits would recompute it.
+        raw_seq_logits = out["sequence_logits"] if return_raw_seq else None
         # Classifier-free guidance touches seq+struc only (NOT tri) — mirror the sampler.
         cfg_weight = static["cfg_weight"]
         if cfg_weight != 1.0:
@@ -1653,7 +1763,14 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                 _freq = _oh.sum(dim=1) / _gm.to(tri_logits.dtype).sum(dim=1, keepdim=True).clamp(min=1.0)
                 tri_logits = tri_logits - static["tri_diversity_penalty"] * _freq.unsqueeze(1)
 
-        return {"sequence_tokens": seq_logits, "structure_tokens": struc_logits, "tri_tokens": tri_logits}
+        result: dict[str, Tensor | None] = {
+            "sequence_tokens": seq_logits,
+            "structure_tokens": struc_logits,
+            "tri_tokens": tri_logits,
+        }
+        if return_raw_seq:
+            result["raw_sequence_logits"] = raw_seq_logits
+        return result
 
     def _iter_traj_steps(self, trajectory: dict, step_indices: Sequence[int] | None):
         """Yield ``(record, xt_on_device, t_seq, t_struc)`` for each requested step."""
@@ -1666,12 +1783,95 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             xt_dev = {k: v.to(device=device, dtype=torch.long) for k, v in rec["xt"].items()}
             yield rec, xt_dev, rec["t_seq"].to(device), rec["t_struc"].to(device)
 
+    def _step_logprob(
+        self,
+        rec: dict,
+        xt_dev: dict,
+        t_seq: Tensor,
+        t_struc: Tensor,
+        tracks: Sequence[str],
+        static: dict,
+        mask_index: dict,
+        gen_mask: dict,
+        device: torch.device,
+        per_position_tracks: Sequence[str] = (),
+    ) -> Tensor | tuple[Tensor, Tensor]:
+        """Per-step summed transition log-prob ``(B,)`` for the requested tracks.
+
+        Recomputes the biased step logits (the expensive forward) and sums
+        :func:`dfm_step_logprob` over the contributing tracks at this step. Factored
+        out of :meth:`logprob_over_trajectory` so the whole step — forward plus
+        log-prob — can be wrapped in :func:`torch.utils.checkpoint.checkpoint`
+        (``use_reentrant=False``): the forward activations are then freed after this
+        call and recomputed in backward, so peak update memory no longer scales with
+        ``steps_per_update``. Returns ``zeros(B)`` if no track contributes this step.
+
+        When ``per_position_tracks`` is non-empty those tracks are summed **per
+        position** (shape ``(B, L)``, one forward shared with ``tracks``) and the
+        method returns ``(acc, acc_pos)`` — used by the per-token clash advantage,
+        which routes per-residue credit to the structure track. ``tracks`` and
+        ``per_position_tracks`` are treated as disjoint sets. When
+        ``per_position_tracks`` is empty the return is byte-identical to before
+        (a single ``(B,)`` tensor).
+        """
+        from lobster.rl_training._dfm_logprob import dfm_step_logprob
+
+        biased = self._recompute_biased_step_logits(xt_dev, t_seq, t_struc, rec["step_idx"], static)
+        acc: Tensor | None = None
+        for track in tracks:
+            tr = rec["tracks"].get(track)
+            if tr is None or biased.get(track) is None or gen_mask.get(track) is None:
+                continue  # e.g. tri track held clean this step, or track not generated
+            lp = dfm_step_logprob(
+                biased[track],
+                tr["t"].to(device),
+                tr["dt"].to(device) if torch.is_tensor(tr["dt"]) else tr["dt"],
+                tr["xt"].to(device=device, dtype=torch.long),
+                tr["x_next"].to(device=device, dtype=torch.long),
+                gen_mask[track].to(device),
+                mask_index=mask_index[track],
+                temperature=tr["temperature"],
+                stochasticity=tr["stochasticity"],
+            )
+            acc = lp if acc is None else acc + lp
+        if not per_position_tracks:
+            if acc is None:
+                return torch.zeros(static["mask"].shape[0], device=device)
+            return acc
+        # Per-position accumulation for the requested tracks (shares `biased`).
+        acc_pos: Tensor | None = None
+        for track in per_position_tracks:
+            tr = rec["tracks"].get(track)
+            if tr is None or biased.get(track) is None or gen_mask.get(track) is None:
+                continue
+            lp_pos = dfm_step_logprob(
+                biased[track],
+                tr["t"].to(device),
+                tr["dt"].to(device) if torch.is_tensor(tr["dt"]) else tr["dt"],
+                tr["xt"].to(device=device, dtype=torch.long),
+                tr["x_next"].to(device=device, dtype=torch.long),
+                gen_mask[track].to(device),
+                mask_index=mask_index[track],
+                temperature=tr["temperature"],
+                stochasticity=tr["stochasticity"],
+                per_position=True,
+            )
+            acc_pos = lp_pos if acc_pos is None else acc_pos + lp_pos
+        b, ell = static["mask"].shape[0], static["mask"].shape[1]
+        if acc is None:
+            acc = torch.zeros(b, device=device)
+        if acc_pos is None:
+            acc_pos = torch.zeros(b, ell, device=device)
+        return acc, acc_pos
+
     def logprob_over_trajectory(
         self,
         trajectory: dict,
         tracks: Sequence[str] = ("sequence_tokens", "structure_tokens", "tri_tokens"),
         step_indices: Sequence[int] | None = None,
-    ) -> Tensor:
+        grad_checkpoint: bool = False,
+        per_position_tracks: Sequence[str] = (),
+    ) -> Tensor | tuple[Tensor, Tensor]:
         """Differentiable summed transition log-prob of a captured rollout under this policy.
 
         For every requested step, reproduces the biased per-track logits
@@ -1691,14 +1891,27 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
         step_indices : Sequence[int] | None, optional
             Optional subset of step positions (diffu-GRPO random step-subsampling).
             ``None`` uses every captured step.
+        grad_checkpoint : bool, optional
+            When ``True`` (and grad is enabled), wrap each step's forward+log-prob in
+            :func:`torch.utils.checkpoint.checkpoint` (non-reentrant) so per-step
+            forward activations are freed and recomputed in backward. This decouples
+            peak update memory from the number of subset steps, letting
+            ``steps_per_update > 1`` fit at large ``group_size``. Default ``False``
+            keeps the direct (byte-identical) accumulation path.
+        per_position_tracks : Sequence[str], optional
+            Tracks to accumulate **per position** (returned as an extra ``(B, L)``
+            tensor) in addition to the summed ``(B,)`` total over ``tracks``. Treated
+            as disjoint from ``tracks``. When non-empty the method returns
+            ``(total, total_pos)``; when empty (default) it returns the single
+            ``(B,)`` tensor (byte-identical to before). Used by the per-token clash
+            advantage to obtain per-residue structure log-probs.
 
         Returns
         -------
-        Tensor
-            Per-design summed log-prob of shape ``(B,)``.
+        Tensor or tuple[Tensor, Tensor]
+            Per-design summed log-prob ``(B,)``; or ``((B,), (B, L))`` when
+            ``per_position_tracks`` is non-empty.
         """
-        from lobster.rl_training._dfm_logprob import dfm_step_logprob
-
         static = trajectory["static"]
         device = static["mask"].device
         mask_index = {
@@ -1711,14 +1924,342 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
             "structure_tokens": static["gen_mask_struc"],
             "tri_tokens": static["gen_mask_tri"],
         }
+        want_pos = bool(per_position_tracks)
+        use_ckpt = grad_checkpoint and torch.is_grad_enabled()
         total: Tensor | None = None
+        total_pos: Tensor | None = None
         for rec, xt_dev, t_seq, t_struc in self._iter_traj_steps(trajectory, step_indices):
-            biased = self._recompute_biased_step_logits(xt_dev, t_seq, t_struc, rec["step_idx"], static)
-            for track in tracks:
+            if use_ckpt:
+                # Whole-step (forward + log-prob) checkpoint: frees this step's forward
+                # activations so peak memory is ~O(group_size), not O(group_size × spu).
+                step_out = torch.utils.checkpoint.checkpoint(
+                    self._step_logprob,
+                    rec,
+                    xt_dev,
+                    t_seq,
+                    t_struc,
+                    tuple(tracks),
+                    static,
+                    mask_index,
+                    gen_mask,
+                    device,
+                    tuple(per_position_tracks),
+                    use_reentrant=False,
+                )
+                if want_pos:
+                    step_lp, step_lp_pos = step_out
+                    total_pos = step_lp_pos if total_pos is None else total_pos + step_lp_pos
+                else:
+                    step_lp = step_out
+                total = step_lp if total is None else total + step_lp
+                continue
+            step_out = self._step_logprob(
+                rec,
+                xt_dev,
+                t_seq,
+                t_struc,
+                tuple(tracks),
+                static,
+                mask_index,
+                gen_mask,
+                device,
+                tuple(per_position_tracks),
+            )
+            if want_pos:
+                step_lp, step_lp_pos = step_out
+                total_pos = step_lp_pos if total_pos is None else total_pos + step_lp_pos
+            else:
+                step_lp = step_out
+            total = step_lp if total is None else total + step_lp
+        if total is None:
+            total = torch.zeros(static["mask"].shape[0], device=device)
+        if want_pos:
+            if total_pos is None:
+                total_pos = torch.zeros(static["mask"].shape[0], static["mask"].shape[1], device=device)
+            return total, total_pos
+        return total
+
+    @staticmethod
+    def _expert_context_seq(xt_seq: Tensor, target: Tensor, mask_index_seq: int) -> Tensor:
+        """Rebuild the seq-track state with the EXPERT sequence in the revealed context.
+
+        CHORD SFT distils a coherent expert sequence (the LigandMPNN-designed binder), whose
+        residues co-depend on one another. The rollout state ``xt_seq`` reveals the *policy's*
+        own sampled tokens at unmasked positions, so conditioning the SFT forward on it would
+        teach ``p_θ(y*_masked | policy context)`` — a chimera that is self-consistent as neither
+        sequence. Here we overwrite the *revealed* supervised positions with the expert token so
+        the forward instead sees ``p_θ(y* | y*-context)`` — pure denoising distillation of the
+        expert conditional. Masked positions keep the mask (they are the supervised targets);
+        antigen / non-designed positions keep ``xt_seq`` (antigen is identical clean context in
+        both). ``target`` is already in the 33-token ``AA_VOCAB`` space (``< 0`` = no expert id).
+        """
+        revealed = (target >= 0) & (xt_seq != mask_index_seq)
+        return torch.where(revealed, target.to(xt_seq.dtype), xt_seq)
+
+    def _sft_seq_endpoint_logits(
+        self, xt_dev: dict, t_seq: Tensor, t_struc: Tensor, static: dict, *, seq_override: Tensor | None = None
+    ) -> Tensor:
+        """Raw (conditional, unbiased) sequence-endpoint logits for one rollout step.
+
+        Mirrors the plain training-time head used by :meth:`apply_interpolant_loss`
+        (``forward(...)["sequence_logits"]``) — deliberately WITHOUT classifier-free
+        guidance or the inference-time sequence bias / diversity penalty, which are sampler
+        tricks, not part of the learned conditional distribution the SFT term shapes. The
+        returned logits are differentiable in the encoder parameters.
+
+        ``seq_override`` (when given) replaces ``xt_dev["sequence_tokens"]`` for this forward —
+        used by the CHORD SFT path to condition on the EXPERT sequence context
+        (:meth:`_expert_context_seq`) rather than the policy's own rollout tokens.
+        """
+        if seq_override is not None:
+            xt_dev = {**xt_dev, "sequence_tokens": seq_override}
+        out = self.forward(
+            xt_dev,
+            static["mask"],
+            static["residue_index"],
+            static["conditioning_tensor"],
+            timesteps={"sequence_tokens": t_seq, "structure_tokens": t_struc},
+            chain_ids=static["chain_ids"],
+            template_structure_tokens=static["template_structure_tokens"],
+            scalar_cond_bins=static["scalar_cond_bins"],
+        )
+        return out["sequence_logits"]
+
+    def sequence_sft_loss(
+        self,
+        trajectory: dict,
+        target_ids_33: Tensor,
+        supervise_mask: Tensor,
+        *,
+        step_indices: Sequence[int] | None = None,
+        label: str = "hard",
+        soft_targets: Tensor | None = None,
+        temperature: float = 1.0,
+        masked_only: bool = True,
+        use_phi: bool = True,
+        row_mask: Tensor | None = None,
+        grad_checkpoint: bool = False,
+    ) -> Tensor:
+        """CHORD SFT-distillation loss: φ-weighted CE of the seq head toward an expert target.
+
+        Implements the ``L_SFT-φ`` term of CHORD (arXiv:2508.11408): a dynamically token-
+        weighted supervised cross-entropy that distils a per-residue expert sequence (here
+        the LigandMPNN-designed binder identities) into the policy's *sequence-track*
+        endpoint prediction. The token weight ``φ_t = p_t (1 - p_t)`` — where ``p_t`` is the
+        policy's OWN probability of the expert token, **detached** — peaks at ``p_t = 0.5``
+        and vanishes at both extremes, so consensus tokens the policy already places (high
+        ``p_t``; generic buried-hydrophobic = the failing mode) AND tokens it strongly rejects
+        (low ``p_t``; avoids wholesale copying) contribute ~nothing. Only the genuinely
+        contested interface positions carry gradient.
+
+        The CE is evaluated on the raw conditional sequence-endpoint logits at each supervised
+        rollout step (:meth:`_sft_seq_endpoint_logits`), averaged over the requested steps.
+        With ``masked_only`` (default) a position contributes at a step only while its
+        sequence token is still masked there (the model is genuinely predicting it), matching
+        the masked-diffusion training objective and up-weighting earlier, more-masked steps.
+
+        Parameters
+        ----------
+        trajectory : dict
+            Rollout store from :meth:`rollout_with_logprobs` (same object the GRPO log-prob
+            path consumes).
+        target_ids_33 : Tensor
+            ``(B, L)`` expert target tokens in the 33-token ``AA_VOCAB`` space. Positions with
+            no supervision use an ignore id (``< 0``); they are also masked out via
+            ``supervise_mask``.
+        supervise_mask : Tensor
+            ``(B, L)`` boolean mask of positions to supervise (binder ∩ interface-or-all ∩
+            valid ∩ valid-target), built by the trainer.
+        step_indices : Sequence[int] | None
+            Which rollout steps to sum the loss over (typically the same subset the PPO inner
+            loop draws). ``None`` = all steps.
+        label : str
+            ``"hard"`` — CE against ``target_ids_33`` (default). ``"soft"`` — KL/CE against a
+            provided ``soft_targets`` distribution (temperature-scaled).
+        soft_targets : Tensor | None
+            ``(B, L, V)`` soft target distribution (required iff ``label == "soft"``).
+        temperature : float
+            Softmax temperature for the soft-label branch.
+        masked_only : bool
+            Restrict supervision at each step to positions still masked on the seq track.
+        use_phi : bool
+            Apply the CHORD ``φ = p_t(1 - p_t)`` token weighting (detached). If ``False`` the
+            term is a plain masked mean CE.
+        row_mask : Tensor | None
+            Optional ``(B,)`` boolean/0-1 mask zeroing whole designs (e.g. a reward gate that
+            only distils above-average designs). ``None`` = all designs supervised.
+        grad_checkpoint : bool
+            Checkpoint each step's forward to bound peak memory.
+
+        Returns
+        -------
+        Tensor
+            Scalar SFT loss (mean over supervised steps of the φ-weighted, mask-normalized
+            CE). Zero when nothing is supervised.
+        """
+        static = trajectory["static"]
+        device = static["mask"].device
+        target = target_ids_33.to(device=device, dtype=torch.long)  # (B, L)
+        sup = supervise_mask.to(device=device).bool()  # (B, L)
+        if row_mask is not None:
+            sup = sup & row_mask.to(device=device).bool().unsqueeze(-1)
+        mask_index_seq = static["mask_index_seq"]
+        gen_mask_seq = static["gen_mask_seq"].to(device).bool()  # (B, L) seq positions being generated
+        if label == "soft" and soft_targets is None:
+            raise ValueError("sequence_sft_loss(label='soft') requires soft_targets")
+
+        use_ckpt = grad_checkpoint and torch.is_grad_enabled()
+        total: Tensor | None = None
+        n_steps = 0
+        for rec, xt_dev, t_seq, t_struc in self._iter_traj_steps(trajectory, step_indices):
+            # Condition the SFT forward on the EXPERT sequence context (not the policy's own
+            # rollout tokens) so the distilled conditional is p_θ(y* | y*-context). See
+            # _expert_context_seq: revealed supervised positions carry the expert token, masked
+            # positions stay masked (the supervised targets).
+            ctx_seq = self._expert_context_seq(xt_dev["sequence_tokens"], target, mask_index_seq)
+            if use_ckpt:
+                logits = torch.utils.checkpoint.checkpoint(
+                    self._sft_seq_endpoint_logits,
+                    xt_dev,
+                    t_seq,
+                    t_struc,
+                    static,
+                    seq_override=ctx_seq,
+                    use_reentrant=False,
+                )
+            else:
+                logits = self._sft_seq_endpoint_logits(xt_dev, t_seq, t_struc, static, seq_override=ctx_seq)
+            step_loss = self._sft_step_ce(
+                logits,
+                target,
+                sup,
+                ctx_seq,
+                gen_mask_seq,
+                mask_index_seq,
+                label=label,
+                soft_targets=soft_targets,
+                temperature=temperature,
+                masked_only=masked_only,
+                use_phi=use_phi,
+            )
+            total = step_loss if total is None else total + step_loss
+            n_steps += 1
+        if total is None or n_steps == 0:
+            return torch.zeros((), device=device)
+        return total / n_steps
+
+    def _sft_step_ce(
+        self,
+        logits: Tensor,
+        target: Tensor,
+        sup: Tensor,
+        xt_seq: Tensor,
+        gen_mask_seq: Tensor,
+        mask_index_seq: int,
+        *,
+        label: str,
+        soft_targets: Tensor | None,
+        temperature: float,
+        masked_only: bool,
+        use_phi: bool,
+    ) -> Tensor:
+        """φ-weighted, mask-normalized CE for one rollout step (helper for ``sequence_sft_loss``)."""
+        B, L, V = logits.shape
+        m = sup & gen_mask_seq  # supervise only positions actually generated on the seq track
+        if masked_only:
+            m = m & (xt_seq == mask_index_seq)  # ... and still masked at this step
+        valid_tgt = (target >= 0) & (target < V)
+        m = m & valid_tgt
+        tgt_c = target.clamp(min=0, max=V - 1)
+
+        if label == "hard":
+            ce = torch.nn.functional.cross_entropy(logits.reshape(-1, V), tgt_c.reshape(-1), reduction="none").reshape(
+                B, L
+            )
+        else:  # soft distillation
+            logp = torch.nn.functional.log_softmax(logits / temperature, dim=-1)
+            ce = -(soft_targets.to(logits.device) * logp).sum(dim=-1)  # (B, L)
+
+        if use_phi:
+            with torch.no_grad():
+                p = torch.softmax(logits, dim=-1)
+                p_t = p.gather(-1, tgt_c.unsqueeze(-1)).squeeze(-1)  # (B, L) policy prob of target
+                phi = p_t * (1.0 - p_t)  # CHORD token weight; peaks at p=0.5
+            w = phi * m.to(logits.dtype)
+        else:
+            w = m.to(logits.dtype)
+
+        num = (ce * w).sum()
+        den = w.sum().clamp(min=1.0)
+        return num / den
+
+    def _step_pg_and_sft(
+        self,
+        rec: dict,
+        xt_dev: dict,
+        t_seq: Tensor,
+        t_struc: Tensor,
+        tracks: Sequence[str],
+        static: dict,
+        mask_index: dict,
+        gen_mask: dict,
+        device: torch.device,
+        target: Tensor,
+        sup: Tensor,
+        gen_mask_seq: Tensor,
+        mask_index_seq: int,
+        label: str,
+        soft_targets: Tensor | None,
+        temperature: float,
+        masked_only: bool,
+        use_phi: bool,
+        per_position_tracks: Sequence[str] = (),
+    ) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
+        """Fused per-step ``(policy log-prob, SFT CE)`` from ONE forward (lever B).
+
+        Runs :meth:`_recompute_biased_step_logits` for the GRPO transition log-prob (from the
+        *biased* per-track logits, exactly as :meth:`_step_logprob`) and a SECOND, expert-context
+        forward (:meth:`_sft_seq_endpoint_logits` with ``seq_override``) for the CHORD SFT
+        cross-entropy — exactly the per-step body of :meth:`sequence_sft_loss`. The two forwards
+        use different sequence inputs (policy rollout tokens for the log-prob, the expert sequence
+        context for the SFT), so the SFT term is *not* fused into the log-prob forward. Both are
+        computed under the same checkpoint unit (returns a tuple of tensors).
+
+        When ``per_position_tracks`` is non-empty the same forward additionally yields a
+        per-position log-prob ``(B, L)`` over those tracks and the return becomes
+        ``(step_lp, step_sft, step_lp_pos)`` (byte-identical ``(step_lp, step_sft)`` otherwise).
+        """
+        from lobster.rl_training._dfm_logprob import dfm_step_logprob
+
+        biased = self._recompute_biased_step_logits(xt_dev, t_seq, t_struc, rec["step_idx"], static)
+        # --- GRPO transition log-prob over the requested tracks (== _step_logprob) ---
+        acc: Tensor | None = None
+        for track in tracks:
+            tr = rec["tracks"].get(track)
+            if tr is None or biased.get(track) is None or gen_mask.get(track) is None:
+                continue  # e.g. tri track held clean this step, or track not generated
+            lp = dfm_step_logprob(
+                biased[track],
+                tr["t"].to(device),
+                tr["dt"].to(device) if torch.is_tensor(tr["dt"]) else tr["dt"],
+                tr["xt"].to(device=device, dtype=torch.long),
+                tr["x_next"].to(device=device, dtype=torch.long),
+                gen_mask[track].to(device),
+                mask_index=mask_index[track],
+                temperature=tr["temperature"],
+                stochasticity=tr["stochasticity"],
+            )
+            acc = lp if acc is None else acc + lp
+        step_lp = torch.zeros(static["mask"].shape[0], device=device) if acc is None else acc
+
+        # --- optional per-position log-prob over per_position_tracks (shares `biased`) ---
+        acc_pos: Tensor | None = None
+        if per_position_tracks:
+            for track in per_position_tracks:
                 tr = rec["tracks"].get(track)
                 if tr is None or biased.get(track) is None or gen_mask.get(track) is None:
-                    continue  # e.g. tri track held clean this step, or track not generated
-                lp = dfm_step_logprob(
+                    continue
+                lp_pos = dfm_step_logprob(
                     biased[track],
                     tr["t"].to(device),
                     tr["dt"].to(device) if torch.is_tensor(tr["dt"]) else tr["dt"],
@@ -1728,11 +2269,165 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                     mask_index=mask_index[track],
                     temperature=tr["temperature"],
                     stochasticity=tr["stochasticity"],
+                    per_position=True,
                 )
-                total = lp if total is None else total + lp
-        if total is None:
-            return torch.zeros(static["mask"].shape[0], device=device)
-        return total
+                acc_pos = lp_pos if acc_pos is None else acc_pos + lp_pos
+
+        # --- CHORD SFT CE from a SECOND, EXPERT-context forward (== sequence_sft_loss body) ---
+        # The GRPO log-prob above must condition on the policy's own rollout tokens; the SFT term
+        # must condition on the EXPERT sequence context (_expert_context_seq) so it distils the
+        # coherent LigandMPNN conditional p_θ(y* | y*-context) rather than a policy/expert chimera.
+        # These need different seq inputs, so the SFT gets its own forward (lever B's single-forward
+        # fusion no longer applies to the SFT term); both fused and non-fused paths call the same
+        # _sft_seq_endpoint_logits(seq_override=ctx_seq) → identical SFT values.
+        ctx_seq = self._expert_context_seq(xt_dev["sequence_tokens"], target, mask_index_seq)
+        raw_seq_logits = self._sft_seq_endpoint_logits(xt_dev, t_seq, t_struc, static, seq_override=ctx_seq)
+        step_sft = self._sft_step_ce(
+            raw_seq_logits,
+            target,
+            sup,
+            ctx_seq,
+            gen_mask_seq,
+            mask_index_seq,
+            label=label,
+            soft_targets=soft_targets,
+            temperature=temperature,
+            masked_only=masked_only,
+            use_phi=use_phi,
+        )
+        if not per_position_tracks:
+            return step_lp, step_sft
+        if acc_pos is None:
+            acc_pos = torch.zeros(static["mask"].shape[0], static["mask"].shape[1], device=device)
+        return step_lp, step_sft, acc_pos
+
+    def logprob_and_sft_over_trajectory(
+        self,
+        trajectory: dict,
+        target_ids_33: Tensor,
+        supervise_mask: Tensor,
+        *,
+        tracks: Sequence[str] = ("sequence_tokens", "structure_tokens", "tri_tokens"),
+        step_indices: Sequence[int] | None = None,
+        label: str = "hard",
+        soft_targets: Tensor | None = None,
+        temperature: float = 1.0,
+        masked_only: bool = True,
+        use_phi: bool = True,
+        row_mask: Tensor | None = None,
+        grad_checkpoint: bool = False,
+        per_position_tracks: Sequence[str] = (),
+    ) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
+        """Fused GRPO log-prob + CHORD SFT loss — ONE forward per step (lever B).
+
+        Returns ``(lp, sft)`` where ``lp`` ``(B,)`` equals
+        :meth:`logprob_over_trajectory` ``(trajectory, tracks=tracks, step_indices=step_indices,
+        grad_checkpoint=grad_checkpoint)`` and ``sft`` (scalar) equals
+        :meth:`sequence_sft_loss` ``(trajectory, target_ids_33, supervise_mask,
+        step_indices=step_indices, ...)`` with the matching SFT kwargs — but computed with a
+        single forward sweep instead of two. Used by the PPO inner loop when CHORD SFT is
+        active so the log-prob recompute and the distillation CE share their forwards.
+
+        Parameters mirror the two source methods; see them for details. ``row_mask`` is folded
+        into the supervision mask exactly as in :meth:`sequence_sft_loss`. When
+        ``per_position_tracks`` is non-empty the return becomes ``(lp, sft, lp_pos)`` with
+        ``lp_pos`` ``(B, L)`` the per-position log-prob over those tracks (used by the per-token
+        clash advantage); otherwise it is ``(lp, sft)`` (byte-identical to before).
+        """
+        static = trajectory["static"]
+        device = static["mask"].device
+        mask_index = {
+            "sequence_tokens": static["mask_index_seq"],
+            "structure_tokens": static["mask_index_struc"],
+            "tri_tokens": static["mask_index_tri"],
+        }
+        gen_mask = {
+            "sequence_tokens": static["gen_mask_seq"],
+            "structure_tokens": static["gen_mask_struc"],
+            "tri_tokens": static["gen_mask_tri"],
+        }
+        target = target_ids_33.to(device=device, dtype=torch.long)  # (B, L)
+        sup = supervise_mask.to(device=device).bool()  # (B, L)
+        if row_mask is not None:
+            sup = sup & row_mask.to(device=device).bool().unsqueeze(-1)
+        mask_index_seq = static["mask_index_seq"]
+        gen_mask_seq = static["gen_mask_seq"].to(device).bool()
+        if label == "soft" and soft_targets is None:
+            raise ValueError("logprob_and_sft_over_trajectory(label='soft') requires soft_targets")
+
+        use_ckpt = grad_checkpoint and torch.is_grad_enabled()
+        want_pos = bool(per_position_tracks)
+        pos_t = tuple(per_position_tracks)
+        total_lp: Tensor | None = None
+        total_sft: Tensor | None = None
+        total_lp_pos: Tensor | None = None
+        n_sft_steps = 0
+        tracks_t = tuple(tracks)
+        for rec, xt_dev, t_seq, t_struc in self._iter_traj_steps(trajectory, step_indices):
+            if use_ckpt:
+                step_out = torch.utils.checkpoint.checkpoint(
+                    self._step_pg_and_sft,
+                    rec,
+                    xt_dev,
+                    t_seq,
+                    t_struc,
+                    tracks_t,
+                    static,
+                    mask_index,
+                    gen_mask,
+                    device,
+                    target,
+                    sup,
+                    gen_mask_seq,
+                    mask_index_seq,
+                    label,
+                    soft_targets,
+                    temperature,
+                    masked_only,
+                    use_phi,
+                    pos_t,
+                    use_reentrant=False,
+                )
+            else:
+                step_out = self._step_pg_and_sft(
+                    rec,
+                    xt_dev,
+                    t_seq,
+                    t_struc,
+                    tracks_t,
+                    static,
+                    mask_index,
+                    gen_mask,
+                    device,
+                    target,
+                    sup,
+                    gen_mask_seq,
+                    mask_index_seq,
+                    label,
+                    soft_targets,
+                    temperature,
+                    masked_only,
+                    use_phi,
+                    pos_t,
+                )
+            if want_pos:
+                step_lp, step_sft, step_lp_pos = step_out
+                total_lp_pos = step_lp_pos if total_lp_pos is None else total_lp_pos + step_lp_pos
+            else:
+                step_lp, step_sft = step_out
+            total_lp = step_lp if total_lp is None else total_lp + step_lp
+            total_sft = step_sft if total_sft is None else total_sft + step_sft
+            n_sft_steps += 1
+        if total_lp is None:
+            total_lp = torch.zeros(static["mask"].shape[0], device=device)
+        sft_scalar = (
+            torch.zeros((), device=device) if (total_sft is None or n_sft_steps == 0) else total_sft / n_sft_steps
+        )
+        if want_pos:
+            if total_lp_pos is None:
+                total_lp_pos = torch.zeros(static["mask"].shape[0], static["mask"].shape[1], device=device)
+            return total_lp, sft_scalar, total_lp_pos
+        return total_lp, sft_scalar
 
     def captured_logprob_per_step(
         self,
@@ -1792,6 +2487,66 @@ class LeFlurSequenceStructureEncoderLightningModule(LightningModule):
                 acc = acc + tr["logprob"].to(device)
             rows.append(acc)
         return torch.stack(rows)  # (n_steps, B)
+
+    @torch.no_grad()
+    def struct_pos_logprob_per_step(
+        self,
+        trajectory: dict,
+        struct_tracks: Sequence[str] = ("structure_tokens",),
+    ) -> Tensor:
+        """No-grad per-step, per-position behaviour log-prob for the structure track(s).
+
+        Recomputes the biased step logits and sums :func:`dfm_step_logprob`
+        (``per_position=True``) over ``struct_tracks`` at each captured step, returning a
+        ``(n_steps, B, L)`` tensor. This is the ``old_lp`` snapshot for the **per-position**
+        structure PPO ratio used by the per-token clash advantage: computed with the same
+        recompute path as the differentiable ``new_lp`` (via
+        :meth:`logprob_and_sft_over_trajectory` with ``per_position_tracks``), so the first
+        inner-iteration position ratio is exactly ``1``. Inline-captured log-probs are summed
+        over positions and therefore cannot serve this role — hence the recompute.
+
+        Parameters
+        ----------
+        trajectory : dict
+            Rollout store from :meth:`rollout_with_logprobs`.
+        struct_tracks : Sequence[str], optional
+            Track(s) to accumulate per position. Defaults to ``("structure_tokens",)``.
+
+        Returns
+        -------
+        Tensor
+            Behaviour-policy per-position log-prob of shape ``(n_steps, B, L)`` on the model
+            device (a step where the track is held clean contributes zeros there).
+        """
+        static = trajectory["static"]
+        device = static["mask"].device
+        mask_index = {
+            "sequence_tokens": static["mask_index_seq"],
+            "structure_tokens": static["mask_index_struc"],
+            "tri_tokens": static["mask_index_tri"],
+        }
+        gen_mask = {
+            "sequence_tokens": static["gen_mask_seq"],
+            "structure_tokens": static["gen_mask_struc"],
+            "tri_tokens": static["gen_mask_tri"],
+        }
+        pos_t = tuple(struct_tracks)
+        rows: list[Tensor] = []
+        for rec, xt_dev, t_seq, t_struc in self._iter_traj_steps(trajectory, None):
+            _, step_lp_pos = self._step_logprob(
+                rec,
+                xt_dev,
+                t_seq,
+                t_struc,
+                (),  # no design-level tracks; per-position only
+                static,
+                mask_index,
+                gen_mask,
+                device,
+                pos_t,
+            )
+            rows.append(step_lp_pos)
+        return torch.stack(rows)  # (n_steps, B, L)
 
     def kl_over_trajectory(
         self,
