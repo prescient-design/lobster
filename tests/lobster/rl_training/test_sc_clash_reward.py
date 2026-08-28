@@ -398,6 +398,7 @@ class TestComputeRewardsRepackGate:
             w_3di_dist=0.0,
             w_clash_contact=0.0,
             w_chainbreak=0.0,
+            w_rog=0.0,
             w_shape=0.0,
             w_sc_clash=0.0,
             w_aar=0.0,

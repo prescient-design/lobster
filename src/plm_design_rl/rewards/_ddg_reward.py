@@ -439,6 +439,133 @@ def ddg_per_binder_residue(
     return out
 
 
+def ddg_packed_all(
+    pdb_path: str,
+    binder_chain: int = 1,
+    device: str | torch.device = "cpu",
+    relax: bool = False,
+    sep_dist: float = 500.0,
+    contact_cutoff: float = 5.0,
+    num_threads: int = 4,
+) -> dict:
+    """Rigid interface ΔΔG group columns AND per-binder-residue attribution in ONE pass.
+
+    The efficient combined engine for the live GRPO reward: it renders the bound and rigidly-
+    separated poses **once each** (two :func:`_term_energies` calls) and reuses that single
+    ``(eb, es)`` pair for both outputs — the whole-interface ΔΔG group columns
+    (:func:`_ddg_groups`, driving the scalar ``w_ddg`` reward via :func:`ddg_reward`) and the
+    contact-weighted per-binder-residue vector (driving the dense per-token structure arm,
+    exactly as :func:`ddg_per_binder_residue`). Calling :func:`ddg_terms` **and**
+    :func:`ddg_per_binder_residue` separately would redo the same rigid separation twice (four
+    scorings); this does two, halving the per-design tmol cost on the repack worker.
+
+    Relaxation flavors (``relax_unbound``) are intentionally not offered: the live reward is
+    single-point rigid (``relax=False``), which on a packer-resolved complex already gives
+    ``ddg_noclash ≈ ddg_total`` and costs ≈0.15 s/design versus ≈30 s relaxed. Set
+    ``relax=True`` only for the (slow) de-clashed variant.
+
+    Parameters
+    ----------
+    pdb_path : str
+        Side-chain-packed complex PDB (>=2 chains; antigen then binder).
+    binder_chain : int
+        Chain id whose residues receive per-token credit (packed complex: antigen = 0,
+        binder = 1).
+    device, relax, sep_dist, contact_cutoff, num_threads
+        As in :func:`ddg_terms` / :func:`ddg_per_binder_residue`.
+
+    Returns
+    -------
+    dict
+        The rigid group columns ``ddg_{total,atr,rep,sol,lkball,elec,hb,noclash}``,
+        ``e_bound``/``e_sep``, ``n_res_a``/``n_res_b``, ``binder_chain``, ``relaxed``; the
+        per-token fields ``per_res`` (list[float], length = #binder residues, summing to
+        ``ddg_total``), ``binder_res_ids``, ``n_contacts``; and ``err`` (empty on success).
+
+    Raises
+    ------
+    ImportError
+        On first use if the optional ``tmol`` dependency is not installed (names the
+        ``plm-design-rl[tmol]`` extra). Per-design scoring errors are captured in ``err``.
+    """
+    _require_tmol()
+    from tmol import pose_stack_from_pdb
+
+    torch.set_num_threads(num_threads)
+    dev = torch.device(device)
+
+    out: dict = {}
+    for suf in _GRP_SUFFIXES:
+        out[f"ddg_{suf}"] = float("nan")
+    out.update(
+        per_res=[],
+        binder_res_ids=[],
+        n_contacts=[],
+        binder_chain=int(binder_chain),
+        e_bound=float("nan"),
+        e_sep=float("nan"),
+        n_res_a=-1,
+        n_res_b=-1,
+        relaxed=int(relax),
+        err="",
+    )
+    try:
+        ps = pose_stack_from_pdb(pdb_path, dev)
+        sfxn = _score_function(dev)
+        if relax:
+            ps = _relax(sfxn, ps)
+
+        atom_chain = _atom_chain(ps)
+        bco = ps.block_coord_offset[0]
+        napb = ps.n_ats_per_block[0]
+        cid = ps.chain_id[0]
+        coords = ps.coords[0]  # (n_atoms, 3)
+
+        # single rigid separation (which chain moves does not matter — interaction is symmetric)
+        mask = atom_chain == int(atom_chain.max())
+        eb = _term_energies(sfxn, ps, ps.coords)
+        cs = ps.coords.clone()
+        cs[0, mask, 0] += sep_dist
+        es = _term_energies(sfxn, ps, cs)
+
+        out.update(_ddg_groups("ddg", eb, es))
+        ddg_total = float(out["ddg_total"])
+        out["e_bound"] = float(sum(eb.values()))
+        out["e_sep"] = float(sum(es.values()))
+
+        # contact-weighted per-binder-residue attribution of ddg_total (same scheme as
+        # ddg_per_binder_residue), reusing the coordinates already loaded above.
+        binder_blocks = [b for b in range(cid.shape[0]) if int(cid[b]) == int(binder_chain)]
+        ag_mask = (atom_chain != int(binder_chain)) & (atom_chain >= 0)
+        ag_xyz = coords[ag_mask]
+        c2 = float(contact_cutoff) ** 2
+        n_contacts: list[int] = []
+        res_ids: list[int] = []
+        for b in binder_blocks:
+            s = int(bco[b])
+            n = int(napb[b])
+            res_ids.append(int(b))
+            if n <= 0 or ag_xyz.shape[0] == 0:
+                n_contacts.append(0)
+                continue
+            bx = coords[s : s + n]
+            d2 = ((bx[:, None, :] - ag_xyz[None, :, :]) ** 2).sum(-1)
+            n_contacts.append(int((d2 < c2).sum()))
+
+        total_c = float(sum(n_contacts))
+        out["per_res"] = [ddg_total * (c / total_c) for c in n_contacts] if total_c > 0 else [0.0 for _ in n_contacts]
+        out["binder_res_ids"] = res_ids
+        out["n_contacts"] = n_contacts
+
+        uniq, counts = torch.unique(cid, return_counts=True)
+        if len(counts) >= 2:
+            out["n_res_a"] = int(counts[0])
+            out["n_res_b"] = int(counts[-1])
+    except Exception as e:  # noqa: BLE001
+        out["err"] = f"{type(e).__name__}: {e}"
+    return out
+
+
 if __name__ == "__main__":
     import sys
 

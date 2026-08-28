@@ -25,9 +25,11 @@ Usage
 from __future__ import annotations
 
 import logging
+import os
 
 import hydra
 import torch
+import torch.distributed as dist
 from omegaconf import DictConfig, OmegaConf
 
 from lobster.model.leflur import resolve_checkpoint
@@ -202,13 +204,27 @@ def rl_train(cfg: DictConfig) -> None:
     logger.info("Starting LeFlur GRPO RL fine-tuning")
     logger.info("Config:\n%s", OmegaConf.to_yaml(cfg))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info("Using device: %s", device)
+    # Single-node multi-GPU (accum_targets sharding). torchrun sets LOCAL_RANK/WORLD_SIZE/RANK
+    # (and MASTER_ADDR/PORT); absent them WORLD_SIZE defaults to 1 and this is the single-GPU path.
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    rank = int(os.environ.get("RANK", 0))
+    if world_size > 1:
+        torch.cuda.set_device(local_rank)  # BEFORE init_process_group / model.to, else ranks collide on cuda:0
+        dist.init_process_group(backend="nccl")
+        device = torch.device(f"cuda:{local_rank}")
+        logger.info("Distributed GRPO: rank %d/%d, local_rank %d, device %s", rank, world_size, local_rank, device)
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info("Using device: %s", device)
 
     if cfg.get("seed") is not None:
-        torch.manual_seed(cfg.seed)
+        # Offset the torch RNG by rank so each rank's disjoint target shard rolls out an
+        # independent stream (rank 0 => cfg.seed, byte-identical to single-GPU). The trainer's
+        # schedule RNG stays shared across ranks so the round-robin target order agrees.
+        torch.manual_seed(cfg.seed + rank)
         if torch.cuda.is_available():
-            torch.cuda.manual_seed(cfg.seed)
+            torch.cuda.manual_seed(cfg.seed + rank)
 
     # Load policy checkpoint (short name / hf:// / https / local path -> concrete file).
     resolved_ckpt = resolve_checkpoint(cfg.model.ckpt_path)
@@ -245,6 +261,9 @@ def rl_train(cfg: DictConfig) -> None:
         or float(g.get("w_aar", 0.0)) > 0
         # CHORD SFT distillation also draws the LigandMPNN-designed sequence from the pool.
         or float(g.get("sft_mu", 0.0)) > 0
+        # Per-token interface potentials / ΔΔG ride the SAME repack pool (pot / ddg wants).
+        or bool(g.get("per_token_pot", False))
+        or bool(g.get("per_token_ddg", False))
     )
     if _shape_queue is None and _need_repack:
         _shape_queue = f"{cfg.output_dir}/shape_queue"
@@ -278,6 +297,9 @@ def rl_train(cfg: DictConfig) -> None:
         # (reward += w_seq_complexity * clip(LC/lc_full, 0, 1)); off by default.
         w_seq_complexity=float(g.get("w_seq_complexity", 0.0)),
         lc_full=float(g.get("lc_full", 0.7)),
+        # 3Di-token analog of the LC reward (structure-track anti-degeneracy); off by default.
+        w_struct_complexity=float(g.get("w_struct_complexity", 0.0)),
+        struct_lc_full=float(g.get("struct_lc_full", 0.7)),
         # Interface-distribution distance reward (Protenix-free shaping); off by default.
         w_aa_dist=float(g.get("w_aa_dist", 0.0)),
         w_3di_dist=float(g.get("w_3di_dist", 0.0)),
@@ -316,6 +338,11 @@ def rl_train(cfg: DictConfig) -> None:
         chainbreak_break_hard=float(g.get("chainbreak_break_hard", 2.0)),
         chainbreak_break_d0=float(g.get("chainbreak_break_d0", 2.0)),
         chainbreak_break_soft=float(g.get("chainbreak_break_soft", 0.10)),
+        # Binder radius-of-gyration COMPACTNESS reward (Protenix-free global fold-state
+        # shaping; clip(rog_r0·N^(1/3)/Rg / rog_full, 0, 1)) weighted by w_rog; off by default.
+        w_rog=float(g.get("w_rog", 0.0)),
+        rog_r0=float(g.get("rog_r0", 2.2)),
+        rog_full=float(g.get("rog_full", 0.76)),
         # Full-atom LigandMPNN-repack rewards (ONE shared pool): SC 3DZD shape-complementarity,
         # all-atom side-chain clash, and ProteinMPNN AAR. All off by default; any weight > 0
         # builds the pool client and requires a shape queue. All run on the CPU worker pool —
@@ -340,6 +367,12 @@ def rl_train(cfg: DictConfig) -> None:
         w_pt_dsasa=float(g.get("w_pt_dsasa", 1.0)),
         w_pt_hb=float(g.get("w_pt_hb", 1.0)),
         pot_with_sasa=bool(g.get("pot_with_sasa", True)),
+        # Per-token (per-residue) tmol interface-ΔΔG advantage (beta_nov2016 on the LigandMPNN pack)
+        # routed to the structure track — the physics-complete upgrade of per_token_pot's e_lj.
+        # Reuses the R_SC pack via the "ddg" want; requires tmol in the repack worker's interpreter.
+        per_token_ddg=bool(g.get("per_token_ddg", False)),
+        w_pt_ddg=float(g.get("w_pt_ddg", 1.0)),
+        # ddg physics knobs (relax / contact_cutoff / threads) are worker-side env, not config.
         pt_clash_tracks=tuple(g.get("pt_clash_tracks", ("structure_tokens",))),
         # CHORD SFT distillation (dense per-token LigandMPNN sequence supervision blended into
         # the GRPO loss). sft_mu>0 activates it; it rides the "aar" repack path (return_seq),
@@ -384,6 +417,10 @@ def rl_train(cfg: DictConfig) -> None:
         log_every=int(g.get("log_every", 1)),
         ckpt_dir=g.get("ckpt_dir", None),
         ckpt_every=int(g.get("ckpt_every", 50)),
+        # Single-node multi-GPU: torchrun-provided topology (defaults reproduce single-GPU).
+        world_size=world_size,
+        rank=rank,
+        local_rank=local_rank,
     )
 
     trainer = LeFlurGRPOTrainer(
@@ -393,9 +430,17 @@ def rl_train(cfg: DictConfig) -> None:
         config=grpo_config,
         device=device,
         gen_cfg=cfg.generation,
-        wandb_run=_maybe_wandb(cfg),
+        # wandb on rank 0 only (avoids N duplicate runs); other ranks pass None.
+        wandb_run=_maybe_wandb(cfg) if rank == 0 else None,
     )
-    trainer.train()
+    try:
+        trainer.train()
+    finally:
+        # Tear the process group down even if a rank raised mid-step. No barrier here: train()
+        # already barriers on the normal path, and barrier-ing in the exception path would hang
+        # (the other ranks are still mid-step). destroy lets NCCL abort so torchrun kills siblings.
+        if world_size > 1:
+            dist.destroy_process_group()
     logger.info("✓ GRPO run complete")
 
 

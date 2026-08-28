@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
+import torch.distributed as dist
 
 if TYPE_CHECKING:
     import numpy as np
@@ -206,6 +207,16 @@ class GRPOTrainerConfig:
     # ``rewards/_diversity_reward.lc_saturating_reward``. Default 0 (inert).
     w_seq_complexity: float = 0.0
     lc_full: float = 0.7
+    # Within-design 3Di-token anti-degeneracy: the STRUCTURE-track analog of
+    # ``w_seq_complexity``. Same per-design saturating linguistic-complexity reward
+    # (``reward += w_struct_complexity * clip(LC_3di / struct_lc_full, 0, 1)``) applied
+    # to the decoded binder 3Di token string instead of the AA sequence, so the policy is
+    # pushed off the monotonous D-dominated 3Di collapse (memory interface-3di-distribution:
+    # our arms are ~20–27% D vs native V-diverse; Complexa is the most 3Di-diverse). LC on a
+    # 20-state alphabet is well-defined for 3Di identically to AA (``coverage`` caps at 20^k).
+    # Requires the tri (3Di) track to be sampled (``tri_seqs`` present); default 0 (inert).
+    w_struct_complexity: float = 0.0
+    struct_lc_full: float = 0.7
     # Interface-distribution distance reward (Protenix-free shaping): closeness of the
     # design's binder-interface AA / 3Di histogram to the per-target reference
     # (``dist_reference`` JSON). Each ``w_*_dist`` scales ``clip(1 - D(hist, ref),
@@ -302,6 +313,22 @@ class GRPOTrainerConfig:
     chainbreak_break_hard: float = 2.0  # count mode: C–N above this is a hard break (Å)
     chainbreak_break_d0: float = 2.0  # soft mode: sigmoid center (Å)
     chainbreak_break_soft: float = 0.10  # soft mode: sigmoid width (Å)
+    # Binder radius-of-gyration COMPACTNESS reward (Protenix-free global fold-state
+    # shaping; see ``rewards/_rog_reward.py``). Scores each design's decoded binder
+    # backbone with a single ``[0,1]`` term = ``clip(compactness / rog_full, 0, 1)``
+    # where ``compactness = rog_r0·N^(1/3) / Rg`` (``Rg`` = binder-Cα radius of
+    # gyration, Å). ``compactness`` is length-normalized by the ``N^(1/3)`` compact-
+    # globule scaling (targets fold state, not size) and is ~0.7 for a globular protein;
+    # the passing Proteina-Complexa references sit at ~0.76 while every trained arm is
+    # over-extended (0.54–0.67, Table 6 geometry analysis), a real length-independent
+    # gap no local geometry term (clash/chainbreak/contact) can see. The reward
+    # SATURATES at ``rog_full`` (full credit once compact enough, no pressure to collapse
+    # past the native fold state — the anti-hack mirror of the LC saturating reward).
+    # ``w_rog`` scales the term; default 0 (inert, byte-identical). Any weight > 0 decodes
+    # the generated backbone (shared with the clash/chainbreak/dist/repack terms).
+    w_rog: float = 0.0
+    rog_r0: float = 2.2  # compact-globule Rg prefactor (Rg_compact = rog_r0·N^(1/3))
+    rog_full: float = 0.76  # saturation target (passing-Complexa compactness at rog_r0=2.2)
     # Order-20 3D-Zernike interface shape-complementarity (SC) reward (Protenix-free
     # shaping; see ``rewards/_shape_reward.py``). SC needs FULL-ATOM side chains to carry
     # signal (backbone-only is chance, AUROC 0.533; LigandMPNN-repacked full-atom is
@@ -439,6 +466,16 @@ class GRPOTrainerConfig:
     log_every: int = 1
     ckpt_dir: str | None = None
     ckpt_every: int = 50
+    # --- Single-node multi-GPU (accum_targets sharding) ------------------------------
+    # When world_size > 1 the per-step accum_targets loop is sharded across ranks (each
+    # rank runs specs[rank::world_size]) and encoder gradients are all-reduced (SUM) then
+    # divided by the GLOBAL live-target count, so the update equals the single-GPU mean
+    # over all accum_targets — a pure wall-clock speedup, not a bigger batch. Defaults
+    # (world_size=1, rank=0) make every distributed code path a no-op that is byte-identical
+    # to the single-GPU trainer. Set by the launcher from torchrun's RANK/WORLD_SIZE env.
+    world_size: int = 1
+    rank: int = 0
+    local_rank: int = 0
     # --- Per-token (per-residue) clash advantage -------------------------------------
     # When True, the backbone clash-contact reward's clash energy is decomposed per binder
     # residue (``clash_contact_reward(return_eres=True)``; each binder↔antigen pair fully to
@@ -479,6 +516,24 @@ class GRPOTrainerConfig:
     w_pt_dsasa: float = 1.0  # scale on the per-residue buried-ΔSASA advantage A_dsasa
     w_pt_hb: float = 1.0  # scale on the per-residue interface-H-bond advantage A_hb
     pot_with_sasa: bool = True  # compute the (slower) buried-ΔSASA term; off => A_dsasa disabled
+    # Per-token (per-residue) tmol interface ΔΔG advantage — the physics-complete upgrade of the
+    # per_token_pot numpy ``e_lj`` arm. When True, the SAME LigandMPNN pack used for R_SC is scored
+    # with tmol's ``beta_nov2016`` rigid interface ΔΔG (adds the ``fa_lk``/``lk_ball`` desolvation
+    # and orientation-dependent H-bond physics the numpy LJ lacks) and the ΔΔG total is attributed
+    # per binder residue by cross-chain contact weight (``ddg_packed_all`` -> ``per_res``). That
+    # (G, L) vector is routed as a per-position advantage to the STRUCTURE track, ADDITIVE with
+    # A_clash / A_chainbreak / A_pot when those are on:
+    #   A_struct[g, l] = A_design[g] + … + A_ddg[g, l],  A_ddg = w_pt_ddg · posnorm(-ddg_eres)
+    # ``per_res`` is a signed ΔΔG contribution (more-negative = stronger binding = better), i.e.
+    # already "larger = worse", so it enters posnorm with NO negation (like ``e_lj``). Adds the
+    # "ddg" want to the repack round-trip (no extra pack; reuses the R_SC pack). REQUIRES tmol in
+    # the repack worker's interpreter (``pip install 'plm-design-rl[tmol]'``). Default False =
+    # byte-identical scalar path. See ``docs/leflur/grpo_ddg_reward_scope.md`` / §5.4 of the proposal.
+    per_token_ddg: bool = False
+    w_pt_ddg: float = 1.0  # scale on the per-residue interface-ΔΔG advantage A_ddg
+    # The ΔΔG physics knobs (rigid vs relaxed, contact cutoff, CPU threads) live WORKER-side — the
+    # repack pool is a separate process that does not read this config — set via the worker's
+    # LEFLUR_DDG_{RELAX,CONTACT_CUTOFF,THREADS} env (defaults: rigid single-point, 5.0 Å, 4 threads).
     # Which track(s) receive any per-position structure advantage (clash, chain-break and/or
     # interface potentials); excluded from the design-level PPO on the remaining tracks.
     # Structure only by default. (Name kept for config compatibility; applies to all per-token
@@ -566,10 +621,14 @@ class LeFlurGRPOTrainer:
         if getattr(config, "per_token_pot", False):
             if not (config.w_pt_lj or config.w_pt_dsasa or config.w_pt_hb):
                 raise ValueError("per_token_pot requires at least one of w_pt_lj / w_pt_dsasa / w_pt_hb > 0")
+        if getattr(config, "per_token_ddg", False):
+            if getattr(config, "w_pt_ddg", 0.0) <= 0:
+                raise ValueError("per_token_ddg requires w_pt_ddg > 0 (it supplies the per-residue ΔΔG advantage)")
         if (
             getattr(config, "per_token_clash", False)
             or getattr(config, "per_token_chainbreak", False)
             or getattr(config, "per_token_pot", False)
+            or getattr(config, "per_token_ddg", False)
         ):
             missing = [t for t in config.pt_clash_tracks if t not in config.tracks]
             if missing:
@@ -589,6 +648,12 @@ class LeFlurGRPOTrainer:
         self.device = device
         self.gen_cfg = gen_cfg
         self.wandb_run = wandb_run
+
+        # Single-node multi-GPU (accum_targets sharding). world_size==1 / rank==0 => every
+        # distributed branch below is a no-op and the trainer is byte-identical to single-GPU.
+        self.world_size = int(getattr(config, "world_size", 1))
+        self.rank = int(getattr(config, "rank", 0))
+        self._is_dist = self.world_size > 1
 
         # Frozen reference for the KL regularizer.
         self.ref_module = ref_module if ref_module is not None else copy.deepcopy(model)
@@ -665,10 +730,13 @@ class LeFlurGRPOTrainer:
             )
 
         self.optimizer = torch.optim.AdamW(self.model.encoder.parameters(), lr=config.lr)
-        self._rng = random.Random(config.seed)
+        # Offset the binder-length / step-subset RNG by rank so each rank's disjoint target
+        # shard draws an independent stream (rank 0 => config.seed, byte-identical to single-GPU).
+        self._rng = random.Random(config.seed + 100_000 * self.rank)
         # Separate RNG for per-epoch target shuffling — kept independent of ``self._rng`` so
         # that with ``shuffle_targets=False`` (the default) it is never drawn from and the
         # binder-length / step-subset draw order stays byte-identical to the legacy loop.
+        # SHARED across ranks (no rank offset) so the round-robin schedule agrees on every rank.
         self._sched_rng = random.Random(config.seed + 1000)
         # Cache the per-(target, binder-length) static conditioning (target chain +
         # composite masks) — only the sampled binder changes across rollouts. Keyed by
@@ -1155,6 +1223,63 @@ class LeFlurGRPOTrainer:
             return weighted, metrics, e_res_full
         return weighted, metrics
 
+    def _rog_terms_for_group(
+        self,
+        trajectory: dict,
+        comp: dict,
+        *,
+        gen_bb: np.ndarray | None = None,
+    ) -> tuple[list[float], dict]:
+        """Per-design binder radius-of-gyration compactness reward + diagnostics.
+
+        Decodes the *generated* backbone and scores each design's binder chain with
+        :func:`~lobster.rl_training.rewards.rog_compactness_reward` — a single ``[0,1]``
+        term (``clip(compactness / rog_full, 0, 1)``, ``compactness = rog_r0·N^(1/3)/Rg``)
+        weighted by ``w_rog``. Rewards a compact (globular) binder fold, a length-
+        normalized global fold-state signal no local geometry term captures. Returns
+        ``(weighted_terms (G,), metrics)``.
+
+        ``gen_bb`` is the decoded ``(G, L, 3, 3)`` backbone; when ``None`` it is decoded
+        here (shared with the distribution/clash/chainbreak terms when they are on).
+        """
+        import numpy as np
+
+        from lobster.rl_training.rewards import rog_compactness_reward
+
+        cfg = self.config
+        if gen_bb is None:
+            gen_bb = self._decode_backbone_coords(trajectory, comp).numpy()  # (G, L, 3, 3)
+        valid = comp["mask"][0].bool().cpu().numpy()
+        binder_mask = comp["binder_positions"].cpu().bool().numpy()
+
+        G = gen_bb.shape[0]
+        weighted: list[float] = []
+        comp_l, rg_l, nres_l = [], [], []
+        for i in range(G):
+            term, diag = rog_compactness_reward(
+                gen_bb[i],
+                valid,
+                binder_mask,
+                r0=cfg.rog_r0,
+                rog_full=cfg.rog_full,
+            )
+            weighted.append(cfg.w_rog * term)
+            comp_l.append(diag["compactness"])
+            rg_l.append(diag["rg"])
+            nres_l.append(diag["n_res"])
+
+        def _mean(lst: list[float]) -> float:
+            return float(np.mean(lst)) if lst else 0.0
+
+        metrics = {
+            "reward/rog_term_mean": float(sum(weighted) / G),
+            "rog/compactness_mean": _mean(comp_l),
+            "rog/rg_mean": _mean(rg_l),
+            "rog/n_res_mean": _mean(nres_l),
+            "rog/frac_saturated": float(np.mean([1.0 if c >= cfg.rog_full else 0.0 for c in comp_l])),
+        }
+        return weighted, metrics
+
     def _shape_terms_for_group(
         self,
         target_id: str,
@@ -1285,6 +1410,7 @@ class LeFlurGRPOTrainer:
         gen_bb: np.ndarray | None = None,
         return_seq: bool = False,
         want_pot: bool = False,
+        want_ddg: bool = False,
         precomputed_results: list[dict | None] | None = None,
     ) -> tuple[list[float], list[float], list[float], dict, dict | None, dict | None]:
         """Full-atom repack-pool reward terms (SC / all-atom clash / AAR) from ONE round-trip.
@@ -1306,11 +1432,15 @@ class LeFlurGRPOTrainer:
         Returns ``(shape_terms, sc_clash_terms, aar_terms, metrics, sft_payload, pot_eres)`` —
         the first three each a length-``G`` list of the **weighted** contribution for that metric
         (all ``0.0`` for a metric not in ``want``), the merged diagnostics dict (only keys for the
-        requested metrics), a ``sft_payload`` dict (see below) and — when ``want_pot`` (the
-        per-token interface-potential arm is active) — a ``pot_eres`` dict carrying the dense
-        per-binder-residue potential signals ``{"lj_eres","dsasa_eres","hb_eres"}`` as ``(G, L)``
-        numpy penalty arrays (larger = worse) for the per-position structure advantage; ``None``
-        otherwise. The ``sft_payload`` (present only when ``return_seq``, CHORD SFT active)
+        requested metrics), a ``sft_payload`` dict (see below) and — when ``want_pot`` and/or
+        ``want_ddg`` (the per-token interface-potential and/or interface-ΔΔG arms are active) — a
+        ``pot_eres`` dict carrying the dense per-binder-residue signals as ``(G, L)`` numpy penalty
+        arrays (larger = worse) for the per-position structure advantage: ``want_pot`` contributes
+        ``{"lj_eres","dsasa_eres","hb_eres"}`` (numpy ``e_lj``/ΔSASA/H-bond) and ``want_ddg``
+        contributes ``{"ddg_eres"}`` (tmol ``beta_nov2016`` interface ΔΔG attributed per binder
+        residue by contact weight; signed, more-negative = better, so stored as-is like ``e_lj``).
+        Both arms write into the SAME dict; ``None`` when neither is active. The ``sft_payload``
+        (present only when ``return_seq``, CHORD SFT active)
         carries the dense per-token expert target for the sequence-distillation term:
 
         * ``target_ids`` — ``(G, L)`` int64 ``numpy`` array of the LigandMPNN-designed binder
@@ -1483,6 +1613,63 @@ class LeFlurGRPOTrainer:
             )
             if with_sasa:
                 metrics["pot/dsasa_mean"] = _mean(dsasa_sum)  # buried ΔSASA (higher = better)
+
+        # --- Per-token interface ΔΔG (tmol beta_nov2016) -----------------------------------
+        # The physics-complete upgrade of the numpy ``e_lj`` per-token arm above. The repack
+        # worker scores the SAME shared pack with tmol's rigid interface ΔΔG and attributes the
+        # ΔΔG total per binder residue by cross-chain contact weight (``ddg_packed_all`` ->
+        # ``per_res``). ``per_res`` is signed (more-negative = stronger binding = better), i.e.
+        # already in the "larger = worse" penalty convention, so it is scattered onto (G, L)
+        # AS-IS (no negation, like ``e_lj``): ``_pos_norm_adv`` then gives more advantage to the
+        # more-negative (better-binding) residues. ``sum(per_res)`` == ddg_total, so the mean
+        # diagnostics below are directly comparable to the offline head-to-head study.
+        if want_ddg:
+            L = int(gen_bb.shape[1])
+            binder_idx = np.nonzero(binder_mask)[0]
+            nb = int(binder_idx.shape[0])
+            ddg_eres = np.zeros((G, L), dtype=np.float64)
+            n_ddg_scored = 0
+            ddg_total_sum, ddg_noclash_sum = [], []
+            # LJ decomposition (fa_atr / fa_rep) + the six-term cross-chain headline. The six
+            # cross-chain terms (atr+rep+sol+lkball+elec+hb) cancel intra-molecular energy by
+            # construction, so their sum ``ddg_iface`` is the physically meaningful ΔΔG that
+            # Table 6 (tab:crossarmpot) reports; atr/rep alone are the Lennard-Jones part
+            # (attraction / repulsion). Logged separately here so the live run's wandb mirrors
+            # the cross-arm ΔΔG table (typical-design gap to Complexa is pure fa_rep clash tail).
+            _IFACE_TERMS = ("ddg_atr", "ddg_rep", "ddg_sol", "ddg_lkball", "ddg_elec", "ddg_hb")
+            ddg_atr_sum, ddg_rep_sum, ddg_iface_sum = [], [], []
+            for i, r in enumerate(results):
+                d = r.get("ddg") if r is not None else None
+                if d is None:
+                    continue
+                per = np.asarray(d.get("per_res", []), dtype=np.float64)
+                if per.shape[0] != nb:
+                    continue  # worker returned no / mismatched ΔΔG vector for this design
+                ddg_eres[i, binder_idx] = per
+                n_ddg_scored += 1
+                if d.get("ddg_total") is not None and np.isfinite(d["ddg_total"]):
+                    ddg_total_sum.append(float(d["ddg_total"]))
+                if d.get("ddg_noclash") is not None and np.isfinite(d["ddg_noclash"]):
+                    ddg_noclash_sum.append(float(d["ddg_noclash"]))
+                if d.get("ddg_atr") is not None and np.isfinite(d["ddg_atr"]):
+                    ddg_atr_sum.append(float(d["ddg_atr"]))
+                if d.get("ddg_rep") is not None and np.isfinite(d["ddg_rep"]):
+                    ddg_rep_sum.append(float(d["ddg_rep"]))
+                if all(d.get(k) is not None and np.isfinite(d[k]) for k in _IFACE_TERMS):
+                    ddg_iface_sum.append(float(sum(d[k] for k in _IFACE_TERMS)))
+            if pot_eres is None:
+                pot_eres = {}
+            pot_eres["ddg_eres"] = ddg_eres
+            metrics.update(
+                {
+                    "ddg/scored_frac": float(n_ddg_scored / G),
+                    "ddg/ddg_total_mean": _mean(ddg_total_sum),  # rigid interface ΔΔG (lower = better)
+                    "ddg/ddg_noclash_mean": _mean(ddg_noclash_sum),  # ΔΔG minus fa_ljrep clash
+                    "ddg/ddg_iface_mean": _mean(ddg_iface_sum),  # six-term cross-chain ΔΔG (Table 6 headline)
+                    "ddg/ddg_atr_mean": _mean(ddg_atr_sum),  # LJ attraction (fa_atr; lower = better)
+                    "ddg/ddg_rep_mean": _mean(ddg_rep_sum),  # LJ repulsion (fa_rep; lower = better, clash tail)
+                }
+            )
 
         # --- CHORD SFT payload: dense per-token expert (LigandMPNN-designed) targets -------
         # Built from the SAME round-trip's ``aar`` dicts (seq_design + iface_binder). Each
@@ -1743,12 +1930,25 @@ class LeFlurGRPOTrainer:
         lc_rew, lcs = lc_saturating_reward(seqs, lc_full=float(getattr(cfg, "lc_full", 0.7)))
         seq_complex_terms = [w_seq_complexity * v for v in lc_rew]
 
+        # 4c. Within-3Di anti-degeneracy — structure-track analog of 4b: the same saturating
+        # linguistic-complexity reward on the decoded binder 3Di token string (always computed
+        # for tracking when tri is sampled; term 0 when the weight is off).
+        w_struct_complexity = float(getattr(cfg, "w_struct_complexity", 0.0))
+        if tri_seqs is not None:
+            struct_lc_rew, struct_lcs = lc_saturating_reward(
+                tri_seqs, lc_full=float(getattr(cfg, "struct_lc_full", 0.7))
+            )
+        else:
+            struct_lc_rew, struct_lcs = [0.0] * G, [0.0] * G
+        struct_complex_terms = [w_struct_complexity * v for v in struct_lc_rew]
+
         # 5./6./7. Geometry + full-atom shaping terms (Protenix-free). All read the decoded
         # generated backbone, so decode it ONCE here and share it. Each is inert (0) and adds
         # no metrics when its weight is 0 — keeps the reward byte-identical.
         need_dist = cfg.w_aa_dist > 0 or cfg.w_3di_dist > 0 or cfg.log_dist_diagnostic
         need_clash = cfg.w_clash_contact > 0
         need_chainbreak = cfg.w_chainbreak > 0
+        need_rog = cfg.w_rog > 0
         need_shape = cfg.w_shape > 0
         # All-atom side-chain clash: in the reward when w_sc_clash>0, OR tracked-but-off when
         # log_sc_clash_diagnostic is set (forces "clash" into the repack want at weight 0, so
@@ -1763,10 +1963,13 @@ class LeFlurGRPOTrainer:
         # Per-token interface potentials (e_lj/dsasa/n_hb on the LigandMPNN pack) reuse the SAME
         # repack round-trip as R_SC; request them via the "pot" want when per_token_pot is on.
         need_pot = getattr(cfg, "per_token_pot", False)
-        need_repack = need_shape or need_sc_clash or need_aar or need_pot
+        # Per-token interface ΔΔG (tmol beta_nov2016 on the LigandMPNN pack) — physics-complete
+        # upgrade of "pot"; also reuses the SAME R_SC round-trip via the "ddg" want.
+        need_ddg = getattr(cfg, "per_token_ddg", False)
+        need_repack = need_shape or need_sc_clash or need_aar or need_pot or need_ddg
         # ``gen_bb`` may be supplied by a pipelined caller (decoded once in phase 1) — reuse it;
         # otherwise decode here when any backbone-reading term is active.
-        if gen_bb is None and (need_dist or need_clash or need_chainbreak or need_repack):
+        if gen_bb is None and (need_dist or need_clash or need_chainbreak or need_rog or need_repack):
             gen_bb = self._decode_backbone_coords(trajectory, comp).numpy()  # (G, L, 3, 3)
 
         # 5. Interface-distribution distance term.
@@ -1809,6 +2012,14 @@ class LeFlurGRPOTrainer:
             chainbreak_terms_l = [0.0] * G
             chainbreak_metrics = {}
 
+        # 6c. Binder radius-of-gyration compactness term (global fold-state realism). Scalar
+        # only (no per-token variant): compactness is an intrinsically whole-chain quantity.
+        if need_rog:
+            rog_terms_l, rog_metrics = self._rog_terms_for_group(trajectory, comp, gen_bb=gen_bb)
+        else:
+            rog_terms_l = [0.0] * G
+            rog_metrics = {}
+
         # 7. Full-atom LigandMPNN-repack terms (SC shape-complementarity, all-atom clash, AAR)
         # — one shared worker pool. The SC-only case routes through the original
         # _shape_terms_for_group (keeps the running SC arm byte-identical); any combination
@@ -1820,14 +2031,20 @@ class LeFlurGRPOTrainer:
         repack_metrics: dict = {}
         sft_payload: dict | None = None
         pot_eres: dict | None = None
-        if need_shape and not (need_sc_clash or need_aar or need_pot):
+        if need_shape and not (need_sc_clash or need_aar or need_pot or need_ddg):
             shape_terms_l, repack_metrics = self._shape_terms_for_group(
                 target_id, trajectory, comp, seqs, gen_bb=gen_bb
             )
         elif need_repack:
             want = tuple(
                 m
-                for m, on in (("sc", need_shape), ("clash", need_sc_clash), ("aar", need_aar), ("pot", need_pot))
+                for m, on in (
+                    ("sc", need_shape),
+                    ("clash", need_sc_clash),
+                    ("aar", need_aar),
+                    ("pot", need_pot),
+                    ("ddg", need_ddg),
+                )
                 if on
             )
             shape_terms_l, sc_clash_terms_l, aar_terms_l, repack_metrics, sft_payload, pot_eres = (
@@ -1840,6 +2057,7 @@ class LeFlurGRPOTrainer:
                     gen_bb=gen_bb,
                     return_seq=need_sft,
                     want_pot=need_pot,
+                    want_ddg=need_ddg,
                     precomputed_results=precomputed_repack,
                 )
             )
@@ -1855,16 +2073,18 @@ class LeFlurGRPOTrainer:
 
         rewards = torch.tensor(
             [
-                c + s + sd + td + cx + dt + gt + cb + sh + scl + ar
-                for c, s, sd, td, cx, dt, gt, cb, sh, scl, ar in zip(
+                c + s + sd + td + cx + sx + dt + gt + cb + rg + sh + scl + ar
+                for c, s, sd, td, cx, sx, dt, gt, cb, rg, sh, scl, ar in zip(
                     conf_terms,
                     struct_terms_l,
                     seq_div_terms,
                     struct_div_terms,
                     seq_complex_terms,
+                    struct_complex_terms,
                     dist_terms_l,
                     clash_terms_l,
                     chainbreak_terms_l,
+                    rog_terms_l,
                     shape_terms_l,
                     sc_clash_terms_l,
                     aar_terms_l,
@@ -1908,6 +2128,7 @@ class LeFlurGRPOTrainer:
             "reward/seq_diversity_term_mean": float(sum(seq_div_terms) / G),
             "reward/struct_diversity_term_mean": float(sum(struct_div_terms) / G),
             "reward/seq_complexity_term_mean": float(sum(seq_complex_terms) / G),
+            "reward/struct_complexity_term_mean": float(sum(struct_complex_terms) / G),
             "reward/struct_sctm_binder_term_mean": float(cfg.w_sctm_binder * sum(sctm_b) / G),
             "reward/struct_sctm_complex_term_mean": float(cfg.w_sctm_complex * sum(sctm_c) / G),
             # --- raw Protenix confidences (confidence module's field names) ---
@@ -1936,6 +2157,8 @@ class LeFlurGRPOTrainer:
             "diversity/struct_novelty_mean": float(sum(struct_nov) / G),
             "diversity/lc_mean": float(sum(lcs) / G),
             "diversity/lc_degenerate_frac": float(sum(1.0 for lc in lcs if lc < 0.15) / G),
+            "diversity/struct_lc_mean": float(sum(struct_lcs) / G),
+            "diversity/struct_lc_degenerate_frac": float(sum(1.0 for lc in struct_lcs if lc < 0.15) / G),
             "diversity/unique_frac": float(len(set(seqs)) / G),
         }
         # Per-metric confidence-term means (e.g. reward/conf_ptm_term_mean) — active only.
@@ -1949,6 +2172,8 @@ class LeFlurGRPOTrainer:
         metrics.update(clash_metrics)
         # Backbone chain-break diagnostics (only when the weight is on).
         metrics.update(chainbreak_metrics)
+        # Binder radius-of-gyration compactness diagnostics (only when the weight is on).
+        metrics.update(rog_metrics)
         # Full-atom repack-pool diagnostics: SC shape / all-atom clash / AAR (only the
         # active metrics' keys are present).
         metrics.update(repack_metrics)
@@ -1960,7 +2185,7 @@ class LeFlurGRPOTrainer:
         # reward is on (byte-identical scalar path otherwise). Both signals can be present and
         # are combined additively in _struct_pos_advantage.
         pt_extras: dict | None = None
-        _pot_on = need_pot and pot_eres is not None
+        _pot_on = (need_pot or need_ddg) and pot_eres is not None
         if (
             (cfg.per_token_clash and clash_eres is not None)
             or (cfg.per_token_chainbreak and chainbreak_eres is not None)
@@ -1975,8 +2200,9 @@ class LeFlurGRPOTrainer:
                 )  # (G, L)
             if _pot_on:
                 # Per-residue interface potentials (G, L): e_lj (already a penalty, larger=worse),
-                # and dsasa/n_hb already negated in _repack_terms_for_group so larger=worse for all.
-                for _k in ("lj_eres", "dsasa_eres", "hb_eres"):
+                # dsasa/n_hb already negated in _repack_terms_for_group so larger=worse for all, and
+                # ddg_eres (tmol interface ΔΔG, signed, already larger=worse — stored as-is).
+                for _k in ("lj_eres", "dsasa_eres", "hb_eres", "ddg_eres"):
                     _v = pot_eres.get(_k)
                     if _v is not None:
                         pt_extras[_k] = torch.as_tensor(_v, dtype=torch.float32, device=self.device)  # (G, L)
@@ -2049,19 +2275,21 @@ class LeFlurGRPOTrainer:
         lj_eres: torch.Tensor | None = None,
         dsasa_eres: torch.Tensor | None = None,
         hb_eres: torch.Tensor | None = None,
+        ddg_eres: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Per-position structure-track advantage for the per-token structure arm(s).
 
         Combines the usual group-relative design advantage (broadcast over positions) with
         per-residue credit from the per-binder-residue backbone clash energy, chain-break
-        penalty, and/or all-atom interface potentials (each independently centered/normalized
-        by :meth:`_pos_norm_adv`, scaled by its weight, and summed):
+        penalty, all-atom interface potentials, and/or tmol interface ΔΔG (each independently
+        centered/normalized by :meth:`_pos_norm_adv`, scaled by its weight, and summed):
 
             A_clash[g, l]      = w_pt_clash      · posnorm(-clash_eres)[g, l]
             A_chainbreak[g, l] = w_pt_chainbreak · posnorm(-chainbreak_eres)[g, l]
             A_lj[g, l]         = w_pt_lj         · posnorm(-lj_eres)[g, l]
             A_dsasa[g, l]      = w_pt_dsasa      · posnorm(-dsasa_eres)[g, l]
             A_hb[g, l]         = w_pt_hb         · posnorm(-hb_eres)[g, l]
+            A_ddg[g, l]        = w_pt_ddg        · posnorm(-ddg_eres)[g, l]
             A_struct[g, l]     = design_adv[g] + Σ A_*[g, l]
 
         Any per-residue signal may be ``None`` (its arm off); with all ``None`` the result is
@@ -2087,6 +2315,9 @@ class LeFlurGRPOTrainer:
             ``(G, L)`` per-residue interface-potential penalties (bounded LJ energy, negated
             buried ΔSASA, negated interface H-bond count), or ``None`` when the per-token
             potential arm is off.
+        ddg_eres : torch.Tensor or None, keyword-only
+            ``(G, L)`` per-residue tmol interface ΔΔG (signed, more-negative = better, so already
+            "larger = worse"), or ``None`` when the per-token ΔΔG arm is off.
 
         Returns
         -------
@@ -2105,6 +2336,8 @@ class LeFlurGRPOTrainer:
             a = a + cfg.w_pt_dsasa * self._pos_norm_adv(dsasa_eres, gen_mask_struc)
         if hb_eres is not None:
             a = a + cfg.w_pt_hb * self._pos_norm_adv(hb_eres, gen_mask_struc)
+        if ddg_eres is not None:
+            a = a + cfg.w_pt_ddg * self._pos_norm_adv(ddg_eres, gen_mask_struc)
         return a  # (G, L)
 
     # ---------------------------------------------------------------- GRPO update
@@ -2144,25 +2377,33 @@ class LeFlurGRPOTrainer:
         need_dist = cfg.w_aa_dist > 0 or cfg.w_3di_dist > 0 or cfg.log_dist_diagnostic
         need_clash = cfg.w_clash_contact > 0
         need_chainbreak = cfg.w_chainbreak > 0
+        need_rog = cfg.w_rog > 0
         need_shape = cfg.w_shape > 0
         # Mirror _compute_rewards: log_sc_clash_diagnostic forces "clash" into want at weight 0.
         need_sc_clash = cfg.w_sc_clash > 0 or getattr(cfg, "log_sc_clash_diagnostic", False)
         need_sft = getattr(cfg, "sft_mu", 0.0) > 0
         need_aar = cfg.w_aar > 0 or need_sft
         need_pot = getattr(cfg, "per_token_pot", False)
-        need_repack = need_shape or need_sc_clash or need_aar or need_pot
-        repack_branch = need_repack and not (need_shape and not (need_sc_clash or need_aar or need_pot))
+        need_ddg = getattr(cfg, "per_token_ddg", False)
+        need_repack = need_shape or need_sc_clash or need_aar or need_pot or need_ddg
+        repack_branch = need_repack and not (need_shape and not (need_sc_clash or need_aar or need_pot or need_ddg))
 
         gen_bb = None
         handle = None
-        if need_dist or need_clash or need_chainbreak or need_repack:
+        if need_dist or need_clash or need_chainbreak or need_rog or need_repack:
             # Decode the shared backbone once here; reused by the phase-2 reward call (gen_bb=)
             # so it is not re-decoded — bit-identical to decoding inside _compute_rewards.
             gen_bb = self._decode_backbone_coords(trajectory, comp).numpy()  # (G, L, 3, 3)
         if repack_branch:
             want = tuple(
                 m
-                for m, on in (("sc", need_shape), ("clash", need_sc_clash), ("aar", need_aar), ("pot", need_pot))
+                for m, on in (
+                    ("sc", need_shape),
+                    ("clash", need_sc_clash),
+                    ("aar", need_aar),
+                    ("pot", need_pot),
+                    ("ddg", need_ddg),
+                )
                 if on
             )
             designs = self._build_repack_designs(trajectory, comp, seqs, gen_bb)
@@ -2229,7 +2470,7 @@ class LeFlurGRPOTrainer:
         # track carries a per-position advantage (design-level advantage + per-residue clash
         # and/or chain-break credit) and is dropped from the design-level PPO; the remaining
         # (sequence/tri) tracks keep the scalar advantage.
-        pt_active = cfg.per_token_clash or cfg.per_token_chainbreak or cfg.per_token_pot
+        pt_active = cfg.per_token_clash or cfg.per_token_chainbreak or cfg.per_token_pot or cfg.per_token_ddg
         design_tracks = tuple(t for t in cfg.tracks if t not in cfg.pt_clash_tracks) if pt_active else cfg.tracks
         # 4a. OLD (behaviour) policy per-step log-prob, snapshotted under no_grad so the
         # importance ratio is against fixed weights across all inner updates. Log-prob is
@@ -2261,6 +2502,7 @@ class LeFlurGRPOTrainer:
             lj_eres = pt_extras.get("lj_eres") if pt_extras is not None else None
             dsasa_eres = pt_extras.get("dsasa_eres") if pt_extras is not None else None
             hb_eres = pt_extras.get("hb_eres") if pt_extras is not None else None
+            ddg_eres = pt_extras.get("ddg_eres") if pt_extras is not None else None
             struct_pos_advantage = self._struct_pos_advantage(
                 clash_eres,
                 advantages,
@@ -2269,6 +2511,7 @@ class LeFlurGRPOTrainer:
                 lj_eres=lj_eres,
                 dsasa_eres=dsasa_eres,
                 hb_eres=hb_eres,
+                ddg_eres=ddg_eres,
             )  # (G, L)
             with torch.no_grad():
                 old_lp_struct_pos_per_step = self.model.struct_pos_logprob_per_step(
@@ -2375,6 +2618,47 @@ class LeFlurGRPOTrainer:
             return mu0 * (1.0 - frac)
         raise ValueError(f"unknown struct_sft_mu_schedule: {sched!r}")
 
+    def _allreduce_and_scale_encoder_grads(self, n_live_local: int) -> int:
+        """All-reduce (SUM) the encoder gradients across ranks and scale by the global mean.
+
+        Sums each rank's *unscaled* accumulated encoder gradients, sums the per-rank live-target
+        counts, and divides the reduced gradients by that global count — so the resulting
+        gradient (identical on every rank) equals the single-GPU mean over all ``accum_targets``
+        live targets, regardless of how unevenly they shard.
+
+        Parameters
+        ----------
+        n_live_local : int
+            Number of live (non-flat) targets this rank contributed gradients for this step.
+
+        Returns
+        -------
+        int
+            The global number of live targets. When 0 (every rank had an all-flat shard) the
+            caller must skip the optimizer step on all ranks identically (no grads were reduced).
+        """
+        params = list(self.model.encoder.parameters())
+        # Global live-target count (SUM) — the normalization denominator. Reduced first so all
+        # ranks take the same skip-vs-step branch below.
+        t = torch.tensor([float(n_live_local)], device=self.device)
+        dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        global_n_live = int(t.item())
+        if global_n_live == 0:
+            return 0
+        # Coalesce grads (None => zeros so an all-flat-local rank still participates with the
+        # identical param count/order) and all-reduce (SUM) them in one flattened collective.
+        grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+        flat = torch._utils._flatten_dense_tensors(grads)
+        dist.all_reduce(flat, op=dist.ReduceOp.SUM)
+        for g, s in zip(grads, torch._utils._unflatten_dense_tensors(flat, grads)):
+            g.copy_(s)
+        # Re-attach (a param whose local grad was None now carries other ranks' summed grad) and
+        # scale by the global live count => exact mean over all live targets across ranks.
+        inv = 1.0 / global_n_live
+        for p, g in zip(params, grads):
+            p.grad = g.mul_(inv)
+        return global_n_live
+
     def _ppo_update(self, packets: list[dict], step: int = 0) -> dict:
         """Run ``mu`` PPO inner updates over one or more rollout packets.
 
@@ -2398,7 +2682,10 @@ class LeFlurGRPOTrainer:
         """
         cfg = self.config
         live = [p for p in packets if not p["flat"]]
-        if not live:
+        # Single-GPU: an all-flat step is a no-op. Distributed: this rank's shard may be empty
+        # while other ranks have live targets, so every rank MUST fall through to the collectives
+        # below (a global all-flat step is skipped consistently via global_n_live == 0).
+        if not live and not self._is_dist:
             return {}
         n_live = len(live)
 
@@ -2409,6 +2696,9 @@ class LeFlurGRPOTrainer:
         struct_ratios: list[float] = []  # per-token clash: masked-mean per-position structure ratio
         struct_pg_losses: list[float] = []
         grad_norm = torch.tensor(0.0)
+        # Global live-target count (== n_live on single-GPU; set by the cross-rank reduce below
+        # when distributed). Drives both the gradient normalization and the logged n_targets.
+        global_n_live = n_live
         # CHORD SFT blend weight for this optimizer step (0.0 => term off, legacy path).
         chord_mu = self._chord_mu(step)
         # Protenix fold-consistency SFT weight (additive auxiliary; 0.0 => term off).
@@ -2427,9 +2717,9 @@ class LeFlurGRPOTrainer:
                 # Per-token clash: the STRUCTURE track uses a per-position advantage/PPO term; the
                 # design-level PPO runs on the remaining tracks (seq/tri). The fused/plain forward
                 # additionally returns the per-position structure log-prob (one shared forward).
-                pt_on = (cfg.per_token_clash or cfg.per_token_chainbreak or cfg.per_token_pot) and p.get(
-                    "struct_pos_advantage"
-                ) is not None
+                pt_on = (
+                    cfg.per_token_clash or cfg.per_token_chainbreak or cfg.per_token_pot or cfg.per_token_ddg
+                ) and p.get("struct_pos_advantage") is not None
                 design_tracks = p.get("design_tracks", cfg.tracks)
                 pos_tracks = cfg.pt_clash_tracks if pt_on else ()
                 # CHORD SFT-distillation term: convex-blend a φ-weighted supervised CE toward the
@@ -2560,7 +2850,12 @@ class LeFlurGRPOTrainer:
                     loss = loss + struct_chord_mu * struct_sft_ce
                     struct_sft_losses.append(float(struct_sft_ce.detach()))
                 # Average across targets (n_live==1 => /1 is exact, byte-identical to legacy).
-                (loss / n_live).backward()
+                # Distributed: accumulate the UNSCALED sum locally; the global mean (÷ global
+                # live count) is applied after the cross-rank all-reduce below.
+                if self._is_dist:
+                    loss.backward()
+                else:
+                    (loss / n_live).backward()
 
                 ratios.append(float(ratio.mean()))
                 clipfracs.append(float(((ratio - 1.0).abs() > cfg.eps_clip).float().mean()))
@@ -2576,6 +2871,13 @@ class LeFlurGRPOTrainer:
                 dlp_means.append(float(dlp.mean()))
                 dlp_corrs.append(self._pearson(advantages, dlp))
 
+            if self._is_dist:
+                # Sum encoder grads across ranks and rescale to the global per-target mean.
+                # A global all-flat step (no live targets on ANY rank) returns identically on
+                # every rank so the collectives stay matched.
+                global_n_live = self._allreduce_and_scale_encoder_grads(n_live)
+                if global_n_live == 0:
+                    return {}
             grad_norm = (
                 torch.nn.utils.clip_grad_norm_(self.model.encoder.parameters(), cfg.grad_clip)
                 if cfg.grad_clip > 0
@@ -2583,6 +2885,11 @@ class LeFlurGRPOTrainer:
             )
             self.optimizer.step()
 
+        # Distributed: a rank whose local shard was empty took the step (with other ranks'
+        # gradients) but has no per-target metrics to report — return empty, only populated
+        # ranks contribute logging (rank 0 logs its own shard).
+        if not live:
+            return {}
         return {
             # First-recorded ratio: with inline old_lp this is a consistency check on the
             # new_lp recompute (should be ~1.0). Divergence flags a sampler/recompute mismatch.
@@ -2602,7 +2909,7 @@ class LeFlurGRPOTrainer:
             # Diagnostics: common-mode drift and advantage-differential faithfulness.
             "ppo/dlp_mean": sum(dlp_means) / len(dlp_means),
             "ppo/dlp_adv_corr": sum(dlp_corrs) / len(dlp_corrs),
-            "update/n_targets": float(n_live),
+            "update/n_targets": float(global_n_live),
             # Per-token clash (only populated when per_token_clash is active). struct_ratio_init
             # ~1.0 confirms the per-position new/old log-prob recompute matches.
             **(
@@ -2693,7 +3000,11 @@ class LeFlurGRPOTrainer:
         self.model.eval()
         sched = self._iter_targets()
         for step in range(cfg.num_steps):
-            specs = [next(sched) for _ in range(max(1, cfg.accum_targets))]
+            # Draw the FULL global accum_targets on every rank (keeps the round-robin pointer
+            # in lockstep across ranks and steps), then shard by rank. ws==1 => specs_all[0::1]
+            # == specs_all, byte-identical to single-GPU.
+            specs_all = [next(sched) for _ in range(max(1, cfg.accum_targets))]
+            specs = specs_all[self.rank :: self.world_size]
             # Lever A — pipeline rollout ⟂ repack-wait: submit ALL targets' repack round-trips
             # up front (phase 1, non-blocking), so the a10g pool scores the earlier targets
             # while the b200 rolls out the later ones; then collect + finish reward/advantage
@@ -2704,7 +3015,7 @@ class LeFlurGRPOTrainer:
             update_metrics = self._ppo_update(packets, step)
             metrics = self._merge_step_metrics(packets, update_metrics)
             metrics["step"] = step
-            if step % cfg.log_every == 0:
+            if self.rank == 0 and step % cfg.log_every == 0:
                 logger.info(
                     "step %d [%s] reward/mean=%.4f pass=%.3f ptm=%.3f iptm=%.3f "
                     "sctm_b=%.3f sctm_c=%.3f kl=%.4g ratio=%.3f "
@@ -2738,11 +3049,18 @@ class LeFlurGRPOTrainer:
                         metrics.get("ptclash/adv_abs_mean", 0.0),
                         metrics.get("ptclash/adv_max_abs", 0.0),
                     )
+            # wandb_run is None on non-zero ranks (constructed rank-0-only by the launcher), so
+            # this logs on rank 0 only. Metrics are rank 0's own target shard.
             if self.wandb_run is not None:
                 self.wandb_run.log({k: v for k, v in metrics.items() if isinstance(v, (int, float))}, step=step)
-            if cfg.ckpt_dir and cfg.ckpt_every and (step + 1) % cfg.ckpt_every == 0:
+            # Checkpoint on rank 0 only (state_dict is identical across ranks after the synced step).
+            if self.rank == 0 and cfg.ckpt_dir and cfg.ckpt_every and (step + 1) % cfg.ckpt_every == 0:
                 self._save_checkpoint(step + 1)
-        if cfg.ckpt_dir:
+        # Barrier so non-zero ranks don't tear down the process group while rank 0 writes the
+        # final checkpoint (no-op on single-GPU).
+        if self._is_dist:
+            dist.barrier()
+        if self.rank == 0 and cfg.ckpt_dir:
             self._save_checkpoint(cfg.num_steps)
 
     def _save_checkpoint(self, step: int) -> None:

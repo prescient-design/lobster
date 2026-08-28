@@ -26,6 +26,10 @@ final reward is a sum of weighted, per-metric-clipped terms:
   backbone, a dense Protenix-free **realism regularizer** that keeps the decoded
   coordinates physically valid so the other structure-track rewards (clash / shape /
   3Di-dist), all measured on that backbone, stay trustworthy.
+* :mod:`._rog_reward` — binder radius-of-gyration **compactness** term
+  (``r0·N^(1/3) / Rg`` saturating at a native-anchored target) over the generated
+  binder backbone, a length-normalized Protenix-free shaping signal that pulls
+  over-extended folds toward the passing-Complexa globular fold state.
 * :mod:`._sc_clash_reward` — **all-atom** side-chain steric-clash penalty over the
   *whole binder* (binder self-clash + binder↔antigen overlap on LigandMPNN-repacked
   side chains; interface tracked as diagnostic only), a biophysically-grounded
@@ -87,6 +91,7 @@ from ._distribution_reward import (
 )
 from ._clash_reward import clash_contact_reward
 from ._chainbreak_reward import chainbreak_reward
+from ._rog_reward import rog_compactness, rog_compactness_reward
 from ._sc_clash_reward import (
     binder_clash_terms,
     binder_selfclash,
@@ -106,6 +111,7 @@ from ._shape_reward import (
     shape_complementarity_reward_atoms,
 )
 from ._ddg_reward import (
+    ddg_packed_all,
     ddg_per_binder_residue,
     ddg_reward,
     ddg_terms,
@@ -146,6 +152,8 @@ __all__ = [
     "tv",
     "clash_contact_reward",
     "chainbreak_reward",
+    "rog_compactness",
+    "rog_compactness_reward",
     "binder_clash_terms",
     "binder_selfclash",
     "cloud_from_atom14",
@@ -158,6 +166,7 @@ __all__ = [
     "SFT_IGNORE_INDEX",
     "shape_complementarity_reward",
     "shape_complementarity_reward_atoms",
+    "ddg_packed_all",
     "ddg_per_binder_residue",
     "ddg_reward",
     "ddg_terms",

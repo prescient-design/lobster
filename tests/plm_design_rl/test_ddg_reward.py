@@ -53,3 +53,23 @@ def test_ddg_terms_raises_install_hint_without_tmol() -> None:
         ddg.ddg_terms("/nonexistent.pdb")
     with pytest.raises(ImportError, match=r"plm-design-rl\[tmol\]"):
         ddg.ddg_per_binder_residue("/nonexistent.pdb")
+
+
+@pytest.mark.skipif(_HAS_TMOL, reason="tmol installed; import-discipline error not raised")
+def test_ddg_packed_all_raises_install_hint_without_tmol() -> None:
+    # The single-pass engine the GRPO repack worker calls ("ddg" want) must obey the same lazy-
+    # import discipline: no tmol at import time, a clear install-the-extra error only on first use.
+    with pytest.raises(ImportError, match=r"plm-design-rl\[tmol\]"):
+        ddg.ddg_packed_all("/nonexistent.pdb")
+
+
+def test_ddg_packed_all_is_exported() -> None:
+    # Reachable from the package and byte-identical via the lobster back-compat shim, so the
+    # worker's ``from plm_design_rl.rewards._ddg_reward import ddg_packed_all`` and any
+    # ``from lobster.rl_training.rewards import ddg_packed_all`` resolve to the same callable.
+    from lobster.rl_training.rewards import ddg_packed_all as shim_fn
+    from plm_design_rl.rewards import ddg_packed_all as pkg_fn
+
+    assert pkg_fn is ddg.ddg_packed_all
+    assert shim_fn is ddg.ddg_packed_all
+    assert callable(ddg.ddg_packed_all)

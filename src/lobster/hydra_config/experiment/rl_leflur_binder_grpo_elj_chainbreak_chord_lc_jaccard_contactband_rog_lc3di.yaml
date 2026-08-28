@@ -1,0 +1,203 @@
+# @package _global_
+#
+# EIGHT-TERM GRPO binder reward set = the finalized SIX-TERM set
+# (rl_leflur_binder_grpo_elj_chainbreak_chord_lc_jaccard_contactband) PLUS two new
+# fold-quality shaping terms added 2026-08-27:
+#
+#   7. Rg compactness (NEW)     w_rog=1.0, rog_r0=2.2, rog_full=0.76. Per-design SATURATING
+#                               reward on the binder radius of gyration:
+#                               reward += w_rog * clip(compactness/rog_full, 0, 1),
+#                               compactness = rog_r0*N^(1/3)/Rg (binder-Cα Rg, Å). Length-
+#                               normalized global FOLD-STATE signal no local geometry term
+#                               (clash/chainbreak/contact) sees: at matched chain length the
+#                               passing Complexa refs sit at ~0.76 while every trained arm is
+#                               over-extended (0.54-0.67, Table 6 geometry analysis). Saturates
+#                               so there is no pressure to collapse past the native fold state.
+#   8. 3Di LC (NEW)             w_struct_complexity=1.0, struct_lc_full=0.7. STRUCTURE-track
+#                               analog of term 4 (AA LC): the same per-design saturating
+#                               linguistic-complexity reward applied to the decoded binder 3Di
+#                               token string. Pushes the policy off the monotonous D-dominated
+#                               3Di collapse (our arms ~20-27% D vs native V-diverse; Complexa
+#                               most 3Di-diverse -- memory interface-3di-distribution).
+#
+# The six inherited terms (unchanged):
+#   1. e_lj (PRIMARY)   per_token_pot, w_pt_lj=1.0 (density-normalized per-token LJ advantage).
+#   2. chainbreak       w_chainbreak=1.0, count gate (backbone peptide-bond integrity).
+#   3. CHORD SFT (seq)  sft_mu=0.1, expert-context, whole-binder, hard label, phi on.
+#   4. LC (AA)          w_seq_complexity=1.0, lc_full=0.7 (within-sequence anti-degeneracy).
+#   5. within-group Jaccard (AA)  w_seq_diversity=0.1 (between-design anti-consensus).
+#   6. interface-contact band     w_clash_contact=1.0, band(f; 0.05, 0.16, 0.40).
+#
+# Between-design 3Di Jaccard (w_struct_diversity) is left OFF here (kept co-equal with the AA
+# Jaccard's small role); it is available as a knob if the 3Di pool collapses to consensus.
+#
+# All Protenix/shape/AAR/sc-clash/dist terms remain OFF exactly as in the six-term set.
+#
+# Usage (Protenix-free policy; a SEPARATE a10g repack array serves the e_lj/CHORD pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_elj_chainbreak_chord_lc_jaccard_contactband_rog_lc3di \
+#   N_WORKERS=0 M_SHAPE=8 POLICY_HRS=168 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_elj_chainbreak_chord_lc_jaccard_contactband_rog_lc3di \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_elj_chainbreak_chord_lc_jaccard_contactband_rog_lc3di"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+
+  # ===================== EIGHT-TERM REWARD SET =====================
+  # (1) e_lj — PRIMARY, density-normalized per-token structure-track advantage.
+  per_token_pot: true
+  w_pt_lj: 1.0
+  w_pt_dsasa: 0.0            # dsasa density OFF (area-term reward hacking)
+  w_pt_hb: 0.0              # n_hb density OFF (area-term reward hacking)
+  pot_with_sasa: false      # skip the slow buried-dSASA compute (unused)
+
+  # (2) chainbreak — backbone peptide-bond integrity (scalar, count gate).
+  w_chainbreak: 1.0
+  chainbreak_gate: count
+  # per-token chainbreak OFF (scalar realism regularizer, matches the offline analysis).
+
+  # (3) CHORD SFT-distillation — dense per-token LigandMPNN sequence supervision (expert-context).
+  sft_mu: 0.1
+  sft_mu_schedule: null
+  sft_use_phi: true
+  sft_scope: binder          # distil the WHOLE binder sequence (phi guards the generic core)
+  sft_label: hard            # HARD distillation: CE toward MPNN's argmax token
+  sft_temperature: 1.0
+  sft_masked_only: true
+  sft_reward_gate: null
+  struct_sft_mu: 0.0         # Protenix fold-consistency struct-SFT OFF (no Protenix this run)
+
+  # (4) LC (AA) — per-design saturating linguistic-complexity reward (within-sequence anti-degeneracy).
+  w_seq_complexity: 1.0
+  lc_full: 0.7               # full credit at LC>=0.7, ramp to 0 at collapse
+
+  # (5) within-group Jaccard (AA) — small between-design anti-consensus guard.
+  w_seq_diversity: 0.1
+  w_struct_diversity: 0.0    # between-design 3Di Jaccard OFF (available knob)
+
+  # (6) interface-contact band — soft clash x soft-count contact band on the decoded backbone.
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+
+  # (7) Rg compactness (NEW) — per-design saturating global-fold-state reward on binder Rg.
+  w_rog: 1.0
+  rog_r0: 2.2                # Rg_compact = rog_r0 * N^(1/3)
+  rog_full: 0.76            # full credit once compactness >= 0.76 (passing-Complexa fold state)
+
+  # (8) 3Di LC (NEW) — structure-track analog of (4): saturating LC on the decoded 3Di string.
+  w_struct_complexity: 1.0
+  struct_lc_full: 0.7
+
+  # ===================== EXCLUDED TERMS (all OFF) =====================
+  # Protenix confidence combo OFF -> oracle skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency OFF.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Interface-distribution (3Di-TV) reward OFF and NOT tracked (won't scale past the ref set).
+  w_aa_dist: 0.0
+  w_3di_dist: 0.0
+  log_dist_diagnostic: false
+  # 3DZD shape-SC OFF; AAR scalar OFF (its designed seq still feeds the CHORD SFT term).
+  w_shape: 0.0
+  w_aar: 0.0
+
+  # The SEQUENCE track must be trainable for the SFT gradient to reach the seq head.
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+# ProtenixRewardClient is constructed from this block but is NEVER queried (all conf weights 0,
+# no structure/coords), so no Protenix worker pool runs (N_WORKERS=0).
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the e_lj "pot"
+# want AND the CHORD SFT designed-sequence draw from one pack per design.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-elj-chainbreak-chord-lc-jaccard-contactband-rog-lc3di-g64

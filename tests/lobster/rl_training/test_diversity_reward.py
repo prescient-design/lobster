@@ -218,3 +218,17 @@ def test_lc_saturating_reward_is_floor_penalty_complement() -> None:
     pens, _ = lc_floor_penalty(seqs, lc_hi=thr, lc_lo=0.0)
     for r, g in zip(rews, pens):
         assert r == pytest.approx(1.0 - g)
+
+
+def test_lc_saturating_reward_on_3di_alphabet() -> None:
+    # The new 3Di-token LC reward (config `w_struct_complexity`) feeds the *decoded 3Di
+    # token string* through this same alphabet-generic saturating reward. 3Di is a 20-state
+    # alphabet (lowercase Foldseek letters) — a monotonous D-dominated 3Di string (our arms'
+    # failure mode) must score below a diverse one, exactly as for the AA track.
+    di_alphabet = "acdefghiklmnpqrstvwy"  # 20 Foldseek 3Di states
+    mono = "d" * 40  # D-dominated collapse
+    diverse = di_alphabet * 2
+    rews, lcs = lc_saturating_reward([diverse, mono], lc_full=0.7)
+    assert rews[0] > rews[1]
+    assert rews[1] < 0.01  # homopolymer -> LC ~0 -> ~no credit
+    assert lcs[0] > lcs[1]
