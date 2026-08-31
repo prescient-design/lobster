@@ -117,11 +117,13 @@ class GRPOTrainerConfig:
         ``r - mean`` — this removes the per-group ``1/std`` reweighting that, in
         low-diversity groups, inflates the gradient of near-identical designs and
         biases the update toward easy (low-variance) groups.
-    w_iptm, w_ptm, w_abag_iptm, w_plddt, w_gpde, w_pae_global, w_pae_interface : float
+    w_iptm, w_ptm, w_abag_iptm, w_plddt, w_gpde, w_pae_global, w_pae_interface, w_ipsae : float
         Confidence-term weights. Each scales the corresponding Protenix metric after
-        it is oriented higher-is-better and clipped to ``[0,1]`` (``*tm`` as-is,
-        ``plddt/100``, ``1 - gpde/2``, ``1 - pae/32``). Defaults recover the shipped
-        M22 reward: ``w_abag_iptm=1.0, w_ptm=0.5`` and every other metric ``0``.
+        it is oriented higher-is-better and clipped to ``[0,1]`` (``*tm`` and ``ipsae``
+        as-is, ``plddt/100``, ``1 - gpde/2``, ``1 - pae/32``). ``w_ipsae`` scales the
+        Dunbrack d0res interface score (computed from the token PAE matrix; present only
+        when the worker dumps per-token PAE). Defaults recover the shipped M22 reward:
+        ``w_abag_iptm=1.0, w_ptm=0.5`` and every other metric ``0``.
     w_sctm_binder, w_sctm_complex : float
         Structure self-consistency weights on the TM-score between the LeFlur-generated
         backbone and the Protenix-predicted backbone — binder chain and whole complex
@@ -191,6 +193,13 @@ class GRPOTrainerConfig:
     w_gpde: float = 0.0
     w_pae_global: float = 0.0
     w_pae_interface: float = 0.0
+    # ipSAE (Dunbrack d0res interface score, max A<->B, higher-is-better, in [0,1], oriented
+    # as-is) — an optional confidence-term reward computed on the worker from the same
+    # token_pair_pae matrix the PAE terms use. Present only when the worker dumps per-token PAE
+    # (need_atom_confidence=True); with the default resident path that dump is always on. Default
+    # 0 => byte-identical to runs without this term. See scripts/_grpo_ipsae_metrics.py for the
+    # matching offline Table-6 metric.
+    w_ipsae: float = 0.0
     # Structure self-consistency (TM-score gen-vs-predicted); > 0 => request coords.
     w_sctm_binder: float = 0.0
     w_sctm_complex: float = 0.0
@@ -516,6 +525,29 @@ class GRPOTrainerConfig:
     w_pt_dsasa: float = 1.0  # scale on the per-residue buried-ΔSASA advantage A_dsasa
     w_pt_hb: float = 1.0  # scale on the per-residue interface-H-bond advantage A_hb
     pot_with_sasa: bool = True  # compute the (slower) buried-ΔSASA term; off => A_dsasa disabled
+    # SPARSE (per-design) twin of the dense ``per_token_pot`` LJ arm — the controlled A/B control.
+    # When > 0, each design's TOTAL interface e_lj (``sum_l e_lj``, the same bounded-LJ the dense
+    # arm decomposes) is z-scored WITHIN the rollout group and ADDED to that design's group-level
+    # advantage at this weight, so it broadcasts identically to every generated token of every
+    # track (the design-level PPO). This mirrors the dense per-position normalization exactly, so
+    # the ONLY difference between ``per_token_pot`` (dense) and ``w_elj_scalar`` (sparse) is credit
+    # GRANULARITY (per-token vs per-design). Reuses the R_SC repack (adds the "pot" want when on;
+    # NO extra pack). e_lj is a penalty (larger = worse) so the score is NEGATED before z-scoring
+    # (less clash => higher advantage). MUTUALLY EXCLUSIVE with ``per_token_pot`` (both route the
+    # same e_lj; enabling both would double-count). Default 0.0 = byte-identical scalar path.
+    w_elj_scalar: float = 0.0
+    # Per-design fa_sol (Lazaridis–Karplus desolvation) advantage, size-normalized PER INTERFACE
+    # RESIDUE — a low-weight COMPANION to the e_lj arm (NOT mutually exclusive with per_token_pot;
+    # fa_sol is a distinct physical term). When > 0, each design's total interface fa_sol is divided
+    # by its interface-residue count (``fa_sol_per_res``; the training default per the offline gate —
+    # it removes the +0.85 interface-size confound that inflates the raw total, matching the
+    # ``hb_density``/``buns_density`` normalization), z-scored WITHIN the rollout group and ADDED to
+    # that design's group-level advantage at this weight, broadcasting to every token of every track
+    # via the design-level PPO. fa_sol is a penalty (larger = worse) so the per-residue score is
+    # NEGATED before z-scoring (less unsatisfied polar burial => higher advantage). Served by the
+    # SAME repack pack as R_SC / e_lj (adds the "pot" want; NO extra pack). Default 0.0 =
+    # byte-identical: no "pot" want it did not already request, no change to pt_extras or advantages.
+    w_fasol_scalar: float = 0.0
     # Per-token (per-residue) tmol interface ΔΔG advantage — the physics-complete upgrade of the
     # per_token_pot numpy ``e_lj`` arm. When True, the SAME LigandMPNN pack used for R_SC is scored
     # with tmol's ``beta_nov2016`` rigid interface ΔΔG (adds the ``fa_lk``/``lk_ball`` desolvation
@@ -534,6 +566,27 @@ class GRPOTrainerConfig:
     # The ΔΔG physics knobs (rigid vs relaxed, contact cutoff, CPU threads) live WORKER-side — the
     # repack pool is a separate process that does not read this config — set via the worker's
     # LEFLUR_DDG_{RELAX,CONTACT_CUTOFF,THREADS} env (defaults: rigid single-point, 5.0 Å, 4 threads).
+    # Per-token (per-residue) PROTENIX-CONFIDENCE advantage — the per-residue dual of the scalar
+    # confidence reward (``w_ptm``/``w_abag_iptm``/``w_ipsae``/…). When True, the Protenix fold's
+    # full-data dump is decomposed per binder residue for the four confidence metrics that admit a
+    # natural per-residue form ("where applicable"), and each vector is routed as a per-position
+    # advantage to the STRUCTURE track (same centering/normalization as clash), ADDITIVE with any
+    # active clash/chainbreak/pot/ddg per-token terms:
+    #   A_struct[g, l] = A_design[g] + … + A_plddt + A_pae_iface + A_pae_global + A_ipsae
+    # Metrics + orientation into posnorm's "larger = worse" convention:
+    #   plddt_res         (higher = better) -> NEGATED       ; w_pt_plddt
+    #   pae_interface_res (lower  = better) -> as-is          ; w_pt_pae_interface
+    #   pae_global_res    (lower  = better) -> as-is          ; w_pt_pae_global
+    #   ipsae_res         (higher = better) -> NEGATED       ; w_pt_ipsae
+    # pTM/ipTM/abag_iptm/gpde have no per-residue decomposition and stay scalar-only. Sets
+    # ``return_pertoken_conf`` on the reward client (rides back in each design's ``pertoken_conf``
+    # dict; no extra fold — the resident path already dumps per-token PAE + atom_plddt). Default
+    # False = byte-identical scalar path. See ``docs/leflur/grpo_per_token_advantage_plan.md``.
+    per_token_conf: bool = False
+    w_pt_plddt: float = 1.0  # scale on the per-residue pLDDT advantage A_plddt (negated at collection)
+    w_pt_pae_interface: float = 1.0  # scale on the per-residue interface-PAE advantage A_pae_iface (as-is)
+    w_pt_pae_global: float = 1.0  # scale on the per-residue global-PAE advantage A_pae_global (as-is)
+    w_pt_ipsae: float = 1.0  # scale on the per-residue ipSAE advantage A_ipsae (negated at collection)
     # Which track(s) receive any per-position structure advantage (clash, chain-break and/or
     # interface potentials); excluded from the design-level PPO on the remaining tracks.
     # Structure only by default. (Name kept for config compatibility; applies to all per-token
@@ -621,14 +674,26 @@ class LeFlurGRPOTrainer:
         if getattr(config, "per_token_pot", False):
             if not (config.w_pt_lj or config.w_pt_dsasa or config.w_pt_hb):
                 raise ValueError("per_token_pot requires at least one of w_pt_lj / w_pt_dsasa / w_pt_hb > 0")
+        if getattr(config, "w_elj_scalar", 0.0) > 0 and getattr(config, "per_token_pot", False):
+            raise ValueError(
+                "w_elj_scalar (sparse per-design e_lj) and per_token_pot (dense per-token e_lj) are "
+                "mutually exclusive — both route the same interface e_lj; enable exactly one"
+            )
         if getattr(config, "per_token_ddg", False):
             if getattr(config, "w_pt_ddg", 0.0) <= 0:
                 raise ValueError("per_token_ddg requires w_pt_ddg > 0 (it supplies the per-residue ΔΔG advantage)")
+        if getattr(config, "per_token_conf", False):
+            if not (config.w_pt_plddt or config.w_pt_pae_interface or config.w_pt_pae_global or config.w_pt_ipsae):
+                raise ValueError(
+                    "per_token_conf requires at least one of w_pt_plddt / w_pt_pae_interface / "
+                    "w_pt_pae_global / w_pt_ipsae > 0"
+                )
         if (
             getattr(config, "per_token_clash", False)
             or getattr(config, "per_token_chainbreak", False)
             or getattr(config, "per_token_pot", False)
             or getattr(config, "per_token_ddg", False)
+            or getattr(config, "per_token_conf", False)
         ):
             missing = [t for t in config.pt_clash_tracks if t not in config.tracks]
             if missing:
@@ -704,12 +769,20 @@ class LeFlurGRPOTrainer:
             or config.w_aar > 0
             or getattr(config, "sft_mu", 0.0) > 0
             or getattr(config, "log_sc_clash_diagnostic", False)  # tracked-but-off SC clash needs the pool
+            # Per-token / per-design interface-potential arms are served by this SAME pack; they must
+            # trigger the pool on their own (CHORD-off arms have no other repack weight). Without this
+            # the "pot"/"ddg" wants would silently never be requested (no pool → no e_lj).
+            or getattr(config, "per_token_pot", False)  # dense per-token e_lj/dsasa/hb
+            or getattr(config, "per_token_ddg", False)  # dense per-token interface ΔΔG
+            or getattr(config, "w_elj_scalar", 0.0) > 0  # sparse per-design e_lj
+            or getattr(config, "w_fasol_scalar", 0.0) > 0  # per-design fa_sol_per_res companion
         )
         if need_repack:
             if not config.shape_queue_dir:
                 raise ValueError(
-                    "shape_queue_dir is required when any repack reward (w_shape / w_sc_clash / w_aar) "
-                    "or CHORD SFT distillation (sft_mu) > 0"
+                    "shape_queue_dir is required when any repack reward (w_shape / w_sc_clash / w_aar), "
+                    "CHORD SFT distillation (sft_mu), or a per-token/per-design interface-potential arm "
+                    "(per_token_pot / per_token_ddg / w_elj_scalar / w_fasol_scalar) is > 0"
                 )
             from lobster.rl_training.rewards import ShapeRewardClient
 
@@ -1580,8 +1653,14 @@ class LeFlurGRPOTrainer:
             lj_eres = np.zeros((G, L), dtype=np.float64)
             dsasa_eres = np.zeros((G, L), dtype=np.float64)
             hb_eres = np.zeros((G, L), dtype=np.float64)
+            # Per-design TOTAL e_lj (sum over binder residues) for the sparse w_elj_scalar arm;
+            # NaN marks a design whose pack failed / returned a mismatched vector (neutral advantage).
+            elj_scalar = np.full(G, np.nan, dtype=np.float64)
+            # Per-design fa_sol PER INTERFACE RESIDUE (total fa_sol / n_iface_res) for the
+            # w_fasol_scalar companion arm; NaN = pack failed / worker returned no fa_sol vector.
+            fasol_scalar = np.full(G, np.nan, dtype=np.float64)
             n_pot_scored = 0
-            e_lj_sum, dsasa_sum, hb_sum = [], [], []
+            e_lj_sum, dsasa_sum, hb_sum, fasol_pr_sum = [], [], [], []
             for i, r in enumerate(results):
                 p = r.get("pot") if r is not None else None
                 if p is None:
@@ -1590,7 +1669,15 @@ class LeFlurGRPOTrainer:
                 if lj.shape[0] != nb:
                     continue  # worker returned no / mismatched potential vector for this design
                 lj_eres[i, binder_idx] = lj
+                elj_scalar[i] = float(lj.sum())
                 e_lj_sum.append(float(lj.sum()))
+                # fa_sol_per_res: total interface fa_sol / interface-residue count (both chains).
+                # The worker returns the per-binder-residue fa_sol vector and the scalar n_iface_res.
+                fs = np.asarray(p.get("fa_sol", []), dtype=np.float64)
+                if fs.shape[0] == nb:
+                    n_ifres = float(p.get("n_iface_res", 0) or 0)
+                    fasol_scalar[i] = float(fs.sum()) / max(1.0, n_ifres)
+                    fasol_pr_sum.append(fasol_scalar[i])
                 hb = np.asarray(p.get("n_hb", []), dtype=np.float64)
                 if hb.shape[0] == nb:
                     hb_eres[i, binder_idx] = -hb
@@ -1601,7 +1688,12 @@ class LeFlurGRPOTrainer:
                         dsasa_eres[i, binder_idx] = -ds
                         dsasa_sum.append(float(ds.sum()))
                 n_pot_scored += 1
-            pot_eres = {"lj_eres": lj_eres, "hb_eres": hb_eres}
+            pot_eres = {
+                "lj_eres": lj_eres,
+                "hb_eres": hb_eres,
+                "elj_scalar": elj_scalar,
+                "fasol_scalar": fasol_scalar,
+            }
             if with_sasa:
                 pot_eres["dsasa_eres"] = dsasa_eres  # only present when the SASA term is enabled
             metrics.update(
@@ -1609,6 +1701,7 @@ class LeFlurGRPOTrainer:
                     "pot/scored_frac": float(n_pot_scored / G),
                     "pot/e_lj_mean": _mean(e_lj_sum),  # bounded LJ energy (lower = better)
                     "pot/n_hb_mean": _mean(hb_sum),  # interface H-bonds (higher = better)
+                    "pot/fa_sol_per_res_mean": _mean(fasol_pr_sum),  # LK desolvation / iface res (lower = better)
                 }
             )
             if with_sasa:
@@ -1859,9 +1952,14 @@ class LeFlurGRPOTrainer:
         expert target tensors (see :meth:`_struct_sft_payload_for_group`) consumed by
         :meth:`_ppo_update`.
 
-        ``pt_extras`` is ``None`` unless the per-token clash advantage is active
-        (``per_token_clash``), in which case it carries ``{"clash_eres": (G, L)}`` — the
-        per-residue backbone clash energy used to build the per-position structure advantage.
+        ``pt_extras`` is ``None`` unless a per-token structure advantage OR the sparse per-design
+        e_lj arm is active, in which case it carries the active per-residue ``(G, L)`` signals used
+        to build the per-position structure advantage: ``clash_eres`` (``per_token_clash``),
+        ``chainbreak_eres`` (``per_token_chainbreak``), ``lj_eres``/``dsasa_eres``/``hb_eres``
+        (``per_token_pot``), ``ddg_eres`` (``per_token_ddg``), and/or the Protenix confidence duals
+        ``conf_plddt_eres``/``conf_pae_interface_eres``/``conf_pae_global_eres``/``conf_ipsae_eres``
+        (``per_token_conf``) — plus the per-design ``(G,)`` ``elj_scalar`` total (``w_elj_scalar``),
+        z-scored into the design-level advantage rather than routed per position.
 
         ``reward_i = confidence_i + structure_i + seq_diversity_i + struct_diversity_i``,
         each term a weighted, per-metric-clipped (``[0,1]``) contribution (see
@@ -1884,6 +1982,7 @@ class LeFlurGRPOTrainer:
             "w_gpde": cfg.w_gpde,
             "w_pae_global": cfg.w_pae_global,
             "w_pae_interface": cfg.w_pae_interface,
+            "w_ipsae": cfg.w_ipsae,
         }
         need_struct = cfg.w_sctm_binder > 0 or cfg.w_sctm_complex > 0
         # Protenix fold-consistency SFT (struct_sft_mu>0) folds the policy sequence and derives
@@ -1899,9 +1998,17 @@ class LeFlurGRPOTrainer:
         # 0/{}/False (see rewards/_protenix_reward.py), so the reward reduces to the
         # dense distribution term with no worker pool / queue involved.
         need_conf = any(w > 0 for w in conf_weights.values())
-        if need_conf or need_coords:
+        # Per-token confidence advantage (per_token_conf) needs the Protenix full-data dump
+        # decomposed per binder residue; request it from the client and fold even when every
+        # SCALAR confidence weight is 0 (the per-token dual can be the sole confidence signal).
+        need_conf_pertoken = getattr(cfg, "per_token_conf", False)
+        if need_conf or need_coords or need_conf_pertoken:
             confs = self.reward_client.score_group(
-                target_id, seqs, return_coords=need_coords, return_backbone=need_struct_sft
+                target_id,
+                seqs,
+                return_coords=need_coords,
+                return_backbone=need_struct_sft,
+                return_pertoken_conf=need_conf_pertoken,
             )
         else:
             confs = [None] * G
@@ -1961,8 +2068,13 @@ class LeFlurGRPOTrainer:
         need_sft = getattr(cfg, "sft_mu", 0.0) > 0
         need_aar = cfg.w_aar > 0 or need_sft
         # Per-token interface potentials (e_lj/dsasa/n_hb on the LigandMPNN pack) reuse the SAME
-        # repack round-trip as R_SC; request them via the "pot" want when per_token_pot is on.
-        need_pot = getattr(cfg, "per_token_pot", False)
+        # repack round-trip as R_SC; request them via the "pot" want when the dense per_token_pot
+        # arm OR the sparse per-design w_elj_scalar arm is on (both consume the packed e_lj).
+        need_pot = (
+            getattr(cfg, "per_token_pot", False)
+            or getattr(cfg, "w_elj_scalar", 0.0) > 0
+            or getattr(cfg, "w_fasol_scalar", 0.0) > 0
+        )
         # Per-token interface ΔΔG (tmol beta_nov2016 on the LigandMPNN pack) — physics-complete
         # upgrade of "pot"; also reuses the SAME R_SC round-trip via the "ddg" want.
         need_ddg = getattr(cfg, "per_token_ddg", False)
@@ -2110,6 +2222,7 @@ class LeFlurGRPOTrainer:
         gpde_mean, gpde_std = _conf_stat("gpde")
         pae_global_mean, pae_global_std = _conf_stat("pae_global")
         pae_iface_mean, pae_iface_std = _conf_stat("pae_interface")
+        ipsae_mean, ipsae_std = _conf_stat("ipsae")
         scored_frac = float(sum(continuous_ip(c) is not None for c in confs) / G)
 
         # Per-metric confidence contribution means (only active, present metrics).
@@ -2147,6 +2260,10 @@ class LeFlurGRPOTrainer:
             "conf/pae_global_std": pae_global_std,
             "conf/pae_interface_mean": pae_iface_mean,
             "conf/pae_interface_std": pae_iface_std,
+            # ipSAE (Dunbrack d0res interface score, max A↔B, higher = better) from the same
+            # token_pair_pae matrix; present only when the worker dumps per-token PAE.
+            "conf/ipsae_mean": ipsae_mean,
+            "conf/ipsae_std": ipsae_std,
             "conf/scored_frac": scored_frac,
             "conf/pass_rate": float(sum(passes(c) for c in confs) / G),
             # --- structure self-consistency (raw TM-scores) ---
@@ -2180,16 +2297,69 @@ class LeFlurGRPOTrainer:
         # Protenix fold-consistency SFT diagnostics (only present when struct_sft_mu>0).
         metrics.update(struct_sft_metrics)
 
+        # Per-token confidence extras (per_token_conf): per-binder-residue confidence signals
+        # (pLDDT / interface-PAE / global-PAE / ipSAE) from the Protenix full-data dump, scattered
+        # onto the (G, L) binder layout in the "larger = worse" penalty convention that
+        # _pos_norm_adv expects (pLDDT/ipSAE NEGATED since higher = better; PAE as-is since lower =
+        # better). None unless per_token_conf is on. Placed at the SAME binder positions as the
+        # clash/pot per-residue arms so it composes additively in _struct_pos_advantage.
+        conf_eres: dict | None = None
+        if need_conf_pertoken:
+            valid = comp["mask"][0].bool().cpu().numpy()
+            binder_mask = comp["binder_positions"].cpu().bool().numpy()
+            bpos = np.nonzero(valid & binder_mask)[0]  # order matches the worker's binder-residue order
+            L = int(valid.shape[0])
+            nb = int(bpos.shape[0])
+            plddt_eres = np.zeros((G, L), dtype=np.float64)
+            pae_iface_eres = np.zeros((G, L), dtype=np.float64)
+            pae_global_eres = np.zeros((G, L), dtype=np.float64)
+            ipsae_eres = np.zeros((G, L), dtype=np.float64)
+            pl_m, pi_m, pg_m, ip_m = [], [], [], []
+            n_conf_pt = 0
+            for i, c in enumerate(confs):
+                ptc = c.get("pertoken_conf") if c is not None else None
+                if ptc is None:
+                    continue
+                pl = np.asarray(ptc.get("plddt_res", []), dtype=np.float64)
+                pi = np.asarray(ptc.get("pae_interface_res", []), dtype=np.float64)
+                pg = np.asarray(ptc.get("pae_global_res", []), dtype=np.float64)
+                ip = np.asarray(ptc.get("ipsae_res", []), dtype=np.float64)
+                if not (pl.shape[0] == pi.shape[0] == pg.shape[0] == ip.shape[0] == nb):
+                    continue  # worker returned no / mismatched per-token vectors for this design
+                plddt_eres[i, bpos] = -pl  # higher pLDDT = better -> negate to "larger = worse"
+                pae_iface_eres[i, bpos] = pi  # lower PAE = better -> as-is (already "larger = worse")
+                pae_global_eres[i, bpos] = pg
+                ipsae_eres[i, bpos] = -ip  # higher ipSAE = better -> negate
+                pl_m.append(float(pl.mean()))
+                pi_m.append(float(pi.mean()))
+                pg_m.append(float(pg.mean()))
+                ip_m.append(float(ip.mean()))
+                n_conf_pt += 1
+            conf_eres = {
+                "conf_plddt_eres": plddt_eres,
+                "conf_pae_interface_eres": pae_iface_eres,
+                "conf_pae_global_eres": pae_global_eres,
+                "conf_ipsae_eres": ipsae_eres,
+            }
+            # Raw per-residue means (pre-orientation, over scored designs) for legibility.
+            metrics["pt_conf/scored_frac"] = float(n_conf_pt / G)
+            metrics["pt_conf/plddt_mean"] = float(np.mean(pl_m)) if pl_m else 0.0
+            metrics["pt_conf/pae_interface_mean"] = float(np.mean(pi_m)) if pi_m else 0.0
+            metrics["pt_conf/pae_global_mean"] = float(np.mean(pg_m)) if pg_m else 0.0
+            metrics["pt_conf/ipsae_mean"] = float(np.mean(ip_m)) if ip_m else 0.0
+
         # Per-token structure extras: per-residue clash energy and/or chain-break penalty
         # (G, L) for the per-position structure advantage. None unless a per-token structure
         # reward is on (byte-identical scalar path otherwise). Both signals can be present and
         # are combined additively in _struct_pos_advantage.
         pt_extras: dict | None = None
         _pot_on = (need_pot or need_ddg) and pot_eres is not None
+        _conf_pt_on = need_conf_pertoken and conf_eres is not None
         if (
             (cfg.per_token_clash and clash_eres is not None)
             or (cfg.per_token_chainbreak and chainbreak_eres is not None)
             or _pot_on
+            or _conf_pt_on
         ):
             pt_extras = {}
             if cfg.per_token_clash and clash_eres is not None:
@@ -2204,6 +2374,30 @@ class LeFlurGRPOTrainer:
                 # ddg_eres (tmol interface ΔΔG, signed, already larger=worse — stored as-is).
                 for _k in ("lj_eres", "dsasa_eres", "hb_eres", "ddg_eres"):
                     _v = pot_eres.get(_k)
+                    if _v is not None:
+                        pt_extras[_k] = torch.as_tensor(_v, dtype=torch.float32, device=self.device)  # (G, L)
+                # Sparse per-design e_lj total (G,) for w_elj_scalar — z-scored into the design
+                # advantage in _collect_and_advantage (NOT a per-token structure signal).
+                if getattr(cfg, "w_elj_scalar", 0.0) > 0 and pot_eres.get("elj_scalar") is not None:
+                    pt_extras["elj_scalar"] = torch.as_tensor(
+                        pot_eres["elj_scalar"], dtype=torch.float32, device=self.device
+                    )  # (G,)
+                # Per-design fa_sol_per_res (G,) for w_fasol_scalar — z-scored into the design
+                # advantage in _collect_and_advantage (companion to e_lj, NOT a per-token signal).
+                if getattr(cfg, "w_fasol_scalar", 0.0) > 0 and pot_eres.get("fasol_scalar") is not None:
+                    pt_extras["fasol_scalar"] = torch.as_tensor(
+                        pot_eres["fasol_scalar"], dtype=torch.float32, device=self.device
+                    )  # (G,)
+            if _conf_pt_on:
+                # Per-residue Protenix confidences (G, L), all already oriented "larger = worse"
+                # at collection (pLDDT/ipSAE negated; PAE as-is).
+                for _k in (
+                    "conf_plddt_eres",
+                    "conf_pae_interface_eres",
+                    "conf_pae_global_eres",
+                    "conf_ipsae_eres",
+                ):
+                    _v = conf_eres.get(_k)
                     if _v is not None:
                         pt_extras[_k] = torch.as_tensor(_v, dtype=torch.float32, device=self.device)  # (G, L)
         return rewards, metrics, sft_payload, struct_sft_payload, pt_extras
@@ -2223,6 +2417,25 @@ class LeFlurGRPOTrainer:
         centered = rewards - rewards.mean()
         adv = centered / (rewards.std(unbiased=False) + eps) if normalize else centered
         return adv, std
+
+    @staticmethod
+    def _group_zscore(vals: torch.Tensor, eps: float) -> torch.Tensor:
+        """Group z-score of a per-design vector, robust to NaN (failed designs).
+
+        Standardizes ``vals (G,)`` by the mean/std over its FINITE entries (population std,
+        ``unbiased=False``, matching :meth:`_advantages`); NaN entries return 0 (a neutral
+        advantage). Groups with <=1 finite entry have no spread and return all-zeros. This is
+        the design-granularity twin of :meth:`_pos_norm_adv`, so the returned advantage is on
+        the same scale as the group-normalized GRPO advantage and can be added to it directly.
+        """
+        v = vals.detach().float()
+        finite = torch.isfinite(v)
+        out = torch.zeros_like(v)
+        if int(finite.sum()) <= 1:
+            return out  # no spread (0 or 1 valid design) → neutral for the whole group
+        vf = v[finite]
+        out[finite] = (vf - vf.mean()) / (vf.std(unbiased=False) + eps)
+        return out
 
     @staticmethod
     def _pearson(a: torch.Tensor, b: torch.Tensor) -> float:
@@ -2276,6 +2489,10 @@ class LeFlurGRPOTrainer:
         dsasa_eres: torch.Tensor | None = None,
         hb_eres: torch.Tensor | None = None,
         ddg_eres: torch.Tensor | None = None,
+        conf_plddt_eres: torch.Tensor | None = None,
+        conf_pae_interface_eres: torch.Tensor | None = None,
+        conf_pae_global_eres: torch.Tensor | None = None,
+        conf_ipsae_eres: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Per-position structure-track advantage for the per-token structure arm(s).
 
@@ -2290,6 +2507,10 @@ class LeFlurGRPOTrainer:
             A_dsasa[g, l]      = w_pt_dsasa      · posnorm(-dsasa_eres)[g, l]
             A_hb[g, l]         = w_pt_hb         · posnorm(-hb_eres)[g, l]
             A_ddg[g, l]        = w_pt_ddg        · posnorm(-ddg_eres)[g, l]
+            A_plddt[g, l]      = w_pt_plddt          · posnorm(-conf_plddt_eres)[g, l]
+            A_pae_iface[g, l]  = w_pt_pae_interface  · posnorm(-conf_pae_interface_eres)[g, l]
+            A_pae_global[g, l] = w_pt_pae_global     · posnorm(-conf_pae_global_eres)[g, l]
+            A_ipsae[g, l]      = w_pt_ipsae          · posnorm(-conf_ipsae_eres)[g, l]
             A_struct[g, l]     = design_adv[g] + Σ A_*[g, l]
 
         Any per-residue signal may be ``None`` (its arm off); with all ``None`` the result is
@@ -2318,6 +2539,11 @@ class LeFlurGRPOTrainer:
         ddg_eres : torch.Tensor or None, keyword-only
             ``(G, L)`` per-residue tmol interface ΔΔG (signed, more-negative = better, so already
             "larger = worse"), or ``None`` when the per-token ΔΔG arm is off.
+        conf_plddt_eres, conf_pae_interface_eres, conf_pae_global_eres, conf_ipsae_eres :
+                torch.Tensor or None, keyword-only
+            ``(G, L)`` per-binder-residue Protenix confidence signals, already oriented
+            "larger = worse" at collection (pLDDT/ipSAE negated; interface/global PAE as-is), or
+            ``None`` when the per-token confidence arm is off.
 
         Returns
         -------
@@ -2338,6 +2564,14 @@ class LeFlurGRPOTrainer:
             a = a + cfg.w_pt_hb * self._pos_norm_adv(hb_eres, gen_mask_struc)
         if ddg_eres is not None:
             a = a + cfg.w_pt_ddg * self._pos_norm_adv(ddg_eres, gen_mask_struc)
+        if conf_plddt_eres is not None:
+            a = a + cfg.w_pt_plddt * self._pos_norm_adv(conf_plddt_eres, gen_mask_struc)
+        if conf_pae_interface_eres is not None:
+            a = a + cfg.w_pt_pae_interface * self._pos_norm_adv(conf_pae_interface_eres, gen_mask_struc)
+        if conf_pae_global_eres is not None:
+            a = a + cfg.w_pt_pae_global * self._pos_norm_adv(conf_pae_global_eres, gen_mask_struc)
+        if conf_ipsae_eres is not None:
+            a = a + cfg.w_pt_ipsae * self._pos_norm_adv(conf_ipsae_eres, gen_mask_struc)
         return a  # (G, L)
 
     # ---------------------------------------------------------------- GRPO update
@@ -2383,7 +2617,11 @@ class LeFlurGRPOTrainer:
         need_sc_clash = cfg.w_sc_clash > 0 or getattr(cfg, "log_sc_clash_diagnostic", False)
         need_sft = getattr(cfg, "sft_mu", 0.0) > 0
         need_aar = cfg.w_aar > 0 or need_sft
-        need_pot = getattr(cfg, "per_token_pot", False)
+        need_pot = (
+            getattr(cfg, "per_token_pot", False)
+            or getattr(cfg, "w_elj_scalar", 0.0) > 0
+            or getattr(cfg, "w_fasol_scalar", 0.0) > 0
+        )
         need_ddg = getattr(cfg, "per_token_ddg", False)
         need_repack = need_shape or need_sc_clash or need_aar or need_pot or need_ddg
         repack_branch = need_repack and not (need_shape and not (need_sc_clash or need_aar or need_pot or need_ddg))
@@ -2465,12 +2703,52 @@ class LeFlurGRPOTrainer:
             metrics["update/skipped_flat_group"] = 1.0
             return {"spec": spec, "metrics": metrics, "flat": True}
 
+        # Sparse (per-design) e_lj advantage — the scalar twin of the dense per_token_pot LJ arm.
+        # z-score each design's TOTAL interface e_lj within the group and ADD it to the group-level
+        # advantage, so it broadcasts identically to every generated token of every track via the
+        # design-level PPO (structure_tokens stays in design_tracks because no per-token arm is on).
+        # Same normalization as the dense per-position path — the ONLY difference is granularity.
+        # Applied only to surviving (non-flat) groups, exactly as the dense per-token e_lj is.
+        if getattr(cfg, "w_elj_scalar", 0.0) > 0 and pt_extras is not None and pt_extras.get("elj_scalar") is not None:
+            elj = pt_extras["elj_scalar"]  # (G,), NaN where the pack failed
+            z = self._group_zscore(-elj, cfg.adv_eps)  # e_lj is a penalty → negate: less clash = higher adv
+            advantages = advantages + cfg.w_elj_scalar * z
+            _finite = torch.isfinite(elj)
+            metrics["elj_scalar/e_lj_mean"] = float(elj[_finite].mean()) if bool(_finite.any()) else 0.0
+            metrics["elj_scalar/scored_frac"] = float(_finite.float().mean())
+            metrics["elj_scalar/adv_abs_mean"] = float((cfg.w_elj_scalar * z).abs().mean())
+
+        # fa_sol_per_res companion — per-design LK desolvation normalized per interface residue,
+        # z-scored within the group and ADDED to the design-level advantage (broadcasts to every
+        # token of every track). fa_sol is a penalty (lower = better), so negate before z-scoring.
+        # Additive with the e_lj arm above (a distinct physical term, not mutually exclusive).
+        if (
+            getattr(cfg, "w_fasol_scalar", 0.0) > 0
+            and pt_extras is not None
+            and pt_extras.get("fasol_scalar") is not None
+        ):
+            fasol = pt_extras["fasol_scalar"]  # (G,) fa_sol_per_res, NaN where the pack failed
+            zf = self._group_zscore(-fasol, cfg.adv_eps)  # penalty → negate: less desolvation cost = higher adv
+            advantages = advantages + cfg.w_fasol_scalar * zf
+            _finite_f = torch.isfinite(fasol)
+            metrics["fasol_scalar/fa_sol_per_res_mean"] = (
+                float(fasol[_finite_f].mean()) if bool(_finite_f.any()) else 0.0
+            )
+            metrics["fasol_scalar/scored_frac"] = float(_finite_f.float().mean())
+            metrics["fasol_scalar/adv_abs_mean"] = float((cfg.w_fasol_scalar * zf).abs().mean())
+
         n_steps = len(trajectory["steps"])
         # When any per-token structure arm is active (clash and/or chain-break), the STRUCTURE
         # track carries a per-position advantage (design-level advantage + per-residue clash
         # and/or chain-break credit) and is dropped from the design-level PPO; the remaining
         # (sequence/tri) tracks keep the scalar advantage.
-        pt_active = cfg.per_token_clash or cfg.per_token_chainbreak or cfg.per_token_pot or cfg.per_token_ddg
+        pt_active = (
+            cfg.per_token_clash
+            or cfg.per_token_chainbreak
+            or cfg.per_token_pot
+            or cfg.per_token_ddg
+            or cfg.per_token_conf
+        )
         design_tracks = tuple(t for t in cfg.tracks if t not in cfg.pt_clash_tracks) if pt_active else cfg.tracks
         # 4a. OLD (behaviour) policy per-step log-prob, snapshotted under no_grad so the
         # importance ratio is against fixed weights across all inner updates. Log-prob is
@@ -2503,6 +2781,10 @@ class LeFlurGRPOTrainer:
             dsasa_eres = pt_extras.get("dsasa_eres") if pt_extras is not None else None
             hb_eres = pt_extras.get("hb_eres") if pt_extras is not None else None
             ddg_eres = pt_extras.get("ddg_eres") if pt_extras is not None else None
+            conf_plddt_eres = pt_extras.get("conf_plddt_eres") if pt_extras is not None else None
+            conf_pae_interface_eres = pt_extras.get("conf_pae_interface_eres") if pt_extras is not None else None
+            conf_pae_global_eres = pt_extras.get("conf_pae_global_eres") if pt_extras is not None else None
+            conf_ipsae_eres = pt_extras.get("conf_ipsae_eres") if pt_extras is not None else None
             struct_pos_advantage = self._struct_pos_advantage(
                 clash_eres,
                 advantages,
@@ -2512,6 +2794,10 @@ class LeFlurGRPOTrainer:
                 dsasa_eres=dsasa_eres,
                 hb_eres=hb_eres,
                 ddg_eres=ddg_eres,
+                conf_plddt_eres=conf_plddt_eres,
+                conf_pae_interface_eres=conf_pae_interface_eres,
+                conf_pae_global_eres=conf_pae_global_eres,
+                conf_ipsae_eres=conf_ipsae_eres,
             )  # (G, L)
             with torch.no_grad():
                 old_lp_struct_pos_per_step = self.model.struct_pos_logprob_per_step(
@@ -2718,7 +3004,11 @@ class LeFlurGRPOTrainer:
                 # design-level PPO runs on the remaining tracks (seq/tri). The fused/plain forward
                 # additionally returns the per-position structure log-prob (one shared forward).
                 pt_on = (
-                    cfg.per_token_clash or cfg.per_token_chainbreak or cfg.per_token_pot or cfg.per_token_ddg
+                    cfg.per_token_clash
+                    or cfg.per_token_chainbreak
+                    or cfg.per_token_pot
+                    or cfg.per_token_ddg
+                    or cfg.per_token_conf
                 ) and p.get("struct_pos_advantage") is not None
                 design_tracks = p.get("design_tracks", cfg.tracks)
                 pos_tracks = cfg.pt_clash_tracks if pt_on else ()

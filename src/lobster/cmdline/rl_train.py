@@ -24,8 +24,12 @@ Usage
 
 from __future__ import annotations
 
+import faulthandler
 import logging
 import os
+import sys
+import traceback
+from datetime import timedelta
 
 import hydra
 import torch
@@ -37,6 +41,10 @@ from lobster.rl_training import GRPOTrainerConfig, LeFlurGRPOTrainer, ProtenixRe
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Keeps the periodic-stack-dump file handle alive for the process lifetime (faulthandler
+# writes to it from its own timer thread). Only populated when GRPO_STACK_DUMP_S > 0.
+_STACK_DUMP_FH = None
 
 
 def _build_rollout_kwargs(gen_cfg: DictConfig, device: torch.device) -> dict:
@@ -209,11 +217,49 @@ def rl_train(cfg: DictConfig) -> None:
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     rank = int(os.environ.get("RANK", 0))
+    # NCCL collective watchdog timeout (also used below as the ceiling the shape-reward collect
+    # timeout must stay under). Read once here so it is defined on both the distributed and
+    # single-GPU paths. Default 3600s deliberately exceeds the 1800s repack timeout.
+    nccl_timeout_s = int(os.environ.get("NCCL_COLLECTIVE_TIMEOUT_S", 3600))
     if world_size > 1:
         torch.cuda.set_device(local_rank)  # BEFORE init_process_group / model.to, else ranks collide on cuda:0
-        dist.init_process_group(backend="nccl")
+        # Diagnostic: periodic Python-stack dump (off by default => byte-identical to production).
+        # faulthandler runs on its OWN timer thread, so it captures the MAIN thread's Python frames
+        # even while it's blocked in a CUDA/NCCL C call. When one rank stalls the per-step grad
+        # all-reduce (observed: 8-way runs deadlock at step-1 SeqNum=5), every rank's main thread
+        # blocks in `t.item()` on the count reduce EXCEPT the truly-stuck rank, whose dump instead
+        # shows the exact backward/forward frame it is wedged on. Per-rank file so the ranks don't
+        # interleave (torchrun merges all ranks' stderr into one file). Set GRPO_STACK_DUMP_S to the
+        # dump interval in seconds (e.g. 120) and keep NCCL_COLLECTIVE_TIMEOUT_S low (e.g. 600) so
+        # several dumps land before the watchdog aborts.
+        global _STACK_DUMP_FH
+        stack_dump_s = int(os.environ.get("GRPO_STACK_DUMP_S", 0))
+        if stack_dump_s > 0:
+            dump_dir = os.environ.get("GRPO_STACK_DUMP_DIR", "/cv/scratch/u/lisanzas/grpo_stackdump")
+            os.makedirs(dump_dir, exist_ok=True)
+            job = os.environ.get("SLURM_JOB_ID", "local")
+            _STACK_DUMP_FH = open(os.path.join(dump_dir, f"{job}_rank{rank}.txt"), "w", buffering=1)
+            faulthandler.enable(file=_STACK_DUMP_FH)
+            faulthandler.dump_traceback_later(stack_dump_s, repeat=True, file=_STACK_DUMP_FH)
+            logger.info("Periodic stack dump every %ds -> %s", stack_dump_s, _STACK_DUMP_FH.name)
+        # NCCL's default collective watchdog is 600s. A single GRPO step legitimately runs far longer
+        # on a straggler rank — generation + a BLOCKING external reward (repack blocks up to
+        # shape.timeout_s=1800s) + the mu-epoch PPO update — so the fast ranks reach the per-step
+        # grad all-reduce and time out waiting on the laggard, aborting the whole job (observed: 8-way
+        # run 20483377 died on WorkNCCL SeqNum=5 ALLREDUCE after 600s with no rank crashed). Set the
+        # collective timeout ABOVE the repack timeout so a slow/stuck repack degrades to a NaN reward
+        # instead of killing the run. Tunable via NCCL_COLLECTIVE_TIMEOUT_S (default 3600s > 1800s);
+        # read once above so the shape-timeout clamp below can enforce nccl_timeout > shape_timeout.
+        dist.init_process_group(backend="nccl", timeout=timedelta(seconds=nccl_timeout_s))
         device = torch.device(f"cuda:{local_rank}")
-        logger.info("Distributed GRPO: rank %d/%d, local_rank %d, device %s", rank, world_size, local_rank, device)
+        logger.info(
+            "Distributed GRPO: rank %d/%d, local_rank %d, device %s, nccl_timeout=%ds",
+            rank,
+            world_size,
+            local_rank,
+            device,
+            nccl_timeout_s,
+        )
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info("Using device: %s", device)
@@ -230,7 +276,15 @@ def rl_train(cfg: DictConfig) -> None:
     resolved_ckpt = resolve_checkpoint(cfg.model.ckpt_path)
     logger.info("Loading policy from %r -> %s", cfg.model.ckpt_path, resolved_ckpt)
     model_cls = hydra.utils.get_class(cfg.model._target_)
-    model = model_cls.load_from_checkpoint(str(resolved_ckpt))
+    # map_location="cpu" is REQUIRED for multi-GPU: without it, load_from_checkpoint restores every
+    # tensor to the device it was SAVED on (cuda:0), so all 8 ranks load the full model onto cuda:0
+    # regardless of torch.cuda.set_device(local_rank) (which only redirects new .cuda() allocs, not
+    # torch.load's restore-to-saved-device). The trainer then moves the working copy to cuda:{rank}
+    # (self.model = model.to(device)), but the transient cuda:0 load stays pinned in cuda:0's caching
+    # allocator on ranks 1-7 — 7 x ~7.9 GiB = ~55 GiB stolen from rank 0 -> step-1 backward OOMs
+    # (observed job 20519955: rank 0 boxed into 123 GiB of a 178 GiB card, 7 peers each holding
+    # 7.89 GiB on cuda:0). Loading to CPU keeps cuda:0 clean; .to(device) places it correctly.
+    model = model_cls.load_from_checkpoint(str(resolved_ckpt), map_location="cpu")
 
     reward_cfg = cfg.reward
     reward_client = ProtenixRewardClient(
@@ -264,9 +318,35 @@ def rl_train(cfg: DictConfig) -> None:
         # Per-token interface potentials / ΔΔG ride the SAME repack pool (pot / ddg wants).
         or bool(g.get("per_token_pot", False))
         or bool(g.get("per_token_ddg", False))
+        # Per-design e_lj / fa_sol_per_res companions also ride the "pot" want.
+        or float(g.get("w_elj_scalar", 0.0)) > 0
+        or float(g.get("w_fasol_scalar", 0.0)) > 0
     )
     if _shape_queue is None and _need_repack:
         _shape_queue = f"{cfg.output_dir}/shape_queue"
+    # INVARIANT (multi-GPU deadlock guard): the shape-reward collect timeout MUST stay comfortably
+    # below the NCCL collective watchdog. A repack that starves (pool idle-death / straggler) must
+    # let its rank FLOOR the group — collect_group returns None per design -> NaN e_lj -> neutral
+    # advantage — and reach the per-step grad all-reduce BEFORE the fast ranks' NCCL watchdog trips.
+    # If the shape timeout is >= the NCCL timeout, one starved rank blocks in collect_group past the
+    # watchdog and deadlocks the whole world (observed 8-way hang: rank 0 in collect_group while
+    # ranks 1-7 park at the step-1 count all-reduce, SeqNum=5). Clamp with a 300s margin and warn so
+    # a misconfig degrades gracefully instead of hanging. Defaults (shape 1800 < NCCL 3600 - 300)
+    # are unaffected -> byte-identical to today.
+    _shape_collect_timeout_s = float(shape_cfg.get("timeout_s", 1800.0)) if shape_cfg is not None else 1800.0
+    _nccl_guard_margin_s = 300.0
+    if _shape_collect_timeout_s >= nccl_timeout_s - _nccl_guard_margin_s:
+        _clamped = max(60.0, nccl_timeout_s - _nccl_guard_margin_s)
+        logger.warning(
+            "shape.timeout_s=%.0fs >= NCCL timeout %ds - %.0fs margin; clamping to %.0fs so a "
+            "starved repack floors its group before the collective watchdog trips (multi-GPU "
+            "deadlock guard). Raise NCCL_COLLECTIVE_TIMEOUT_S to use a longer shape timeout.",
+            _shape_collect_timeout_s,
+            nccl_timeout_s,
+            _nccl_guard_margin_s,
+            _clamped,
+        )
+        _shape_collect_timeout_s = _clamped
     grpo_config = GRPOTrainerConfig(
         group_size=int(g.group_size),
         num_steps=int(g.num_steps),
@@ -367,6 +447,14 @@ def rl_train(cfg: DictConfig) -> None:
         w_pt_dsasa=float(g.get("w_pt_dsasa", 1.0)),
         w_pt_hb=float(g.get("w_pt_hb", 1.0)),
         pot_with_sasa=bool(g.get("pot_with_sasa", True)),
+        # Sparse twin of per_token_pot's e_lj: each design's TOTAL interface e_lj z-scored within the
+        # rollout group and added to the design-level advantage. Rides the SAME "pot" repack want, so
+        # it needs the shape pool. Mutually exclusive with per_token_pot (double-counts e_lj otherwise).
+        w_elj_scalar=float(g.get("w_elj_scalar", 0.0)),
+        # Per-design fa_sol (LK desolvation) normalized per interface residue (fa_sol_per_res),
+        # z-scored within the group and added to the design-level advantage — a low-weight COMPANION
+        # to e_lj (not mutually exclusive). Rides the SAME "pot" repack want, so it needs the shape pool.
+        w_fasol_scalar=float(g.get("w_fasol_scalar", 0.0)),
         # Per-token (per-residue) tmol interface-ΔΔG advantage (beta_nov2016 on the LigandMPNN pack)
         # routed to the structure track — the physics-complete upgrade of per_token_pot's e_lj.
         # Reuses the R_SC pack via the "ddg" want; requires tmol in the repack worker's interpreter.
@@ -397,7 +485,7 @@ def rl_train(cfg: DictConfig) -> None:
         struct_sft_masked_only=bool(g.get("struct_sft_masked_only", True)),
         struct_sft_reward_gate=g.get("struct_sft_reward_gate", None),
         shape_queue_dir=_shape_queue,
-        shape_timeout_s=float(shape_cfg.get("timeout_s", 1800.0)) if shape_cfg is not None else 1800.0,
+        shape_timeout_s=_shape_collect_timeout_s,
         shape_poll_s=float(shape_cfg.get("poll_s", 2.0)) if shape_cfg is not None else 2.0,
         shape_cache=bool(shape_cfg.get("cache", True)) if shape_cfg is not None else True,
         shape_n_shards=int(shape_cfg.get("n_shards", 1)) if shape_cfg is not None else 1,
@@ -435,10 +523,52 @@ def rl_train(cfg: DictConfig) -> None:
     )
     try:
         trainer.train()
-    finally:
-        # Tear the process group down even if a rank raised mid-step. No barrier here: train()
-        # already barriers on the normal path, and barrier-ing in the exception path would hang
-        # (the other ranks are still mid-step). destroy lets NCCL abort so torchrun kills siblings.
+    except BaseException:
+        # A single rank raising mid-step is FATAL to the whole 8-way job and must fail LOUD + FAST.
+        # The surviving ranks are already parked in the NEXT collective (the per-step grad
+        # all-reduce in _allreduce_and_scale_encoder_grads) and will spin there until the NCCL
+        # watchdog — up to nccl_timeout_s (3600s) — with the GPUs pinned at 100%.
+        #
+        # We must NOT call dist.destroy_process_group() on this path. With its peers mid-collective
+        # a clean teardown BLOCKS trying to flush the still-live comm, so the crashed rank never
+        # exits — torchrun's elastic agent therefore never sees a dead worker and never reaps the
+        # siblings, and the whole job wedges for the SLURM walltime (POLICY_HRS) with no traceback
+        # ever emitted. (Observed 8-way, job 20514119: rank 0 stuck in destroy_process_group at
+        # 0% GPU / futex_wait while ranks 1-7 spun the step-1 count all-reduce at 100%; the held
+        # exception never surfaced because the finally hung.)
+        #
+        # Instead: log the traceback NOW (this is the run's only failure record), flush, then
+        # os._exit(1) — a hard exit that skips the hanging finalizers on purpose. A worker dying
+        # makes the elastic agent SIGTERM every sibling within its poll interval (seconds), SLURM
+        # gets a non-zero exit, and the traceback tells us WHICH rank/target/shape actually broke.
+        logger.exception("GRPO crashed on rank %d — aborting all ranks (hard exit)", rank)
+        # The policy job streams stdout/stderr to node-local /tmp and only mirrors them to weka
+        # every 20s (launch_leflur_grpo.slurm). os._exit(1) kills that copier too, so the final
+        # ~20s — including THIS traceback — dies with the node's tmpfs and never reaches weka
+        # (observed: jobs 20518753/20518756 failed 1:0 with no traceback in the mirrored log).
+        # Write the traceback straight to weka (cfg.output_dir) so it survives the hard exit.
+        try:
+            job_id = os.environ.get("SLURM_JOB_ID", "local")
+            crash_path = os.path.join(str(cfg.output_dir), f"crash_rank{rank}_{job_id}.txt")
+            with open(crash_path, "w") as _f:
+                _f.write(f"GRPO crashed on rank {rank} (job {job_id})\n\n")
+                _f.write(traceback.format_exc())
+            logger.error("wrote crash traceback to %s", crash_path)
+        except Exception:
+            logger.exception("failed to write durable crash dump")
+        for _h in logging.getLogger().handlers:
+            try:
+                _h.flush()
+            except Exception:
+                pass
+        sys.stderr.flush()
+        sys.stdout.flush()
+        if world_size > 1:
+            os._exit(1)
+        raise
+    else:
+        # Normal completion only: train() already barriered every rank to the same point, so a
+        # clean teardown here does not block. (Kept off the exception path for the reason above.)
         if world_size > 1:
             dist.destroy_process_group()
     logger.info("✓ GRPO run complete")

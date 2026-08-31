@@ -23,8 +23,12 @@ Result schema (``done/``)::
 
     {"job_id", "results": {design_id: {"ptm", "iptm", "plddt", "abag_iptm",
                                        "gpde", "pae_global", "pae_interface",
+                                       # "ipsae" only when the worker ran need_atom_confidence:
+                                       "ipsae",
                                        # only when the job set return_coords=true:
-                                       "antigen_xyz", "binder_xyz"}, ...}}
+                                       "antigen_xyz", "binder_xyz",
+                                       # only when the job set return_pertoken_conf=true:
+                                       "pertoken_conf"}, ...}}
 
 The confidence reward is a **flat, weighted linear combination** of these metrics —
 each oriented onto a higher-is-better axis and clipped to ``[0,1]`` (see
@@ -73,8 +77,8 @@ def _clip01(x: float) -> float:
 def _oriented_metric(conf: dict, weight_key: str) -> float | None:
     """Oriented, [0,1]-clipped value for the metric that ``weight_key`` scales.
 
-    Maps each raw Protenix field onto a higher-is-better axis (``*tm`` as-is,
-    ``plddt/100``, ``1 - gpde/2``, ``1 - pae/32``) then clips to ``[0,1]``.
+    Maps each raw Protenix field onto a higher-is-better axis (``*tm`` and ``ipsae``
+    as-is, ``plddt/100``, ``1 - gpde/2``, ``1 - pae/32``) then clips to ``[0,1]``.
     Returns ``None`` when the underlying field is absent (→ 0 contribution).
     """
     if weight_key == "w_iptm":
@@ -98,6 +102,12 @@ def _oriented_metric(conf: dict, weight_key: str) -> float | None:
     if weight_key == "w_pae_interface":
         v = conf.get("pae_interface")
         return None if v is None else _clip01(1.0 - float(v) / _PAE_CEIL)
+    if weight_key == "w_ipsae":
+        # ipSAE (Dunbrack d0res, max A<->B) is already a higher-is-better score in [0,1],
+        # so it is taken as-is (no orientation flip, no ceiling divide). Present only when the
+        # worker ran with need_atom_confidence=True (PROTENIX_NEED_PAE / the eval PAE path).
+        v = conf.get("ipsae")
+        return None if v is None else _clip01(float(v))
     return None
 
 
@@ -198,8 +208,8 @@ def reward_from_confidence(conf: dict | None, weights: dict[str, float] | None =
     """Flat, per-metric-clipped weighted linear combination of confidence metrics.
 
     ``reward = Σ_m w_m · clip(orient_m(conf[m]), 0, 1)`` where ``orient_m`` maps each
-    raw Protenix field onto a higher-is-better axis (``*tm`` as-is, ``plddt/100``,
-    ``1 - gpde/2``, ``1 - pae/32``). A missing field (or ``conf is None``)
+    raw Protenix field onto a higher-is-better axis (``*tm`` and ``ipsae`` as-is,
+    ``plddt/100``, ``1 - gpde/2``, ``1 - pae/32``). A missing field (or ``conf is None``)
     contributes 0, so a failed/timed-out design floors to 0.
 
     Parameters
@@ -300,7 +310,13 @@ class ProtenixRewardClient:
         with open(targets_csv, newline="") as fh:
             return {r["target_id"]: r for r in csv.DictReader(fh)}
 
-    def score_group(self, target_id: str, binder_seqs: list[str], return_coords: bool = False) -> list[dict | None]:
+    def score_group(
+        self,
+        target_id: str,
+        binder_seqs: list[str],
+        return_coords: bool = False,
+        return_pertoken_conf: bool = False,
+    ) -> list[dict | None]:
         """Score a group of binder sequences against one target; block for results.
 
         Parameters
@@ -317,14 +333,23 @@ class ProtenixRewardClient:
             result cache keys only on ``(target_id, seq)``: a cached hit returns
             whatever fields were fetched the first time, so a run that needs coords
             should keep this ``True`` for every call.
+        return_pertoken_conf : bool, optional
+            When ``True``, ask the worker to also return per-**binder-residue**
+            confidence vectors under ``"pertoken_conf"`` (``plddt_res``,
+            ``pae_interface_res``, ``pae_global_res``, ``ipsae_res`` — each a
+            length-``L_binder`` list) — consumed by the trainer's per-token
+            confidence advantage (``per_token_conf``). Off by default; same
+            cache caveat as ``return_coords`` (keep it stable across a run).
 
         Returns
         -------
         list[dict | None]
             One confidence dict per input sequence (``{"ptm","iptm","plddt",
-            "abag_iptm","gpde","pae_global","pae_interface"}`` plus
-            ``"antigen_xyz"``/``"binder_xyz"`` when ``return_coords``), or ``None``
-            where scoring was cached-miss + failed / timed out.
+            "abag_iptm","gpde","pae_global","pae_interface","ipsae"}`` plus
+            ``"antigen_xyz"``/``"binder_xyz"`` when ``return_coords`` and
+            ``"pertoken_conf"`` when ``return_pertoken_conf``), or ``None``
+            where scoring was cached-miss + failed / timed out. ``ipsae`` is present
+            only when the worker ran with ``need_atom_confidence=True``.
         """
         if target_id not in self.targets:
             raise KeyError(f"target_id {target_id!r} not in manifest ({len(self.targets)} targets)")
@@ -358,6 +383,7 @@ class ProtenixRewardClient:
                     "antigen_a3m": row["antigen_a3m"],
                     "designs": designs,
                     "return_coords": bool(return_coords),
+                    "return_pertoken_conf": bool(return_pertoken_conf),
                 }
                 atomic_write_json(self.queue / "new" / f"{job_id}.json", job)
                 shards.append((job_id, designs, subset))

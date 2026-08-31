@@ -265,6 +265,114 @@ def test_confidence_flat_linear_combo() -> None:
     assert reward_from_confidence(conf, {"w_pae_global": 1.0}) == 0.0
 
 
+def test_ipsae_reward_term_oriented_as_is() -> None:
+    """``w_ipsae`` orients ipSAE as-is (already higher-is-better in [0,1]) and floors when absent."""
+    from lobster.rl_training.rewards._protenix_reward import confidence_components
+
+    conf = {"ptm": 0.82, "abag_iptm": 0.60, "ipsae": 0.73}
+    # ipSAE is taken as-is: no orientation flip, no ceiling divide.
+    assert reward_from_confidence(conf, {"w_ipsae": 1.0}) == pytest.approx(0.73)
+    assert reward_from_confidence(conf, {"w_ipsae": 2.0}) == pytest.approx(1.46)
+    comps = confidence_components(conf, {"w_abag_iptm": 1.0, "w_ipsae": 0.5})
+    assert comps == pytest.approx({"w_abag_iptm": 0.60, "w_ipsae": 0.5 * 0.73})
+    # Clipped to [0,1] before weighting.
+    assert reward_from_confidence({"ipsae": 1.5}, {"w_ipsae": 1.0}) == pytest.approx(1.0)
+    # Absent ipSAE (worker ran without per-token PAE dump) contributes 0.
+    assert reward_from_confidence({"ptm": 0.82}, {"w_ipsae": 1.0}) == 0.0
+
+
+def test_worker_ipsae_scalar_matches_reference() -> None:
+    """The worker's vendored ``_ipsae_scalar`` reproduces scripts/_grpo_ipsae_metrics.py exactly."""
+    import importlib.util as _ilu
+
+    import numpy as np
+
+    ref_path = _SERVER_PATH.parent / "_grpo_ipsae_metrics.py"
+    ref_spec = _ilu.spec_from_file_location("_grpo_ipsae_metrics", ref_path)
+    ref = _ilu.module_from_spec(ref_spec)
+    ref_spec.loader.exec_module(ref)
+
+    rng = np.random.default_rng(0)
+    n_a, n_b = 12, 9  # antigen (chain 0) then binder (chain 1), first-appearance order
+    n = n_a + n_b
+    pae = rng.uniform(0.0, 20.0, size=(n, n)).astype(np.float32)
+    asym = np.array([0] * n_a + [1] * n_b)
+
+    got = server._ipsae_scalar(pae, asym, server.IPSAE_PAE_CUTOFF)
+    want = ref.ipsae_from_full_data(
+        {"token_pair_pae": pae.tolist(), "token_asym_id": asym.tolist()},
+        server.IPSAE_PAE_CUTOFF,
+    )
+    assert want is not None
+    assert got == pytest.approx(want[0])
+    # Worker default cutoff equals the offline metric's default.
+    assert server.IPSAE_PAE_CUTOFF == ref.PAE_CUTOFF
+    # Malformed / single-chain inputs return None (design dropped, term floors to 0).
+    assert server._ipsae_scalar(pae, np.zeros(n), server.IPSAE_PAE_CUTOFF) is None
+    assert server._ipsae_scalar(pae[:-1], asym, server.IPSAE_PAE_CUTOFF) is None
+
+
+def test_worker_pertoken_conf_from_full_data(tmp_path) -> None:
+    """Per-token confidence vectors have binder length, correct per-residue values + orientation."""
+    import json
+
+    import numpy as np
+
+    n_a, n_b = 3, 4  # antigen (chain 0) then binder (chain 1), first-appearance order
+    n = n_a + n_b
+    rng = np.random.default_rng(1)
+    pae = rng.uniform(0.0, 12.0, size=(n, n)).astype(np.float64)
+    asym = np.array([0] * n_a + [1] * n_b)
+    # One atom per token so per-token pLDDT aggregation is the identity on the binder slice.
+    atom_plddt = np.linspace(0.30, 0.95, n)
+    atom_to_token_idx = np.arange(n)
+
+    # Lay out dump/name/**/full_data as parse_one expects.
+    dump = tmp_path / "dump"
+    name = "design_0"
+    pred = dump / name / "seed_1" / "predictions"
+    pred.mkdir(parents=True)
+    (pred / f"{name}_full_data_sample_0.json").write_text(
+        json.dumps(
+            {
+                "token_pair_pae": pae.tolist(),
+                "token_asym_id": asym.tolist(),
+                "atom_plddt": atom_plddt.tolist(),
+                "atom_to_token_idx": atom_to_token_idx.tolist(),
+            }
+        )
+    )
+
+    res = server._pertoken_conf_from_full_data(dump, name)
+    assert res is not None
+    assert set(res) == {"plddt_res", "pae_interface_res", "pae_global_res", "ipsae_res"}
+    for v in res.values():
+        assert len(v) == n_b  # one value per binder residue
+
+    b_idx = np.arange(n_a, n)
+    a_idx = np.arange(0, n_a)
+    # pLDDT: one atom per token -> the binder-token atom_plddt values (higher = better, un-negated).
+    assert res["plddt_res"] == pytest.approx([round(x, 4) for x in atom_plddt[b_idx].tolist()])
+    # interface PAE: mean over antigen columns; global PAE: mean over all columns (lower = better).
+    assert res["pae_interface_res"] == pytest.approx(
+        [round(x, 4) for x in pae[np.ix_(b_idx, a_idx)].mean(axis=1).tolist()]
+    )
+    assert res["pae_global_res"] == pytest.approx([round(x, 4) for x in pae[b_idx, :].mean(axis=1).tolist()])
+    # ipSAE per binder residue (B->A); its max is the scalar asymmetric B->A ipSAE.
+    mask_a, mask_b = server._two_chain_masks(asym)
+    assert max(res["ipsae_res"]) == pytest.approx(
+        round(server._ipsae_asym(pae, mask_b, mask_a, server.IPSAE_PAE_CUTOFF), 4)
+    )
+    # Single-chain / missing full-data -> None (design contributes no per-token conf credit).
+    solo = tmp_path / "solo"
+    (solo / "d1" / "predictions").mkdir(parents=True)
+    (solo / "d1" / "predictions" / "d1_full_data_sample_0.json").write_text(
+        json.dumps({"token_pair_pae": pae.tolist(), "token_asym_id": [0] * n})
+    )
+    assert server._pertoken_conf_from_full_data(solo, "d1") is None
+    assert server._pertoken_conf_from_full_data(tmp_path, "does_not_exist") is None
+
+
 class _CoordWorker(_MockWorker):
     """Answers with fake confidences plus predicted CA coords when asked."""
 
@@ -305,3 +413,50 @@ def test_return_coords_roundtrip(queue_and_targets) -> None:
     for seq, conf in zip(seqs, with_coords):
         assert len(conf["binder_xyz"]) == len(seq)
         assert len(conf["antigen_xyz"]) == 4
+
+
+class _PertokenConfWorker(_MockWorker):
+    """Answers with fake confidences plus per-binder-residue vectors when asked."""
+
+    def run(self) -> None:
+        while not self._stop.is_set():
+            claimed = server.claim_one(self.queue, worker_id="mock")
+            if claimed is None:
+                time.sleep(0.02)
+                continue
+            job_id, job = claimed
+            self.jobs_served += 1
+            want = bool(job.get("return_pertoken_conf", False))
+            results = {}
+            for d in job["designs"]:
+                conf = _fake_conf_for(d["binder_seq"])
+                if want:
+                    n = len(d["binder_seq"])
+                    conf["pertoken_conf"] = {
+                        "plddt_res": [0.7] * n,
+                        "pae_interface_res": [8.0] * n,
+                        "pae_global_res": [9.0] * n,
+                        "ipsae_res": [0.5] * n,
+                    }
+                results[d["design_id"]] = conf
+            server._atomic_write_json(self.queue / "done" / f"{job_id}.json", {"job_id": job_id, "results": results})
+
+
+def test_return_pertoken_conf_roundtrip(queue_and_targets) -> None:
+    """``return_pertoken_conf=True`` threads through and per-residue vectors ride back per design."""
+    queue, targets = queue_and_targets
+    worker = _PertokenConfWorker(queue)
+    worker.start()
+    try:
+        client = ProtenixRewardClient(queue, targets, timeout_s=10, poll_s=0.02, cache=False)
+        seqs = ["AAAA", "AAAAAAAA"]
+        without = client.score_group("01_PD1", seqs, return_pertoken_conf=False)
+        with_pt = client.score_group("01_PD1", seqs, return_pertoken_conf=True)
+    finally:
+        worker.stop()
+
+    assert all("pertoken_conf" not in c for c in without)
+    for seq, conf in zip(seqs, with_pt):
+        ptc = conf["pertoken_conf"]
+        assert set(ptc) == {"plddt_res", "pae_interface_res", "pae_global_res", "ipsae_res"}
+        assert all(len(v) == len(seq) for v in ptc.values())
