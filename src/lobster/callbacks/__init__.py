@@ -3,6 +3,7 @@ from ._calm_sklearn_probe_callback import CalmSklearnProbeCallback
 from ._dataloader_checkpoint_callback import DataLoaderCheckpointCallback
 from ._dgeb_evaluation_callback import DGEBEvaluationCallback
 from ._moleculeace_sklearn_probe_callback import MoleculeACESklearnProbeCallback
+from ._moleculenet_sklearn_probe_callback import MoleculeNetSklearnProbeCallback
 
 from ._peer_sklearn_probe_callback import PEERSklearnProbeCallback
 from ._perturbation_score_callback import PerturbationScoreCallback
@@ -28,6 +29,7 @@ __all__ = [
     "DGEBEvaluationCallback",
     "SklearnProbeCallback",
     "MoleculeACESklearnProbeCallback",
+    "MoleculeNetSklearnProbeCallback",
     "CalmSklearnProbeCallback",
     "PEERSklearnProbeCallback",
     "PerturbationScoreCallback",

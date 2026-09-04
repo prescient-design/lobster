@@ -20,6 +20,7 @@ from ._codon_table import CODON_TABLE_PATH, CODON_TABLE_PATH_VENDOR
 from ._hf import HF_UME_MODEL_DIRPATH, HF_UME_REPO_ID
 from ._modality import Modality, ModalityType, to_modality
 from ._moleculeace_tasks import MOLECULEACE_TASKS
+from ._moleculenet_tasks import MOLECULENET_TASK_NAMES, MOLECULENET_TASKS, MoleculeNetTask
 from ._peer_tasks import (
     PEER_STRUCTURE_TASKS,
     PEER_TASK_CATEGORIES,
@@ -65,6 +66,9 @@ __all__ = [
     "WEIGHTED_CONCAT_SAMPLER_CHUNK_SIZE",
     "to_modality",
     "MOLECULEACE_TASKS",
+    "MOLECULENET_TASKS",
+    "MOLECULENET_TASK_NAMES",
+    "MoleculeNetTask",
     "CALM_TASKS",
     "CALM_TASK_SPECIES",
     "CALM_DEFAULT_SPECIES",

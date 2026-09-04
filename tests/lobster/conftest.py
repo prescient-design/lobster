@@ -245,6 +245,42 @@ class MockPEERDataset(Dataset):
         return len(self.sequences)
 
 
+class MockMoleculeNetDataset(Dataset):
+    """Mock MoleculeNet dataset that mimics MoleculeNetDataset interface."""
+
+    def __init__(self, task="BBBP", **kwargs):
+        self.task = task
+        self.smiles = [
+            "CCO",
+            "CCC",
+            "CCCC",
+            "CCCCC",
+            "CC",
+            "c1ccccc1",
+            "CC(=O)O",
+            "CCOCC",
+            "CCN",
+            "CCCl",
+        ]
+        if task in {"BBBP", "BACE", "HIV"}:
+            self.task_type = "binary"
+            self.targets = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+        else:
+            self.task_type = "regression"
+            self.targets = [1.5, 2.3, 0.8, 3.1, 1.9, 2.7, 1.2, 3.5, 0.9, 2.1]
+
+    def __getitem__(self, idx):
+        smiles = self.smiles[idx]
+        if self.task_type == "binary":
+            target = torch.tensor(self.targets[idx], dtype=torch.long).unsqueeze(-1)
+        else:
+            target = torch.tensor(self.targets[idx], dtype=torch.float32).unsqueeze(-1)
+        return smiles, target
+
+    def __len__(self):
+        return len(self.smiles)
+
+
 @pytest.fixture
 def dummy_model():
     return DummyLightningModule()
@@ -290,3 +326,8 @@ def mock_moleculeace_dataset():
 @pytest.fixture
 def mock_peer_dataset():
     return MockPEERDataset
+
+
+@pytest.fixture
+def mock_moleculenet_dataset():
+    return MockMoleculeNetDataset
