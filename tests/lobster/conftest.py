@@ -281,7 +281,6 @@ class MockMoleculeNetDataset(Dataset):
         return len(self.smiles)
 
 
-
 @pytest.fixture
 def dummy_model():
     return DummyLightningModule()
@@ -328,7 +327,7 @@ def mock_moleculeace_dataset():
 def mock_peer_dataset():
     return MockPEERDataset
 
+
 @pytest.fixture
 def mock_moleculenet_dataset():
     return MockMoleculeNetDataset
-
