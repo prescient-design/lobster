@@ -315,6 +315,7 @@ class ProtenixRewardClient:
         target_id: str,
         binder_seqs: list[str],
         return_coords: bool = False,
+        return_backbone: bool = False,
         return_pertoken_conf: bool = False,
     ) -> list[dict | None]:
         """Score a group of binder sequences against one target; block for results.
@@ -333,6 +334,13 @@ class ProtenixRewardClient:
             result cache keys only on ``(target_id, seq)``: a cached hit returns
             whatever fields were fetched the first time, so a run that needs coords
             should keep this ``True`` for every call.
+        return_backbone : bool, optional
+            When ``True``, ask the worker to also return the full ``(N, CA, C)``
+            backbone (not just CA) so the trainer's Protenix fold-consistency
+            struct-SFT (``struct_sft_mu > 0``) can derive ``(s*, τ*)`` from the
+            complete backbone. Forwarded into the job payload alongside
+            ``return_coords``; same ``(target_id, seq)`` cache caveat. Off by
+            default — CA-only rewards (``return_coords``) do not need it.
         return_pertoken_conf : bool, optional
             When ``True``, ask the worker to also return per-**binder-residue**
             confidence vectors under ``"pertoken_conf"`` (``plddt_res``,
@@ -383,6 +391,7 @@ class ProtenixRewardClient:
                     "antigen_a3m": row["antigen_a3m"],
                     "designs": designs,
                     "return_coords": bool(return_coords),
+                    "return_backbone": bool(return_backbone),
                     "return_pertoken_conf": bool(return_pertoken_conf),
                 }
                 atomic_write_json(self.queue / "new" / f"{job_id}.json", job)
