@@ -1,0 +1,221 @@
+# @package _global_
+#
+# NINE-TERM GRPO binder reward set = the SPARSE-e_lj + Rg arm
+# (rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog, wandb
+# complexa38-elj-sparse-clash-chainbreak-lc-jaccard-rog-g64 — the winning sparse arm) PLUS one
+# new interface-energy companion added 2026-09-01:
+#
+#   9. e_elec_per_res (NEW)   w_elec_scalar=0.5. Per-design Rosetta REF2015 fa_elec (sigmoidal
+#                             distance-dependent-dielectric Coulomb, min_dis plateau), SIZE-NORMALIZED
+#                             PER INTERFACE RESIDUE (total interface e_elec / n_iface_res), z-scored
+#                             WITHIN the rollout group and ADDED to the design-level advantage
+#                             (broadcasts to every token of every track). Reward R_elec = -E_elec
+#                             (lower / more-negative E_elec = more favorable electrostatics = better),
+#                             so it is negated before z-scoring: more favorable salt bridges / less
+#                             electrostatic strain => higher advantage. A COMPANION to the primary
+#                             e_lj arm (term 1), NOT a replacement. Served by the SAME LigandMPNN
+#                             repack pack as e_lj (adds no extra pack). Charges are net-correct FORMAL
+#                             charged-group values (Asp/Glu O, Lys Nz, Arg/His N; H stripped); the
+#                             numpy port (scripts/_faelec.py) is validated byte-for-byte vs compiled
+#                             tmol elec() (|Δ| to the float32/FMA floor).
+#
+#   OFFLINE GATE FOR THIS TERM IS NEGATIVE (AUROC 0.502, chance — below the raw-Coulomb diagnostic
+#   0.549 and far below e_lj 0.720 on the same Complexa pool; the DDD dielectric is distance-only /
+#   burial-blind). This arm is run FOR COMPLETENESS alongside the fa_sol companion arm, mirroring the
+#   fa_sol decision — not because the term cleared the gate. See
+#   docs/leflur/grpo_two_reward_sets_proposal.tex (Fig/§ faelec) and the leflur-reward-eval ledger.
+#
+# The eight inherited terms are BYTE-IDENTICAL to the sparse-rog arm, so checkpoints compare
+# step-for-step against it and the only variable is the added e_elec term:
+#   1. e_lj (PRIMARY)   w_elj_scalar=1.0 (SPARSE; per_token_pot OFF). dsasa/hb OFF.
+#   2. chainbreak       w_chainbreak=1.0, count gate (backbone peptide-bond integrity).
+#   3. LC seq           w_seq_complexity=1.0, lc_full=0.7 (within-sequence anti-degeneracy).
+#   4. LC 3Di           w_struct_complexity=1.0, struct_lc_full=0.30 (within-3Di anti-degeneracy).
+#   5. Jaccard seq      w_seq_diversity=0.1 (within-group between-design AA k-mer novelty).
+#   6. Jaccard 3Di      w_struct_diversity=0.1 (within-group between-design 3Di k-mer novelty).
+#   7. interface-contact w_clash_contact=1.0, band(f; 0.05, 0.16, 0.40) + soft clash.
+#   8. Rg compactness   w_rog=1.0, rog_r0=2.2, rog_full=0.76.
+#
+# CHORD SFT is HELD OFF (sft_mu=0), exactly as in the sparse-rog arm. All Protenix confidence,
+# structure self-consistency, 3Di-TV, 3DZD shape-SC, AAR, and sc-clash are OFF.
+#
+# WATCH: elec_scalar/e_elec_per_res_mean should FALL (more favorable); elj_scalar/e_lj_mean FALL;
+# rog compactness RISE; chainbreak metrics improve; diversity/lc_mean (seq AND 3Di) HOLD/RISE;
+# reward/clash_contact populated; ppo/grad_norm not swamped. Per-arm reward check after the run
+# (scripts/_arm_reward_report.py --cols e_elec ...) vs the rog arm to confirm the gradient moved
+# e_elec — separating "gradient didn't flow" from "gradient flowed, reward hackable".
+#
+# Usage (Protenix-free; a SEPARATE a10g repack array serves the e_lj/e_elec "pot" pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_faelec \
+#   N_WORKERS=0 M_SHAPE=8 POLICY_HRS=168 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_faelec \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_faelec"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+
+  # ===================== e_lj — SPARSE self-normalized per-design advantage =====================
+  per_token_pot: false       # dense per-token e_lj OFF (this is the sparse arm)
+  w_pt_lj: 0.0
+  w_pt_dsasa: 0.0
+  w_pt_hb: 0.0
+  pot_with_sasa: false       # repack still returns e_lj/e_elec (via the "pot" want)
+  w_elj_scalar: 1.0          # per-design total-e_lj z-score added to the group advantage
+
+  # (2) chainbreak — backbone peptide-bond integrity (scalar, count gate).
+  w_chainbreak: 1.0
+  chainbreak_gate: count
+
+  # CHORD SFT — HELD OFF (would confound the added-e_elec comparison).
+  sft_mu: 0.0
+  sft_mu_schedule: null
+  sft_use_phi: false
+  sft_scope: binder
+  sft_label: hard
+  sft_temperature: 1.0
+  sft_masked_only: true
+  sft_reward_gate: null
+  struct_sft_mu: 0.0         # Protenix fold-consistency struct-SFT OFF (no Protenix this run)
+
+  # (3) LC (seq) — per-design saturating linguistic-complexity reward (within-sequence anti-degeneracy).
+  w_seq_complexity: 1.0
+  lc_full: 0.7               # full credit at LC>=0.7, ramp to 0 at collapse
+  # (4) LC (3Di) — same, on the 3Di tri-token track (structural alphabet).
+  w_struct_complexity: 1.0
+  struct_lc_full: 0.30       # saturates at measured Complexa/base 3Di LC (~0.25/0.27)
+
+  # (5,6) within-group Jaccard novelty — between-design anti-consensus guard on BOTH tracks.
+  w_seq_diversity: 0.1
+  w_struct_diversity: 0.1    # 3Di k-mer Jaccard ON
+
+  # (7) interface-contact band — soft clash x soft-count contact band on the decoded backbone.
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+
+  # (8) Rg compactness — per-design saturating global-fold-state reward on binder Rg.
+  w_rog: 1.0
+  rog_r0: 2.2                # Rg_compact = rog_r0 * N^(1/3)
+  rog_full: 0.76            # full credit once compactness >= 0.76 (passing-Complexa fold state)
+
+  # (9) e_elec_per_res (NEW) — per-design DDD-Coulomb interface electrostatics / interface residue,
+  #     z-scored into the design advantage. Low-weight COMPANION to e_lj (term 1); reuses the same
+  #     repack pack. NEGATIVE offline gate (0.502); run for completeness (see header).
+  w_elec_scalar: 0.5
+
+  # ===================== EXCLUDED TERMS (all OFF) =====================
+  # Protenix confidence combo OFF -> oracle skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Structure self-consistency OFF.
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Interface-distribution (3Di-TV) reward OFF and NOT tracked (won't scale past the ref set).
+  w_aa_dist: 0.0
+  w_3di_dist: 0.0
+  log_dist_diagnostic: false
+  # 3DZD shape-SC OFF; AAR scalar OFF (CHORD off, so no designed-seq draw either).
+  w_shape: 0.0
+  w_aar: 0.0
+
+  # All three tracks trainable; the sparse e_lj advantage broadcasts to every track (design PPO).
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+# ProtenixRewardClient is constructed from this block but is NEVER queried (all conf weights 0,
+# no structure/coords), so no Protenix worker pool runs (N_WORKERS=0).
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the e_lj + e_elec
+# "pot" want from one pack per design. With CHORD off, w_elj_scalar is what turns this pool on.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  # 600s (not 1800) so a starved/idle-died repack pool floors its group within ~10 min and the rank
+  # reaches the grad all-reduce well before the NCCL watchdog (3600s) trips -> no 8-way deadlock.
+  # Healthy 64-design group collect is ~15-30s, so this is a >=20x margin over the healthy case.
+  timeout_s: 600
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-elj-sparse-clash-chainbreak-lc-jaccard-rog-faelec-g64

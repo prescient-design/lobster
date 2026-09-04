@@ -1,0 +1,261 @@
+# @package _global_
+#
+# TEN-TERM GRPO binder reward set = the NINE-TERM sparse-e_lj + Rg + sol/elec arm
+# (rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec, wandb
+# complexa38-elj-sparse-clash-chainbreak-lc-jaccard-rog-solelec-g64) PLUS one new structure-track
+# companion added 2026-09-03:
+#
+#  10. ESMFold sc-TM (NEW)  w_sctm_esmfold=1.0. Per-design ESMFold binder-MONOMER self-consistency
+#                           TM-score, a FLAT direct-maximization term: reward += w_sctm_esmfold * sc_tm.
+#                           Fold the binder SEQUENCE ALONE with facebook/esmfold_v1 (antigen ignored),
+#                           Kabsch-superpose the predicted Cα onto the LeFlur-generated binder Cα, and
+#                           TM-score them. Higher sc-TM = the designed sequence encodes the fold it was
+#                           drawn with. The monomer analog of the Protenix w_sctm_binder structure
+#                           reward, but computed by a single ESMFold forward on the SAME LigandMPNN
+#                           repack pool that serves e_lj/sol+elec (a new "esmfold" want — needs NO pack,
+#                           like AAR: it reads only the binder Cα + sequence), instead of a Protenix
+#                           worker-pool round-trip. Bounded [0,1] -> a failed/too-long fold floors to 0.
+#
+#   ***OVERRIDES A NEGATIVE OFFLINE GATE — testing empirically at explicit user direction.*** This term
+#   GATED NEGATIVE TWICE (memory esmfold-selfconsist-gate-negative, docs/leflur/... n/a):
+#     (1) On the 3439-design Complexa pool it is ANTI-PREDICTIVE of pass (sc_tm AUROC 0.431 in the
+#         intended direction; pass mean sc_tm 0.809 < fail 0.862) — binder-monomer fold is DOCKING-BLIND
+#         (pass is a complex ipTM criterion; a monomer that folds well alone says nothing about the
+#         interface, and the most self-consistent isolated monomers are idealized generic folds).
+#     (2) Within our OWN base pool sc_tm IS univariate-predictive (AUROC 0.748) but ONLY as a low-sc_tm
+#         floor, and that floor is the chain-exploded / over-extended failure mode the incumbent rog +
+#         chainbreak terms ALREADY penalize (corr(sc_tm,Rg)=-0.62; clean-backbone AUROC 0.465; logit
+#         lift over [len,Rg,n_break] +0.008). Redundant, not additive.
+#   The gate says a fold reward must score the COMPLEX to add anything; the user chose to run the
+#   monomer term anyway to see whether the extra structure-track signal helps IN THE GRPO LOOP despite
+#   the offline verdict. This run is that experiment.
+#
+#   DEGENERACY GUARD (tracked, not gated): a single-AA-collapsed binder folds confidently in isolation
+#   and would INFLATE sc-TM without being a real binder (memory degenerate-sequences-mark-failure). Per
+#   group we log esmfold/binder_entropy_mean (AA-comp Shannon bits) + esmfold/binder_max_aa_frac_mean
+#   beside esmfold/sctm_mean, so "sc-TM rose because folds improved" is separable from "sc-TM rose
+#   because sequences collapsed". The incumbent LC (seq) + Jaccard terms already fight degeneracy; watch
+#   these to confirm sc-TM is not being hacked through collapse.
+#
+# The nine inherited terms are BYTE-IDENTICAL to the sol+elec arm, so checkpoints compare step-for-step
+# against it and the only variable is the added ESMFold sc-TM term:
+#   1. e_lj (PRIMARY)   w_elj_scalar=1.0 (SPARSE; per_token_pot OFF). dsasa/hb OFF.
+#   2. chainbreak       w_chainbreak=1.0, count gate (backbone peptide-bond integrity).
+#   3. LC seq           w_seq_complexity=1.0, lc_full=0.7 (within-sequence anti-degeneracy).
+#   4. LC 3Di           w_struct_complexity=1.0, struct_lc_full=0.30 (within-3Di anti-degeneracy).
+#   5. Jaccard seq      w_seq_diversity=0.1 (within-group between-design AA k-mer novelty).
+#   6. Jaccard 3Di      w_struct_diversity=0.1 (within-group between-design 3Di k-mer novelty).
+#   7. interface-contact w_clash_contact=1.0, band(f; 0.05, 0.16, 0.40) + soft clash.
+#   8. Rg compactness   w_rog=1.0, rog_r0=2.2, rog_full=0.76.
+#   9. sol+elec         w_solelec_scalar=1.0 (REF2015 fa_sol+fa_elec / iface res, single group z-score).
+#
+# CHORD SFT is HELD OFF (sft_mu=0). All Protenix confidence, Protenix structure self-consistency,
+# 3Di-TV, 3DZD shape-SC, and AAR are OFF.
+#
+# COST / POOL SCALING: the "esmfold" want adds ONE ESMFold forward per design in the repack worker
+# (~1-3 s/binder serially on a10g, lazily loaded once/worker; esm.half() fp16, chunk 64, max_len 400).
+# On a G=64 group that is ~1-3 min/group of added serial pool time on top of the pack, so the pool is
+# more reward-bound than the sol+elec arm. Consider bumping M_SHAPE (e.g. 24-32 vs 16) at launch so the
+# rank reaches the grad all-reduce before the shape timeout (600s) floors the group. Memories:
+# grpo-multigpu-speedup-pool-scaling, esmfold-selfconsist-gate-negative.
+#
+# WATCH: esmfold/sctm_mean should RISE (the reward is being optimized) WITHOUT
+# esmfold/binder_max_aa_frac_mean rising or esmfold/binder_entropy_mean falling (that would be sc-TM
+# hacked via sequence collapse); diversity/lc_mean (seq AND 3Di) HOLD/RISE; rog compactness HOLD/RISE;
+# chainbreak metrics HOLD (sc-TM and rog/chainbreak overlap — watch they don't fight); solelec + e_lj
+# HOLD/FALL; reward/esmfold_sctm_term_mean populated; ppo/grad_norm not swamped. Per-arm reward check
+# after the run (scripts/_arm_reward_report.py + esmfold sc-TM recompute) vs the sol+elec arm to confirm
+# the gradient moved sc-TM — separating "gradient didn't flow" from "gradient flowed, reward hackable"
+# (the offline gate predicts the latter, or no pass% gain).
+#
+# Usage (Protenix-free; a SEPARATE a10g repack array serves the e_lj/sol+elec/esmfold pool):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec_esmfoldsctm \
+#   N_WORKERS=0 M_SHAPE=24 POLICY_HRS=168 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec_esmfoldsctm \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec_esmfoldsctm"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  ckpt_path: leflur-binder-3di
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+
+  # ===================== e_lj — SPARSE self-normalized per-design advantage =====================
+  per_token_pot: false       # dense per-token e_lj OFF (this is the sparse arm)
+  w_pt_lj: 0.0
+  w_pt_dsasa: 0.0
+  w_pt_hb: 0.0
+  pot_with_sasa: false       # repack still returns e_lj/fa_sol/e_elec (via the "pot" want)
+  w_elj_scalar: 1.0          # per-design total-e_lj z-score added to the group advantage
+
+  # (2) chainbreak — backbone peptide-bond integrity (scalar, count gate).
+  w_chainbreak: 1.0
+  chainbreak_gate: count
+
+  # CHORD SFT — HELD OFF (would confound the added-term comparison).
+  sft_mu: 0.0
+  sft_mu_schedule: null
+  sft_use_phi: false
+  sft_scope: binder
+  sft_label: hard
+  sft_temperature: 1.0
+  sft_masked_only: true
+  sft_reward_gate: null
+  struct_sft_mu: 0.0         # Protenix fold-consistency struct-SFT OFF (no Protenix this run)
+
+  # (3) LC (seq) — per-design saturating linguistic-complexity reward (within-sequence anti-degeneracy).
+  w_seq_complexity: 1.0
+  lc_full: 0.7               # full credit at LC>=0.7, ramp to 0 at collapse
+  # (4) LC (3Di) — same, on the 3Di tri-token track (structural alphabet).
+  w_struct_complexity: 1.0
+  struct_lc_full: 0.30       # saturates at measured Complexa/base 3Di LC (~0.25/0.27)
+
+  # (5,6) within-group Jaccard novelty — between-design anti-consensus guard on BOTH tracks.
+  w_seq_diversity: 0.1
+  w_struct_diversity: 0.1    # 3Di k-mer Jaccard ON
+
+  # (7) interface-contact band — soft clash x soft-count contact band on the decoded backbone.
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+
+  # (8) Rg compactness — per-design saturating global-fold-state reward on binder Rg.
+  w_rog: 1.0
+  rog_r0: 2.2                # Rg_compact = rog_r0 * N^(1/3)
+  rog_full: 0.76            # full credit once compactness >= 0.76 (passing-Complexa fold state)
+
+  # (9) sol+elec — per-design COMBINED REF2015 fa_sol + fa_elec interface complementarity energy
+  #     / interface residue, combined IN PHYSICAL UNITS (w_sol=1.0, w_elec=1.0) then a SINGLE group
+  #     z-score into the design advantage. Reuses the same repack pack as e_lj. Physical sub-weights.
+  w_solelec_scalar: 1.0
+  w_solelec_wsol: 1.0        # REF2015 fa_sol weight
+  w_solelec_welec: 1.0       # REF2015 fa_elec weight
+  # The two SEPARATE chemistry arms are OFF — the combined arm above replaces them.
+  w_fasol_scalar: 0.0
+  w_elec_scalar: 0.0
+
+  # (10) ESMFold sc-TM (NEW) — per-design binder-MONOMER self-consistency TM-score, a FLAT
+  #      direct-maximization term (reward += w_sctm_esmfold * sc_tm), the monomer analog of the Protenix
+  #      w_sctm_binder reward. Folded on the SAME LigandMPNN repack pool (new "esmfold" want; needs NO
+  #      pack — reads only binder Cα + seq, like AAR). Bounded [0,1]; failed/too-long fold floors to 0.
+  #      OVERRIDES a twice-NEGATIVE offline gate at user direction (see header). Weight 1.0 = comparable
+  #      to the other flat direct-max terms (chainbreak / LC), so a full-consistency fold (sc_tm~1) adds
+  #      ~1 to the reward. Degeneracy guard (esmfold/binder_entropy_mean, binder_max_aa_frac_mean) logged.
+  w_sctm_esmfold: 1.0
+
+  # ===================== EXCLUDED TERMS (all OFF) =====================
+  # Protenix confidence combo OFF -> oracle skipped entirely (no worker pool, no queue).
+  w_iptm: 0.0
+  w_ptm: 0.0
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+  w_pae_interface: 0.0
+  # Protenix structure self-consistency OFF (the ESMFold monomer sc-TM above is its Protenix-free,
+  # docking-blind analog — NOT the same term; this run has no Protenix).
+  w_sctm_binder: 0.0
+  w_sctm_complex: 0.0
+  log_struct_diagnostic: false
+  # Interface-distribution (3Di-TV) reward OFF and NOT tracked (won't scale past the ref set).
+  w_aa_dist: 0.0
+  w_3di_dist: 0.0
+  log_dist_diagnostic: false
+  # 3DZD shape-SC OFF; AAR scalar OFF (CHORD off, so no designed-seq draw either).
+  w_shape: 0.0
+  w_aar: 0.0
+
+  # All three tracks trainable; the sparse e_lj advantage broadcasts to every track (design PPO).
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+# ProtenixRewardClient is constructed from this block but is NEVER queried (all conf weights 0,
+# no structure/coords), so no Protenix worker pool runs (N_WORKERS=0).
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the e_lj + fa_sol +
+# e_elec "pot" want AND the ESMFold binder-monomer sc-TM "esmfold" want from one pack per design (the
+# esmfold fold needs no pack). With CHORD off, w_elj_scalar / w_sctm_esmfold are what turn this pool on.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  # 600s (not 1800) so a starved/idle-died repack pool floors its group within ~10 min and the rank
+  # reaches the grad all-reduce well before the NCCL watchdog (3600s) trips -> no 8-way deadlock.
+  # NB the added per-design ESMFold forward makes each group slower — keep M_SHAPE high enough (24-32)
+  # that a healthy group still collects well inside this 600s window.
+  timeout_s: 600
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-elj-sparse-clash-chainbreak-lc-jaccard-rog-solelec-esmfoldsctm-g64

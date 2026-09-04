@@ -129,6 +129,17 @@ class GRPOTrainerConfig:
         backbone and the Protenix-predicted backbone — binder chain and whole complex
         respectively. ``> 0`` triggers ``return_coords`` on the reward client so the
         predicted CA coordinates ride back with the confidences. Default ``0``.
+    w_sctm_esmfold : float
+        Weight on the **ESMFold binder-monomer** self-consistency TM-score — the fast,
+        Protenix-free monomer analog of ``w_sctm_binder``. Fold the binder sequence alone
+        with ESMFold on the LigandMPNN repack pool and TM-score the predicted Cα against the
+        generated binder Cα (direct maximization: ``reward += w_sctm_esmfold · sc_tm``). ``>
+        0`` adds the ``"esmfold"`` metric to the repack ``want`` (an extra ESMFold fold per
+        design). Default ``0``. Offline this term gated NEGATIVE — anti-predictive on the
+        Complexa pool (docking-blind) and, on our own pool, redundant with ``w_rog`` +
+        chainbreak (memory ``esmfold-selfconsist-gate-negative``); wired for an empirical
+        in-loop test. The binder AA-composition entropy + max-single-AA fraction are logged
+        alongside it as a degeneracy guard (a collapsed sequence folds confidently).
     w_seq_diversity, w_struct_diversity : float
         Weights on the within-group mean pairwise k-mer-Jaccard novelty of the AA
         sequence and the 3Di structural-token string (both already in ``[0,1]``,
@@ -203,6 +214,22 @@ class GRPOTrainerConfig:
     # Structure self-consistency (TM-score gen-vs-predicted); > 0 => request coords.
     w_sctm_binder: float = 0.0
     w_sctm_complex: float = 0.0
+    # ESMFold binder-monomer self-consistency sc-TM — Protenix-free monomer analog of
+    # w_sctm_binder, folded on the LigandMPNN repack pool (the "esmfold" want). Direct
+    # maximization: reward += w_sctm_esmfold * sc_tm. > 0 adds an ESMFold fold per design.
+    # Offline-NEGATIVE (docking-blind on Complexa; rog+chainbreak-redundant on our pool,
+    # memory esmfold-selfconsist-gate-negative) — wired for an empirical in-loop test with a
+    # binder-entropy / max-AA-fraction degeneracy guard logged beside it.
+    w_sctm_esmfold: float = 0.0
+    # Z-scored (scalar) formulation of the SAME ESMFold binder-monomer sc-TM term. Instead of
+    # adding w * sc_tm FLAT into the reward vector (where its within-group std ~0.10-0.13 is
+    # drowned by the unit-variance z-scored e_lj/solelec advantages), this z-scores the per-design
+    # sc_tm within the group and ADDS it DIRECTLY to the design-level advantage (guaranteed unit
+    # variance = equal influence), exactly as w_elj_scalar / w_solelec_scalar do. sc_tm is
+    # POSITIVE-oriented (higher = better) so it is NOT negated before z-scoring (contrast the
+    # penalty terms). Uses the SAME "esmfold" want (no extra fold) — set w_sctm_esmfold = 0 and
+    # this > 0 to run the z-scored variant alone. Default 0.0 = byte-identical.
+    w_sctm_esmfold_scalar: float = 0.0
     # Always compute+log sctm (worker returns coords every step) even when its
     # reward weight is 0 — a pure diagnostic. Adds per-step coord-transfer cost.
     log_struct_diagnostic: bool = False
@@ -548,6 +575,39 @@ class GRPOTrainerConfig:
     # SAME repack pack as R_SC / e_lj (adds the "pot" want; NO extra pack). Default 0.0 =
     # byte-identical: no "pot" want it did not already request, no change to pt_extras or advantages.
     w_fasol_scalar: float = 0.0
+    # Per-design e_elec (Rosetta REF2015 fa_elec; sigmoidal distance-dependent-dielectric Coulomb)
+    # advantage, size-normalized PER INTERFACE RESIDUE — a low-weight COMPANION to the e_lj arm,
+    # mirroring w_fasol_scalar exactly. When > 0, each design's total interface e_elec is divided by
+    # its interface-residue count (``e_elec_per_res``), z-scored WITHIN the rollout group and ADDED to
+    # that design's group-level advantage at this weight (broadcasts to every token of every track via
+    # the design-level PPO). e_elec is a penalty in the reward convention R_elec = -E_elec (lower /
+    # more-negative E_elec = more favorable electrostatics = better), so the per-residue score is
+    # NEGATED before z-scoring (less electrostatic energy => higher advantage). Served by the SAME
+    # repack pack as e_lj / fa_sol (adds the "pot" want; NO extra pack). Default 0.0 = byte-identical.
+    # NOTE: offline gate for this term is NEGATIVE (AUROC 0.502, chance — the DDD dielectric is
+    # distance-only / burial-blind); run for completeness alongside fa_sol, not because it gated.
+    w_elec_scalar: float = 0.0
+    # Per-design COMBINED fa_sol + fa_elec advantage — the Rosetta REF2015 two-term interface
+    # complementarity energy E = w_sol·fa_sol + w_elec·fa_elec (both terms in kcal/mol; REF2015
+    # default weights 1.0/1.0, Alford 2017 Table 1), size-normalized per interface residue, NEGATED
+    # (penalty → reward), and a SINGLE group z-score added to the design-level advantage at this
+    # weight. This differs from running w_fasol_scalar + w_elec_scalar separately: those z-score each
+    # term to unit variance INDEPENDENTLY, which discards each term's kcal/mol magnitude and gives the
+    # two equal influence regardless of physical scale (an arbitrary equal-variance blend, NOT the
+    # REF2015 energy). Here the linear combination is formed IN PHYSICAL UNITS FIRST (the 1.0/1.0
+    # weighting is preserved end-to-end) and a lone group z-score is applied to the composite — the
+    # physically-faithful way to combine them. Because fasol_scalar and elec_scalar are already the
+    # per-interface-residue energies (fa_sol/n_iface_res, e_elec/n_iface_res, same n_iface_res), the
+    # combined per-residue penalty is simply w_solelec_wsol·fasol_scalar + w_solelec_welec·elec_scalar
+    # — no new pack / worker output (reuses the SAME "pot" want as e_lj / fa_sol / e_elec). Intended to
+    # run INSTEAD OF the two separate arms (leave w_fasol_scalar = w_elec_scalar = 0). Default 0.0 =
+    # byte-identical. GATE-FIRST: clear the offline discrimination gate on the combined score before
+    # any GRPO run, exactly as fa_sol / fa_elec were gated.
+    w_solelec_scalar: float = 0.0
+    # REF2015 physical sub-weights for the combined fa_sol + fa_elec term (applied in kcal/mol BEFORE
+    # normalization / z-score). Defaults are the canonical Rosetta REF2015 ref2015 weights (both 1.0).
+    w_solelec_wsol: float = 1.0
+    w_solelec_welec: float = 1.0
     # Per-token (per-residue) tmol interface ΔΔG advantage — the physics-complete upgrade of the
     # per_token_pot numpy ``e_lj`` arm. When True, the SAME LigandMPNN pack used for R_SC is scored
     # with tmol's ``beta_nov2016`` rigid interface ΔΔG (adds the ``fa_lk``/``lk_ball`` desolvation
@@ -776,13 +836,18 @@ class LeFlurGRPOTrainer:
             or getattr(config, "per_token_ddg", False)  # dense per-token interface ΔΔG
             or getattr(config, "w_elj_scalar", 0.0) > 0  # sparse per-design e_lj
             or getattr(config, "w_fasol_scalar", 0.0) > 0  # per-design fa_sol_per_res companion
+            or getattr(config, "w_elec_scalar", 0.0) > 0  # per-design e_elec_per_res companion
+            or getattr(config, "w_solelec_scalar", 0.0) > 0  # per-design combined fa_sol + fa_elec
+            or getattr(config, "w_sctm_esmfold", 0.0) > 0  # ESMFold binder-monomer sc-TM ("esmfold" want)
+            or getattr(config, "w_sctm_esmfold_scalar", 0.0) > 0  # z-scored ESMFold sc-TM (same "esmfold" want)
         )
         if need_repack:
             if not config.shape_queue_dir:
                 raise ValueError(
                     "shape_queue_dir is required when any repack reward (w_shape / w_sc_clash / w_aar), "
                     "CHORD SFT distillation (sft_mu), or a per-token/per-design interface-potential arm "
-                    "(per_token_pot / per_token_ddg / w_elj_scalar / w_fasol_scalar) is > 0"
+                    "(per_token_pot / per_token_ddg / w_elj_scalar / w_fasol_scalar / w_elec_scalar / "
+                    "w_solelec_scalar) is > 0"
                 )
             from lobster.rl_training.rewards import ShapeRewardClient
 
@@ -1502,9 +1567,10 @@ class LeFlurGRPOTrainer:
         :meth:`_shape_terms_for_group`. ``gen_bb`` is the decoded ``(G, L, 3, 3)`` backbone
         (shared with the distribution/clash terms when they are on); decoded here if ``None``.
 
-        Returns ``(shape_terms, sc_clash_terms, aar_terms, metrics, sft_payload, pot_eres)`` —
-        the first three each a length-``G`` list of the **weighted** contribution for that metric
-        (all ``0.0`` for a metric not in ``want``), the merged diagnostics dict (only keys for the
+        Returns ``(shape_terms, sc_clash_terms, aar_terms, esmfold_terms, metrics, sft_payload,
+        pot_eres)`` — the first four each a length-``G`` list of the **weighted** contribution for
+        that metric (SC / all-atom clash / AAR / ESMFold binder-monomer sc-TM; all ``0.0`` for a
+        metric not in ``want``), the merged diagnostics dict (only keys for the
         requested metrics), a ``sft_payload`` dict (see below) and — when ``want_pot`` and/or
         ``want_ddg`` (the per-token interface-potential and/or interface-ΔΔG arms are active) — a
         ``pot_eres`` dict carrying the dense per-binder-residue signals as ``(G, L)`` numpy penalty
@@ -1551,6 +1617,10 @@ class LeFlurGRPOTrainer:
         shape_terms = [0.0] * G
         sc_clash_terms = [0.0] * G
         aar_terms_l = [0.0] * G
+        esmfold_terms_l = [0.0] * G
+        # Raw per-design sc_tm (G,) for the z-scored w_sctm_esmfold_scalar arm; stashed into pot_eres
+        # after the pot/ddg branches (which reassign pot_eres) so it survives. None unless that arm is on.
+        sctm_scalar_arr = None
         metrics: dict = {}
 
         def _mean(lst: list[float]) -> float:
@@ -1633,6 +1703,54 @@ class LeFlurGRPOTrainer:
                 }
             )
 
+        if "esmfold" in want:
+            # ESMFold binder-monomer self-consistency sc-TM — a flat, direct-maximization term
+            # (reward += w_sctm_esmfold * sc_tm), the monomer analog of the Protenix w_sctm_binder
+            # term. The pool folds the binder sequence alone and TM-scores predicted vs generated
+            # Cα (``EsmFoldScorer.score`` -> {"sctm","sc_rmsd"}); a design the fold failed on gets
+            # sc_tm 0.0 (floor). Offline-NEGATIVE (memory esmfold-selfconsist-gate-negative) —
+            # tracked with a degeneracy guard (a single-AA-collapsed binder folds confidently and
+            # would inflate sc-TM without being a real binder, memory degenerate-sequences-mark-failure).
+            from plm_design_rl.rewards import reward_from_esmfold, seq_degeneracy
+
+            ef_res = [r.get("esmfold") if r is not None else None for r in results]
+            weighted = [cfg.w_sctm_esmfold * reward_from_esmfold(er) for er in ef_res]
+            esmfold_terms_l = weighted
+            # Raw per-design sc_tm (G,) for the z-scored arm — NaN (not the 0.0 floor) where the fold
+            # failed, so _group_zscore neutralizes it instead of treating a failure as a real low value.
+            if getattr(cfg, "w_sctm_esmfold_scalar", 0.0) > 0:
+                sctm_scalar_arr = np.array(
+                    [
+                        er["sctm"]
+                        if (er is not None and er.get("sctm") is not None and np.isfinite(er["sctm"]))
+                        else np.nan
+                        for er in ef_res
+                    ],
+                    dtype=np.float64,
+                )
+            sctm_vals = [
+                er["sctm"] for er in ef_res if er is not None and er.get("sctm") is not None and np.isfinite(er["sctm"])
+            ]
+            rmsd_vals = [
+                er["sc_rmsd"]
+                for er in ef_res
+                if er is not None and er.get("sc_rmsd") is not None and np.isfinite(er["sc_rmsd"])
+            ]
+            n_scored = sum(1 for er in ef_res if er is not None)
+            degen = [seq_degeneracy(s) for s in seqs]
+            ent_vals = [e for e, _ in degen if np.isfinite(e)]
+            maxfrac_vals = [m for _, m in degen if np.isfinite(m)]
+            metrics.update(
+                {
+                    "reward/esmfold_sctm_term_mean": float(sum(weighted) / G),
+                    "esmfold/sctm_mean": _mean(sctm_vals),  # binder-monomer self-consistency TM (higher=better)
+                    "esmfold/sc_rmsd_mean": _mean(rmsd_vals),  # superposed Cα RMSD (Å, diagnostic)
+                    "esmfold/scored_frac": float(n_scored / G),
+                    "esmfold/binder_entropy_mean": _mean(ent_vals),  # degeneracy guard: AA-comp entropy (bits)
+                    "esmfold/binder_max_aa_frac_mean": _mean(maxfrac_vals),  # degeneracy guard: max single-AA fraction
+                }
+            )
+
         # --- Per-token interface potentials (second reward set) -----------------------------
         # The repack worker returns, per design, per-binder-residue vectors of the validated
         # all-atom interface potentials (``pot`` -> e_lj / n_hb / dsasa; see
@@ -1659,8 +1777,11 @@ class LeFlurGRPOTrainer:
             # Per-design fa_sol PER INTERFACE RESIDUE (total fa_sol / n_iface_res) for the
             # w_fasol_scalar companion arm; NaN = pack failed / worker returned no fa_sol vector.
             fasol_scalar = np.full(G, np.nan, dtype=np.float64)
+            # Per-design e_elec PER INTERFACE RESIDUE (total e_elec / n_iface_res) for the
+            # w_elec_scalar companion arm; NaN = pack failed / worker returned no e_elec vector.
+            elec_scalar = np.full(G, np.nan, dtype=np.float64)
             n_pot_scored = 0
-            e_lj_sum, dsasa_sum, hb_sum, fasol_pr_sum = [], [], [], []
+            e_lj_sum, dsasa_sum, hb_sum, fasol_pr_sum, elec_pr_sum = [], [], [], [], []
             for i, r in enumerate(results):
                 p = r.get("pot") if r is not None else None
                 if p is None:
@@ -1678,6 +1799,12 @@ class LeFlurGRPOTrainer:
                     n_ifres = float(p.get("n_iface_res", 0) or 0)
                     fasol_scalar[i] = float(fs.sum()) / max(1.0, n_ifres)
                     fasol_pr_sum.append(fasol_scalar[i])
+                # e_elec_per_res: total interface e_elec / interface-residue count (both chains).
+                ee = np.asarray(p.get("e_elec", []), dtype=np.float64)
+                if ee.shape[0] == nb:
+                    n_ifres = float(p.get("n_iface_res", 0) or 0)
+                    elec_scalar[i] = float(ee.sum()) / max(1.0, n_ifres)
+                    elec_pr_sum.append(elec_scalar[i])
                 hb = np.asarray(p.get("n_hb", []), dtype=np.float64)
                 if hb.shape[0] == nb:
                     hb_eres[i, binder_idx] = -hb
@@ -1693,6 +1820,7 @@ class LeFlurGRPOTrainer:
                 "hb_eres": hb_eres,
                 "elj_scalar": elj_scalar,
                 "fasol_scalar": fasol_scalar,
+                "elec_scalar": elec_scalar,
             }
             if with_sasa:
                 pot_eres["dsasa_eres"] = dsasa_eres  # only present when the SASA term is enabled
@@ -1702,6 +1830,7 @@ class LeFlurGRPOTrainer:
                     "pot/e_lj_mean": _mean(e_lj_sum),  # bounded LJ energy (lower = better)
                     "pot/n_hb_mean": _mean(hb_sum),  # interface H-bonds (higher = better)
                     "pot/fa_sol_per_res_mean": _mean(fasol_pr_sum),  # LK desolvation / iface res (lower = better)
+                    "pot/e_elec_per_res_mean": _mean(elec_pr_sum),  # DDD Coulomb / iface res (lower = better)
                 }
             )
             if with_sasa:
@@ -1763,6 +1892,14 @@ class LeFlurGRPOTrainer:
                     "ddg/ddg_rep_mean": _mean(ddg_rep_sum),  # LJ repulsion (fa_rep; lower = better, clash tail)
                 }
             )
+
+        # Stash the raw per-design sc_tm (G,) into pot_eres for the z-scored w_sctm_esmfold_scalar arm.
+        # Placed AFTER the pot/ddg branches (which reassign pot_eres wholesale) so it is not clobbered;
+        # creates pot_eres if the pot arm is off (esmfold-scalar can run standalone), mirroring ddg_eres.
+        if sctm_scalar_arr is not None:
+            if pot_eres is None:
+                pot_eres = {}
+            pot_eres["sctm_scalar"] = sctm_scalar_arr
 
         # --- CHORD SFT payload: dense per-token expert (LigandMPNN-designed) targets -------
         # Built from the SAME round-trip's ``aar`` dicts (seq_design + iface_binder). Each
@@ -1843,7 +1980,7 @@ class LeFlurGRPOTrainer:
             if soft_label and teacher_conf_n > 0:
                 metrics["sft/teacher_conf_mean"] = float(teacher_conf_sum / teacher_conf_n)
 
-        return shape_terms, sc_clash_terms, aar_terms_l, metrics, sft_payload, pot_eres
+        return shape_terms, sc_clash_terms, aar_terms_l, esmfold_terms_l, metrics, sft_payload, pot_eres
 
     # -------------------------------------------------------------------- rewards
     def _struct_sft_payload_for_group(self, comp: dict, confs: list[dict | None]) -> tuple[dict, dict]:
@@ -2074,11 +2211,17 @@ class LeFlurGRPOTrainer:
             getattr(cfg, "per_token_pot", False)
             or getattr(cfg, "w_elj_scalar", 0.0) > 0
             or getattr(cfg, "w_fasol_scalar", 0.0) > 0
+            or getattr(cfg, "w_elec_scalar", 0.0) > 0
+            or getattr(cfg, "w_solelec_scalar", 0.0) > 0
         )
         # Per-token interface ΔΔG (tmol beta_nov2016 on the LigandMPNN pack) — physics-complete
         # upgrade of "pot"; also reuses the SAME R_SC round-trip via the "ddg" want.
         need_ddg = getattr(cfg, "per_token_ddg", False)
-        need_repack = need_shape or need_sc_clash or need_aar or need_pot or need_ddg
+        # ESMFold binder-monomer sc-TM rides the SAME repack round-trip via the "esmfold" want — the
+        # pool folds the binder sequence alongside the pack. Triggered by EITHER the flat direct-max
+        # term (w_sctm_esmfold) or its z-scored twin (w_sctm_esmfold_scalar); both consume the same fold.
+        need_esmfold = getattr(cfg, "w_sctm_esmfold", 0.0) > 0 or getattr(cfg, "w_sctm_esmfold_scalar", 0.0) > 0
+        need_repack = need_shape or need_sc_clash or need_aar or need_pot or need_ddg or need_esmfold
         # ``gen_bb`` may be supplied by a pipelined caller (decoded once in phase 1) — reuse it;
         # otherwise decode here when any backbone-reading term is active.
         if gen_bb is None and (need_dist or need_clash or need_chainbreak or need_rog or need_repack):
@@ -2140,10 +2283,11 @@ class LeFlurGRPOTrainer:
         shape_terms_l = [0.0] * G
         sc_clash_terms_l = [0.0] * G
         aar_terms_l = [0.0] * G
+        esmfold_terms_l = [0.0] * G
         repack_metrics: dict = {}
         sft_payload: dict | None = None
         pot_eres: dict | None = None
-        if need_shape and not (need_sc_clash or need_aar or need_pot or need_ddg):
+        if need_shape and not (need_sc_clash or need_aar or need_pot or need_ddg or need_esmfold):
             shape_terms_l, repack_metrics = self._shape_terms_for_group(
                 target_id, trajectory, comp, seqs, gen_bb=gen_bb
             )
@@ -2156,10 +2300,11 @@ class LeFlurGRPOTrainer:
                     ("aar", need_aar),
                     ("pot", need_pot),
                     ("ddg", need_ddg),
+                    ("esmfold", need_esmfold),
                 )
                 if on
             )
-            shape_terms_l, sc_clash_terms_l, aar_terms_l, repack_metrics, sft_payload, pot_eres = (
+            shape_terms_l, sc_clash_terms_l, aar_terms_l, esmfold_terms_l, repack_metrics, sft_payload, pot_eres = (
                 self._repack_terms_for_group(
                     target_id,
                     trajectory,
@@ -2185,8 +2330,8 @@ class LeFlurGRPOTrainer:
 
         rewards = torch.tensor(
             [
-                c + s + sd + td + cx + sx + dt + gt + cb + rg + sh + scl + ar
-                for c, s, sd, td, cx, sx, dt, gt, cb, rg, sh, scl, ar in zip(
+                c + s + sd + td + cx + sx + dt + gt + cb + rg + sh + scl + ar + ef
+                for c, s, sd, td, cx, sx, dt, gt, cb, rg, sh, scl, ar, ef in zip(
                     conf_terms,
                     struct_terms_l,
                     seq_div_terms,
@@ -2200,6 +2345,7 @@ class LeFlurGRPOTrainer:
                     shape_terms_l,
                     sc_clash_terms_l,
                     aar_terms_l,
+                    esmfold_terms_l,
                 )
             ],
             dtype=torch.float32,
@@ -2355,11 +2501,19 @@ class LeFlurGRPOTrainer:
         pt_extras: dict | None = None
         _pot_on = (need_pot or need_ddg) and pot_eres is not None
         _conf_pt_on = need_conf_pertoken and conf_eres is not None
+        # z-scored ESMFold sc-TM rides pot_eres["sctm_scalar"] but is independent of the pot/ddg arms
+        # (it can be the only repack term), so it opens pt_extras on its own.
+        _esm_scalar_on = (
+            getattr(cfg, "w_sctm_esmfold_scalar", 0.0) > 0
+            and pot_eres is not None
+            and pot_eres.get("sctm_scalar") is not None
+        )
         if (
             (cfg.per_token_clash and clash_eres is not None)
             or (cfg.per_token_chainbreak and chainbreak_eres is not None)
             or _pot_on
             or _conf_pt_on
+            or _esm_scalar_on
         ):
             pt_extras = {}
             if cfg.per_token_clash and clash_eres is not None:
@@ -2382,12 +2536,32 @@ class LeFlurGRPOTrainer:
                     pt_extras["elj_scalar"] = torch.as_tensor(
                         pot_eres["elj_scalar"], dtype=torch.float32, device=self.device
                     )  # (G,)
-                # Per-design fa_sol_per_res (G,) for w_fasol_scalar — z-scored into the design
-                # advantage in _collect_and_advantage (companion to e_lj, NOT a per-token signal).
-                if getattr(cfg, "w_fasol_scalar", 0.0) > 0 and pot_eres.get("fasol_scalar") is not None:
+                # Per-design fa_sol_per_res (G,) for w_fasol_scalar OR the combined w_solelec_scalar arm
+                # — z-scored into the design advantage in _collect_and_advantage (companion to e_lj, NOT
+                # a per-token signal). The combined arm reads BOTH fasol_scalar and elec_scalar.
+                _need_solelec = getattr(cfg, "w_solelec_scalar", 0.0) > 0
+                if (getattr(cfg, "w_fasol_scalar", 0.0) > 0 or _need_solelec) and pot_eres.get(
+                    "fasol_scalar"
+                ) is not None:
                     pt_extras["fasol_scalar"] = torch.as_tensor(
                         pot_eres["fasol_scalar"], dtype=torch.float32, device=self.device
                     )  # (G,)
+                # Per-design e_elec_per_res (G,) for w_elec_scalar OR the combined w_solelec_scalar arm
+                # — z-scored into the design advantage in _collect_and_advantage (companion to e_lj, NOT
+                # a per-token signal).
+                if (getattr(cfg, "w_elec_scalar", 0.0) > 0 or _need_solelec) and pot_eres.get(
+                    "elec_scalar"
+                ) is not None:
+                    pt_extras["elec_scalar"] = torch.as_tensor(
+                        pot_eres["elec_scalar"], dtype=torch.float32, device=self.device
+                    )  # (G,)
+            if _esm_scalar_on:
+                # Per-design ESMFold sc_tm (G,) for the z-scored w_sctm_esmfold_scalar arm — z-scored
+                # into the design advantage in _collect_and_advantage (POSITIVE-oriented, NOT negated).
+                # Independent of the pot arm, so read outside the _pot_on branch.
+                pt_extras["sctm_scalar"] = torch.as_tensor(
+                    pot_eres["sctm_scalar"], dtype=torch.float32, device=self.device
+                )  # (G,)
             if _conf_pt_on:
                 # Per-residue Protenix confidences (G, L), all already oriented "larger = worse"
                 # at collection (pLDDT/ipSAE negated; PAE as-is).
@@ -2621,10 +2795,16 @@ class LeFlurGRPOTrainer:
             getattr(cfg, "per_token_pot", False)
             or getattr(cfg, "w_elj_scalar", 0.0) > 0
             or getattr(cfg, "w_fasol_scalar", 0.0) > 0
+            or getattr(cfg, "w_elec_scalar", 0.0) > 0
+            or getattr(cfg, "w_solelec_scalar", 0.0) > 0
         )
         need_ddg = getattr(cfg, "per_token_ddg", False)
-        need_repack = need_shape or need_sc_clash or need_aar or need_pot or need_ddg
-        repack_branch = need_repack and not (need_shape and not (need_sc_clash or need_aar or need_pot or need_ddg))
+        # ESMFold binder-monomer sc-TM ("esmfold" want) — flat term OR its z-scored twin.
+        need_esmfold = getattr(cfg, "w_sctm_esmfold", 0.0) > 0 or getattr(cfg, "w_sctm_esmfold_scalar", 0.0) > 0
+        need_repack = need_shape or need_sc_clash or need_aar or need_pot or need_ddg or need_esmfold
+        repack_branch = need_repack and not (
+            need_shape and not (need_sc_clash or need_aar or need_pot or need_ddg or need_esmfold)
+        )
 
         gen_bb = None
         handle = None
@@ -2641,6 +2821,7 @@ class LeFlurGRPOTrainer:
                     ("aar", need_aar),
                     ("pot", need_pot),
                     ("ddg", need_ddg),
+                    ("esmfold", need_esmfold),
                 )
                 if on
             )
@@ -2736,6 +2917,68 @@ class LeFlurGRPOTrainer:
             )
             metrics["fasol_scalar/scored_frac"] = float(_finite_f.float().mean())
             metrics["fasol_scalar/adv_abs_mean"] = float((cfg.w_fasol_scalar * zf).abs().mean())
+
+        # e_elec_per_res companion — per-design DDD-Coulomb interface electrostatics normalized per
+        # interface residue, z-scored within the group and ADDED to the design-level advantage
+        # (broadcasts to every token of every track). R_elec = -E_elec (lower / more-negative E_elec
+        # = more favorable = better), so negate before z-scoring. Additive with the e_lj / fa_sol arms.
+        if (
+            getattr(cfg, "w_elec_scalar", 0.0) > 0
+            and pt_extras is not None
+            and pt_extras.get("elec_scalar") is not None
+        ):
+            elec = pt_extras["elec_scalar"]  # (G,) e_elec_per_res, NaN where the pack failed
+            ze = self._group_zscore(-elec, cfg.adv_eps)  # penalty → negate: less elec energy = higher adv
+            advantages = advantages + cfg.w_elec_scalar * ze
+            _finite_e = torch.isfinite(elec)
+            metrics["elec_scalar/e_elec_per_res_mean"] = float(elec[_finite_e].mean()) if bool(_finite_e.any()) else 0.0
+            metrics["elec_scalar/scored_frac"] = float(_finite_e.float().mean())
+            metrics["elec_scalar/adv_abs_mean"] = float((cfg.w_elec_scalar * ze).abs().mean())
+
+        # Combined fa_sol + fa_elec companion — the Rosetta REF2015 two-term interface complementarity
+        # energy E = w_sol·fa_sol + w_elec·fa_elec, formed IN PHYSICAL UNITS (kcal/mol) FIRST so the
+        # 1.0/1.0 weighting is preserved, then NEGATED (penalty → reward) and passed through a SINGLE
+        # group z-score (contrast the two separate-z-score arms above, which erase the physical
+        # weighting). fasol_scalar and elec_scalar are already per-interface-residue energies over the
+        # SAME n_iface_res, so the combined per-residue penalty is their weighted sum. Run this INSTEAD
+        # OF the two separate arms (w_fasol_scalar = w_elec_scalar = 0). NaN-safe: a design missing
+        # either term is NaN in the sum and zeroed by _group_zscore.
+        if (
+            getattr(cfg, "w_solelec_scalar", 0.0) > 0
+            and pt_extras is not None
+            and pt_extras.get("fasol_scalar") is not None
+            and pt_extras.get("elec_scalar") is not None
+        ):
+            fasol = pt_extras["fasol_scalar"]  # (G,) fa_sol_per_res, kcal/mol, NaN where pack failed
+            elec = pt_extras["elec_scalar"]  # (G,) e_elec_per_res, kcal/mol, NaN where pack failed
+            e_se = cfg.w_solelec_wsol * fasol + cfg.w_solelec_welec * elec  # REF2015 sum, physical units
+            zse = self._group_zscore(-e_se, cfg.adv_eps)  # penalty → negate: lower combined energy = higher adv
+            advantages = advantages + cfg.w_solelec_scalar * zse
+            _finite_se = torch.isfinite(e_se)
+            metrics["solelec_scalar/e_solelec_per_res_mean"] = (
+                float(e_se[_finite_se].mean()) if bool(_finite_se.any()) else 0.0
+            )
+            metrics["solelec_scalar/scored_frac"] = float(_finite_se.float().mean())
+            metrics["solelec_scalar/adv_abs_mean"] = float((cfg.w_solelec_scalar * zse).abs().mean())
+
+        # z-scored ESMFold binder-monomer sc-TM — the scalar twin of the flat w_sctm_esmfold term.
+        # z-score each design's sc_tm within the group and ADD it to the design-level advantage, so it
+        # gets guaranteed unit variance (equal influence) instead of the flat term's tiny within-group
+        # std (~0.10-0.13) that the unit-variance z-scored e_lj/solelec drown out. sc_tm is POSITIVE-
+        # oriented (higher = better) so it is NOT negated (contrast the penalty arms above). NaN designs
+        # (fold failed) are zeroed by _group_zscore. Runs alongside or instead of the flat term.
+        if (
+            getattr(cfg, "w_sctm_esmfold_scalar", 0.0) > 0
+            and pt_extras is not None
+            and pt_extras.get("sctm_scalar") is not None
+        ):
+            sctm = pt_extras["sctm_scalar"]  # (G,) ESMFold sc_tm in [0,1], NaN where the fold failed
+            zt = self._group_zscore(sctm, cfg.adv_eps)  # reward (higher = better) → NO negation
+            advantages = advantages + cfg.w_sctm_esmfold_scalar * zt
+            _finite_t = torch.isfinite(sctm)
+            metrics["esmfold_scalar/sctm_mean"] = float(sctm[_finite_t].mean()) if bool(_finite_t.any()) else 0.0
+            metrics["esmfold_scalar/scored_frac"] = float(_finite_t.float().mean())
+            metrics["esmfold_scalar/adv_abs_mean"] = float((cfg.w_sctm_esmfold_scalar * zt).abs().mean())
 
         n_steps = len(trajectory["steps"])
         # When any per-token structure arm is active (clash and/or chain-break), the STRUCTURE

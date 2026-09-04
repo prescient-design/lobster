@@ -70,6 +70,7 @@ from ._protenix_reward import (
     reward_from_confidence,
 )
 from ._structure_reward import kabsch, structure_terms, tm_score
+from ._esmfold_sctm_reward import reward_from_esmfold, sctm_from_ca, seq_degeneracy
 from ._diversity_reward import (
     coverage,
     hamming_novelty_group,
@@ -135,6 +136,9 @@ __all__ = [
     "kabsch",
     "structure_terms",
     "tm_score",
+    "reward_from_esmfold",
+    "sctm_from_ca",
+    "seq_degeneracy",
     "coverage",
     "hamming_novelty_group",
     "jaccard_novelty_group",

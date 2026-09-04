@@ -318,9 +318,14 @@ def rl_train(cfg: DictConfig) -> None:
         # Per-token interface potentials / ΔΔG ride the SAME repack pool (pot / ddg wants).
         or bool(g.get("per_token_pot", False))
         or bool(g.get("per_token_ddg", False))
-        # Per-design e_lj / fa_sol_per_res companions also ride the "pot" want.
+        # Per-design e_lj / fa_sol_per_res / e_elec_per_res companions also ride the "pot" want.
         or float(g.get("w_elj_scalar", 0.0)) > 0
         or float(g.get("w_fasol_scalar", 0.0)) > 0
+        or float(g.get("w_elec_scalar", 0.0)) > 0
+        or float(g.get("w_solelec_scalar", 0.0)) > 0  # combined fa_sol + fa_elec companion
+        # ESMFold binder-monomer sc-TM (flat or z-scored) rides the "esmfold" want on the same pool.
+        or float(g.get("w_sctm_esmfold", 0.0)) > 0
+        or float(g.get("w_sctm_esmfold_scalar", 0.0)) > 0
     )
     if _shape_queue is None and _need_repack:
         _shape_queue = f"{cfg.output_dir}/shape_queue"
@@ -370,6 +375,13 @@ def rl_train(cfg: DictConfig) -> None:
         # Structure self-consistency + diversity weights (all off by default).
         w_sctm_binder=float(g.get("w_sctm_binder", 0.0)),
         w_sctm_complex=float(g.get("w_sctm_complex", 0.0)),
+        # ESMFold binder-monomer self-consistency sc-TM (Protenix-free monomer analog of
+        # w_sctm_binder; adds the "esmfold" want to the repack pool). Off by default.
+        w_sctm_esmfold=float(g.get("w_sctm_esmfold", 0.0)),
+        # z-scored (scalar) formulation of the ESMFold sc-TM term — z-scores each design's sc_tm within
+        # the group and adds it directly to the design-level advantage (unit variance = equal influence),
+        # instead of the flat direct-max add. Same "esmfold" want (no extra fold). Off by default.
+        w_sctm_esmfold_scalar=float(g.get("w_sctm_esmfold_scalar", 0.0)),
         log_struct_diagnostic=bool(g.get("log_struct_diagnostic", False)),
         w_seq_diversity=float(g.get("w_seq_diversity", 0.0)),
         w_struct_diversity=float(g.get("w_struct_diversity", 0.0)),
@@ -455,6 +467,10 @@ def rl_train(cfg: DictConfig) -> None:
         # z-scored within the group and added to the design-level advantage — a low-weight COMPANION
         # to e_lj (not mutually exclusive). Rides the SAME "pot" repack want, so it needs the shape pool.
         w_fasol_scalar=float(g.get("w_fasol_scalar", 0.0)),
+        # Per-design e_elec (Rosetta REF2015 fa_elec; sigmoidal DDD Coulomb) normalized per interface
+        # residue (e_elec_per_res), z-scored within the group and added to the design-level advantage
+        # — a low-weight COMPANION to e_lj mirroring w_fasol_scalar. Rides the SAME "pot" repack want.
+        w_elec_scalar=float(g.get("w_elec_scalar", 0.0)),
         # Per-token (per-residue) tmol interface-ΔΔG advantage (beta_nov2016 on the LigandMPNN pack)
         # routed to the structure track — the physics-complete upgrade of per_token_pot's e_lj.
         # Reuses the R_SC pack via the "ddg" want; requires tmol in the repack worker's interpreter.
