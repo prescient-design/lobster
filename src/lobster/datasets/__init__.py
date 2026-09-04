@@ -7,6 +7,7 @@ from ._huggingface_iterable_dataset import HuggingFaceIterableDataset
 from ._latent_generator_3d_coordinates_dataset import LatentGeneratorPinderIterableDataset
 from ._m3_20m_dataset import M320MDataset, M320MIterableDataset
 from ._moleculeace_dataset import MoleculeACEDataset
+from ._moleculenet_dataset import MoleculeNetDataset
 from ._multiplexed_sampling_dataset import MultiplexedSamplingDataset
 from ._open_genome_2 import OpenGenome2IterableDataset
 from ._peer_dataset import PEERDataset
@@ -28,6 +29,7 @@ __all__ = [
     "DatasetToIterableDataset",
     "ShuffledIterableDataset",
     "MoleculeACEDataset",
+    "MoleculeNetDataset",
     "AMPLIFYIterableDataset",
     "HuggingFaceIterableDataset",
     "RoundRobinConcatIterableDataset",
