@@ -19,7 +19,7 @@ from lobster.constants import (
 )
 from lobster.tokenization import UMETokenizerTransform
 
-from ._utils_checkpoint import get_s3_last_modified_timestamp, get_ume_checkpoints, load_checkpoint_with_retry
+from ._utils_checkpoint import get_s3_object_metadata, get_ume_checkpoints, load_checkpoint_with_retry
 from .losses import InfoNCELoss, SymileLoss
 from .modern_bert import FlexBERT
 
@@ -1205,10 +1205,13 @@ class UME(L.LightningModule):
 
         logger.debug(f"Using cache directory: {cache_dir}")
 
-        # Get S3 timestamp and include it in the filename
-        timestamp = get_s3_last_modified_timestamp(checkpoint_path)
+        # Fetch remote object metadata (ETag/size/LastModified) once for cache key + checksums
+        remote_metadata = get_s3_object_metadata(checkpoint_path)
+        timestamp = remote_metadata.last_modified.strftime("%Y%m%d-%H%M%S")
         local_filename = f"{model_name}-{timestamp}.ckpt"
         logger.debug(f"Local filename: {local_filename}")
+        logger.debug(f"Remote ETag: {remote_metadata.etag}")
+        logger.debug(f"Remote ContentLength: {remote_metadata.content_length}")
 
         # Load the model with automatic retry on corruption
         # happens if previous download was stopped, for example
@@ -1220,6 +1223,7 @@ class UME(L.LightningModule):
             load_func=cls.load_from_checkpoint,
             device=device,
             use_flash_attn=use_flash_attn,
+            metadata=remote_metadata,
             **kwargs,
         )
 

@@ -475,17 +475,27 @@ class TestUME:
 
     @patch("lobster.model._ume.load_checkpoint_with_retry")
     @patch("lobster.model._ume.get_ume_checkpoints")
-    @patch("lobster.model._ume.get_s3_last_modified_timestamp")
+    @patch("lobster.model._ume.get_s3_object_metadata")
     @patch("lobster.model._ume.os.path.join")
     @patch("lobster.model._ume.os.getcwd")
     def test_from_pretrained(
-        self, mock_getcwd, mock_join, mock_get_timestamp, mock_get_checkpoints, mock_load_checkpoint
+        self, mock_getcwd, mock_join, mock_get_metadata, mock_get_checkpoints, mock_load_checkpoint
     ):
         """Test from_pretrained method with mocked dependencies."""
+        from datetime import UTC, datetime
+
+        from lobster.model._utils_checkpoint import S3ObjectMetadata
+
         mock_get_checkpoints.return_value = {"ume-mini-base-12M": "s3://bucket/ume-mini-base-12M.ckpt"}
         mock_getcwd.return_value = "/current/working/dir"
         mock_join.return_value = "/current/working/dir/models/ume"
-        mock_get_timestamp.return_value = "20250711-061718"
+        remote_metadata = S3ObjectMetadata(
+            etag="abc123def456",
+            content_length=12345,
+            last_modified=datetime(2025, 7, 11, 6, 17, 18, tzinfo=UTC),
+            s3_uri="s3://bucket/ume-mini-base-12M.ckpt",
+        )
+        mock_get_metadata.return_value = remote_metadata
 
         # Create a properly mocked model with expected attributes for validation
         mock_model = MagicMock()
@@ -509,7 +519,7 @@ class TestUME:
         result = UME.from_pretrained("ume-mini-base-12M", use_flash_attn=False)
 
         mock_get_checkpoints.assert_called_once()
-        mock_get_timestamp.assert_called_once_with("s3://bucket/ume-mini-base-12M.ckpt")
+        mock_get_metadata.assert_called_once_with("s3://bucket/ume-mini-base-12M.ckpt")
 
         mock_join.assert_called_once_with("/current/working/dir", "models", "ume")
 
@@ -520,6 +530,7 @@ class TestUME:
             load_func=UME.load_from_checkpoint,
             device=None,
             use_flash_attn=False,
+            metadata=remote_metadata,
         )
 
         assert result == mock_model
