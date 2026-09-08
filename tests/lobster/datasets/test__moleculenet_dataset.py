@@ -32,7 +32,7 @@ class TestMoleculeNetDataset:
         smiles, y = dataset[0]
         assert isinstance(smiles, str)
         assert y.dtype == torch.long
-        assert y.shape == (1,)
+        assert y.ndim == 0  # scalar class index
 
         task_type, *_ = MOLECULENET_TASKS["BBBP"]
         assert dataset.task_type == task_type

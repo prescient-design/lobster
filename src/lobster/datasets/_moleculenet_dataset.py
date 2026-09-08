@@ -100,8 +100,10 @@ class MoleculeNetDataset(Dataset):
             y = self.target_transform_fn(y)
 
         if not isinstance(y, Tensor):
+            # Binary probes expect 1-D class indices (N,);
+            # regression probes expect (N, 1) like MoleculeACE.
             if self.task_type == "binary":
-                y = torch.tensor(y, dtype=torch.long).unsqueeze(-1)
+                y = torch.tensor(y, dtype=torch.long)
             else:
                 y = torch.tensor(y, dtype=torch.float32).unsqueeze(-1)
 

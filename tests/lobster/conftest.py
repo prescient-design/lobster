@@ -272,7 +272,7 @@ class MockMoleculeNetDataset(Dataset):
     def __getitem__(self, idx):
         smiles = self.smiles[idx]
         if self.task_type == "binary":
-            target = torch.tensor(self.targets[idx], dtype=torch.long).unsqueeze(-1)
+            target = torch.tensor(self.targets[idx], dtype=torch.long)
         else:
             target = torch.tensor(self.targets[idx], dtype=torch.float32).unsqueeze(-1)
         return smiles, target
