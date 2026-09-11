@@ -1,0 +1,294 @@
+# @package _global_
+#
+# ELEVEN-TERM GRPO binder reward set = the NINE-TERM sparse-e_lj + Rg + sol/elec arm PLUS a
+# TWO-ORACLE self-consistency TM-score reward, both in the Z-SCORED (scalar) formulation:
+#
+#   * BINDER TM  from ESMFold  — w_sctm_esmfold_scalar=1.0. Folds the binder MONOMER in isolation
+#     (docking-BLIND) and scores the gen-vs-refold binder TM. Rides the SHAPE (repack) pool's
+#     "esmfold" want — the SAME pool/pack as e_lj + sol+elec, no extra fold job.
+#   * COMPLEX TM from BindCraft AF2 — w_sctm_complex_scalar=1.0 (NEW z-scored term). Folds the
+#     COMPLEX (binder seq vs the antigen template) and scores the gen-complex-vs-AF2-predicted-complex
+#     TM (docking-AWARE: the antigen anchors the joint superposition, so this measures whether the
+#     designed sequence re-docks to the GENERATED pose). Rides the FOLD (BindCraft AF2) pool — the
+#     SAME fold the pae arm uses, but scoring COMPLEX TM instead of interface PAE.
+#
+# This is the user's reformulation: "have tmscore for the binder be from esmfold and then tmscore of
+# the complex from bindcraft based reward." It pairs the clean-but-docking-blind binder fold signal
+# (ESMFold sc-TM, gated NEGATIVE alone — esmfold-selfconsist-gate-negative: "Any fold reward must
+# score the COMPLEX") with a docking-AWARE complex signal, so the binder half supplies fold quality
+# and the complex half supplies the docking correction the monomer sc-TM is blind to. It is the
+# TM-score dual of the pae-interface reward (which cleared the offline gate at AUROC 0.806/0.836 >
+# e_lj 0.720, bindcraft-af2-pae-install): where pae scores interface confidence, this scores complex
+# self-consistency (re-dock fidelity). pae_interface itself is HELD OFF this arm.
+#
+# HOW THE TWO TM TERMS ENTER THE REWARD — both Z-SCORED (unit variance = equal influence), the same
+# footing as the z-scored e_lj / sol+elec add-ons (which drown the flat struct term's tiny within-group
+# std ~0.10-0.13, the same argument that motivated every scalar twin here):
+#   * w_sctm_esmfold_scalar: the repack "esmfold" want returns each binder's ESMFold sc-TM; the trainer
+#     z-scores it within the group and ADDS it to the design-level advantage. POSITIVE-oriented
+#     (higher = better) -> NOT negated.
+#   * w_sctm_complex_scalar: need_coords flips on (need_struct includes w_sctm_complex_scalar>0), so the
+#     policy submits one fold job per rollout group to reward.queue_dir with return_coords=True; the
+#     BindCraft AF2 worker returns the predicted-complex CA (antigen_xyz/binder_xyz); the trainer
+#     computes sctm_complex (gen complex vs AF2 complex, antigen-anchored) per design, z-scores it within
+#     the group, and ADDS it to the advantage. POSITIVE-oriented -> NOT negated. A failed fold or an
+#     antigen-length mismatch yields sctm_complex==0.0 -> mapped to NaN -> neutralized by the group
+#     z-score (not punished). The FLAT w_sctm_complex form is held at 0 (it would be drowned).
+#
+#   WARM-START (NOT a cold leflur-binder-3di start): resumes from grpo_step_525 of the sol+elec arm
+#   (rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec) — the byte-identical
+#   nine-term base and the SAME warm-start point as the flat/z-scored bindcraftpae arms and the
+#   esmfold-sctm-zscore arm, so all fold-reward arms are directly comparable (identical starting policy;
+#   only the fold reward differs). The bare GRPO {state_dict, grpo_step} ckpt is materialized into a
+#   Lightning envelope first (scripts/_materialize_grpo_ckpt.py) -> grpo_step_525_lightning.ckpt in
+#   model.ckpt_path below. To start cold instead, set ckpt_path to the base leflur-binder-3di snapshot.
+#
+#   DEGENERACY GUARD (tracked): a single-AA-collapsed binder can fold to a confident/self-consistent
+#   structure without being a real binder (degenerate-sequences-mark-failure). The incumbent LC
+#   (seq+3Di) + Jaccard terms fight degeneracy; the logging (esmfold_scalar/sctm_mean,
+#   complextm_scalar/sctm_mean, *_scalar/adv_abs_mean) shows both fold signals and their add-on
+#   magnitudes; complextm_scalar/scored_frac ~= 1.0 confirms the complex TM is not silently all-zero
+#   (an antigen-length mismatch would floor it).
+#
+# The nine inherited terms are BYTE-IDENTICAL to the sol+elec arm and the bindcraftpae / esmfold arms:
+#   1. e_lj (PRIMARY)   w_elj_scalar=1.0 (SPARSE; per_token_pot OFF). dsasa/hb OFF.
+#   2. chainbreak       w_chainbreak=1.0, count gate (backbone peptide-bond integrity).
+#   3. LC seq           w_seq_complexity=1.0, lc_full=0.7 (within-sequence anti-degeneracy).
+#   4. LC 3Di           w_struct_complexity=1.0, struct_lc_full=0.30 (within-3Di anti-degeneracy).
+#   5. Jaccard seq      w_seq_diversity=0.1 (within-group between-design AA k-mer novelty).
+#   6. Jaccard 3Di      w_struct_diversity=0.1 (within-group between-design 3Di k-mer novelty).
+#   7. interface-contact w_clash_contact=1.0, band(f; 0.05, 0.16, 0.40) + soft clash.
+#   8. Rg compactness   w_rog=1.0, rog_r0=2.2, rog_full=0.76.
+#   9. sol+elec         w_solelec_scalar=1.0 (REF2015 fa_sol+fa_elec / iface res, single group z-score).
+#  10. ESMFold binder TM w_sctm_esmfold_scalar=1.0 (docking-blind binder-monomer sc-TM, Z-SCORED).
+#  11. BindCraft complex TM w_sctm_complex_scalar=1.0 (docking-aware complex sc-TM, Z-SCORED; NEW term).
+#
+# CHORD SFT is HELD OFF (sft_mu=0). Protenix confidence combo, Protenix structure self-consistency,
+# pae_interface, 3Di-TV, 3DZD shape-SC, and AAR are all OFF.
+#
+# POOLS (this arm needs BOTH):
+#   - FOLD pool (reward.queue_dir): the BindCraft AF2 worker array serving the COMPLEX TM fold
+#     (FOLD_BACKEND=bindcraft, N_WORKERS>0), returning predicted-complex CA coords. ~44 s/fold @ 3
+#     recycles on a10g. Keep N_WORKERS >= reward.n_shards so a whole group fans across the pool inside
+#     reward.timeout_s.
+#   - SHAPE pool (shape.queue_dir): the LigandMPNN-repack array serving the e_lj + sol+elec "pot" want
+#     AND the ESMFold binder-TM "esmfold" want from one pack per design (M_SHAPE>0). Keep M_SHAPE high
+#     (24-32).
+#
+# WATCH: both esmfold_scalar/sctm_mean and complextm_scalar/sctm_mean should RISE, WITHOUT diversity/lc
+# (seq+3Di) collapsing or binder degeneracy rising (TM hacked via a generic compact fold); rog
+# HOLD/RISE; chainbreak HOLD; solelec + e_lj HOLD/FALL; complextm_scalar/scored_frac ~= 1.0;
+# ppo/grad_norm not swamped.
+# Open question: pass% at a /leflur-table6-eval checkpoint vs the sol+elec s525 warm-start baseline, vs
+# the bindcraftpae-zscore arm (does docking-aware TM beat interface PAE?), AND vs the esmfold-sctm-zscore
+# arm (does adding the docking-aware complex half beat the docking-blind binder TM alone?).
+#
+# Usage (BindCraft fold pool for complex TM + a SEPARATE repack pool for e_lj/sol+elec/esmfold binder TM):
+#   OUTBASE=/cv/scratch/u/lisanzas/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec_esmfoldbinder_bindcraftcomplex_tm_zscore \
+#   FOLD_BACKEND=bindcraft N_WORKERS=24 REWARD_NSHARDS=24 M_SHAPE=24 NRANKS=8 POLICY_HRS=168 \
+#   WORKER_PARTITION=llm-b200 WORKER_GRES=gpu:b200:1 \
+#   CONFIG=experiment/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec_esmfoldbinder_bindcraftcomplex_tm_zscore \
+#     bash scripts/launch_leflur_grpo.slurm
+
+defaults:
+  - /paths: internal
+  - _self_
+
+output_dir: "${paths.root_dir}/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec_esmfoldbinder_bindcraftcomplex_tm_zscore"
+seed: 12345
+
+model:
+  _target_: lobster.model.leflur.LeFlurSequenceStructureEncoderLightningModule
+  # WARM-START. Originally cold-started from the sol+elec arm's grpo_step_525 (the SAME point as the
+  # bindcraftpae and esmfold-sctm-zscore arms). RESTARTED 09-10 from THIS arm's own latest
+  # grpo_step_1975 (materialized into a Lightning envelope via scripts/_materialize_grpo_ckpt.py) after
+  # the mass job cancellation — continue training from the most-advanced two-oracle-TM policy, losing no
+  # progress. (Was .../rl_leflur_binder_grpo_..._solelec/ckpts/grpo_step_525_lightning.ckpt.)
+  ckpt_path: /cv/scratch/u/lisanzas/rl_leflur_binder_grpo_elj_sparse_clash_chainbreak_lc_jaccard_rog_solelec_esmfoldbinder_bindcraftcomplex_tm_zscore/ckpts/grpo_step_1975_lightning.ckpt
+
+# Complexa 38-target set (GRPO schema; per-target fixed length) — parsed by _build_targets.
+targets: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_grpo_targets.csv"
+
+# Arm C rollout (epitope conditioning ON; fold-diverse 3Di levers — NOT beta-collapsed best-arm).
+generation:
+  max_length: 512
+  use_epitope_conditioning: true
+  encode_target_only: false
+  cfg_weight: 1.0
+  temperature_seq: 1.0
+  temperature_struc: 0.31640411575109995
+  stochasticity_seq: 1
+  stochasticity_struc: 60
+  stochasticity_tri: 80
+  asynchronous_sampling: false
+  inference_schedule_seq: PowerInferenceSchedule
+  seq_schedule_exponent: 2
+  inference_schedule_struc: LinearInferenceSchedule
+  inference_schedule_tri: LogInferenceSchedule
+  tri_schedule_exponent: null
+  tri_time_accel: 1.0
+  sequence_diversity_penalty: 2
+  tri_diversity_penalty: 8
+  sequence_logit_bias: null
+  sequence_logit_bias_steps: 200
+  tri_logit_bias: null
+
+grpo:
+  group_size: 64
+  num_steps: 2000            # OPTIMIZER updates; each consumes accum_targets rollouts
+  rollout_nsteps: 40
+  steps_per_update: 3        # grad_checkpoint keeps peak mem ~O(group_size) per target.
+  grad_checkpoint: true      # per-packet forward+backward is sequential -> peak mem ~1 target.
+  mu: 2
+  beta: 0.0                  # KL OFF (deliberately not turned on yet)
+  eps_clip: 0.2
+  lr: 1.0e-5                 # sole confirmed lever (1e-6 freezes, 1e-4 blows up)
+  adv_eps: 1.0e-4
+  adv_std_floor: 1.0e-3
+  # --- Multi-target stabilization ---
+  accum_targets: 10          # average the gradient over 10 targets per step
+  shuffle_targets: true      # reshuffle target order each epoch
+  normalize_advantage: true  # per-group /std (== TRL scale_rewards="group")
+
+  # ===================== e_lj — SPARSE self-normalized per-design advantage =====================
+  per_token_pot: false       # dense per-token e_lj OFF (this is the sparse arm)
+  w_pt_lj: 0.0
+  w_pt_dsasa: 0.0
+  w_pt_hb: 0.0
+  pot_with_sasa: false       # repack still returns e_lj/fa_sol/e_elec (via the "pot" want)
+  w_elj_scalar: 1.0          # per-design total-e_lj z-score added to the group advantage
+
+  # (2) chainbreak — backbone peptide-bond integrity (scalar, count gate).
+  w_chainbreak: 1.0
+  chainbreak_gate: count
+
+  # CHORD SFT — HELD OFF (would confound the added-term comparison).
+  sft_mu: 0.0
+  sft_mu_schedule: null
+  sft_use_phi: false
+  sft_scope: binder
+  sft_label: hard
+  sft_temperature: 1.0
+  sft_masked_only: true
+  sft_reward_gate: null
+  struct_sft_mu: 0.0         # Protenix fold-consistency struct-SFT OFF (this run's fold is BindCraft AF2)
+
+  # (3) LC (seq) — per-design saturating linguistic-complexity reward (within-sequence anti-degeneracy).
+  w_seq_complexity: 1.0
+  lc_full: 0.7               # full credit at LC>=0.7, ramp to 0 at collapse
+  # (4) LC (3Di) — same, on the 3Di tri-token track (structural alphabet).
+  w_struct_complexity: 1.0
+  struct_lc_full: 0.30       # saturates at measured Complexa/base 3Di LC (~0.25/0.27)
+
+  # (5,6) within-group Jaccard novelty — between-design anti-consensus guard on BOTH tracks.
+  w_seq_diversity: 0.1
+  w_struct_diversity: 0.1    # 3Di k-mer Jaccard ON
+
+  # (7) interface-contact band — soft clash x soft-count contact band on the decoded backbone.
+  w_clash_contact: 1.0
+  clash_d_clash: 2.2
+  clash_soft: 0.5
+  clash_scale: 50.0
+  contact_d0: 8.0
+  contact_soft: 1.0
+  frac_lo: 0.05
+  frac_peak: 0.16
+  frac_hi: 0.4
+  clash_seq_sep: 2
+  clash_include_cb: true
+
+  # (8) Rg compactness — per-design saturating global-fold-state reward on binder Rg.
+  w_rog: 1.0
+  rog_r0: 2.2                # Rg_compact = rog_r0 * N^(1/3)
+  rog_full: 0.76            # full credit once compactness >= 0.76 (passing-Complexa fold state)
+
+  # (9) sol+elec — per-design COMBINED REF2015 fa_sol + fa_elec interface complementarity energy
+  #     / interface residue, combined IN PHYSICAL UNITS (w_sol=1.0, w_elec=1.0) then a SINGLE group
+  #     z-score into the design advantage. Reuses the same repack pack as e_lj. Physical sub-weights.
+  w_solelec_scalar: 1.0
+  w_solelec_wsol: 1.0        # REF2015 fa_sol weight
+  w_solelec_welec: 1.0       # REF2015 fa_elec weight
+  # The two SEPARATE chemistry arms are OFF — the combined arm above replaces them.
+  w_fasol_scalar: 0.0
+  w_elec_scalar: 0.0
+
+  # ===================== (10) ESMFold BINDER TM — Z-SCORED added fold reward =====================
+  # w_sctm_esmfold_scalar>0 adds the "esmfold" want to the SHAPE repack pool: the worker folds each
+  # binder MONOMER with ESMFold and returns its gen-vs-refold sc-TM; the trainer z-scores it within the
+  # group and ADDS it to the design-level advantage. POSITIVE-oriented -> NOT negated. Docking-BLIND
+  # (monomer only) — paired here with the docking-aware complex TM below. The FLAT form is OFF.
+  w_sctm_esmfold: 0.0        # flat ESMFold sc-TM form OFF
+  w_sctm_esmfold_scalar: 1.0  # Z-SCORED per-design ESMFold binder-monomer sc-TM add-on (THIS arm)
+
+  # ===================== (11) BindCraft COMPLEX TM — Z-SCORED added fold reward =====================
+  # w_sctm_complex_scalar>0 flips need_coords on: the policy submits one fold job per rollout group to
+  # reward.queue_dir with return_coords=True; the BindCraft AF2 worker (FOLD_BACKEND=bindcraft) folds
+  # each binder seq vs the antigen template and returns the predicted-complex CA (antigen_xyz/binder_xyz).
+  # The trainer computes sctm_complex (gen complex vs AF2 complex, antigen-anchored -> docking-AWARE),
+  # z-scores it within the group, and ADDS it DIRECTLY to the design-level advantage (unit variance =
+  # equal influence). POSITIVE-oriented -> NOT negated. A failed fold / antigen-length mismatch floors
+  # sctm_complex to 0.0 -> mapped to NaN -> neutralized by the group z-score. The FLAT w_sctm_complex
+  # form is OFF (it would be drowned). pae_interface is OFF this arm (this rewards complex TM, not PAE).
+  w_sctm_binder: 0.0         # flat Protenix binder sc-TM OFF (binder TM comes from ESMFold above)
+  w_sctm_complex: 0.0        # flat complex sc-TM OFF (the z-scored scalar below carries it)
+  w_sctm_complex_scalar: 1.0  # Z-SCORED per-design BindCraft/AF2 complex sc-TM add-on (NEW; THIS arm)
+  log_struct_diagnostic: false
+
+  # pae_interface OFF (both forms) — this arm's complex signal is the TM-score above, not the PAE.
+  w_pae_interface: 0.0
+  w_pae_interface_scalar: 0.0
+  w_iptm: 0.0
+  w_ptm: 0.0                 # NB dataclass default is 0.5 — pinned to 0 (no flat confidence term)
+  w_abag_iptm: 0.0
+  w_plddt: 0.0
+  w_gpde: 0.0
+  w_pae_global: 0.0
+
+  # ===================== EXCLUDED TERMS (all OFF) =====================
+  # Interface-distribution (3Di-TV) reward OFF and NOT tracked (won't scale past the ref set).
+  w_aa_dist: 0.0
+  w_3di_dist: 0.0
+  log_dist_diagnostic: false
+  # 3DZD shape-SC OFF; AAR scalar OFF (CHORD off, so no designed-seq draw either).
+  w_shape: 0.0
+  w_aar: 0.0
+
+  # All three tracks trainable; the sparse e_lj advantage broadcasts to every track (design PPO).
+  tracks: [structure_tokens, tri_tokens, sequence_tokens]
+  capture_old_lp_inline: true
+  grad_clip: 1.0
+  seed: 0
+  log_every: 1
+  ckpt_dir: "${output_dir}/ckpts"
+  ckpt_every: 25
+
+# ProtenixRewardClient (metric-agnostic queue client) — ACTIVE this run: w_sctm_complex_scalar>0 flips
+# need_coords on, so the policy submits fold jobs here (return_coords=True) and blocks for the predicted
+# complex CA. The BindCraft AF2 worker array drains this queue (FOLD_BACKEND=bindcraft) instead of
+# Protenix; the client/trainer are unchanged.
+reward:
+  queue_dir: "${output_dir}/queue"
+  targets_csv: "/cv/scratch/u/lisanzas/denovo_dataset/binder/denovo/complexa_bench/targets/complexa_score_targets.csv"
+  # 1800s is comfortable for BindCraft folds (~44 s/design @ 3 recycles; a full n_shards=8 shard of ~8
+  # designs ~= 350 s). Raise reward.n_shards toward N_WORKERS to fan a group wider on a large pool.
+  timeout_s: 1800
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+# Full-atom repack reward pool (LigandMPNN-repack workers on a10g GPUs). Serves the e_lj + fa_sol +
+# e_elec "pot" want AND the ESMFold binder-TM "esmfold" want from one pack per design. w_elj_scalar /
+# w_solelec_scalar / w_sctm_esmfold_scalar turn this pool on.
+shape:
+  queue_dir: "${output_dir}/shape_queue"
+  # 600s (not 1800) so a starved/idle-died repack pool floors its group within ~10 min and the rank
+  # reaches the grad all-reduce well before the NCCL watchdog (3600s) trips -> no 8-way deadlock.
+  timeout_s: 600
+  poll_s: 2.0
+  cache: true
+  n_shards: 8
+
+wandb:
+  enabled: true
+  project: leflur-grpo
+  name: complexa38-elj-sparse-clash-chainbreak-lc-jaccard-rog-solelec-esmfoldbinder-bindcraftcomplex-tm-zscore-g64

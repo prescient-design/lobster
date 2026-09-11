@@ -382,6 +382,18 @@ def rl_train(cfg: DictConfig) -> None:
         # the group and adds it directly to the design-level advantage (unit variance = equal influence),
         # instead of the flat direct-max add. Same "esmfold" want (no extra fold). Off by default.
         w_sctm_esmfold_scalar=float(g.get("w_sctm_esmfold_scalar", 0.0)),
+        # z-scored (scalar) formulation of the pae_interface confidence term — z-scores each design's
+        # oriented pae within the group and adds it directly to the design-level advantage (unit
+        # variance = equal influence), instead of folding it flat into the jointly-standardized base
+        # reward. Rides the SAME confidence fold as w_pae_interface (no extra fold / no repack pool).
+        # Off by default.
+        w_pae_interface_scalar=float(g.get("w_pae_interface_scalar", 0.0)),
+        # z-scored (scalar) formulation of the complex sc-TM term — z-scores each design's complex
+        # sc-TM (gen complex vs BindCraft/AF2-predicted complex, docking-aware) within the group and
+        # adds it directly to the design-level advantage (unit variance = equal influence). Rides the
+        # SAME fold coords as the flat w_sctm_complex (needs the fold pool returning coords; no repack
+        # pool). Pairs with w_sctm_esmfold_scalar (binder TM) as the two-oracle TM reward. Off by default.
+        w_sctm_complex_scalar=float(g.get("w_sctm_complex_scalar", 0.0)),
         log_struct_diagnostic=bool(g.get("log_struct_diagnostic", False)),
         w_seq_diversity=float(g.get("w_seq_diversity", 0.0)),
         w_struct_diversity=float(g.get("w_struct_diversity", 0.0)),

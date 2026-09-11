@@ -140,6 +140,17 @@ class GRPOTrainerConfig:
         chainbreak (memory ``esmfold-selfconsist-gate-negative``); wired for an empirical
         in-loop test. The binder AA-composition entropy + max-single-AA fraction are logged
         alongside it as a degeneracy guard (a collapsed sequence folds confidently).
+    w_pae_interface_scalar : float
+        Z-scored (scalar) formulation of the ``pae_interface`` fold-confidence term — the
+        structural dual of ``w_pae_interface``. Instead of folding the oriented pae into the
+        confidence component that is standardized jointly with the rest of the base reward,
+        this z-scores each design's oriented pae (``_clip01(1 - pae/32)``) WITHIN the group
+        and adds it DIRECTLY to the design-level advantage (unit variance = equal influence),
+        exactly as ``w_sctm_esmfold_scalar`` / ``w_elj_scalar`` do. pae_interface is
+        POSITIVE-oriented (higher oriented = lower PAE = better) so it is NOT negated before
+        z-scoring. Draws the SAME confidence fold as ``w_pae_interface`` (no extra fold); set
+        ``w_pae_interface = 0`` and this ``> 0`` for the z-scored variant alone. Cleared the
+        offline gate (AUROC 0.806 @1 recycle / 0.836 @3). Default ``0``.
     w_seq_diversity, w_struct_diversity : float
         Weights on the within-group mean pairwise k-mer-Jaccard novelty of the AA
         sequence and the 3Di structural-token string (both already in ``[0,1]``,
@@ -230,6 +241,31 @@ class GRPOTrainerConfig:
     # penalty terms). Uses the SAME "esmfold" want (no extra fold) — set w_sctm_esmfold = 0 and
     # this > 0 to run the z-scored variant alone. Default 0.0 = byte-identical.
     w_sctm_esmfold_scalar: float = 0.0
+    # Z-scored (scalar) formulation of the pae_interface fold-confidence term. The flat form
+    # (w_pae_interface > 0) folds the oriented pae ( _clip01(1 - pae/32) ) into the confidence
+    # component that is standardized JOINTLY with the rest of the base reward; if that joint
+    # std drowns the pae signal we instead z-score each design's oriented pae WITHIN the group
+    # and ADD it DIRECTLY to the design-level advantage (guaranteed unit variance = equal
+    # influence), exactly as w_sctm_esmfold_scalar / w_elj_scalar do. pae_interface is
+    # POSITIVE-oriented once passed through confidence_components (higher oriented = lower PAE =
+    # better) so it is NOT negated before z-scoring (contrast the e_lj/solelec penalty terms).
+    # Draws the SAME fold as w_pae_interface (BindCraft AF2 / Protenix confidence pool, no extra
+    # fold) — set w_pae_interface = 0 and this > 0 to run the z-scored variant alone. Cleared the
+    # offline gate (AUROC 0.806 @1 recycle / 0.836 @3, above e_lj 0.720). Default 0.0 =
+    # byte-identical.
+    w_pae_interface_scalar: float = 0.0
+    # Z-scored (scalar) formulation of the docking-aware COMPLEX self-consistency TM-score. The
+    # fold worker (BindCraft AF2 / Protenix) returns the predicted-complex CA coords; the trainer
+    # computes sctm_complex (generated complex vs predicted complex, antigen-anchored) per design,
+    # z-scores it WITHIN the group and ADDS it DIRECTLY to the design-level advantage (guaranteed
+    # unit variance = equal influence), exactly as w_pae_interface_scalar / w_sctm_esmfold_scalar
+    # do. sctm_complex is POSITIVE-oriented (higher = better re-dock) so it is NOT negated before
+    # z-scoring. This is the TM-score dual of the pae_interface reward — it rides the SAME complex
+    # fold (no extra fold) and needs only return_coords=True (via the need_coords gate below). Pair
+    # it with w_sctm_esmfold_scalar (binder-monomer TM from the repack "esmfold" want) for the
+    # two-oracle "binder-TM from ESMFold + complex-TM from BindCraft" reward. Default 0.0 =
+    # byte-identical (the flat w_sctm_complex form is drowned by the z-scored base advantages).
+    w_sctm_complex_scalar: float = 0.0
     # Always compute+log sctm (worker returns coords every step) even when its
     # reward weight is 0 — a pure diagnostic. Adds per-step coord-transfer cost.
     log_struct_diagnostic: bool = False
@@ -2121,7 +2157,7 @@ class LeFlurGRPOTrainer:
             "w_pae_interface": cfg.w_pae_interface,
             "w_ipsae": cfg.w_ipsae,
         }
-        need_struct = cfg.w_sctm_binder > 0 or cfg.w_sctm_complex > 0
+        need_struct = cfg.w_sctm_binder > 0 or cfg.w_sctm_complex > 0 or getattr(cfg, "w_sctm_complex_scalar", 0.0) > 0
         # Protenix fold-consistency SFT (struct_sft_mu>0) folds the policy sequence and derives
         # (s*, τ*) from the FULL (N, CA, C) backbone, so it needs the coords fetch with the
         # extra backbone payload (return_backbone). The CA-only sctm reward only needs coords.
@@ -2134,7 +2170,10 @@ class LeFlurGRPOTrainer:
         # oracle entirely: confs=[None]*G makes every confidence helper contribute
         # 0/{}/False (see rewards/_protenix_reward.py), so the reward reduces to the
         # dense distribution term with no worker pool / queue involved.
-        need_conf = any(w > 0 for w in conf_weights.values())
+        # The z-scored pae term (w_pae_interface_scalar) reads the SAME confidence fold but keeps
+        # w_pae_interface = 0 in conf_weights (it z-scores the oriented pae itself rather than
+        # folding it flat), so it must fire the Protenix/BindCraft confidence pool on its own.
+        need_conf = any(w > 0 for w in conf_weights.values()) or cfg.w_pae_interface_scalar > 0
         # Per-token confidence advantage (per_token_conf) needs the Protenix full-data dump
         # decomposed per binder residue; request it from the client and fold even when every
         # SCALAR confidence weight is 0 (the per-token dual can be the sole confidence signal).
@@ -2508,12 +2547,21 @@ class LeFlurGRPOTrainer:
             and pot_eres is not None
             and pot_eres.get("sctm_scalar") is not None
         )
+        # z-scored pae_interface (w_pae_interface_scalar) rides the confidence fold (confs), NOT the
+        # repack pool, so it opens pt_extras on its own independent of pot_eres — mirroring _esm_scalar_on.
+        _pae_scalar_on = getattr(cfg, "w_pae_interface_scalar", 0.0) > 0
+        # z-scored complex sc-TM (w_sctm_complex_scalar) rides the SAME fold coords as the flat
+        # w_sctm_complex term (sctm_c from _structure_terms_for_group, gen complex vs fold-predicted
+        # complex), so it opens pt_extras on its own too — mirroring _pae_scalar_on.
+        _sctm_complex_scalar_on = getattr(cfg, "w_sctm_complex_scalar", 0.0) > 0
         if (
             (cfg.per_token_clash and clash_eres is not None)
             or (cfg.per_token_chainbreak and chainbreak_eres is not None)
             or _pot_on
             or _conf_pt_on
             or _esm_scalar_on
+            or _pae_scalar_on
+            or _sctm_complex_scalar_on
         ):
             pt_extras = {}
             if cfg.per_token_clash and clash_eres is not None:
@@ -2561,6 +2609,35 @@ class LeFlurGRPOTrainer:
                 # Independent of the pot arm, so read outside the _pot_on branch.
                 pt_extras["sctm_scalar"] = torch.as_tensor(
                     pot_eres["sctm_scalar"], dtype=torch.float32, device=self.device
+                )  # (G,)
+            if _pae_scalar_on:
+                # Per-design oriented pae_interface (G,) for the z-scored w_pae_interface_scalar arm.
+                # confidence_components applies the SAME orientation as the flat path
+                # (_clip01(1 - pae/32), POSITIVE-oriented, higher = better); a failed/None fold or a
+                # design missing pae yields NaN -> neutral (0) advantage in _group_zscore. Read from
+                # confs (the confidence fold), independent of the repack pool.
+                _pae_vals = []
+                for _c in confs:
+                    _pv = (
+                        confidence_components(_c, {"w_pae_interface": 1.0}).get("w_pae_interface")
+                        if _c is not None
+                        else None
+                    )
+                    _pae_vals.append(float(_pv) if _pv is not None else float("nan"))
+                pt_extras["pae_interface_scalar"] = torch.as_tensor(
+                    _pae_vals, dtype=torch.float32, device=self.device
+                )  # (G,)
+            if _sctm_complex_scalar_on:
+                # Per-design complex sc-TM (G,) for the z-scored w_sctm_complex_scalar arm — the
+                # gen-complex-vs-fold-predicted-complex TM (docking-aware; antigen anchors the joint
+                # superposition). sctm_c comes from _structure_terms_for_group, which returns exactly
+                # 0.0 for a missing fold or an antigen-length mismatch (equal-length Kabsch); a real
+                # antigen-anchored complex TM is never ~0, so 0.0 == plumbing failure -> map to NaN so
+                # it is neutralized (not punished) by _group_zscore, matching the pae scalar's NaN path.
+                # POSITIVE-oriented (higher = better), NOT negated.
+                _sctm_c_vals = [float(v) if float(v) > 0.0 else float("nan") for v in sctm_c]
+                pt_extras["sctm_complex_scalar"] = torch.as_tensor(
+                    _sctm_c_vals, dtype=torch.float32, device=self.device
                 )  # (G,)
             if _conf_pt_on:
                 # Per-residue Protenix confidences (G, L), all already oriented "larger = worse"
@@ -2979,6 +3056,49 @@ class LeFlurGRPOTrainer:
             metrics["esmfold_scalar/sctm_mean"] = float(sctm[_finite_t].mean()) if bool(_finite_t.any()) else 0.0
             metrics["esmfold_scalar/scored_frac"] = float(_finite_t.float().mean())
             metrics["esmfold_scalar/adv_abs_mean"] = float((cfg.w_sctm_esmfold_scalar * zt).abs().mean())
+
+        # z-scored pae_interface — the scalar twin of the flat w_pae_interface confidence term.
+        # The flat form folds the oriented pae into the confidence component that is standardized
+        # JOINTLY with the whole base reward; this instead z-scores each design's oriented pae within
+        # the group and ADDS it to the design-level advantage (guaranteed unit variance = equal
+        # influence with the z-scored e_lj/solelec). pae_interface is POSITIVE-oriented once passed
+        # through confidence_components (higher oriented = lower PAE = better) so it is NOT negated
+        # (contrast the penalty arms above). NaN designs (fold failed / pae missing) are zeroed by
+        # _group_zscore. Runs alongside or instead of the flat term.
+        if (
+            getattr(cfg, "w_pae_interface_scalar", 0.0) > 0
+            and pt_extras is not None
+            and pt_extras.get("pae_interface_scalar") is not None
+        ):
+            pae = pt_extras["pae_interface_scalar"]  # (G,) oriented pae in [0,1], NaN where fold failed
+            zp = self._group_zscore(pae, cfg.adv_eps)  # reward (higher oriented = better) → NO negation
+            advantages = advantages + cfg.w_pae_interface_scalar * zp
+            _finite_p = torch.isfinite(pae)
+            metrics["pae_scalar/oriented_pae_mean"] = float(pae[_finite_p].mean()) if bool(_finite_p.any()) else 0.0
+            metrics["pae_scalar/scored_frac"] = float(_finite_p.float().mean())
+            metrics["pae_scalar/adv_abs_mean"] = float((cfg.w_pae_interface_scalar * zp).abs().mean())
+
+        # z-scored complex sc-TM — the scalar twin of the flat w_sctm_complex term, the docking-aware
+        # dual of the pae scalar above. Where pae scores interface confidence, this scores whether the
+        # designed sequence re-folds (via the BindCraft/AF2 complex fold) back onto the GENERATED docked
+        # pose: TM of gen complex vs fold-predicted complex, with the antigen anchoring the joint
+        # superposition. z-score each design's complex sc-TM within the group and ADD it to the design-
+        # level advantage (guaranteed unit variance = equal influence with the z-scored e_lj/solelec/
+        # esmfold-binder-TM). POSITIVE-oriented (higher = better) so it is NOT negated. NaN designs
+        # (fold failed / antigen length mismatch) are zeroed by _group_zscore. Runs alongside or instead
+        # of the flat term; pairs with the ESMFold binder-TM scalar to form the two-oracle TM reward.
+        if (
+            getattr(cfg, "w_sctm_complex_scalar", 0.0) > 0
+            and pt_extras is not None
+            and pt_extras.get("sctm_complex_scalar") is not None
+        ):
+            ctm = pt_extras["sctm_complex_scalar"]  # (G,) complex sc-TM in [0,1], NaN where fold failed
+            zc = self._group_zscore(ctm, cfg.adv_eps)  # reward (higher = better) → NO negation
+            advantages = advantages + cfg.w_sctm_complex_scalar * zc
+            _finite_c = torch.isfinite(ctm)
+            metrics["complextm_scalar/sctm_mean"] = float(ctm[_finite_c].mean()) if bool(_finite_c.any()) else 0.0
+            metrics["complextm_scalar/scored_frac"] = float(_finite_c.float().mean())
+            metrics["complextm_scalar/adv_abs_mean"] = float((cfg.w_sctm_complex_scalar * zc).abs().mean())
 
         n_steps = len(trajectory["steps"])
         # When any per-token structure arm is active (clash and/or chain-break), the STRUCTURE
